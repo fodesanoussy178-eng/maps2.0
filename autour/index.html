@@ -1,0 +1,1287 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#141E19" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>Autour · carte du quartier</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+<style>
+:root{
+  --paper:#F7F8F5; --ink:#1F2A25; --ink2:#5D6B63; --signal:#FF4A17; --trait:#141E19;
+  --bord:#DCE0D8; --ardoise:#2C3A33;
+  --sol:#F2F1EC; --bati:#E7E4DE; --vert:#C9E6C4; --eau:#A5CDEA;
+  --voie:#FFFFFF; --liseré:#DFDCD5; --vite:#F8D28D; --vite-bord:#E9B96A;
+  --label:#5F6863;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+body{font-family:'Inter Tight',system-ui,-apple-system,sans-serif;color:var(--ink);
+  background:var(--paper);-webkit-font-smoothing:antialiased;position:fixed;inset:0;width:100%}
+button{font-family:inherit;cursor:pointer}
+input{font-family:inherit;font-size:16px}
+
+#map{position:absolute;inset:0;background:var(--sol)}
+.leaflet-container{font-family:inherit;background:var(--sol)}
+.leaflet-control-attribution{font-size:9px;background:rgba(255,255,255,.7)}
+.leaflet-bottom.leaflet-right{margin-bottom:calc(var(--safe-b) + 2px)}
+.leaflet-control-zoom{border:1px solid var(--bord)!important;border-radius:4px!important;
+  box-shadow:0 2px 10px rgba(20,30,25,.14)!important;margin-right:14px!important}
+.leaflet-control-zoom a{color:var(--ink)!important;font-weight:700}
+
+/* étiquettes de rue */
+.rue{background:none;border:0;width:0!important;height:0!important}
+.rue-in{position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;
+  font-size:10px;font-weight:500;color:var(--label);letter-spacing:.01em;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+
+.mk{width:0!important;height:0!important;background:none;border:0}
+.mk-in{position:absolute;left:0;top:0;display:block}
+.mk-eph .mk-in{transform:translate(-50%,-100%)}
+.mk-fix .mk-in{transform:translate(-50%,-50%)}
+
+.affiche{position:relative;display:flex;flex-direction:column;gap:3px;width:max-content;
+  max-width:152px;padding:7px 9px 8px;border:1px solid var(--bord);border-radius:2px;
+  background:#fff;box-shadow:0 2px 10px rgba(20,30,25,.14);text-align:left;
+  transform:rotate(var(--tilt,0deg));transform-origin:50% 100%;animation:surgit .2s ease-out}
+.affiche::after{content:"";position:absolute;left:50%;bottom:-11px;width:1.5px;height:11px;
+  background:rgba(31,42,37,.45);transform:translateX(-50%)}
+.a-haut{display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.a-titre{font-size:12px;font-weight:600;line-height:1.25}
+.a-lieu{font-size:10px;line-height:1.2;opacity:.72}
+.a-places{opacity:.72;font-weight:500}
+.a-qr{position:absolute;top:4px;right:5px;font-size:9px;opacity:.5}
+.gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
+.payant{background:#fff;color:var(--ink)}
+.payant .a-haut{color:var(--ink2)}
+
+/* lieux permanents : pastille façon Maps — rond + nom dessous */
+.poi{display:flex;flex-direction:column;align-items:center;gap:2px;animation:surgit .2s ease-out}
+.poi-rond{width:23px;height:23px;border-radius:50%;background:#fff;border:1px solid var(--bord);
+  display:grid;place-items:center;font-size:12px;line-height:1;box-shadow:0 1px 3px rgba(20,30,25,.28)}
+.poi-nom{max-width:104px;text-align:center;font-size:10px;font-weight:600;line-height:1.15;
+  color:#37423D;letter-spacing:-.005em;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+.loin .poi-nom{display:none}
+.loin .poi-rond{width:11px;height:11px;font-size:0;border-width:1.5px;background:var(--ardoise)}
+
+/* ---- liste classée d'une catégorie ---- */
+/* ---- bloc "où", date et heure ---- */
+.ou{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--bord);
+  border-radius:3px;background:#fff}
+.ou-txt{flex:1;min-width:0}
+.ou-nom{display:block;font-size:14px;font-weight:600;line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ou-coord{display:block;margin-top:2px;font-family:'JetBrains Mono',monospace;
+  font-size:10px;color:var(--ink2)}
+.ou-bouton{flex-shrink:0;padding:8px 12px;border:1px solid var(--bord);border-radius:99px;
+  background:var(--paper);font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.duo{display:flex;gap:9px}
+.duo>label{flex:1;min-width:0}
+.champ input[type=date],.champ input[type=time]{width:100%;padding:12px;
+  border:1px solid var(--bord);border-radius:2px;background:#fff;color:var(--ink);
+  font-family:inherit;font-size:15px}
+.champ input[type=date]:focus,.champ input[type=time]:focus{outline:2px solid var(--signal);outline-offset:1px}
+.apercu-quand{margin-top:9px;padding:9px 12px;border-radius:2px;background:rgba(255,74,23,.09);
+  font-size:13px;font-weight:600;color:var(--ink)}
+.raccourcis{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
+
+.liste-tete{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
+.liste-tete h2{font-family:'Anton',sans-serif;font-size:25px;line-height:1;text-transform:uppercase}
+.liste-compte{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
+.liste-tri{margin:0 0 14px;font-size:11.5px;color:var(--ink2);line-height:1.45}
+.rang{display:flex;align-items:center;gap:11px;width:100%;padding:11px 4px;border:0;
+  border-top:1px solid var(--bord);background:none;text-align:left}
+.rang:last-of-type{border-bottom:1px solid var(--bord)}
+.rang-n{flex-shrink:0;width:26px;font-family:'JetBrains Mono',monospace;font-size:12px;
+  font-weight:700;color:var(--ink2)}
+.rang-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#fff;
+  border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
+.rang-txt{flex:1;min-width:0}
+.rang-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rang-sous{display:block;margin-top:2px;font-size:11.5px;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rang-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;color:var(--ink2)}
+.rang-note{display:inline-flex;align-items:center;gap:3px;margin-right:7px;font-weight:700;color:var(--ink)}
+.badge{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:99px;
+  background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;
+  font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;vertical-align:1px}
+.badge.mien{background:var(--ardoise)}
+.liste-vide{padding:26px 0 10px;text-align:center;font-size:14px;color:var(--ink2);line-height:1.6}
+
+.pastille{display:flex;align-items:center;gap:5px;padding:5px 9px 5px 6px;width:max-content;
+  max-width:150px;border:1px solid var(--bord);border-radius:99px;
+  background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(20,30,25,.14);animation:surgit .2s ease-out}
+.pastille .pl-mot{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes surgit{from{opacity:0}to{opacity:1}}
+
+.loin .affiche,.loin .pastille{width:13px;height:13px;max-width:none;padding:0;gap:0;
+  border-radius:50%;border-width:1.5px;overflow:hidden;transform:none;
+  box-shadow:0 1px 3px rgba(20,30,25,.3)}
+.loin .affiche::after,.loin .affiche>*,.loin .pastille>*{display:none}
+.loin .pastille{background:#fff;border-color:var(--ink2)}
+.loin .mk-eph .mk-in{transform:translate(-50%,-50%)}
+.loin .rue-in{display:none}
+
+.moi-in{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
+  display:grid;place-items:center;width:46px;height:46px}
+.moi-in i{position:absolute;width:46px;height:46px;border-radius:50%;
+  background:rgba(255,74,23,.16);animation:respire 2.4s ease-in-out infinite}
+.moi-in b{width:13px;height:13px;border-radius:50%;background:var(--signal);
+  border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+@keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
+
+#porte{position:absolute;inset:0;z-index:1000;background:var(--paper);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:var(--safe-t) 34px var(--safe-b)}
+#porte h1{font-family:'Anton',sans-serif;font-size:clamp(32px,10vw,42px);
+  line-height:1;text-transform:uppercase;margin:30px 0 12px}
+#porte p{margin:0 0 30px;font-size:15px;line-height:1.55;color:var(--ink2);max-width:290px}
+.onde{position:relative;width:104px;height:104px;display:grid;place-items:center}
+.onde span{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--signal);
+  opacity:0;animation:pulse 2.6s ease-out infinite}
+.onde span:nth-child(2){animation-delay:.85s}
+.onde span:nth-child(3){animation-delay:1.7s}
+.onde i{width:15px;height:15px;border-radius:50%;background:var(--signal);
+  border:2px solid #fff;box-shadow:0 0 0 1.5px var(--signal)}
+@keyframes pulse{0%{transform:scale(.28);opacity:.85}100%{transform:scale(1);opacity:0}}
+.plus-tard{margin-top:14px;padding:10px;border:0;background:none;font-size:13.5px;
+  color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+#porteEtat{margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:10px;
+  font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);min-height:14px}
+
+#charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
+  z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+
+.haut{position:absolute;top:calc(var(--safe-t) + 14px);left:14px;right:14px;z-index:600;display:flex;gap:8px}
+.rond{width:46px;height:46px;flex-shrink:0;border-radius:50%;border:1px solid var(--bord);
+  background:#fff;color:var(--ink);display:grid;place-items:center;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+.barre{flex:1;display:flex;align-items:center;gap:9px;padding:0 13px;height:46px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;
+  box-shadow:0 2px 10px rgba(20,30,25,.14);color:var(--ink2)}
+.barre input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink)}
+.barre input::placeholder{color:#A3ADA6}
+.icone-btn{border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
+
+.filtres{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 16px);z-index:600;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent)}
+.piste{display:flex;gap:7px;padding:4px 86px 4px 14px;overflow-x:auto;scrollbar-width:none}
+.piste::-webkit-scrollbar{display:none}
+.filtre{flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:10px 14px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:13.5px;font-weight:600;white-space:nowrap;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+.filtre.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
+
+.ajouter{position:absolute;right:14px;bottom:calc(var(--safe-b) + 74px);z-index:601;
+  width:58px;height:58px;border-radius:50%;border:1px solid var(--bord);
+  background:var(--signal);color:#fff;display:grid;place-items:center;box-shadow:0 4px 14px rgba(255,74,23,.34)}
+.ajouter:active{transform:translateY(1px)}
+
+.mini{position:absolute;top:calc(var(--safe-t) + 72px);left:14px;z-index:600;
+  display:flex;align-items:center;gap:6px;padding:9px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  box-shadow:0 2px 10px rgba(20,30,25,.14)}
+.mini.droite{left:auto;right:14px}
+[hidden]{display:none!important}
+
+#viseur{position:absolute;left:50%;top:50%;z-index:602;transform:translate(-50%,-100%);pointer-events:none}
+#viseur svg{filter:drop-shadow(0 3px 5px rgba(0,0,0,.3))}
+#poseBarre{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);
+  z-index:603;display:flex;gap:8px;align-items:center}
+#poseBarre .txt{flex:1;padding:12px 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13px;font-weight:600;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+#poseBarre .ok{padding:14px 20px;border:1px solid var(--bord);border-radius:99px;
+  background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+
+#voile{position:absolute;inset:0;z-index:900;background:rgba(20,30,25,.38);animation:fondu .2s}
+@keyframes fondu{from{opacity:0}to{opacity:1}}
+#feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:90%;overflow-y:auto;
+  padding:10px 20px calc(var(--safe-b) + 26px);background:var(--paper);
+  border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
+  animation:monte .28s cubic-bezier(.2,.9,.3,1)}
+@keyframes monte{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.poignee{display:block;width:46px;height:4px;margin:0 auto 16px;border:0;border-radius:99px;
+  background:rgba(20,30,25,.22);padding:0}
+
+.d-haut{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tag{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.prix-tag{padding:4px 9px;border:1px solid var(--bord);border-radius:2px;
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase}
+.prix-tag.g{background:var(--signal);border-color:var(--signal);color:#fff}
+h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
+  text-transform:uppercase;margin:12px 0 16px}
+.adresse{display:flex;flex-direction:column;gap:2px;padding:15px 16px;font-style:normal;
+  border:1px solid var(--bord);border-radius:3px;background:#fff}
+.ad-rue{font-size:17px;font-weight:700;line-height:1.3}
+.ad-ville{font-size:13.5px;color:var(--ink2)}
+.y-aller{align-self:flex-start;margin-top:12px;padding:10px 16px;text-decoration:none;
+  border:1px solid var(--bord);border-radius:99px;background:var(--signal);color:#fff;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;display:inline-block}
+dl.faits{margin:16px 0 18px}
+dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
+  border-top:1px solid rgba(20,30,25,.13)}
+dl.faits>div:last-child{border-bottom:1px solid rgba(20,30,25,.13)}
+dl.faits dt{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ink2);padding-top:2px}
+dl.faits dd{font-size:14.5px;font-weight:600;text-align:right}
+.billet{display:flex;gap:14px;align-items:center;padding:14px;border:1px solid var(--bord);
+  border-radius:3px;background:#fff}
+.qr{display:grid;width:88px;height:88px;flex-shrink:0;padding:5px;background:#fff}
+.qr span{background:transparent}
+.qr span.on{background:var(--ink)}
+.code{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;letter-spacing:.05em}
+.billet p{margin:4px 0 0;font-size:13px;color:var(--ink2)}
+.billet .note{margin-top:7px;font-size:11.5px;line-height:1.45;padding-top:7px;
+  border-top:1px solid rgba(20,30,25,.13)}
+.sans-billet{padding:14px 16px;border:1px dashed rgba(20,30,25,.32);border-radius:3px;
+  font-size:13.5px;line-height:1.55;color:var(--ink2)}
+.sans-billet strong{color:var(--ink)}
+.liens{display:flex;gap:10px;justify-content:center;margin-top:16px}
+.liens button{border:0;background:none;font-size:12px;color:var(--ink2);
+  text-decoration:underline;text-underline-offset:3px;padding:6px}
+
+h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transform:uppercase;margin:0 0 20px}
+.champ{display:block;margin-bottom:17px}
+.champ>span{display:block;margin-bottom:7px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.champ input[type=text]{width:100%;padding:12px;border:1px solid var(--bord);
+  border-radius:2px;background:#fff;color:var(--ink)}
+.champ input::placeholder{color:#A3ADA6}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:5px;padding:9px 13px;border:1px solid var(--bord);
+  border-radius:2px;background:#fff;font-size:13.5px;font-weight:600;color:var(--ink)}
+.chip.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
+.bascule{display:flex;border:1px solid var(--bord);border-radius:2px;overflow:hidden}
+.cote{flex:1;padding:12px 8px;border:0;background:#fff;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+.cote+.cote{border-left:1px solid var(--bord)}
+.cote.actif{background:var(--signal);color:#fff}
+.ligne{display:flex;align-items:center;gap:9px;margin-top:10px}
+.ligne input{width:78px;padding:10px;border:1px solid var(--bord);border-radius:2px;
+  font-family:'JetBrains Mono',monospace;font-weight:700;text-align:center}
+.ligne span{font-size:12.5px;color:var(--ink2)}
+.compteur{display:flex;align-items:center;margin-top:10px}
+.compteur button{width:44px;height:44px;border:1px solid var(--bord);background:#fff;
+  font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--ink);line-height:1}
+.compteur button:first-of-type{border-radius:2px 0 0 2px}
+.compteur button:last-of-type{border-radius:0 2px 2px 0}
+.compteur input{width:72px;height:44px;padding:0;text-align:center;border:1px solid var(--bord);
+  border-left:0;border-right:0;border-radius:0;font-family:'JetBrains Mono',monospace;font-weight:700}
+.aide{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--ink2)}
+.valider{width:100%;padding:16px;border:1px solid var(--bord);border-radius:2px;
+  background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;
+  font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:0 4px 14px rgba(255,74,23,.3)}
+.valider:active{transform:translate(1px,1px)}
+
+#toast{position:absolute;left:50%;bottom:calc(var(--safe-b) + 150px);z-index:950;
+  transform:translateX(-50%);padding:11px 16px;border:1px solid var(--bord);border-radius:2px;
+  background:#fff;color:var(--ink);white-space:nowrap;font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  box-shadow:0 2px 10px rgba(20,30,25,.18);animation:monteT .26s}
+@keyframes monteT{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+#panne{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 70px);z-index:2000;
+  padding:14px 16px;border:1px solid var(--bord);border-radius:3px;background:#fff;
+  font-size:13px;line-height:1.55;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+#panne strong{display:block;margin-bottom:5px}
+#panne button{margin-top:10px;padding:8px 12px;border:1px solid var(--bord);
+  border-radius:99px;background:var(--ardoise);color:#fff;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="porte">
+  <div class="onde"><span></span><span></span><span></span><i></i></div>
+  <h1>Tu es où&nbsp;?</h1>
+  <p>On dessine ton quartier et ce qui s'y passe. Rien d'autre n'est collecté.</p>
+  <button class="valider" style="max-width:290px" id="btnGeo">Autoriser la localisation</button>
+  <button class="plus-tard" id="btnSansGeo">Sans localisation</button>
+  <div id="porteEtat"></div>
+</div>
+
+<div id="charge" hidden>Dessin du quartier…</div>
+
+<div class="haut" id="haut" hidden>
+  <button class="rond" id="btnLoupe" aria-label="Chercher">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+  </button>
+  <div class="barre" id="barreRech" hidden>
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+    <input id="rech" placeholder="Chercher un truc, un lieu…" />
+    <button class="icone-btn" id="btnFermerRech" aria-label="Fermer">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+</div>
+
+<button class="mini" id="btnRevenir" hidden>◎ Revenir</button>
+<button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
+
+<div class="filtres" id="filtres" hidden><div class="piste" id="piste"></div></div>
+<button class="ajouter" id="btnAjouter" hidden aria-label="Publier">
+  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<div id="viseur" hidden>
+  <svg width="34" height="42" viewBox="0 0 34 42" fill="none">
+    <path d="M17 41V17" stroke="#2C3A33" stroke-width="2.5"/>
+    <rect x="1.5" y="1.5" width="31" height="17" rx="2" fill="#FF4A17" stroke="#2C3A33" stroke-width="2"/>
+    <circle cx="17" cy="41" r="2" fill="#2C3A33"/>
+  </svg>
+</div>
+<div id="poseBarre" hidden>
+  <div class="txt">Déplace la carte : l'épingle se pose ici.</div>
+  <button class="ok" id="btnPoseOk">C'est là</button>
+</div>
+
+<div id="voile" hidden></div>
+<section id="feuille" hidden role="dialog" aria-modal="true"></section>
+<div id="toast" hidden></div>
+<div id="panne" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+function panne(titre, corps){
+  const p = document.getElementById("panne");
+  p.innerHTML = "<strong>"+titre+"</strong>"+corps+
+    '<button onclick="document.getElementById(\'panne\').hidden=true">Fermer</button>';
+  p.hidden = false;
+}
+window.addEventListener("error", e=>{ panne("Ça a coincé", e.message||"Script externe indisponible."); });
+
+/* ================================================================== */
+/*  Catégories                                                        */
+/* ================================================================== */
+
+const CATS = {
+  popup:   {label:"Pop-up",    emoji:"🧢", eph:true},
+  event:   {label:"Événement", emoji:"🔊", eph:true},
+  collecte:{label:"Collecte",  emoji:"📦", eph:true},
+  studio:  {label:"Studio",    emoji:"🎧", eph:true},
+  sport:   {label:"Sport",     emoji:"⚽", eph:true},
+  food:    {label:"Bouffe",    emoji:"🍜", eph:true},
+  parc:    {label:"Parc",      emoji:"🌳", eph:false},
+  musee:   {label:"Musée",     emoji:"🏛", eph:false},
+  biblio:  {label:"Biblio",    emoji:"📚", eph:false},
+  sportlieu:{label:"Terrain",  emoji:"🛹", eph:false},
+  salle:   {label:"Salle",     emoji:"🎤", eph:false},
+  marche:  {label:"Marché",    emoji:"🧺", eph:false},
+};
+
+const REQUETES = [
+  ["leisure","park","parc"], ["leisure","garden","parc"],
+  ["tourism","museum","musee"], ["tourism","gallery","musee"],
+  ["amenity","library","biblio"],
+  ["leisure","skatepark","sportlieu"], ["leisure","pitch","sportlieu"],
+  ["amenity","theatre","salle"], ["amenity","community_centre","salle"],
+  ["amenity","marketplace","marche"],
+];
+
+const SCENARIOS = {
+  parc:      [["event","Cypher ouvert","Ce soir · 21h"],["food","Barbecue du quartier","Dim. · 12h"],
+              ["sport","Foot à 5, il manque 2","Ce soir · 20h"],["popup","Vide-grenier","Sam. · 8h → 14h"]],
+  musee:     [["event","Nocturne gratuite","Ven. · 18h → 22h"],["popup","Atelier sérigraphie","Sam. · 15h"]],
+  biblio:    [["collecte","Don de livres","Dim. · 10h → 13h"],["event","Lecture à voix haute","Mer. · 17h"]],
+  sportlieu: [["sport","Tournoi 3x3","Sam. · 16h"],["event","Session filmée","Ce soir · 19h"]],
+  salle:     [["event","Open mic","Ven. · 19h"],["studio","Répète ouverte","Jeu. · 20h"]],
+  marche:    [["popup","Friperie de rue","Sam. · 11h → 18h"],["food","Cantine de rue","Ce soir · 18h30"]],
+};
+
+const ERRANTS = [
+  ["popup","Pop-up fringues & vinyles","Ce soir · 19h → 23h"],
+  ["collecte","Collecte manteaux","Sam. · toute la journée"],
+  ["studio","Studio ouvert, 4 prises","Demain · 15h"],
+  ["event","Projection sur mur","Sam. · 22h"],
+  ["food","Cantine de rue","Ce soir · 18h30"],
+  ["sport","Tournoi FIFA","Dim. · 14h"],
+];
+const PRENOMS = ["Naïm","Sab","Assia","Kenzo","Yanis","Lina","Marwa","Adam","Nour","Sofia","Ilyes","Maya"];
+
+const Store = {
+  dispo: typeof window.storage !== "undefined",
+  async lire(){ if(!this.dispo) return [];
+    try{ const r=await window.storage.get("lieux-publies",true); return r?JSON.parse(r.value):[]; }catch(e){ return []; } },
+  async ecrire(l){ if(!this.dispo) return;
+    try{ await window.storage.set("lieux-publies", JSON.stringify(l), true); }catch(e){} }
+};
+
+/* ================================================================== */
+
+let lieux=[], publies=[], marqueurs=new Map(), etiquettes=[];
+let filtreActif="tout", recherche="", modePose=false;
+let map, coucheVille, coucheRues, moi, positionMoi=null, commune="ton quartier";
+let routes=[]; // {couche, base}
+
+const $=(s)=>document.querySelector(s);
+const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
+const codeEntree=(id)=>"AG-"+(hash(id)%90000+10000);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function alea(seed){let h=hash(String(seed))||1;return()=>{h=(h*1103515245+12345)&0x7fffffff;return (h>>8)%10000/10000;}}
+function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(el._t);el._t=setTimeout(()=>el.hidden=true,2400)}
+function etat(t){$("#porteEtat").textContent=t}
+function charge(t){const c=$("#charge"); if(t){c.textContent=t;c.hidden=false}else c.hidden=true}
+
+/* ================================================================== */
+/*  Overpass                                                          */
+/* ================================================================== */
+
+const SERVEURS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter"
+];
+
+async function overpass(q, msMax){
+  for(const url of SERVEURS){
+    try{
+      const stop = new AbortController();
+      const t = setTimeout(()=>stop.abort(), msMax||14000);
+      const r = await fetch(url,{method:"POST", signal:stop.signal,
+        body:"data="+encodeURIComponent(q),
+        headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+      clearTimeout(t);
+      if(!r.ok) continue;
+      const j = await r.json();
+      if(j && j.elements) return j.elements;
+    }catch(e){}
+  }
+  return null;
+}
+
+/* ---------- géométrie de la ville ---------- */
+async function geometrieVille(lat,lng){
+  // requête légère : les serveurs publics refusent les grosses demandes
+  const q1 = `[out:json][timeout:20];
+(
+way(around:800,${lat},${lng})[highway~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|pedestrian)$"];
+way(around:800,${lat},${lng})[leisure~"^(park|garden|pitch)$"];
+way(around:800,${lat},${lng})[landuse~"^(grass|forest|cemetery)$"];
+way(around:800,${lat},${lng})[natural=water];
+);
+out geom;`;
+  let els = await overpass(q1, 14000);
+  if(els && els.length) return els;
+
+  // seconde chance, encore plus petit
+  const q2 = `[out:json][timeout:15];
+way(around:450,${lat},${lng})[highway~"^(primary|secondary|tertiary|residential|pedestrian)$"];
+out geom;`;
+  return await overpass(q2, 10000);
+}
+
+/* ---------- lieux remarquables ---------- */
+async function vraisLieux(lat,lng){
+  const bloc = REQUETES.map(([k,v])=>
+    `node(around:1500,${lat},${lng})["${k}"="${v}"];way(around:1500,${lat},${lng})["${k}"="${v}"];`).join("");
+  const els = await overpass(`[out:json][timeout:20];(${bloc});out center 60;`, 9000);
+  if(!els) return [];
+  return els.map(e=>{
+    const t=e.tags||{}, p=e.center||e;
+    if(!p.lat||!p.lon) return null;
+    const regle = REQUETES.find(([k,v])=>t[k]===v);
+    if(!regle) return null;
+    return {
+      id:"osm"+e.type+e.id, cat:regle[2],
+      titre: t.name || CATS[regle[2]].label,
+      adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[regle[2]].label),
+      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
+      quand: t.opening_hours || "Voir sur place",
+      gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
+      places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
+    };
+  }).filter(Boolean);
+}
+
+/* Quand OpenStreetMap est injoignable, on pose des lieux d'exemple
+   pour que l'app reste testable. Ils sont étiquetés comme tels. */
+const MODELES = [
+  ["biblio","Médiathèque du centre"], ["biblio","Bibliothèque Jean-Moulin"],
+  ["biblio","Point lecture du quartier"],
+  ["musee","Musée municipal"], ["musee","Galerie du Marché"],
+  ["parc","Parc des Tilleuls"], ["parc","Square de la Fontaine"], ["parc","Jardin partagé"],
+  ["sportlieu","Skatepark du canal"], ["sportlieu","City stade Nord"],
+  ["salle","Salle des fêtes"], ["salle","Le Kiosque"],
+  ["marche","Marché couvert"],
+];
+
+function lieuxSecours(lat,lng){
+  const rnd = alea("s"+lat.toFixed(3)+lng.toFixed(3));
+  return MODELES.map(([cat,nom],i)=>{
+    const d = 0.0012 + rnd()*0.0075, a = rnd()*Math.PI*2;
+    return {
+      id:"dem"+i, cat, titre:nom,
+      adresse:"Lieu d’exemple", cp:commune,
+      quand:"Horaires indicatifs", gratuit:true, prix:0,
+      places:null, qr:false, par:"Démonstration",
+      lat: lat + Math.sin(a)*d, lng: lng + Math.cos(a)*d*1.55
+    };
+  });
+}
+
+async function nomCommune(lat,lng){
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
+    const j = await r.json(); const a=j.address||{};
+    return a.city||a.town||a.village||a.municipality||a.suburb||"ton quartier";
+  }catch(e){ return "ton quartier"; }
+}
+
+/* ================================================================== */
+/*  Dessin de la ville                                                */
+/* ================================================================== */
+
+const LARGEURS = {
+  motorway:8, trunk:7, primary:6.5, secondary:5.5, tertiary:4.5,
+  unclassified:3.4, residential:3.4, living_street:3, service:2,
+  pedestrian:2.6, footway:1.2, path:1.2, cycleway:1.4, steps:1.2, track:1.4
+};
+const NOMMEES = new Set(["motorway","trunk","primary","secondary","tertiary","residential","pedestrian"]);
+
+function dessinerVille(elements){
+  const rendu = L.canvas({padding:.6});
+  const surfaces=[], eaux=[], batis=[], voiesFond=[], voies=[];
+
+  elements.forEach(e=>{
+    if(!e.geometry || e.geometry.length<2) return;
+    const pts = e.geometry.map(p=>[p.lat,p.lon]);
+    const t = e.tags||{};
+
+    if(t.building){ batis.push(pts); return; }
+    if(t.natural==="water" || t.waterway){
+      if(t.waterway && t.natural!=="water"){
+        voies.push({pts,couleur:"var(--eau)",poids:4,type:"eau"});
+      } else eaux.push(pts);
+      return;
+    }
+    if(t.leisure || t.landuse){ surfaces.push({pts, vif: t.leisure==="pitch"}); return; }
+    if(t.highway){
+      const l = LARGEURS[t.highway];
+      if(!l) return;
+      const pieton = ["footway","path","steps","cycleway","track"].includes(t.highway);
+      const vite = ["motorway","trunk","primary"].includes(t.highway);
+      voiesFond.push({pts, poids:l+2.4, pieton, vite});
+      voies.push({pts, poids:l, pieton, vite, nom:(NOMMEES.has(t.highway)?t.name:null)});
+    }
+  });
+
+  const style = (o)=>Object.assign({renderer:rendu, interactive:false}, o);
+
+  surfaces.forEach(s=>L.polygon(s.pts, style({stroke:false,
+    fillColor:s.vif?"#CBDFC2":"var(--vert)", fillOpacity:1, pane:"villePane"})).addTo(coucheVille));
+  eaux.forEach(p=>L.polygon(p, style({stroke:false, fillColor:"var(--eau)", fillOpacity:1, pane:"villePane"})).addTo(coucheVille));
+  batis.forEach(p=>L.polygon(p, style({stroke:false, fillColor:"var(--bati)", fillOpacity:1, pane:"villePane"})).addTo(coucheVille));
+
+  voiesFond.forEach(v=>{
+    const c = L.polyline(v.pts, style({color: v.vite?"var(--vite-bord)":"var(--liseré)",
+      weight:v.poids, opacity:v.pieton?0:1,
+      lineJoin:"round", lineCap:"round", pane:"villePane"})).addTo(coucheVille);
+    routes.push({couche:c, base:v.poids});
+  });
+  voies.forEach(v=>{
+    const c = L.polyline(v.pts, style({
+      color: v.type==="eau" ? "var(--eau)" : (v.vite ? "var(--vite)" : "var(--voie)"),
+      weight: v.poids, lineJoin:"round", lineCap:"round",
+      dashArray: v.pieton ? "3 4" : null,
+      pane:"villePane"
+    })).addTo(coucheVille);
+    routes.push({couche:c, base:v.poids});
+
+    if(v.nom && v.pts.length>2){
+      const m = v.pts[Math.floor(v.pts.length/2)];
+      etiquettes.push(L.marker(m,{
+        icon:L.divIcon({className:"rue", html:'<span class="rue-in">'+esc(v.nom)+'</span>', iconSize:[0,0]}),
+        interactive:false, keyboard:false, pane:"ruesPane"
+      }));
+    }
+  });
+
+  majEpaisseurs();
+  majEtiquettes();
+}
+
+/* Fond approximatif : trame urbaine générée, quand OSM ne répond pas.
+   Ce n'est pas ton vrai quartier — c'est un décor, pour ne pas laisser un écran vide. */
+function grilleSecours(lat,lng){
+  const rendu = L.canvas({padding:.6});
+  const rnd = alea(lat.toFixed(3)+lng.toFixed(3));
+  const angle = (rnd()-.5)*0.7;                 // la trame n'est jamais parfaitement N/S
+  const pasX = 0.0016, pasY = 0.0011;
+  const N = 9;
+  const style = (o)=>Object.assign({renderer:rendu, interactive:false, pane:"villePane"}, o);
+
+  // repère tourné
+  const P = (i,j)=>{
+    const x = i*pasX, y = j*pasY;
+    return [ lat + (x*Math.sin(angle) + y*Math.cos(angle)),
+             lng + (x*Math.cos(angle) - y*Math.sin(angle)) ];
+  };
+
+  // îlots
+  for(let i=-N;i<N;i++) for(let j=-N;j<N;j++){
+    if(rnd()<0.14) continue;
+    const m = 0.16;
+    const coins = [P(i+m,j+m), P(i+1-m,j+m), P(i+1-m,j+1-m), P(i+m,j+1-m)];
+    L.polygon(coins, style({stroke:false, fillColor:"var(--bati)", fillOpacity:1})).addTo(coucheVille);
+  }
+
+  // deux espaces verts et un plan d'eau
+  const vert1 = [P(-4,1),P(-1.6,1),P(-1.6,3.2),P(-4,3.2)];
+  const vert2 = [P(2.2,-4),P(4.6,-4),P(4.6,-2),P(2.2,-2)];
+  [vert1,vert2].forEach(v=>L.polygon(v, style({stroke:false,fillColor:"var(--vert)",fillOpacity:1})).addTo(coucheVille));
+  L.polygon([P(-N,-2.4),P(N,-1.9),P(N,-1.3),P(-N,-1.8)],
+    style({stroke:false,fillColor:"var(--eau)",fillOpacity:1})).addTo(coucheVille);
+
+  // voies
+  const trace = (pts, poids, vite)=>{
+    const fond = L.polyline(pts, style({color: vite?"var(--vite-bord)":"var(--liseré)",
+      weight:poids+2.4, lineJoin:"round", lineCap:"round"})).addTo(coucheVille);
+    const dessus = L.polyline(pts, style({color: vite?"var(--vite)":"var(--voie)",
+      weight:poids, lineJoin:"round", lineCap:"round"})).addTo(coucheVille);
+    routes.push({couche:fond, base:poids+2.4});
+    routes.push({couche:dessus, base:poids});
+  };
+  for(let i=-N;i<=N;i++){
+    const grand = i%3===0;
+    trace([P(i,-N),P(i,N)], grand?5.5:3.2, i===0);
+  }
+  for(let j=-N;j<=N;j++){
+    const grand = j%3===0;
+    trace([P(-N,j),P(N,j)], grand?5.5:3.2, false);
+  }
+
+  majEpaisseurs();
+}
+
+/* ================================================================== */
+/*  Fond de carte : on essaie les vraies tuiles, on dessine sinon     */
+/* ================================================================== */
+
+const FONDS = [
+  { nom:"CARTO Voyager",
+    url:"https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    opts:{subdomains:"abcd", maxZoom:20, crossOrigin:true,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'} },
+  { nom:"CARTO Positron",
+    url:"https://basemaps.cartocdn.com/rastertiles/positron/{z}/{x}/{y}{r}.png",
+    opts:{subdomains:"abcd", maxZoom:20, crossOrigin:true,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © CARTO'} },
+  { nom:"OpenStreetMap",
+    url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    opts:{maxZoom:19, crossOrigin:true,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'} }
+];
+
+/* renvoie true dès qu'un fournisseur affiche vraiment des tuiles */
+function essayerFond(f){
+  return new Promise(resolve=>{
+    const couche = L.tileLayer(f.url, Object.assign({pane:"villePane"}, f.opts)).addTo(map);
+    let ok = false, ko = 0, fini = false;
+    const termine = (bon)=>{
+      if(fini) return; fini = true;
+      if(!bon) map.removeLayer(couche);
+      resolve(bon ? couche : null);
+    };
+    couche.on("tileload", ()=>{ ok = true; termine(true); });
+    couche.on("tileerror", ()=>{ ko++; if(ko >= 4 && !ok) termine(false); });
+    setTimeout(()=>termine(ok), 5000);
+  });
+}
+
+async function poserFond(){
+  for(const f of FONDS){
+    const couche = await essayerFond(f);
+    if(couche) return f.nom;
+  }
+  return null;
+}
+
+function majEpaisseurs(){
+  if(!map) return;
+  const f = clamp(Math.pow(2, map.getZoom()-16), .35, 3.2);
+  routes.forEach(r=>{ try{ r.couche.setStyle({weight: r.base*f}); }catch(e){} });
+}
+function majEtiquettes(){
+  if(!map) return;
+  const montrer = map.getZoom() >= 16;
+  etiquettes.forEach(m=>{
+    const dedans = map.getBounds().pad(.1).contains(m.getLatLng());
+    if(montrer && dedans){ if(!map.hasLayer(m)) m.addTo(map); }
+    else if(map.hasLayer(m)) map.removeLayer(m);
+  });
+}
+
+/* ================================================================== */
+/*  Événements fictifs greffés sur les vrais lieux                    */
+/* ================================================================== */
+
+function fabriquerEvenements(reels, lat, lng){
+  const rnd = alea(lat.toFixed(3)+lng.toFixed(3));
+  const out = [];
+  const candidats = reels.filter(l=>SCENARIOS[l.cat]).sort(()=>rnd()-.5).slice(0,9);
+
+  candidats.forEach((l,i)=>{
+    const opts = SCENARIOS[l.cat];
+    const [cat,titre,quand] = opts[Math.floor(rnd()*opts.length)];
+    const payant = rnd()<.3, limite = rnd()<.45;
+    out.push({
+      id:"ev"+i+"-"+l.id, cat, titre, adresse:l.titre, cp:l.cp, quand,
+      gratuit:!payant, prix: payant?[2,3,4,5,6][Math.floor(rnd()*5)]:0,
+      places: limite?[8,10,16,30,40,60,120][Math.floor(rnd()*7)]:null,
+      qr: limite||payant, par: PRENOMS[Math.floor(rnd()*PRENOMS.length)],
+      lat: l.lat+(rnd()-.5)*0.0006, lng: l.lng+(rnd()-.5)*0.0009
+    });
+  });
+
+  ERRANTS.forEach(([cat,titre,quand],i)=>{
+    const d = 0.0025+rnd()*0.005, a = rnd()*Math.PI*2;
+    const payant = rnd()<.3, limite = rnd()<.4;
+    out.push({
+      id:"er"+i, cat, titre, adresse:"Dans le quartier", cp:commune, quand,
+      gratuit:!payant, prix: payant?[2,3,5][Math.floor(rnd()*3)]:0,
+      places: limite?[10,20,50][Math.floor(rnd()*3)]:null,
+      qr: limite&&rnd()<.6, par: PRENOMS[Math.floor(rnd()*PRENOMS.length)],
+      lat: lat+Math.sin(a)*d, lng: lng+Math.cos(a)*d*1.55
+    });
+  });
+  return out;
+}
+
+/* ================================================================== */
+/*  Démarrage                                                         */
+/* ================================================================== */
+
+async function demarrer(coords){
+  if(typeof L === "undefined"){
+    etat("");
+    panne("Carte indisponible","Leaflet n’a pas pu être téléchargé depuis le CDN.");
+    return;
+  }
+  positionMoi = coords || [48.8566,2.3522];
+  $("#porte").hidden = true;
+  ["#haut","#filtres","#btnAjouter","#btnPartager"].forEach(s=>$(s).hidden=false);
+
+  map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
+        .setView(positionMoi, 16);
+  map.createPane("villePane"); map.getPane("villePane").style.zIndex = 200;
+  map.createPane("ruesPane");  map.getPane("ruesPane").style.zIndex = 350;
+  map.getPane("ruesPane").style.pointerEvents = "none";
+  L.control.zoom({position:"bottomright"}).addTo(map);
+  map.attributionControl.addAttribution('données © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
+
+  coucheVille = L.layerGroup().addTo(map);
+
+  moi = L.marker(positionMoi,{
+    icon:L.divIcon({className:"mk", html:'<span class="moi-in"><i></i><b></b></span>', iconSize:[0,0]}),
+    interactive:false, keyboard:false, zIndexOffset:400
+  }).addTo(map);
+
+  document.body.classList.toggle("loin", map.getZoom() < 15);
+  map.on("moveend zoomend", ()=>{
+    document.body.classList.toggle("loin", map.getZoom() < 15);
+    majEpaisseurs(); majEtiquettes(); majBoutons();
+  });
+
+  dessinerFiltres();
+
+  const [lat,lng] = positionMoi;
+
+  charge("Chargement…");
+
+  // fond de carte et lieux sont demandés en même temps : plus d'attente en file
+  const pFond  = poserFond();
+  const pNom   = nomCommune(lat,lng);
+  const pLieux = vraisLieux(lat,lng);
+
+  commune = await pNom;
+  let reels = await pLieux;
+  let exemple = false;
+  if(!reels || reels.length < 3){
+    reels = (reels||[]).concat(lieuxSecours(lat,lng));
+    exemple = true;
+  }
+  lieux = reels.concat(fabriquerEvenements(reels,lat,lng));
+
+  const enr = await Store.lire();
+  if(enr && enr.length){ publies = enr; lieux = lieux.concat(publies); }
+  rendre();
+  charge(null);
+  if(exemple) toast("Lieux d’exemple · OSM injoignable");
+
+  notesGoogle(lat,lng).then(fiches=>{ if(fiches) greffeNotes(lieux, fiches); });
+
+  const fond = await pFond;
+  if(!fond){
+    const geo = await geometrieVille(lat,lng);
+    if(geo && geo.length) dessinerVille(geo);
+    else grilleSecours(lat,lng);
+  }
+}
+
+function majBoutons(){
+  if(!map||modePose){ $("#btnRevenir").hidden=true; return; }
+  const d = map.distance(map.getCenter(), L.latLng(positionMoi));
+  $("#btnRevenir").hidden = (d<350 && map.getZoom()>=15);
+}
+
+/* ================================================================== */
+/*  Marqueurs                                                         */
+/* ================================================================== */
+
+function visibles(){
+  const q = recherche.trim().toLowerCase();
+  return lieux.filter(l=>{
+    if(filtreActif!=="tout" && l.cat!==filtreActif) return false;
+    if(!q) return true;
+    return (l.titre+" "+l.adresse).toLowerCase().includes(q);
+  });
+}
+
+function htmlMarqueur(l){
+  const c = CATS[l.cat]||CATS.event;
+  if(c.eph){
+    const tilt = ((hash(l.id)%700)/100-3.5).toFixed(2);
+    return '<span class="mk-in"><div class="affiche '+(l.gratuit?'gratuit':'payant')+'" style="--tilt:'+tilt+'deg">'+
+      '<span class="a-haut"><span>'+c.emoji+'</span><span>'+(l.gratuit?'GRATUIT':l.prix+' €')+'</span>'+
+      (l.places!=null?'<span class="a-places">· '+l.places+' pl.</span>':'')+'</span>'+
+      '<span class="a-titre">'+esc(l.titre)+'</span>'+
+      '<span class="a-lieu">'+esc(l.adresse)+'</span>'+
+      (l.qr?'<span class="a-qr">▦</span>':'')+'</div></span>';
+  }
+  return '<span class="mk-in"><div class="poi"><span class="poi-rond">'+c.emoji+
+    '</span><span class="poi-nom">'+esc(l.titre)+'</span></div></span>';
+}
+
+function rendre(){
+  if(!map) return;
+  const garder = new Set();
+  visibles().forEach(l=>{
+    garder.add(l.id);
+    if(marqueurs.has(l.id)) return;
+    const eph = (CATS[l.cat]||{}).eph;
+    const m = L.marker([l.lat,l.lng],{
+      icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
+      riseOnHover:true, zIndexOffset: eph?200:0
+    }).addTo(map);
+    m.on("click", ()=>ouvrirDetail(l.id));
+    marqueurs.set(l.id,m);
+  });
+  marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
+}
+
+/* ================================================================== */
+/*  Feuilles                                                          */
+/* ================================================================== */
+
+function ouvrirFeuille(html){
+  $("#voile").hidden=false;
+  const f=$("#feuille");
+  f.innerHTML='<button class="poignee" aria-label="Fermer"></button>'+html;
+  f.hidden=false;
+  f.querySelector(".poignee").onclick=fermerFeuille;
+}
+function fermerFeuille(){ $("#voile").hidden=true; $("#feuille").hidden=true; }
+$("#voile").onclick=fermerFeuille;
+
+function grilleQR(seed,n=21){
+  const cells=[]; let h=hash(seed)||1;
+  for(let i=0;i<n*n;i++){h=(h*1103515245+12345)&0x7fffffff;cells.push((h>>8)%100<46)}
+  const marq=(r,c)=>{for(let dr=0;dr<7;dr++)for(let dc=0;dc<7;dc++)
+    cells[(r+dr)*n+(c+dc)]=dr===0||dr===6||dc===0||dc===6||(dr>=2&&dr<=4&&dc>=2&&dc<=4)};
+  marq(0,0);marq(0,n-7);marq(n-7,0);
+  return {cells,n};
+}
+
+function ouvrirDetail(id){
+  const l = lieux.find(x=>x.id===id); if(!l) return;
+  const c = CATS[l.cat]||CATS.event;
+  const {cells,n} = grilleQR(l.id);
+  const nav = "https://www.openstreetmap.org/directions?to="+l.lat+","+l.lng;
+  const note = '<p class="note">Le paiement se fait sur place, entre vous. L’app n’encaisse rien.</p>';
+
+  ouvrirFeuille(
+    '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
+    '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+(l.gratuit?'Gratuit':l.prix+' €')+'</span></div>'+
+    '<h2 class="titre">'+esc(l.titre)+'</h2>'+
+    '<address class="adresse"><span class="ad-rue">'+esc(l.adresse)+'</span>'+
+    '<span class="ad-ville">'+esc(l.cp)+'</span>'+
+    '<a class="y-aller" href="'+nav+'" target="_blank" rel="noopener">Y aller</a></address>'+
+    '<dl class="faits">'+
+      '<div><dt>Quand</dt><dd>'+esc(l.quand)+'</dd></div>'+
+      '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
+      '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
+    '</dl>'+
+    (l.qr
+      ? '<div class="billet"><div class="qr" style="grid-template-columns:repeat('+n+',1fr)">'+
+        cells.map(o=>'<span class="'+(o?'on':'')+'"></span>').join("")+
+        '</div><div><span class="code">'+codeEntree(l.id)+'</span>'+
+        '<p>Montre ça à l’entrée.</p>'+(l.gratuit?'':note)+'</div></div>'
+      : '<div class="sans-billet"><strong>Pas de code.</strong> Tu viens, tu entres.'+
+        (l.gratuit?'':' Le paiement se fait sur place, entre vous.')+'</div>')+
+    '<div class="liens"><button id="btnPartLieu">Partager</button>'+
+    '<button id="btnSignal">Signaler</button></div>'
+  );
+  $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
+  $("#btnPartLieu").onclick=()=>partagerLieu(l);
+}
+
+async function partagerLieu(l){
+  const txt = l.titre+" — "+l.adresse+", "+l.cp+" · "+l.quand;
+  try{
+    if(navigator.share) await navigator.share({title:l.titre,text:txt,url:location.href});
+    else { await navigator.clipboard.writeText(txt+"\n"+location.href); toast("Copié"); }
+  }catch(e){}
+}
+async function partagerApp(){
+  try{
+    if(navigator.share) await navigator.share({title:"Autour",text:"Ce qui se passe autour de toi",url:location.href});
+    else { await navigator.clipboard.writeText(location.href); toast("Lien copié"); }
+  }catch(e){}
+}
+
+/* ================================================================== */
+/*  Publication                                                       */
+/* ================================================================== */
+
+let brouillon=null, retourFormulaire=false;
+
+/* ---------- dates ---------- */
+function aujourdHui(){ const d=new Date(); d.setMinutes(0,0,0); return d; }
+function isoDate(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function prochaineHeure(){
+  const d=new Date(); d.setMinutes(0,0,0); d.setHours(d.getHours()+1);
+  return String(d.getHours()).padStart(2,"0")+":00";
+}
+function prochainSamedi(){
+  const d=aujourdHui(); const j=d.getDay();
+  d.setDate(d.getDate() + ((6-j)+7)%7 || 7);
+  return d;
+}
+function libelleQuand(b){
+  if(!b.date) return "";
+  const [a,m,j] = b.date.split("-").map(Number);
+  const d = new Date(a, m-1, j);
+  const jour = new Intl.DateTimeFormat("fr-FR",{weekday:"long",day:"numeric",month:"long"}).format(d);
+  const h = b.heure ? " · " + b.heure.replace(":","h") : "";
+  const f = (b.heure && b.fin) ? " → " + b.fin.replace(":","h") : "";
+  return jour.charAt(0).toUpperCase()+jour.slice(1) + h + f;
+}
+
+function ouvrirModePose(){
+  modePose=true;
+  $("#viseur").hidden=false; $("#poseBarre").hidden=false;
+  $("#filtres").hidden=true; $("#btnAjouter").hidden=true;
+  $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
+  $("#poseBarre .txt").textContent = retourFormulaire
+    ? "Déplace la carte pour corriger l’endroit."
+    : "Déplace la carte : l’épingle se pose ici.";
+}
+function fermerModePose(){
+  modePose=false;
+  $("#viseur").hidden=true; $("#poseBarre").hidden=true;
+  $("#filtres").hidden=false; $("#btnAjouter").hidden=false;
+  $("#btnPartager").hidden=false; majBoutons();
+}
+function nouveauBrouillon(){
+  const c=map.getCenter();
+  return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:"popup",
+          date:isoDate(aujourdHui()), heure:prochaineHeure(), fin:"",
+          gratuit:true, prix:5, limite:false, places:20, qr:false};
+}
+function validerPose(){
+  const c = map.getCenter();
+  if(retourFormulaire && brouillon){ brouillon.lat=c.lat; brouillon.lng=c.lng; }
+  else brouillon = nouveauBrouillon();
+  retourFormulaire = false;
+  fermerModePose(); dessinerFormulaire();
+}
+
+function dessinerFormulaire(){
+  const b=brouillon;
+  const eph=Object.entries(CATS).filter(([,c])=>c.eph);
+  const demain = (()=>{ const d=aujourdHui(); d.setDate(d.getDate()+1); return isoDate(d); })();
+  const samedi = isoDate(prochainSamedi());
+
+  ouvrirFeuille(
+    '<h2 class="pub">Tu poses quoi&nbsp;?</h2>'+
+
+    '<label class="champ"><span>Le truc</span><input type="text" id="fTitre" maxlength="44" placeholder="Pop-up, cypher, collecte…" value="'+esc(b.titre)+'"></label>'+
+
+    '<div class="champ"><span>Où exactement</span>'+
+      '<div class="ou"><span class="ou-txt">'+
+        '<span class="ou-nom">'+esc(b.adresse||"Point posé sur la carte")+'</span>'+
+        '<span class="ou-coord">'+b.lat.toFixed(5)+', '+b.lng.toFixed(5)+'</span>'+
+      '</span><button class="ou-bouton" id="fDeplacer">Déplacer</button></div>'+
+      '<input type="text" id="fAdr" maxlength="52" placeholder="Nom du lieu ou adresse" value="'+esc(b.adresse)+'" style="margin-top:9px">'+
+    '</div>'+
+
+    '<div class="champ"><span>Quand</span>'+
+      '<div class="raccourcis">'+
+        '<button class="chip'+(b.date===isoDate(aujourdHui())?' actif':'')+'" data-jour="'+isoDate(aujourdHui())+'">Aujourd’hui</button>'+
+        '<button class="chip'+(b.date===demain?' actif':'')+'" data-jour="'+demain+'">Demain</button>'+
+        '<button class="chip'+(b.date===samedi?' actif':'')+'" data-jour="'+samedi+'">Samedi</button>'+
+      '</div>'+
+      '<div class="duo">'+
+        '<label><input type="date" id="fDate" value="'+b.date+'" min="'+isoDate(aujourdHui())+'"></label>'+
+        '<label><input type="time" id="fHeure" value="'+b.heure+'" step="900"></label>'+
+      '</div>'+
+      '<div class="duo" style="margin-top:9px"><label style="flex:0 0 auto;align-self:center;font-size:12.5px;color:var(--ink2)">Jusqu’à</label>'+
+        '<label><input type="time" id="fFin" value="'+esc(b.fin)+'" step="900"></label></div>'+
+      '<div class="apercu-quand" id="fQuand">'+esc(libelleQuand(b))+'</div>'+
+    '</div>'+
+
+    '<div class="champ"><span>Quoi exactement</span><div class="chips">'+
+      eph.map(([id,c])=>'<button class="chip '+(b.cat===id?'actif':'')+'" data-cat="'+id+'"><span>'+c.emoji+'</span>'+c.label+'</button>').join("")+
+    '</div></div>'+
+
+    '<div class="champ"><span>Entrée</span><div class="bascule">'+
+      '<button class="cote '+(b.gratuit?'actif':'')+'" data-gratuit="1">Gratuit</button>'+
+      '<button class="cote '+(b.gratuit?'':'actif')+'" data-gratuit="0">Payant</button></div>'+
+      (b.gratuit?'':'<div class="ligne"><input type="number" id="fPrix" min="1" max="99" value="'+b.prix+'"><span>€ — encaissés par toi, sur place.</span></div>')+
+    '</div>'+
+
+    '<div class="champ"><span>Combien de places</span><div class="bascule">'+
+      '<button class="cote '+(b.limite?'':'actif')+'" data-limite="0">Libre</button>'+
+      '<button class="cote '+(b.limite?'actif':'')+'" data-limite="1">Limité</button></div>'+
+      (b.limite?'<div class="compteur"><button data-pl="-1">−</button><input type="number" id="fPlaces" min="1" max="999" value="'+b.places+'"><button data-pl="1">+</button></div>':'')+
+    '</div>'+
+
+    '<div class="champ"><span>Contrôle à l’entrée</span><div class="bascule">'+
+      '<button class="cote '+(b.qr?'':'actif')+'" data-qr="0">Sans code</button>'+
+      '<button class="cote '+(b.qr?'actif':'')+'" data-qr="1">Avec QR</button></div>'+
+      '<p class="aide">'+(b.qr?"Chacun reçoit un code à te montrer. Utile si les places sont comptées.":"On vient, on entre. Rien à scanner.")+'</p>'+
+    '</div>'+
+
+    '<button class="valider" id="fOk">Publier</button>'
+  );
+
+  const f=$("#feuille");
+  const memo=()=>{
+    b.titre=$("#fTitre").value; b.adresse=$("#fAdr").value;
+    b.date=$("#fDate").value; b.heure=$("#fHeure").value; b.fin=$("#fFin").value;
+    if($("#fPrix")) b.prix=clamp(Number($("#fPrix").value)||1,1,99);
+    if($("#fPlaces")) b.places=clamp(Number($("#fPlaces").value)||1,1,999);
+  };
+  const lier=(sel,fn)=>f.querySelectorAll(sel).forEach(x=>x.onclick=()=>{memo();fn(x);dessinerFormulaire()});
+  lier("[data-cat]",    x=>b.cat=x.dataset.cat);
+  lier("[data-jour]",   x=>b.date=x.dataset.jour);
+  lier("[data-gratuit]",x=>b.gratuit=x.dataset.gratuit==="1");
+  lier("[data-limite]", x=>b.limite=x.dataset.limite==="1");
+  lier("[data-qr]",     x=>b.qr=x.dataset.qr==="1");
+  lier("[data-pl]",     x=>b.places=clamp(b.places+Number(x.dataset.pl),1,999));
+
+  // aperçu du "quand" en direct, sans redessiner tout le formulaire
+  ["#fDate","#fHeure","#fFin"].forEach(s=>{
+    f.querySelector(s).onchange = ()=>{ memo(); $("#fQuand").textContent = libelleQuand(b); };
+  });
+  f.querySelector("#fAdr").oninput = ()=>{
+    b.adresse = $("#fAdr").value;
+    f.querySelector(".ou-nom").textContent = b.adresse || "Point posé sur la carte";
+  };
+
+  $("#fDeplacer").onclick = ()=>{ memo(); retourFormulaire=true; fermerFeuille(); ouvrirModePose(); };
+  $("#fOk").onclick = ()=>{ memo(); publier(); };
+}
+
+async function publier(){
+  const b=brouillon;
+  const l={ id:"n"+Date.now(), cat:b.cat,
+    titre:(b.titre||"").trim()||"Sans titre",
+    adresse:(b.adresse||"").trim()||"Sur place",
+    cp:commune, quand:libelleQuand(b)||"Bientôt",
+    gratuit:b.gratuit, prix:b.gratuit?0:b.prix,
+    places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng };
+  publies.push(l); lieux.push(l);
+  await Store.ecrire(publies);
+  fermerFeuille();
+  filtreActif="tout"; dessinerFiltres(); rendre();
+  map.flyTo([l.lat,l.lng], Math.max(map.getZoom(),17), {duration:.7});
+  toast(Store.dispo?"Publié · visible par tous":"Publié");
+}
+
+/* ================================================================== */
+
+/* ================================================================== */
+/*  Classement d'une catégorie                                        */
+/* ================================================================== */
+
+/* Pour afficher de vraies notes, il faut l'API Places de Google :
+   une clé + un compte de facturation. Colle-la ici et les notes
+   apparaîtront automatiquement dans les listes. Laissée vide, l'app
+   classe par distance — ce qui est honnête et déjà utile. */
+const CLE_GOOGLE = "";
+
+async function notesGoogle(lat, lng){
+  if(!CLE_GOOGLE) return null;
+  try{
+    const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-Goog-Api-Key":CLE_GOOGLE,
+        "X-Goog-FieldMask":"places.displayName,places.location,places.rating,places.userRatingCount"
+      },
+      body:JSON.stringify({
+        maxResultCount:20,
+        locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1500}}
+      })
+    });
+    if(!r.ok) return null;
+    const j = await r.json();
+    return (j.places||[]).map(p=>({
+      nom:(p.displayName&&p.displayName.text)||"",
+      lat:p.location.latitude, lng:p.location.longitude,
+      note:p.rating, avis:p.userRatingCount
+    }));
+  }catch(e){ return null; }
+}
+
+/* rapproche chaque lieu OSM de la fiche Google la plus proche (< 80 m) */
+function greffeNotes(liste, fiches){
+  if(!fiches) return;
+  liste.forEach(l=>{
+    let meilleur=null, dMin=80;
+    fiches.forEach(f=>{
+      const d = distanceM(l.lat,l.lng,f.lat,f.lng);
+      if(d < dMin){ dMin = d; meilleur = f; }
+    });
+    if(meilleur){ l.note = meilleur.note; l.avis = meilleur.avis; }
+  });
+}
+
+function distanceM(lat1,lng1,lat2,lng2){
+  const R=6371000, r=Math.PI/180;
+  const dLat=(lat2-lat1)*r, dLng=(lng2-lng1)*r;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+const formatDist = (m)=> m<1000 ? Math.round(m/10)*10+" m" : (m/1000).toFixed(1)+" km";
+
+/* événements éphémères qui se passent dans un lieu donné */
+function evenementsDe(lieu){
+  return lieux.filter(l=>(CATS[l.cat]||{}).eph && l.adresse === lieu.titre);
+}
+
+function classer(cat){
+  const [lat,lng] = positionMoi;
+  const dedans = lieux.filter(l=>l.cat===cat).map(l=>{
+    const d = distanceM(lat,lng,l.lat,l.lng);
+    const evs = (CATS[cat]||{}).eph ? [] : evenementsDe(l);
+    return Object.assign({}, l, {dist:d, evs:evs.length, mien:l.par==="Anonyme"});
+  });
+
+  dedans.sort((a,b)=>{
+    if(a.mien !== b.mien) return a.mien ? -1 : 1;          // tes ajouts d'abord
+    if(a.note && b.note && a.note !== b.note) return b.note - a.note;  // note si dispo
+    if(a.evs !== b.evs) return b.evs - a.evs;              // là où il se passe un truc
+    return a.dist - b.dist;                                // sinon, le plus proche
+  });
+  return dedans;
+}
+
+function ouvrirListe(cat){
+  const c = CATS[cat]; if(!c) return;
+  const l = classer(cat);
+  const critere = l.some(x=>x.note)
+    ? "Classé par note, puis par ce qui s’y passe, puis par distance."
+    : "Classé par ce qui s’y passe, puis par distance. Les notes demandent une clé Google Places.";
+
+  const lignes = l.map((x,i)=>{
+    const sous = [];
+    if(x.note) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
+      (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
+    sous.push(esc(x.adresse||""));
+    return '<button class="rang" data-va="'+esc(x.id)+'">'+
+      '<span class="rang-n">'+(i+1)+'</span>'+
+      '<span class="rang-emoji">'+c.emoji+'</span>'+
+      '<span class="rang-txt"><span class="rang-nom">'+esc(x.titre)+
+        (x.mien?'<span class="badge mien">Ton ajout</span>':'')+
+        (x.evs?'<span class="badge">'+x.evs+' ce soir</span>':'')+'</span>'+
+      '<span class="rang-sous">'+sous.join(" · ")+'</span></span>'+
+      '<span class="rang-dist">'+formatDist(x.dist)+'</span></button>';
+  }).join("");
+
+  ouvrirFeuille(
+    '<div class="liste-tete"><h2>'+c.emoji+' '+c.label+'</h2>'+
+    '<span class="liste-compte">'+l.length+' autour</span></div>'+
+    '<p class="liste-tri">'+critere+'</p>'+
+    (l.length ? lignes : '<p class="liste-vide">Rien de ce type dans le coin.<br>Tu peux en poser un avec le bouton +.</p>')
+  );
+
+  $("#feuille").querySelectorAll("[data-va]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.va, cible = lieux.find(x=>x.id===id);
+    if(!cible) return;
+    fermerFeuille();
+    map.flyTo([cible.lat,cible.lng], Math.max(map.getZoom(),17), {duration:.7});
+    setTimeout(()=>ouvrirDetail(id), 750);
+  });
+}
+
+/* ================================================================== */
+
+function dessinerFiltres(){
+  const p=$("#piste");
+  const items=[{id:"tout",label:"Tout",emoji:""}]
+    .concat(Object.entries(CATS).map(([id,c])=>({id,label:c.label,emoji:c.emoji})));
+  p.innerHTML=items.map(f=>'<button class="filtre '+(filtreActif===f.id?'actif':'')+'" data-f="'+f.id+'">'+
+    (f.emoji?'<span>'+f.emoji+'</span>':'')+f.label+'</button>').join("");
+  p.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.f;
+    // retaper la catégorie déjà active la désélectionne
+    if(filtreActif === id && id !== "tout"){ filtreActif = "tout"; dessinerFiltres(); rendre(); return; }
+    filtreActif = id; dessinerFiltres(); rendre();
+    if(id !== "tout") ouvrirListe(id);
+  });
+}
+
+$("#btnGeo").onclick=()=>{
+  if(!navigator.geolocation){ etat("Géolocalisation absente"); demarrer(null); return; }
+  etat("Recherche de ta position…");
+  navigator.geolocation.getCurrentPosition(
+    p=>demarrer([p.coords.latitude,p.coords.longitude]),
+    ()=>{ etat("Position refusée — Paris par défaut"); setTimeout(()=>demarrer(null),600); },
+    {enableHighAccuracy:true, timeout:9000}
+  );
+};
+$("#btnSansGeo").onclick=()=>demarrer(null);
+$("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
+$("#btnFermerRech").onclick=()=>{
+  $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
+  $("#rech").value=""; recherche=""; rendre();
+};
+$("#rech").oninput=e=>{ recherche=e.target.value; rendre(); };
+$("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirModePose(); };
+$("#btnPoseOk").onclick=validerPose;
+$("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
+$("#btnPartager").onclick=partagerApp;
+</script>
+</body>
+</html>
