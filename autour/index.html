@@ -101,6 +101,11 @@ input{font-family:inherit;font-size:16px}
 .liste-compte{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
 .liste-tri{margin:0 0 14px;font-size:11.5px;color:var(--ink2);line-height:1.45}
+.tri-barre{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 9px}
+.tri-barre .tri{padding:7px 12px;border:1px solid var(--bord);border-radius:99px;background:#fff;
+  color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+.tri-barre .tri.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 .rang{display:flex;align-items:center;gap:11px;width:100%;padding:11px 4px;border:0;
   border-top:1px solid var(--bord);background:none;text-align:left}
 .rang:last-of-type{border-bottom:1px solid var(--bord)}
@@ -402,14 +407,14 @@ const CATS = {
   collecte:{label:"Collecte",  emoji:"📦", eph:true},
   studio:  {label:"Studio",    emoji:"🎧", eph:true},
   sport:   {label:"Sport",     emoji:"⚽", eph:true},
-  food:    {label:"Bouffe",    emoji:"🍜", eph:true},
+  food:    {label:"Street food", emoji:"🍜", eph:true},
   parc:    {label:"Parc",      emoji:"🌳", eph:false},
   musee:   {label:"Musée",     emoji:"🏛", eph:false},
   biblio:  {label:"Biblio",    emoji:"📚", eph:false},
   sportlieu:{label:"Terrain",  emoji:"🛹", eph:false},
   salle:   {label:"Salle",     emoji:"🎤", eph:false},
   marche:  {label:"Marché",    emoji:"🧺", eph:false},
-  resto:   {label:"Resto",     emoji:"🍽", eph:false},
+  resto:   {label:"Restos",    emoji:"🍽", eph:false},
 };
 
 const REQUETES = [
@@ -561,13 +566,22 @@ function catOpenAgenda(evt){
 async function evenementsOpenAgenda(lat,lng){
   if(!CLE_OPENAGENDA) return null;
   try{
+    // l'API v2 filtre sur une boîte englobante, pas sur un rayon :
+    // on convertit ~4 km autour du point en degrés (la longitude se resserre
+    // à mesure qu'on monte en latitude, d'où le cosinus)
+    const dLat = 0.036;
+    const dLng = 0.036 / Math.max(0.2, Math.cos(lat * Math.PI/180));
     const params = new URLSearchParams({
-      key: CLE_OPENAGENDA, geo_lat:lat, geo_long:lng, geo_radius:3000,
-      size:20, timings:"future"
+      key: CLE_OPENAGENDA,
+      "geo[northEast][lat]": lat + dLat, "geo[northEast][lng]": lng + dLng,
+      "geo[southWest][lat]": lat - dLat, "geo[southWest][lng]": lng - dLng,
+      "relative[]": "upcoming",
+      size: 20, detailed: 1
     });
     const r = await fetch("https://api.openagenda.com/v2/events?"+params.toString());
-    if(!r.ok) return null;
+    if(!r.ok){ console.error("OpenAgenda: réponse HTTP", r.status, await r.text()); return null; }
     const j = await r.json();
+    console.info("OpenAgenda:", (j.events||[]).length, "événement(s) reçu(s)");
     return (j.events||[]).map(evt=>{
       const loc = evt.location || {};
       if(loc.latitude==null || loc.longitude==null) return null;
@@ -576,15 +590,18 @@ async function evenementsOpenAgenda(lat,lng){
         titre:(evt.title && (evt.title.fr||Object.values(evt.title)[0])) || "Événement",
         adresse: loc.name || loc.address || commune,
         cp: [loc.postalCode, loc.city].filter(Boolean).join(" ") || commune,
-        quand: evt.nextTiming
-          ? new Date(evt.nextTiming.begin).toLocaleString("fr-FR",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
-          : "Voir sur place",
+        quand: (()=>{
+          const t = evt.nextTiming || evt.firstTiming || (evt.timings||[])[0];
+          if(!t || !t.begin) return "Voir sur place";
+          return new Date(t.begin).toLocaleString("fr-FR",
+            {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+        })(),
         gratuit: !(evt.registration && evt.registration.price), prix:0,
         places:null, qr:false, par:"OpenAgenda",
         lat:loc.latitude, lng:loc.longitude
       };
     }).filter(Boolean);
-  }catch(e){ return null; }
+  }catch(e){ console.error("OpenAgenda: échec de la requête", e); return null; }
 }
 
 /* Quand OpenStreetMap est injoignable, on pose des lieux d'exemple
@@ -1090,7 +1107,18 @@ function dessinerSegments(segments){
     ligneCouches.push(c);
     points.push(...seg.coords);
   });
-  if(points.length) map.fitBounds(L.latLngBounds(points), {padding:[60,60], maxZoom:16});
+  // la feuille de détail couvre le bas de l'écran : on cadre l'itinéraire
+  // dans la bande encore visible, sinon le tracé est dessiné sous la feuille
+  if(points.length){
+    const feuille = $("#feuille");
+    const cache = (feuille && !feuille.hidden) ? feuille.getBoundingClientRect().height : 0;
+    const hauteur = map.getSize().y;
+    map.fitBounds(L.latLngBounds(points), {
+      paddingTopLeft:[30,30],
+      paddingBottomRight:[30, Math.min(cache + 20, Math.max(hauteur - 140, 40))],
+      maxZoom:16
+    });
+  }
 }
 
 function rendreOptions(options, iActif){
@@ -1285,35 +1313,54 @@ const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16 };
 
 async function arretsProches(lat,lng){
   try{
-    const q = `[out:json][timeout:15];(
-node(around:700,${lat},${lng})[railway~"^(station|subway_entrance)$"];
-node(around:700,${lat},${lng})[railway=tram_stop];
-node(around:400,${lat},${lng})[highway=bus_stop];
-node(around:400,${lat},${lng})[amenity=bus_station];
-);out body 25;`;
+    // rayons larges : un métro à 1 km reste pertinent, et les arrêts sont
+    // étiquetés de façons très variables selon les villes — on ratisse large
+    const q = `[out:json][timeout:20];(
+node(around:1500,${lat},${lng})[railway~"^(station|halt|subway_entrance)$"];
+node(around:1500,${lat},${lng})[station=subway];
+node(around:1500,${lat},${lng})[railway=tram_stop];
+node(around:1500,${lat},${lng})[public_transport=station];
+node(around:800,${lat},${lng})[highway=bus_stop];
+node(around:800,${lat},${lng})[amenity=bus_station];
+node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
+);out body 60;`;
     const els = await overpass(q, 8000);
     if(!els || !els.length) return null;
-    return els.map(e=>{
+    const arrets = els.map(e=>{
       const t = e.tags||{};
-      const type = (t.railway==="station"||t.railway==="subway_entrance") ? "metro"
-                 : t.railway==="tram_stop" ? "tram" : "bus";
+      const rail = t.railway||"";
+      const type = (rail==="tram_stop" || t.tram==="yes") ? "tram"
+                 : (rail==="station" || rail==="halt" || rail==="subway_entrance"
+                    || t.station==="subway" || t.public_transport==="station") ? "metro"
+                 : "bus";
       return {
         type, nom: t.name || ({metro:"Station",tram:"Arrêt tram",bus:"Arrêt bus"})[type],
         lat:e.lat, lng:e.lon, dist: distanceM(lat,lng,e.lat,e.lon)
       };
     }).sort((a,b)=>a.dist-b.dist);
+
+    // une station de métro a souvent plusieurs bouches : on ne garde que la plus proche
+    const vus = new Set();
+    return arrets.filter(a=>{
+      const cle = a.type+"|"+a.nom;
+      if(vus.has(cle)) return false;
+      vus.add(cle); return true;
+    });
   }catch(e){ return null; }
 }
 
 /* la position de l'utilisateur ne change pas pendant la session : on évite
    de refaire les mêmes requêtes réseau à chaque clic sur "Y aller" */
-let CACHE_VELO, CACHE_TRANSPORT;
+/* on ne met en cache qu'un résultat utile : si Overpass a échoué ou n'a rien
+   renvoyé (panne passagère, quota), le prochain "Y aller" retentera au lieu
+   de rester bloqué sur "aucun arrêt détecté" pour toute la session */
+let CACHE_VELO = null, CACHE_TRANSPORT = null;
 async function stationsVeloProchesCache(lat,lng){
-  if(CACHE_VELO === undefined) CACHE_VELO = await stationsVeloProches(lat,lng);
+  if(!CACHE_VELO || !CACHE_VELO.length) CACHE_VELO = await stationsVeloProches(lat,lng);
   return CACHE_VELO;
 }
 async function arretsProchesCache(lat,lng){
-  if(CACHE_TRANSPORT === undefined) CACHE_TRANSPORT = await arretsProches(lat,lng);
+  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length) CACHE_TRANSPORT = await arretsProches(lat,lng);
   return CACHE_TRANSPORT;
 }
 
@@ -1554,6 +1601,9 @@ function evenementsDe(lieu){
   return lieux.filter(l=>(CATS[l.cat]||{}).eph && l.adresse === lieu.titre);
 }
 
+/* "auto" = pertinence · "note" = les mieux notés · "distance" = les plus proches */
+let triListe = "auto";
+
 function classer(cat){
   const [lat,lng] = positionMoi;
   const dedans = lieux.filter(l=>l.cat===cat).map(l=>{
@@ -1563,6 +1613,15 @@ function classer(cat){
   });
 
   dedans.sort((a,b)=>{
+    if(triListe === "distance") return a.dist - b.dist;
+    if(triListe === "note"){
+      // le nombre d'avis départage : 4,8 sur 6 avis pèse moins que 4,6 sur 800
+      const na=a.note||0, nb=b.note||0;
+      if(na !== nb) return nb - na;
+      const va=a.avis||0, vb=b.avis||0;
+      if(va !== vb) return vb - va;
+      return a.dist - b.dist;
+    }
     if(a.mien !== b.mien) return a.mien ? -1 : 1;          // tes ajouts d'abord
     if(a.note && b.note && a.note !== b.note) return b.note - a.note;  // note si dispo
     if(a.evs !== b.evs) return b.evs - a.evs;              // là où il se passe un truc
@@ -1574,15 +1633,27 @@ function classer(cat){
 function ouvrirListe(cat){
   const c = CATS[cat]; if(!c) return;
   const l = classer(cat);
-  const critere = l.some(x=>x.note)
-    ? "Classé par note, puis par ce qui s’y passe, puis par distance."
-    : "Classé par ce qui s’y passe, puis par distance. Les notes demandent une clé Google Places.";
+  const avecNotes = l.some(x=>x.note);
+  const critere = triListe === "distance" ? "Du plus proche au plus loin."
+    : triListe === "note"
+      ? (avecNotes ? "Les mieux notés d’abord, à note égale le plus commenté."
+                   : "Aucune note disponible ici : l’ordre retombe sur la distance.")
+      : (avecNotes ? "Classé par note, puis par ce qui s’y passe, puis par distance."
+                   : "Classé par ce qui s’y passe, puis par distance.");
+
+  const barreTri = '<div class="tri-barre">'+
+    [["auto","Pertinence"],["note","Mieux notés"],["distance","Plus proches"]]
+      .map(([id,lab])=>'<button class="tri'+(triListe===id?" actif":"")+'" data-tri="'+id+'">'+lab+'</button>')
+      .join("")+
+    '</div>';
 
   const lignes = l.map((x,i)=>{
     const sous = [];
     if(x.note) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
     sous.push(esc(x.adresse||""));
+    // horaires réels quand OpenStreetMap les connaît
+    if(x.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(x.quand)) sous.push(esc(x.quand));
     return '<button class="rang" data-va="'+esc(x.id)+'">'+
       '<span class="rang-n">'+(i+1)+'</span>'+
       '<span class="rang-emoji">'+c.emoji+'</span>'+
@@ -1596,9 +1667,15 @@ function ouvrirListe(cat){
   ouvrirFeuille(
     '<div class="liste-tete"><h2>'+c.emoji+' '+c.label+'</h2>'+
     '<span class="liste-compte">'+l.length+' autour</span></div>'+
+    barreTri+
     '<p class="liste-tri">'+critere+'</p>'+
     (l.length ? lignes : '<p class="liste-vide">Rien de ce type dans le coin.<br>Tu peux en poser un avec le bouton +.</p>')
   );
+
+  $("#feuille").querySelectorAll("[data-tri]").forEach(b=>b.onclick=()=>{
+    triListe = b.dataset.tri;
+    ouvrirListe(cat);                     // on redessine la liste dans le nouvel ordre
+  });
 
   $("#feuille").querySelectorAll("[data-va]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.va, cible = lieux.find(x=>x.id===id);
