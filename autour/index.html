@@ -121,6 +121,8 @@ input{font-family:inherit;font-size:16px}
 .rang-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2)}
 .rang-note{display:inline-flex;align-items:center;gap:3px;margin-right:7px;font-weight:700;color:var(--ink)}
+.ouvert{font-weight:700;color:#1B7F3B}
+.ferme{font-weight:700;color:var(--signal)}
 .badge{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:99px;
   background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;
   font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;vertical-align:1px}
@@ -415,6 +417,8 @@ const CATS = {
   salle:   {label:"Salle",     emoji:"🎤", eph:false},
   marche:  {label:"Marché",    emoji:"🧺", eph:false},
   resto:   {label:"Restos",    emoji:"🍽", eph:false},
+  aide:    {label:"Aide",      emoji:"🤝", eph:false},
+  asso:    {label:"Assos",     emoji:"✊", eph:false},
 };
 
 const REQUETES = [
@@ -425,6 +429,12 @@ const REQUETES = [
   ["amenity","theatre","salle"], ["amenity","community_centre","salle"],
   ["amenity","marketplace","marche"],
   ["amenity","restaurant","resto"], ["amenity","cafe","resto"], ["amenity","fast_food","resto"],
+  // aide sociale : CCAS, maisons de quartier, mission locale, Pôle emploi
+  ["amenity","social_facility","aide"], ["amenity","social_centre","aide"],
+  ["office","employment_agency","aide"], ["office","government","aide"],
+  // associations et ONG
+  ["office","association","asso"], ["office","ngo","asso"], ["office","charity","asso"],
+  ["club","social","asso"],
 ];
 
 const SCENARIOS = {
@@ -479,9 +489,11 @@ function charge(t){const c=$("#charge"); if(t){c.textContent=t;c.hidden=false}el
 /* ================================================================== */
 
 const SERVEURS = [
+  "https://overpass.kumi.systems/api/interpreter",   // le plus rapide et le moins saturé
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter"
+  "https://overpass.osm.ch/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
 ];
 
 async function overpass(q, msMax){
@@ -493,11 +505,12 @@ async function overpass(q, msMax){
         body:"data="+encodeURIComponent(q),
         headers:{"Content-Type":"application/x-www-form-urlencoded"}});
       clearTimeout(t);
-      if(!r.ok) continue;
+      if(!r.ok){ console.warn("Overpass", r.status, url); continue; }
       const j = await r.json();
       if(j && j.elements) return j.elements;
-    }catch(e){}
+    }catch(e){ console.warn("Overpass injoignable :", url, e.name||e); }
   }
+  console.error("Overpass : aucun serveur n’a répondu");
   return null;
 }
 
@@ -524,9 +537,15 @@ out geom;`;
 
 /* ---------- lieux remarquables ---------- */
 async function vraisLieux(lat,lng){
-  const bloc = REQUETES.map(([k,v])=>
-    `node(around:1500,${lat},${lng})["${k}"="${v}"];way(around:1500,${lat},${lng})["${k}"="${v}"];`).join("");
-  const els = await overpass(`[out:json][timeout:20];(${bloc});out center 60;`, 9000);
+  // Une sous-requête par CLÉ (avec regex sur les valeurs) au lieu d'une par
+  // couple clé/valeur : ~5 lignes au lieu de 40. Les serveurs publics saturaient
+  // sur l'ancienne version, d'où les "lieux d'exemple" affichés à la place.
+  const parCle = {};
+  REQUETES.forEach(([k,v])=>{ (parCle[k] = parCle[k] || []).push(v); });
+  const bloc = Object.entries(parCle).map(([k,vs])=>
+    `nwr(around:1500,${lat},${lng})["${k}"~"^(${vs.join("|")})$"];`).join("");
+  // 25 s : mieux vaut attendre que retomber sur des lieux inventés
+  const els = await overpass(`[out:json][timeout:25];(${bloc});out center 120;`, 25000);
   if(!els) return [];
   return els.map(e=>{
     const t=e.tags||{}, p=e.center||e;
@@ -909,8 +928,10 @@ async function demarrer(coords){
   commune = await pNom;
   let reels = await pLieux;
   let exemple = false;
-  if(!reels || reels.length < 3){
-    reels = (reels||[]).concat(lieuxSecours(lat,lng));
+  // uniquement si OSM n'a STRICTEMENT rien donné : mélanger de faux lieux à de
+  // vrais rendait la carte trompeuse (une bibliothèque inventée à côté des vraies)
+  if(!reels || !reels.length){
+    reels = lieuxSecours(lat,lng);
     exemple = true;
   }
   const eventsReels = await pEvents;
@@ -997,7 +1018,11 @@ function ouvrirFeuille(html){
 }
 function fermerFeuille(){
   $("#voile").hidden=true; $("#feuille").hidden=true;
+  const avaitTrajet = ligneCouches.length > 0;
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches=[];
+  // cadrer un itinéraire dézoome souvent au point de réduire les lieux à des
+  // pastilles : on revient sur le quartier pour qu'ils réapparaissent
+  if(avaitTrajet && positionMoi) map.flyTo(positionMoi, 16, {duration:.6});
 }
 $("#voile").onclick=fermerFeuille;
 
@@ -1025,7 +1050,10 @@ function ouvrirDetail(id){
     '<button class="y-aller" id="btnYAller">Y aller</button></address>'+
     '<div class="trajet" id="trajet" hidden></div>'+
     '<dl class="faits">'+
-      '<div><dt>Quand</dt><dd>'+esc(l.quand)+'</dd></div>'+
+      '<div><dt>Quand</dt><dd>'+
+        (l.ouvert === true  ? '<span class="ouvert">Ouvert</span> · ' :
+         l.ouvert === false ? '<span class="ferme">Fermé</span> · '   : '')+
+        esc(l.quand)+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
       '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
     '</dl>'+
@@ -1133,86 +1161,113 @@ async function afficherTrajet(l){
   if(!panneau) return;
   const dest = [l.lat, l.lng];
 
+  const depart = positionMoi;
+
   panneau.hidden = false;
   panneau.innerHTML =
-    '<div class="trajet-temps" id="trajetTemps"><p class="trajet-charge">Calcul des itinéraires…</p></div>'+
-    '<p class="trajet-aide" id="trajetAide">Recherche d’itinéraires réels, vélos et transports à proximité…</p>'+
-    '<div id="trajetInfos"></div>';
+    '<div class="trajet-temps" id="trajetTemps"></div>'+
+    '<p class="trajet-aide" id="trajetAide">Estimation immédiate · calcul par les rues en cours…</p>'+
+    '<div id="trajetInfos"><p class="trajet-charge">Recherche des vélos et des transports…</p></div>';
 
-  const [segPied, segVoiture, stations, arrets] = await Promise.all([
-    segmentTrajet("pied", positionMoi, dest),
-    segmentTrajet("voiture", positionMoi, dest),
-    stationsVeloProchesCache(positionMoi[0], positionMoi[1]),
-    arretsProchesCache(positionMoi[0], positionMoi[1])
-  ]);
-
-  const zone = $("#trajetInfos");
-  if(!zone) return; // le panneau a été refermé entre-temps
+  /* --- 1. Affichage instantané : estimation à vol d'oiseau, zéro attente --- */
+  const dVol = distanceM(depart[0],depart[1],dest[0],dest[1]);
+  const droit = (profil)=>({ coords:[depart,dest], reel:false,
+    min: tempsTrajetMinutes(dVol, VITESSES_KMH[profil]||15) });
 
   const options = [
-    { mode:"pied", min:segPied.min, segments:[segPied] },
-    { mode:"voiture", min:segVoiture.min, segments:[segVoiture] }
+    { mode:"pied",    min:droit("pied").min,    segments:[droit("pied")] },
+    { mode:"voiture", min:droit("voiture").min, segments:[droit("voiture")] }
   ];
+  let iActif = 0, choisiParToi = false;
 
-  if(stations && stations.length){
-    const s = stations[0];
-    const [segMarche, segVelo] = await Promise.all([
-      segmentTrajet("pied", positionMoi, [s.lat,s.lng]),
-      segmentTrajet("velo", [s.lat,s.lng], dest)
-    ]);
-    options.push({ mode:"velo", min:segMarche.min+segVelo.min, segments:[segMarche,segVelo] });
-  }
-
-  if(arrets && arrets.length){
-    // un choix distinct par type d'arrêt détecté (métro, tram, bus), pas un seul mélangé
-    const parType = {};
-    arrets.forEach(a=>{ if(!parType[a.type]) parType[a.type]=a; });
-    for(const type of Object.keys(parType)){
-      const a = parType[type];
-      const segMarche = await segmentTrajet("pied", positionMoi, [a.lat,a.lng]);
-      const minTransport = segMarche.min +
-        tempsTrajetMinutes(distanceM(a.lat,a.lng,l.lat,l.lng), VITESSE_TRANSPORT_KMH[type]||18) + 5;
-      options.push({
-        mode:type, min:minTransport,
-        segments:[segMarche, { coords:[[a.lat,a.lng],dest], reel:false }]
-      });
-    }
-  }
-
-  let iActif = 0;
-  options.forEach((o,i)=>{ if(o.min<options[iActif].min) iActif=i; });
-
-  const choisir = (i)=>{
-    iActif = i;
-    dessinerSegments(options[i].segments);
-    $("#trajetTemps").innerHTML = rendreOptions(options, iActif);
-    $("#trajetTemps").querySelectorAll("[data-opt]").forEach(b=>
-      b.onclick=()=>choisir(Number(b.dataset.opt)));
+  const peindre = ()=>{
+    const zone = $("#trajetTemps");
+    if(!zone) return false;                       // feuille refermée entre-temps
+    zone.innerHTML = rendreOptions(options, iActif);
+    zone.querySelectorAll("[data-opt]").forEach(b=>
+      b.onclick=()=>{ iActif = Number(b.dataset.opt); choisiParToi = true; peindre(); });
+    dessinerSegments(options[iActif].segments);
+    return true;
   };
-  choisir(iActif);
-  $("#trajetAide").textContent = "Touche une option pour voir son trajet sur la carte. Les traits pleins suivent les rues (OSRM) ; les pointillés sont une estimation à vol d’oiseau.";
+  /* ne réordonne le choix par défaut que tant que tu n'as rien touché toi-même */
+  const rafraichir = ()=>{
+    if(!choisiParToi) options.forEach((o,i)=>{ if(o.min<options[iActif].min) iActif=i; });
+    return peindre();
+  };
+  rafraichir();
 
-  let html = "";
-  if(stations && stations.length){
-    html += '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
-      stations.map(s=>
-        '<div class="velo-station">'+
-          '<span class="velo-nom">'+esc(s.nom)+'</span>'+
-          '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
-          '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
-        '</div>'
-      ).join("");
-  }
-  if(arrets && arrets.length){
-    html += '<p class="trajet-soustitre">Arrêts de transport à proximité</p>'+
-      arrets.slice(0,5).map(a=>
-        '<div class="velo-station">'+
-          '<span class="velo-nom">'+EMOJI_MODE[a.type]+' '+esc(a.nom)+'</span>'+
-          '<span class="velo-dist">'+formatDist(a.dist)+'</span>'+
-        '</div>'
-      ).join("");
-  }
-  zone.innerHTML = html || '<p class="trajet-vide">Aucun vélo ni arrêt de transport détecté près de toi.</p>';
+  /* --- 2. En arrière-plan : itinéraires réellement routés par les rues --- */
+  Promise.all([
+    segmentTrajet("pied", depart, dest),
+    segmentTrajet("voiture", depart, dest)
+  ]).then(([sp,sv])=>{
+    options[0] = { mode:"pied",    min:sp.min, segments:[sp] };
+    options[1] = { mode:"voiture", min:sv.min, segments:[sv] };
+    if(!rafraichir()) return;
+    const aide = $("#trajetAide");
+    if(aide) aide.textContent = (sp.reel || sv.reel)
+      ? "Touche une option pour voir son trajet. Les traits pleins suivent les rues (OSRM) ; les pointillés sont une estimation à vol d’oiseau."
+      : "Itinéraires routés indisponibles : les temps affichés sont estimés à vol d’oiseau.";
+  });
+
+  /* --- 3. En arrière-plan : vélos en libre-service et transports en commun --- */
+  Promise.all([
+    stationsVeloProchesCache(depart[0], depart[1]),
+    arretsProchesCache(depart[0], depart[1])
+  ]).then(async ([stations, arrets])=>{
+    const zone = $("#trajetInfos");
+    if(!zone) return;
+
+    if(stations && stations.length){
+      const s = stations[0];
+      const [segMarche, segVelo] = await Promise.all([
+        segmentTrajet("pied", depart, [s.lat,s.lng]),
+        segmentTrajet("velo", [s.lat,s.lng], dest)
+      ]);
+      options.push({ mode:"velo", min:segMarche.min+segVelo.min, segments:[segMarche,segVelo] });
+    }
+
+    if(arrets && arrets.length){
+      // un choix distinct par type d'arrêt détecté (métro, tram, bus), pas un seul mélangé
+      const parType = {};
+      arrets.forEach(a=>{ if(!parType[a.type]) parType[a.type]=a; });
+      for(const type of Object.keys(parType)){
+        const a = parType[type];
+        const segMarche = await segmentTrajet("pied", depart, [a.lat,a.lng]);
+        const minTransport = segMarche.min +
+          tempsTrajetMinutes(distanceM(a.lat,a.lng,dest[0],dest[1]), VITESSE_TRANSPORT_KMH[type]||18) + 5;
+        options.push({
+          mode:type, min:minTransport,
+          segments:[segMarche, { coords:[[a.lat,a.lng],dest], reel:false }]
+        });
+      }
+    }
+    if(!rafraichir()) return;
+
+    let html = "";
+    if(stations && stations.length){
+      html += '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
+        stations.map(s=>
+          '<div class="velo-station">'+
+            '<span class="velo-nom">'+esc(s.nom)+'</span>'+
+            '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
+            '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
+          '</div>'
+        ).join("");
+    }
+    if(arrets && arrets.length){
+      html += '<p class="trajet-soustitre">Arrêts de transport à proximité</p>'+
+        arrets.slice(0,5).map(a=>
+          '<div class="velo-station">'+
+            '<span class="velo-nom">'+EMOJI_MODE[a.type]+' '+esc(a.nom)+'</span>'+
+            '<span class="velo-dist">'+formatDist(a.dist)+'</span>'+
+          '</div>'
+        ).join("");
+    }
+    const zone2 = $("#trajetInfos");
+    if(zone2) zone2.innerHTML = html ||
+      '<p class="trajet-vide">Aucun vélo ni arrêt de transport détecté près de toi.</p>';
+  });
 }
 
 /* ================================================================== */
@@ -1558,7 +1613,9 @@ async function notesGoogle(lat, lng){
       headers:{
         "Content-Type":"application/json",
         "X-Goog-Api-Key":CLE_GOOGLE,
-        "X-Goog-FieldMask":"places.displayName,places.location,places.rating,places.userRatingCount"
+        "X-Goog-FieldMask":"places.displayName,places.location,places.rating,"+
+          "places.userRatingCount,places.currentOpeningHours.openNow,"+
+          "places.regularOpeningHours.weekdayDescriptions"
       },
       body:JSON.stringify({
         maxResultCount:20,
@@ -1570,7 +1627,11 @@ async function notesGoogle(lat, lng){
     return (j.places||[]).map(p=>({
       nom:(p.displayName&&p.displayName.text)||"",
       lat:p.location.latitude, lng:p.location.longitude,
-      note:p.rating, avis:p.userRatingCount
+      note:p.rating, avis:p.userRatingCount,
+      // openNow est calculé par Google à l'instant de la requête : c'est un
+      // vrai "ouvert / fermé maintenant", pas une plage horaire à interpréter
+      ouvert: p.currentOpeningHours ? p.currentOpeningHours.openNow : undefined,
+      horaires: (p.regularOpeningHours||{}).weekdayDescriptions || null
     }));
   }catch(e){ console.error("notesGoogle: échec de la requête", e); return null; }
 }
@@ -1584,8 +1645,13 @@ function greffeNotes(liste, fiches){
       const d = distanceM(l.lat,l.lng,f.lat,f.lng);
       if(d < dMin){ dMin = d; meilleur = f; }
     });
-    if(meilleur){ l.note = meilleur.note; l.avis = meilleur.avis; }
+    if(meilleur){
+      l.note = meilleur.note; l.avis = meilleur.avis;
+      l.ouvert = meilleur.ouvert;                       // ouvert / fermé maintenant
+      if(meilleur.horaires) l.horaires = meilleur.horaires;
+    }
   });
+  rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
 }
 
 function distanceM(lat1,lng1,lat2,lng2){
@@ -1651,6 +1717,8 @@ function ouvrirListe(cat){
     const sous = [];
     if(x.note) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
+    if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
+    if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
     sous.push(esc(x.adresse||""));
     // horaires réels quand OpenStreetMap les connaît
     if(x.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(x.quand)) sous.push(esc(x.quand));
