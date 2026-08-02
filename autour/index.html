@@ -242,7 +242,9 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   letter-spacing:.09em;text-transform:uppercase;display:inline-block}
 
 .trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
-.trajet-temps{display:flex;gap:10px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
+.trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
+.trajet-temps span{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper)}
+.trajet-temps span.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
 .trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
 .trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
@@ -407,6 +409,7 @@ const CATS = {
   sportlieu:{label:"Terrain",  emoji:"🛹", eph:false},
   salle:   {label:"Salle",     emoji:"🎤", eph:false},
   marche:  {label:"Marché",    emoji:"🧺", eph:false},
+  resto:   {label:"Resto",     emoji:"🍽", eph:false},
 };
 
 const REQUETES = [
@@ -416,6 +419,7 @@ const REQUETES = [
   ["leisure","skatepark","sportlieu"], ["leisure","pitch","sportlieu"],
   ["amenity","theatre","salle"], ["amenity","community_centre","salle"],
   ["amenity","marketplace","marche"],
+  ["amenity","restaurant","resto"], ["amenity","cafe","resto"], ["amenity","fast_food","resto"],
 ];
 
 const SCENARIOS = {
@@ -452,6 +456,8 @@ let lieux=[], publies=[], marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
 let map, coucheVille, coucheRues, moi, positionMoi=null, commune="ton quartier";
 let routes=[]; // {couche, base}
+let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
+let ligneTrajet = null;
 
 const $=(s)=>document.querySelector(s);
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
@@ -611,6 +617,7 @@ async function nomCommune(lat,lng){
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
     const j = await r.json(); const a=j.address||{};
+    paysISO = (a.country_code||"").toUpperCase();
     return a.city||a.town||a.village||a.municipality||a.suburb||"ton quartier";
   }catch(e){ return "ton quartier"; }
 }
@@ -971,7 +978,10 @@ function ouvrirFeuille(html){
   f.hidden=false;
   f.querySelector(".poignee").onclick=fermerFeuille;
 }
-function fermerFeuille(){ $("#voile").hidden=true; $("#feuille").hidden=true; }
+function fermerFeuille(){
+  $("#voile").hidden=true; $("#feuille").hidden=true;
+  if(ligneTrajet){ map.removeLayer(ligneTrajet); ligneTrajet=null; }
+}
 $("#voile").onclick=fermerFeuille;
 
 function grilleQR(seed,n=21){
@@ -1022,41 +1032,89 @@ function ouvrirDetail(id){
 /* ================================================================== */
 
 const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // moyenne urbaine, à vol d'oiseau
+const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", transport:"🚌" };
 
 function tempsTrajetMinutes(distanceMetres, kmh){
   return Math.max(1, Math.round((distanceMetres/1000) / kmh * 60));
 }
 
+function rendreOptions(options){
+  let iMin=0;
+  options.forEach((o,i)=>{ if(o.min<options[iMin].min) iMin=i; });
+  return options.map((o,i)=>
+    '<span class="'+(i===iMin?'conseille':'')+'">'+EMOJI_MODE[o.mode]+' '+o.min+' min</span>'
+  ).join("");
+}
+
+function dessinerLigneTrajet(l){
+  if(ligneTrajet){ map.removeLayer(ligneTrajet); ligneTrajet=null; }
+  ligneTrajet = L.polyline([positionMoi, [l.lat,l.lng]], {
+    color:"#FF4A17", weight:3, dashArray:"2 8", opacity:.85
+  }).addTo(map);
+  map.fitBounds(ligneTrajet.getBounds(), {padding:[60,60], maxZoom:16});
+}
+
 async function afficherTrajet(l){
   const panneau = $("#trajet");
   if(!panneau) return;
+  dessinerLigneTrajet(l);
+
   const d = distanceM(positionMoi[0], positionMoi[1], l.lat, l.lng);
+  const options = [
+    { mode:"pied", min: tempsTrajetMinutes(d, VITESSES_KMH.pied) },
+    { mode:"voiture", min: tempsTrajetMinutes(d, VITESSES_KMH.voiture) }
+  ];
 
   panneau.hidden = false;
   panneau.innerHTML =
-    '<div class="trajet-temps">'+
-      '<span>🚶 '+tempsTrajetMinutes(d,VITESSES_KMH.pied)+' min</span>'+
-      '<span>🚲 '+tempsTrajetMinutes(d,VITESSES_KMH.velo)+' min</span>'+
-      '<span>🚗 '+tempsTrajetMinutes(d,VITESSES_KMH.voiture)+' min</span>'+
-    '</div>'+
+    '<div class="trajet-temps" id="trajetTemps">'+rendreOptions(options)+'</div>'+
     '<p class="trajet-aide">Estimation à vol d’oiseau, pas un itinéraire réel.</p>'+
-    '<div id="trajetVelos"><p class="trajet-charge">Recherche de vélos en libre-service…</p></div>';
+    '<div id="trajetInfos"><p class="trajet-charge">Recherche de vélos et de transports à proximité…</p></div>';
 
-  const stations = await stationsVeloProches(positionMoi[0], positionMoi[1]);
-  const zone = $("#trajetVelos");
+  const [stations, arrets] = await Promise.all([
+    stationsVeloProchesCache(positionMoi[0], positionMoi[1]),
+    arretsProchesCache(positionMoi[0], positionMoi[1])
+  ]);
+
+  const zone = $("#trajetInfos");
   if(!zone) return; // le panneau a été refermé entre-temps
-  if(!stations || !stations.length){
-    zone.innerHTML = '<p class="trajet-vide">Aucun vélo en libre-service détecté près de toi.</p>';
-    return;
+
+  if(stations && stations.length){
+    const s = stations[0];
+    options.push({ mode:"velo", min:
+      tempsTrajetMinutes(s.dist, VITESSES_KMH.pied) +
+      tempsTrajetMinutes(distanceM(s.lat,s.lng,l.lat,l.lng), VITESSES_KMH.velo)
+    });
   }
-  zone.innerHTML = '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
-    stations.map(s=>
+  if(arrets && arrets.length){
+    const a = arrets[0];
+    options.push({ mode:"transport", min:
+      tempsTrajetMinutes(a.dist, VITESSES_KMH.pied) +
+      tempsTrajetMinutes(distanceM(a.lat,a.lng,l.lat,l.lng), VITESSE_TRANSPORT_KMH[a.type]||18) + 5
+    });
+  }
+  const tempsEl = $("#trajetTemps");
+  if(tempsEl) tempsEl.innerHTML = rendreOptions(options);
+
+  let html = "";
+  if(stations && stations.length){
+    html += '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
+      stations.map(s=>
+        '<div class="velo-station">'+
+          '<span class="velo-nom">'+esc(s.nom)+'</span>'+
+          '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
+          '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
+        '</div>'
+      ).join("");
+  }
+  if(arrets && arrets.length){
+    html += '<p class="trajet-soustitre">Transport en commun le plus proche</p>'+
       '<div class="velo-station">'+
-        '<span class="velo-nom">'+esc(s.nom)+'</span>'+
-        '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
-        '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
-      '</div>'
-    ).join("");
+        '<span class="velo-nom">'+EMOJI_TRANSPORT[arrets[0].type]+' '+esc(arrets[0].nom)+'</span>'+
+        '<span class="velo-dist">'+formatDist(arrets[0].dist)+'</span>'+
+      '</div>';
+  }
+  zone.innerHTML = html || '<p class="trajet-vide">Aucun vélo ni arrêt de transport détecté près de toi.</p>';
 }
 
 /* ================================================================== */
@@ -1082,25 +1140,31 @@ async function chargerSystemesGBFS(){
     if(!r.ok){ SYSTEMES_GBFS = []; return SYSTEMES_GBFS; }
     const lignes = (await r.text()).split("\n").filter(Boolean);
     const entetes = ligneCSV(lignes[0]);
-    const iNom = entetes.indexOf("Name"), iLieu = entetes.indexOf("Location"),
+    const iPays = entetes.indexOf("Country Code"),
+          iNom = entetes.indexOf("Name"), iLieu = entetes.indexOf("Location"),
           iUrl = entetes.indexOf("Auto-Discovery URL");
     SYSTEMES_GBFS = iUrl<0 ? [] : lignes.slice(1).map(l=>{
       const champs = ligneCSV(l);
-      return { nom:champs[iNom]||"", lieu:champs[iLieu]||"", url:champs[iUrl]||"" };
+      return { pays:(champs[iPays]||"").toUpperCase(), nom:champs[iNom]||"", lieu:champs[iLieu]||"", url:champs[iUrl]||"" };
     }).filter(s=>s.url);
   }catch(e){ SYSTEMES_GBFS = []; }
   return SYSTEMES_GBFS;
 }
 
-/* cherche un réseau GBFS dont le nom ou la localisation correspond à la commune détectée */
+/* cherche un réseau GBFS dont le nom ou la localisation correspond à la commune détectée ;
+   si rien ne correspond textuellement (le nom du réseau ne contient pas toujours celui
+   de la ville), on élargit au pays et on vérifie avec la vraie position des stations */
 async function stationsVeloProches(lat,lng){
   try{
     const systemes = await chargerSystemesGBFS();
     if(!systemes.length) return null;
     const cible = sansAccents(commune);
-    if(!cible) return null;
-    const candidats = systemes.filter(s=>
-      sansAccents(s.lieu).includes(cible) || sansAccents(s.nom).includes(cible));
+    let candidats = cible ? systemes.filter(s=>
+      sansAccents(s.lieu).includes(cible) || sansAccents(s.nom).includes(cible)) : [];
+
+    if(!candidats.length && paysISO){
+      candidats = systemes.filter(s=>s.pays===paysISO).slice(0,20);
+    }
     if(!candidats.length) return null;
 
     for(const sys of candidats){
@@ -1134,13 +1198,54 @@ async function stationsDuSysteme(urlDecouverte, lat, lng){
         const velos = st ? (st.num_bikes_available ?? st.num_vehicles_available ?? 0) : 0;
         if(!velos) return null;
         const dist = distanceM(lat, lng, s.lat, s.lon);
-        if(dist > 1200) return null;
-        return { nom: s.name || "Station", velos, dist };
+        if(dist > 1500) return null;
+        return { nom: s.name || "Station", velos, dist, lat:s.lat, lng:s.lon };
       })
       .filter(Boolean)
       .sort((a,b)=>a.dist-b.dist)
       .slice(0,5);
   }catch(e){ return null; }
+}
+
+/* ================================================================== */
+/*  Arrêts de transport en commun (métro, tram, bus) à proximité      */
+/* ================================================================== */
+
+const EMOJI_TRANSPORT = { metro:"🚇", tram:"🚊", bus:"🚌" };
+const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16 };
+
+async function arretsProches(lat,lng){
+  try{
+    const q = `[out:json][timeout:15];(
+node(around:700,${lat},${lng})[railway~"^(station|subway_entrance)$"];
+node(around:700,${lat},${lng})[railway=tram_stop];
+node(around:400,${lat},${lng})[highway=bus_stop];
+node(around:400,${lat},${lng})[amenity=bus_station];
+);out body 25;`;
+    const els = await overpass(q, 8000);
+    if(!els || !els.length) return null;
+    return els.map(e=>{
+      const t = e.tags||{};
+      const type = (t.railway==="station"||t.railway==="subway_entrance") ? "metro"
+                 : t.railway==="tram_stop" ? "tram" : "bus";
+      return {
+        type, nom: t.name || ({metro:"Station",tram:"Arrêt tram",bus:"Arrêt bus"})[type],
+        lat:e.lat, lng:e.lon, dist: distanceM(lat,lng,e.lat,e.lon)
+      };
+    }).sort((a,b)=>a.dist-b.dist);
+  }catch(e){ return null; }
+}
+
+/* la position de l'utilisateur ne change pas pendant la session : on évite
+   de refaire les mêmes requêtes réseau à chaque clic sur "Y aller" */
+let CACHE_VELO, CACHE_TRANSPORT;
+async function stationsVeloProchesCache(lat,lng){
+  if(CACHE_VELO === undefined) CACHE_VELO = await stationsVeloProches(lat,lng);
+  return CACHE_VELO;
+}
+async function arretsProchesCache(lat,lng){
+  if(CACHE_TRANSPORT === undefined) CACHE_TRANSPORT = await arretsProches(lat,lng);
+  return CACHE_TRANSPORT;
 }
 
 async function partagerLieu(l){
