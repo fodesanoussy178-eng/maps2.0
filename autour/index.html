@@ -240,6 +240,19 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   border:1px solid var(--bord);border-radius:99px;background:var(--signal);color:#fff;
   font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;display:inline-block}
+
+.trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
+.trajet-temps{display:flex;gap:10px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
+.trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
+.trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2)}
+.velo-station{display:flex;align-items:center;gap:8px;padding:8px 0;
+  border-top:1px solid rgba(20,30,25,.13);font-size:13px}
+.velo-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.velo-dispo{font-weight:700;color:var(--signal)}
+.velo-dist{color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:11px}
+
 dl.faits{margin:16px 0 18px}
 dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
   border-top:1px solid rgba(20,30,25,.13)}
@@ -519,6 +532,53 @@ async function vraisLieux(lat,lng){
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
     };
   }).filter(Boolean);
+}
+
+/* Pour de vrais événements locaux (collectes, ateliers lecture, marchés…),
+   il faut une clé API OpenAgenda gratuite : https://developers.openagenda.com/.
+   Colle-la ici. Laissée vide, l'app invente des événements plausibles
+   autour des vrais lieux — ce qui reste honnête et déjà utile. */
+const CLE_OPENAGENDA = "";
+
+function catOpenAgenda(evt){
+  const mots = sansAccents((evt.title&&evt.title.fr||"")+" "+((evt.keywords&&evt.keywords.fr)||[]).join(" "));
+  if(/collecte|don /.test(mots)) return "collecte";
+  if(/lecture|bibliotheque|livre/.test(mots)) return "biblio";
+  if(/sport|foot|match|tournoi/.test(mots)) return "sport";
+  if(/concert|scene|musique|spectacle/.test(mots)) return "salle";
+  if(/marche|brocante|vide-grenier/.test(mots)) return "marche";
+  if(/repas|cantine|cuisine/.test(mots)) return "food";
+  if(/studio|enregistrement/.test(mots)) return "studio";
+  return "event";
+}
+
+async function evenementsOpenAgenda(lat,lng){
+  if(!CLE_OPENAGENDA) return null;
+  try{
+    const params = new URLSearchParams({
+      key: CLE_OPENAGENDA, geo_lat:lat, geo_long:lng, geo_radius:3000,
+      size:20, timings:"future"
+    });
+    const r = await fetch("https://api.openagenda.com/v2/events?"+params.toString());
+    if(!r.ok) return null;
+    const j = await r.json();
+    return (j.events||[]).map(evt=>{
+      const loc = evt.location || {};
+      if(loc.latitude==null || loc.longitude==null) return null;
+      return {
+        id:"oa"+evt.uid, cat:catOpenAgenda(evt),
+        titre:(evt.title && (evt.title.fr||Object.values(evt.title)[0])) || "Événement",
+        adresse: loc.name || loc.address || commune,
+        cp: [loc.postalCode, loc.city].filter(Boolean).join(" ") || commune,
+        quand: evt.nextTiming
+          ? new Date(evt.nextTiming.begin).toLocaleString("fr-FR",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
+          : "Voir sur place",
+        gratuit: !(evt.registration && evt.registration.price), prix:0,
+        places:null, qr:false, par:"OpenAgenda",
+        lat:loc.latitude, lng:loc.longitude
+      };
+    }).filter(Boolean);
+  }catch(e){ return null; }
 }
 
 /* Quand OpenStreetMap est injoignable, on pose des lieux d'exemple
@@ -816,10 +876,11 @@ async function demarrer(coords){
 
   charge("Chargement…");
 
-  // fond de carte et lieux sont demandés en même temps : plus d'attente en file
-  const pFond  = poserFond();
-  const pNom   = nomCommune(lat,lng);
-  const pLieux = vraisLieux(lat,lng);
+  // fond de carte, lieux et événements réels sont demandés en même temps : plus d'attente en file
+  const pFond   = poserFond();
+  const pNom    = nomCommune(lat,lng);
+  const pLieux  = vraisLieux(lat,lng);
+  const pEvents = evenementsOpenAgenda(lat,lng);
 
   commune = await pNom;
   let reels = await pLieux;
@@ -828,7 +889,9 @@ async function demarrer(coords){
     reels = (reels||[]).concat(lieuxSecours(lat,lng));
     exemple = true;
   }
-  lieux = reels.concat(fabriquerEvenements(reels,lat,lng));
+  const eventsReels = await pEvents;
+  const evenements = (eventsReels && eventsReels.length) ? eventsReels : fabriquerEvenements(reels,lat,lng);
+  lieux = reels.concat(evenements);
 
   const enr = await Store.lire();
   if(enr && enr.length){ publies = enr; lieux = lieux.concat(publies); }
@@ -924,7 +987,6 @@ function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
   const c = CATS[l.cat]||CATS.event;
   const {cells,n} = grilleQR(l.id);
-  const nav = "https://www.openstreetmap.org/directions?to="+l.lat+","+l.lng;
   const note = '<p class="note">Le paiement se fait sur place, entre vous. L’app n’encaisse rien.</p>';
 
   ouvrirFeuille(
@@ -933,7 +995,8 @@ function ouvrirDetail(id){
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
     '<address class="adresse"><span class="ad-rue">'+esc(l.adresse)+'</span>'+
     '<span class="ad-ville">'+esc(l.cp)+'</span>'+
-    '<a class="y-aller" href="'+nav+'" target="_blank" rel="noopener">Y aller</a></address>'+
+    '<button class="y-aller" id="btnYAller">Y aller</button></address>'+
+    '<div class="trajet" id="trajet" hidden></div>'+
     '<dl class="faits">'+
       '<div><dt>Quand</dt><dd>'+esc(l.quand)+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
@@ -951,6 +1014,133 @@ function ouvrirDetail(id){
   );
   $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
   $("#btnPartLieu").onclick=()=>partagerLieu(l);
+  $("#btnYAller").onclick=()=>afficherTrajet(l);
+}
+
+/* ================================================================== */
+/*  Trajet : temps estimés + vélos en libre-service (sans quitter le site) */
+/* ================================================================== */
+
+const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // moyenne urbaine, à vol d'oiseau
+
+function tempsTrajetMinutes(distanceMetres, kmh){
+  return Math.max(1, Math.round((distanceMetres/1000) / kmh * 60));
+}
+
+async function afficherTrajet(l){
+  const panneau = $("#trajet");
+  if(!panneau) return;
+  const d = distanceM(positionMoi[0], positionMoi[1], l.lat, l.lng);
+
+  panneau.hidden = false;
+  panneau.innerHTML =
+    '<div class="trajet-temps">'+
+      '<span>🚶 '+tempsTrajetMinutes(d,VITESSES_KMH.pied)+' min</span>'+
+      '<span>🚲 '+tempsTrajetMinutes(d,VITESSES_KMH.velo)+' min</span>'+
+      '<span>🚗 '+tempsTrajetMinutes(d,VITESSES_KMH.voiture)+' min</span>'+
+    '</div>'+
+    '<p class="trajet-aide">Estimation à vol d’oiseau, pas un itinéraire réel.</p>'+
+    '<div id="trajetVelos"><p class="trajet-charge">Recherche de vélos en libre-service…</p></div>';
+
+  const stations = await stationsVeloProches(positionMoi[0], positionMoi[1]);
+  const zone = $("#trajetVelos");
+  if(!zone) return; // le panneau a été refermé entre-temps
+  if(!stations || !stations.length){
+    zone.innerHTML = '<p class="trajet-vide">Aucun vélo en libre-service détecté près de toi.</p>';
+    return;
+  }
+  zone.innerHTML = '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
+    stations.map(s=>
+      '<div class="velo-station">'+
+        '<span class="velo-nom">'+esc(s.nom)+'</span>'+
+        '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
+        '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
+      '</div>'
+    ).join("");
+}
+
+/* ================================================================== */
+/*  Vélos en libre-service : détection auto via GBFS (partout où ça existe) */
+/* ================================================================== */
+
+let SYSTEMES_GBFS = null;
+
+function sansAccents(s){
+  return (s||"").normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();
+}
+
+/* Lecture simple d'une ligne CSV (gère les champs entre guillemets) */
+function ligneCSV(l){
+  const champs = l.match(/(".*?"|[^,]*)(?=,|$)/g) || [];
+  return champs.map(c=>c.replace(/^"|"$/g,"").trim());
+}
+
+async function chargerSystemesGBFS(){
+  if(SYSTEMES_GBFS) return SYSTEMES_GBFS;
+  try{
+    const r = await fetch("https://raw.githubusercontent.com/MobilityData/gbfs/master/systems.csv");
+    if(!r.ok){ SYSTEMES_GBFS = []; return SYSTEMES_GBFS; }
+    const lignes = (await r.text()).split("\n").filter(Boolean);
+    const entetes = ligneCSV(lignes[0]);
+    const iNom = entetes.indexOf("Name"), iLieu = entetes.indexOf("Location"),
+          iUrl = entetes.indexOf("Auto-Discovery URL");
+    SYSTEMES_GBFS = iUrl<0 ? [] : lignes.slice(1).map(l=>{
+      const champs = ligneCSV(l);
+      return { nom:champs[iNom]||"", lieu:champs[iLieu]||"", url:champs[iUrl]||"" };
+    }).filter(s=>s.url);
+  }catch(e){ SYSTEMES_GBFS = []; }
+  return SYSTEMES_GBFS;
+}
+
+/* cherche un réseau GBFS dont le nom ou la localisation correspond à la commune détectée */
+async function stationsVeloProches(lat,lng){
+  try{
+    const systemes = await chargerSystemesGBFS();
+    if(!systemes.length) return null;
+    const cible = sansAccents(commune);
+    if(!cible) return null;
+    const candidats = systemes.filter(s=>
+      sansAccents(s.lieu).includes(cible) || sansAccents(s.nom).includes(cible));
+    if(!candidats.length) return null;
+
+    for(const sys of candidats){
+      const stations = await stationsDuSysteme(sys.url, lat, lng);
+      if(stations && stations.length) return stations;
+    }
+    return null;
+  }catch(e){ return null; }
+}
+
+async function stationsDuSysteme(urlDecouverte, lat, lng){
+  try{
+    const r = await fetch(urlDecouverte);
+    if(!r.ok) return null;
+    const j = await r.json();
+    const langues = j.data ? Object.keys(j.data) : [];
+    if(!langues.length) return null;
+    const feeds = j.data[langues[0]].feeds || [];
+    const urlInfo = (feeds.find(f=>f.name==="station_information")||{}).url;
+    const urlStatut = (feeds.find(f=>f.name==="station_status")||{}).url;
+    if(!urlInfo || !urlStatut) return null;
+
+    const [ri, rs] = await Promise.all([fetch(urlInfo), fetch(urlStatut)]);
+    if(!ri.ok || !rs.ok) return null;
+    const [ji, js] = await Promise.all([ri.json(), rs.json()]);
+
+    const statuts = new Map((js.data.stations||[]).map(s=>[s.station_id, s]));
+    return (ji.data.stations||[])
+      .map(s=>{
+        const st = statuts.get(s.station_id);
+        const velos = st ? (st.num_bikes_available ?? st.num_vehicles_available ?? 0) : 0;
+        if(!velos) return null;
+        const dist = distanceM(lat, lng, s.lat, s.lon);
+        if(dist > 1200) return null;
+        return { nom: s.name || "Station", velos, dist };
+      })
+      .filter(Boolean)
+      .sort((a,b)=>a.dist-b.dist)
+      .slice(0,5);
+  }catch(e){ return null; }
 }
 
 async function partagerLieu(l){
