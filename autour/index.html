@@ -243,8 +243,8 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 
 .trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
 .trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
-.trajet-temps span{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper)}
-.trajet-temps span.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
+.trajet-temps button{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper);font:inherit;cursor:pointer}
+.trajet-temps button.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
 .trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
 .trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
@@ -457,7 +457,7 @@ let filtreActif="tout", recherche="", modePose=false;
 let map, coucheVille, coucheRues, moi, positionMoi=null, commune="ton quartier";
 let routes=[]; // {couche, base}
 let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
-let ligneTrajet = null;
+let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
 
 const $=(s)=>document.querySelector(s);
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
@@ -544,7 +544,7 @@ async function vraisLieux(lat,lng){
    il faut une clé API OpenAgenda gratuite : https://developers.openagenda.com/.
    Colle-la ici. Laissée vide, l'app invente des événements plausibles
    autour des vrais lieux — ce qui reste honnête et déjà utile. */
-const CLE_OPENAGENDA = "";
+const CLE_OPENAGENDA = "oa_pk_iWmzFaEujSWtgBdvWCdXQnRtgtrqkpokQbkRGVUrscALWleiwQesAucPIQNUGLjS";
 
 function catOpenAgenda(evt){
   const mots = sansAccents((evt.title&&evt.title.fr||"")+" "+((evt.keywords&&evt.keywords.fr)||[]).join(" "));
@@ -980,7 +980,7 @@ function ouvrirFeuille(html){
 }
 function fermerFeuille(){
   $("#voile").hidden=true; $("#feuille").hidden=true;
-  if(ligneTrajet){ map.removeLayer(ligneTrajet); ligneTrajet=null; }
+  ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches=[];
 }
 $("#voile").onclick=fermerFeuille;
 
@@ -1028,50 +1028,92 @@ function ouvrirDetail(id){
 }
 
 /* ================================================================== */
-/*  Trajet : temps estimés + vélos en libre-service (sans quitter le site) */
+/*  Trajet : itinéraires réels via OSRM (routage public, sans clé),   */
+/*  avec repli en ligne droite estimée quand OSRM ne répond pas       */
 /* ================================================================== */
 
-const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // moyenne urbaine, à vol d'oiseau
-const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", transport:"🚌" };
+const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // repli si OSRM injoignable
+const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", metro:"🚇", tram:"🚊", bus:"🚌" };
+const LABEL_MODE = { pied:"À pied", velo:"Vélo", voiture:"Voiture", metro:"Métro", tram:"Tram", bus:"Bus" };
+
+/* serveurs de démonstration publics OSRM (FOSSGIS/OpenStreetMap.de) — gratuits,
+   sans clé, mais non garantis pour un usage intensif : on bascule sur une
+   estimation à vol d'oiseau s'ils ne répondent pas */
+const OSRM_PROFILS = {
+  pied:    "https://routing.openstreetmap.de/routed-foot/route/v1/foot/",
+  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/",
+  voiture: "https://routing.openstreetmap.de/routed-car/route/v1/driving/"
+};
 
 function tempsTrajetMinutes(distanceMetres, kmh){
   return Math.max(1, Math.round((distanceMetres/1000) / kmh * 60));
 }
 
-function rendreOptions(options){
-  let iMin=0;
-  options.forEach((o,i)=>{ if(o.min<options[iMin].min) iMin=i; });
-  return options.map((o,i)=>
-    '<span class="'+(i===iMin?'conseille':'')+'">'+EMOJI_MODE[o.mode]+' '+o.min+' min</span>'
-  ).join("");
+async function itineraireOSRM(profil, depart, arrivee){
+  const base = OSRM_PROFILS[profil];
+  if(!base) return null;
+  try{
+    const stop = new AbortController();
+    const t = setTimeout(()=>stop.abort(), 6000);
+    const coord = depart[1]+","+depart[0]+";"+arrivee[1]+","+arrivee[0];
+    const r = await fetch(base+coord+"?overview=full&geometries=geojson", {signal:stop.signal});
+    clearTimeout(t);
+    if(!r.ok) return null;
+    const j = await r.json();
+    const route = j.routes && j.routes[0];
+    if(!route || !route.geometry) return null;
+    return {
+      min: Math.max(1, Math.round(route.duration/60)),
+      coords: route.geometry.coordinates.map(c=>[c[1],c[0]])
+    };
+  }catch(e){ return null; }
 }
 
-function dessinerLigneTrajet(l){
-  if(ligneTrajet){ map.removeLayer(ligneTrajet); ligneTrajet=null; }
-  ligneTrajet = L.polyline([positionMoi, [l.lat,l.lng]], {
-    color:"#FF4A17", weight:3, dashArray:"2 8", opacity:.85
-  }).addTo(map);
-  map.fitBounds(ligneTrajet.getBounds(), {padding:[60,60], maxZoom:16});
+/* un segment d'itinéraire : routé réellement si OSRM répond, sinon ligne
+   droite avec une estimation par vitesse moyenne (clairement indiqué à l'affichage) */
+async function segmentTrajet(profil, depart, arrivee){
+  const reel = await itineraireOSRM(profil, depart, arrivee);
+  if(reel) return { coords:reel.coords, reel:true, min:reel.min };
+  const d = distanceM(depart[0],depart[1],arrivee[0],arrivee[1]);
+  return { coords:[depart,arrivee], reel:false, min: tempsTrajetMinutes(d, VITESSES_KMH[profil]||15) };
+}
+
+function dessinerSegments(segments){
+  ligneCouches.forEach(c=>map.removeLayer(c));
+  ligneCouches = [];
+  const points = [];
+  segments.forEach(seg=>{
+    const c = L.polyline(seg.coords, {
+      color:"#FF4A17", weight:3, opacity:.85,
+      dashArray: seg.reel ? null : "4 8"
+    }).addTo(map);
+    ligneCouches.push(c);
+    points.push(...seg.coords);
+  });
+  if(points.length) map.fitBounds(L.latLngBounds(points), {padding:[60,60], maxZoom:16});
+}
+
+function rendreOptions(options, iActif){
+  return options.map((o,i)=>
+    '<button class="'+(i===iActif?'conseille':'')+'" data-opt="'+i+'">'+
+      EMOJI_MODE[o.mode]+' '+LABEL_MODE[o.mode]+' · '+o.min+' min</button>'
+  ).join("");
 }
 
 async function afficherTrajet(l){
   const panneau = $("#trajet");
   if(!panneau) return;
-  dessinerLigneTrajet(l);
-
-  const d = distanceM(positionMoi[0], positionMoi[1], l.lat, l.lng);
-  const options = [
-    { mode:"pied", min: tempsTrajetMinutes(d, VITESSES_KMH.pied) },
-    { mode:"voiture", min: tempsTrajetMinutes(d, VITESSES_KMH.voiture) }
-  ];
+  const dest = [l.lat, l.lng];
 
   panneau.hidden = false;
   panneau.innerHTML =
-    '<div class="trajet-temps" id="trajetTemps">'+rendreOptions(options)+'</div>'+
-    '<p class="trajet-aide">Estimation à vol d’oiseau, pas un itinéraire réel.</p>'+
-    '<div id="trajetInfos"><p class="trajet-charge">Recherche de vélos et de transports à proximité…</p></div>';
+    '<div class="trajet-temps" id="trajetTemps"><p class="trajet-charge">Calcul des itinéraires…</p></div>'+
+    '<p class="trajet-aide" id="trajetAide">Recherche d’itinéraires réels, vélos et transports à proximité…</p>'+
+    '<div id="trajetInfos"></div>';
 
-  const [stations, arrets] = await Promise.all([
+  const [segPied, segVoiture, stations, arrets] = await Promise.all([
+    segmentTrajet("pied", positionMoi, dest),
+    segmentTrajet("voiture", positionMoi, dest),
     stationsVeloProchesCache(positionMoi[0], positionMoi[1]),
     arretsProchesCache(positionMoi[0], positionMoi[1])
   ]);
@@ -1079,22 +1121,48 @@ async function afficherTrajet(l){
   const zone = $("#trajetInfos");
   if(!zone) return; // le panneau a été refermé entre-temps
 
+  const options = [
+    { mode:"pied", min:segPied.min, segments:[segPied] },
+    { mode:"voiture", min:segVoiture.min, segments:[segVoiture] }
+  ];
+
   if(stations && stations.length){
     const s = stations[0];
-    options.push({ mode:"velo", min:
-      tempsTrajetMinutes(s.dist, VITESSES_KMH.pied) +
-      tempsTrajetMinutes(distanceM(s.lat,s.lng,l.lat,l.lng), VITESSES_KMH.velo)
-    });
+    const [segMarche, segVelo] = await Promise.all([
+      segmentTrajet("pied", positionMoi, [s.lat,s.lng]),
+      segmentTrajet("velo", [s.lat,s.lng], dest)
+    ]);
+    options.push({ mode:"velo", min:segMarche.min+segVelo.min, segments:[segMarche,segVelo] });
   }
+
   if(arrets && arrets.length){
-    const a = arrets[0];
-    options.push({ mode:"transport", min:
-      tempsTrajetMinutes(a.dist, VITESSES_KMH.pied) +
-      tempsTrajetMinutes(distanceM(a.lat,a.lng,l.lat,l.lng), VITESSE_TRANSPORT_KMH[a.type]||18) + 5
-    });
+    // un choix distinct par type d'arrêt détecté (métro, tram, bus), pas un seul mélangé
+    const parType = {};
+    arrets.forEach(a=>{ if(!parType[a.type]) parType[a.type]=a; });
+    for(const type of Object.keys(parType)){
+      const a = parType[type];
+      const segMarche = await segmentTrajet("pied", positionMoi, [a.lat,a.lng]);
+      const minTransport = segMarche.min +
+        tempsTrajetMinutes(distanceM(a.lat,a.lng,l.lat,l.lng), VITESSE_TRANSPORT_KMH[type]||18) + 5;
+      options.push({
+        mode:type, min:minTransport,
+        segments:[segMarche, { coords:[[a.lat,a.lng],dest], reel:false }]
+      });
+    }
   }
-  const tempsEl = $("#trajetTemps");
-  if(tempsEl) tempsEl.innerHTML = rendreOptions(options);
+
+  let iActif = 0;
+  options.forEach((o,i)=>{ if(o.min<options[iActif].min) iActif=i; });
+
+  const choisir = (i)=>{
+    iActif = i;
+    dessinerSegments(options[i].segments);
+    $("#trajetTemps").innerHTML = rendreOptions(options, iActif);
+    $("#trajetTemps").querySelectorAll("[data-opt]").forEach(b=>
+      b.onclick=()=>choisir(Number(b.dataset.opt)));
+  };
+  choisir(iActif);
+  $("#trajetAide").textContent = "Touche une option pour voir son trajet sur la carte. Les traits pleins suivent les rues (OSRM) ; les pointillés sont une estimation à vol d’oiseau.";
 
   let html = "";
   if(stations && stations.length){
@@ -1108,11 +1176,13 @@ async function afficherTrajet(l){
       ).join("");
   }
   if(arrets && arrets.length){
-    html += '<p class="trajet-soustitre">Transport en commun le plus proche</p>'+
-      '<div class="velo-station">'+
-        '<span class="velo-nom">'+EMOJI_TRANSPORT[arrets[0].type]+' '+esc(arrets[0].nom)+'</span>'+
-        '<span class="velo-dist">'+formatDist(arrets[0].dist)+'</span>'+
-      '</div>';
+    html += '<p class="trajet-soustitre">Arrêts de transport à proximité</p>'+
+      arrets.slice(0,5).map(a=>
+        '<div class="velo-station">'+
+          '<span class="velo-nom">'+EMOJI_MODE[a.type]+' '+esc(a.nom)+'</span>'+
+          '<span class="velo-dist">'+formatDist(a.dist)+'</span>'+
+        '</div>'
+      ).join("");
   }
   zone.innerHTML = html || '<p class="trajet-vide">Aucun vélo ni arrêt de transport détecté près de toi.</p>';
 }
@@ -1211,7 +1281,6 @@ async function stationsDuSysteme(urlDecouverte, lat, lng){
 /*  Arrêts de transport en commun (métro, tram, bus) à proximité      */
 /* ================================================================== */
 
-const EMOJI_TRANSPORT = { metro:"🚇", tram:"🚊", bus:"🚌" };
 const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16 };
 
 async function arretsProches(lat,lng){
@@ -1449,21 +1518,21 @@ async function notesGoogle(lat, lng){
         locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1500}}
       })
     });
-    if(!r.ok) return null;
+    if(!r.ok){ console.error("notesGoogle: réponse HTTP", r.status, await r.text()); return null; }
     const j = await r.json();
     return (j.places||[]).map(p=>({
       nom:(p.displayName&&p.displayName.text)||"",
       lat:p.location.latitude, lng:p.location.longitude,
       note:p.rating, avis:p.userRatingCount
     }));
-  }catch(e){ return null; }
+  }catch(e){ console.error("notesGoogle: échec de la requête", e); return null; }
 }
 
-/* rapproche chaque lieu OSM de la fiche Google la plus proche (< 80 m) */
+/* rapproche chaque lieu OSM de la fiche Google la plus proche (< 150 m) */
 function greffeNotes(liste, fiches){
   if(!fiches) return;
   liste.forEach(l=>{
-    let meilleur=null, dMin=80;
+    let meilleur=null, dMin=150;
     fiches.forEach(f=>{
       const d = distanceM(l.lat,l.lng,f.lat,f.lng);
       if(d < dMin){ dMin = d; meilleur = f; }
