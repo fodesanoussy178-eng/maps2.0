@@ -2669,6 +2669,12 @@ function classer(cat){
 
 function ouvrirListe(cat){
   const c = CATS[cat]; if(!c) return;
+  // l'aide n'est cherchée que si quelqu'un la demande : dix recherches
+  // facturées à chaque ouverture de l'app seraient absurdes
+  if(SANS_CLASSEMENT.has(cat) && positionMoi)
+    chargerAide(positionMoi[0], positionMoi[1]).then(()=>{
+      if(filtreActif === cat) ouvrirListe(cat);
+    });
   afficherListe(c.emoji, c.label, classer(cat), SANS_CLASSEMENT.has(cat),
                 ()=>ouvrirListe(cat));
 }
@@ -2763,6 +2769,7 @@ function ouvrirResultats(q){
   const cat = categorieRecherchee(q);
   if(cat){
     filtreActif = cat; dessinerFiltres(); rendre();
+    if(SANS_CLASSEMENT.has(cat) && positionMoi) chargerAide(positionMoi[0], positionMoi[1]);
     pileEcrans = [];
     pousserEcran(()=>ouvrirListe(cat));
     // OSM ignore beaucoup d'équipements publics : on demande à Google et on
@@ -2782,6 +2789,67 @@ function ouvrirResultats(q){
   pileEcrans = [];
   pousserEcran(montrer);
   completerParGoogle(q, null, montrer);
+}
+
+/* ================================================================== */
+/*  Aide sociale : les grands réseaux, cherchés nommément             */
+/* ================================================================== */
+
+/* OpenStreetMap cartographie très mal l'aide alimentaire, et les portails
+   open data ne couvrent pas toutes les métropoles. Chercher les réseaux par
+   leur nom donne des adresses et surtout des HORAIRES DE DISTRIBUTION réels,
+   qui sont l'information vitale ici : « mardi 14h-16h » vaut mieux que
+   l'existence d'un point sur une carte. */
+const RESEAUX_AIDE = [
+  { q:"Restos du Cœur",             cat:"alimentaire" },
+  { q:"Banque Alimentaire",         cat:"alimentaire" },
+  { q:"épicerie solidaire",         cat:"alimentaire" },
+  { q:"distribution alimentaire",   cat:"alimentaire" },
+  { q:"Secours Populaire",          cat:"alimentaire" },
+  { q:"Secours Catholique",         cat:"asso" },
+  { q:"Croix-Rouge",                cat:"asso" },
+  { q:"CCAS action sociale",        cat:"emploi" },
+  { q:"accueil de jour sans-abri",  cat:"hebergement" },
+  { q:"hébergement d'urgence",      cat:"hebergement" },
+];
+
+/* Ces adresses ne bougent quasiment jamais : on les garde une semaine plutôt
+   que de relancer dix recherches facturées à chaque ouverture de l'app. */
+const cleAide = (lat,lng)=>"autour:aide:"+lat.toFixed(2)+","+lng.toFixed(2);
+let aideChargee = false;
+
+async function chargerAide(lat,lng){
+  if(aideChargee) return;
+  aideChargee = true;
+
+  try{
+    const brut = localStorage.getItem(cleAide(lat,lng));
+    if(brut){
+      const o = JSON.parse(brut);
+      if(Date.now() - o.t < 7*24*3600*1000){
+        o.l.forEach(x=>ajouterLieuxGoogle([x.f], x.cat));
+        return;
+      }
+    }
+  }catch(e){}
+
+  charge("Recherche des points d’aide…");
+  const garder = [];
+  await Promise.all(RESEAUX_AIDE.map(async r=>{
+    const res = await chercherGoogle(r.q, lat, lng);
+    res.forEach(f=>{
+      // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
+      if(distanceM(lat,lng,f.lat,f.lng) > 15000) return;
+      garder.push({f, cat:r.cat});
+      ajouterLieuxGoogle([f], r.cat);
+    });
+  }));
+  charge(null);
+
+  try{ localStorage.setItem(cleAide(lat,lng), JSON.stringify({t:Date.now(), l:garder})); }
+  catch(e){}
+  console.info("Aide sociale :", garder.length, "point(s) trouvé(s)");
+  majAccueil();
 }
 
 /* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
@@ -2948,6 +3016,8 @@ function ouvrirExplorer(){
 
   $("#feuille").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{
     filtreActif = b.dataset.ex;
+    if(SANS_CLASSEMENT.has(filtreActif) && positionMoi)
+      chargerAide(positionMoi[0], positionMoi[1]);
     dessinerFiltres(); rendre();
     if(filtreActif === "tout") fermerFeuille();
     else pousserEcran(()=>ouvrirListe(filtreActif));
