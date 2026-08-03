@@ -235,6 +235,10 @@ input{font-family:inherit;font-size:16px}
 .nav-x{flex-shrink:0;width:30px;height:30px;border:0;border-radius:50%;background:var(--paper);
   color:var(--ink);font-size:14px;display:grid;place-items:center}
 body.nav .leaflet-control-zoom{display:none}
+#navEtapes{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);z-index:700;
+  max-height:42%;overflow-y:auto;padding:6px 15px;border:1px solid var(--bord);
+  border-radius:14px;background:#fff;box-shadow:0 3px 16px rgba(20,30,25,.2);
+  animation:monte .3s cubic-bezier(.2,.9,.3,1)}
 
 .filtres{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 16px);z-index:600;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent);
@@ -313,6 +317,18 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   letter-spacing:.09em;text-transform:uppercase;color:var(--signal)}
 .reco-mode{font-size:15px;font-weight:700;line-height:1.25}
 .reco-co2{font-size:11.5px;color:#1B7F3B;font-weight:600}
+.trajet-etapes:not(:empty){margin-top:12px;border-top:1px solid rgba(20,30,25,.13)}
+.etape{display:flex;align-items:flex-start;gap:10px;padding:9px 0;
+  border-bottom:1px solid rgba(20,30,25,.09)}
+.etape:last-child{border-bottom:0}
+.etape-ic{flex-shrink:0;width:22px;text-align:center;font-size:15px;line-height:1.3}
+.etape-txt{flex:1;min-width:0;font-size:13.5px;font-weight:600;line-height:1.3}
+.etape-sous{display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--ink2)}
+.etape-min{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;color:var(--ink2);padding-top:2px}
+.service{font-weight:700;color:var(--ardoise)}
+.service-bloc{margin:-8px 0 14px;padding:8px 11px;border-radius:3px;
+  background:rgba(44,58,51,.08);font-size:12.5px;font-weight:600;color:var(--ardoise)}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
 .trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
 .trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
@@ -435,6 +451,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <span class="nav-txt" id="navTxt"></span>
   <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
 </div>
+<div id="navEtapes" hidden></div>
 <button class="ajouter" id="btnAjouter" hidden aria-label="Publier">
   <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
 </button>
@@ -510,6 +527,29 @@ const CATS = {
   toilettes:{label:"Toilettes",     emoji:"🚻", eph:false},
 };
 
+/* Mission locale, France Travail et Cap emploi partagent le même tag OSM
+   (office=employment_agency) alors qu'ils ne s'adressent pas au même public.
+   On les distingue par le nom : envoyer un jeune au mauvais guichet, ou une
+   personne en situation de handicap ailleurs qu'à Cap emploi, fait perdre
+   un déplacement à quelqu'un qui en a besoin. */
+const SERVICES = [
+  [/mission\s*locale/i,                  "Mission locale · 16-25 ans"],
+  [/france\s*travail|p[oô]le\s*emploi/i, "France Travail · demandeurs d’emploi"],
+  [/cap\s*emploi/i,                      "Cap emploi · handicap"],
+  [/maison\s*de\s*l['’ ]?emploi/i,       "Maison de l’emploi"],
+  [/ccas|centre\s*communal/i,            "CCAS · aide sociale communale"],
+  [/restos?\s*du\s*c(o|œ)ur/i,           "Restos du Cœur"],
+  [/secours\s*populaire/i,               "Secours populaire"],
+  [/secours\s*catholique/i,              "Secours catholique"],
+  [/croix[- ]rouge/i,                    "Croix-Rouge"],
+  [/banque\s*alimentaire/i,              "Banque alimentaire"],
+  [/emma(ü|u)s/i,                        "Emmaüs"],
+];
+function preciserService(nom){
+  for(const [re,lab] of SERVICES) if(re.test(nom||"")) return lab;
+  return "";
+}
+
 /* Classer une banque alimentaire ou un foyer d'urgence par étoiles n'a aucun
    sens : ces lieux sont toujours triés par distance, sans note ni palmarès. */
 const SANS_CLASSEMENT = new Set(["alimentaire","asso","hebergement","emploi","sante","mairie"]);
@@ -581,7 +621,10 @@ const REQUETES = [
   ["social_facility","shelter","hebergement"],   ["social_facility","group_home","hebergement"],
   ["amenity","social_facility","asso"],          ["amenity","social_centre","asso"],
   ["office","association","asso"], ["office","ngo","asso"], ["office","charity","asso"],
-  ["office","employment_agency","emploi"], ["office","government","emploi"],
+  ["office","employment_agency","emploi"],
+  // government=* plutôt que office=government, trop large : il ramenait les
+  // impôts et les annexes administratives dans les services d'aide à l'emploi
+  ["government","employment_agency","emploi"], ["government","social_welfare","emploi"],
 
   // -- santé
   ["amenity","hospital","sante"], ["amenity","clinic","sante"],
@@ -746,6 +789,7 @@ async function vraisLieux(lat,lng){
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[regle[2]].label),
       cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
       quand: t.opening_hours || "Voir sur place",
+      service: preciserService(t.name),      // Mission locale ≠ France Travail
       gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
     };
@@ -1314,6 +1358,7 @@ function ouvrirDetail(id){
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
     '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+(l.gratuit?'Gratuit':l.prix+' €')+'</span></div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
+    (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
     '<address class="adresse"><span class="ad-rue">'+esc(l.adresse)+'</span>'+
     '<span class="ad-ville">'+esc(l.cp)+'</span>'+
     '<button class="y-aller" id="btnYAller">Y aller</button></address>'+
@@ -1385,6 +1430,20 @@ function entrerNav(option, titre){
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
   $("#navBarre").hidden = false;
+  // en navigation, les étapes restent visibles : c'est là qu'on lit où descendre
+  const pas = $("#navEtapes");
+  if(option.etapes && option.etapes.length){
+    pas.innerHTML = option.etapes.map(e=>
+      '<div class="etape">'+
+        '<span class="etape-ic">'+e.ic+'</span>'+
+        '<span class="etape-txt">'+esc(e.txt)+
+          (e.sous ? '<span class="etape-sous">'+esc(e.sous)+'</span>' : '')+'</span>'+
+        '<span class="etape-min">'+e.min+' min</span>'+
+      '</div>').join("");
+    pas.hidden = false;
+  }else{
+    pas.innerHTML = ""; pas.hidden = true;
+  }
   rendre();                              // les autres marqueurs s'effacent
   dessinerSegments(option.segments);     // recadrage sur la totalité du parcours
 }
@@ -1394,6 +1453,7 @@ function quitterNav(){
   modeNav = false;
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
+  $("#navEtapes").hidden = true;
   ["#btnExplorer","#btnAjouter","#haut","#btnPartager"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
@@ -1490,6 +1550,7 @@ async function afficherTrajet(l){
   panneau.innerHTML =
     '<div class="trajet-reco" id="trajetReco"></div>'+
     '<div class="trajet-temps" id="trajetTemps"></div>'+
+    '<div class="trajet-etapes" id="trajetEtapes"></div>'+
     '<p class="trajet-aide" id="trajetAide">Estimation immédiate · calcul par les rues en cours…</p>'+
     '<div id="trajetInfos"><p class="trajet-charge">Recherche des vélos et des transports…</p></div>';
 
@@ -1514,6 +1575,18 @@ async function afficherTrajet(l){
         peindre();
         entrerNav(options[iActif], l.titre);   // plein écran, comme Plans ou Maps
       });
+    // étapes détaillées : où monter, où descendre, comment finir
+    const pas = $("#trajetEtapes");
+    if(pas){
+      const et = options[iActif].etapes;
+      pas.innerHTML = et ? et.map(e=>
+        '<div class="etape">'+
+          '<span class="etape-ic">'+e.ic+'</span>'+
+          '<span class="etape-txt">'+esc(e.txt)+
+            (e.sous ? '<span class="etape-sous">'+esc(e.sous)+'</span>' : '')+'</span>'+
+          '<span class="etape-min">'+e.min+' min</span>'+
+        '</div>').join("") : "";
+    }
     dessinerSegments(options[iActif].segments);
     return true;
   };
@@ -1549,8 +1622,9 @@ async function afficherTrajet(l){
   /* --- 3. En arrière-plan : vélos en libre-service et transports en commun --- */
   Promise.all([
     stationsVeloProchesCache(depart[0], depart[1]),
-    arretsProchesCache(depart[0], depart[1])
-  ]).then(async ([stations, arrets])=>{
+    arretsProchesCache(depart[0], depart[1]),
+    arretsProches(dest[0], dest[1])        // pour savoir à quel arrêt descendre
+  ]).then(async ([stations, arrets, arretsArrivee])=>{
     const zone = $("#trajetInfos");
     if(!zone) return;
 
@@ -1565,16 +1639,48 @@ async function afficherTrajet(l){
 
     if(arrets && arrets.length){
       // un choix distinct par type d'arrêt détecté (métro, tram, bus), pas un seul mélangé
-      const parType = {};
+      const parType = {}, parTypeArrivee = {};
       arrets.forEach(a=>{ if(!parType[a.type]) parType[a.type]=a; });
+      (arretsArrivee||[]).forEach(a=>{ if(!parTypeArrivee[a.type]) parTypeArrivee[a.type]=a; });
+
       for(const type of Object.keys(parType)){
-        const a = parType[type];
-        const segMarche = await segmentTrajet("pied", depart, [a.lat,a.lng]);
-        const minTransport = segMarche.min +
-          tempsTrajetMinutes(distanceM(a.lat,a.lng,dest[0],dest[1]), VITESSE_TRANSPORT_KMH[type]||18) + 5;
+        const monte   = parType[type];
+        const descend = parTypeArrivee[type];   // où descendre, côté arrivée
+        // sans arrêt utile près du but, prendre ce mode ne rapproche de rien :
+        // on exige que descendre là gagne au moins 300 m de marche
+        const gain = descend
+          ? distanceM(monte.lat,monte.lng,dest[0],dest[1]) -
+            distanceM(descend.lat,descend.lng,dest[0],dest[1])
+          : 0;
+        if(!descend || gain < 300) continue;
+
+        const [versArret, depuisArret] = await Promise.all([
+          segmentTrajet("pied", depart, [monte.lat,monte.lng]),
+          segmentTrajet("pied", [descend.lat,descend.lng], dest)
+        ]);
+        const minRoule = tempsTrajetMinutes(
+          distanceM(monte.lat,monte.lng,descend.lat,descend.lng),
+          VITESSE_TRANSPORT_KMH[type] || 18);
+        const attente = ATTENTE_MIN[type] || 5;
+
         options.push({
-          mode:type, min:minTransport,
-          segments:[segMarche, { coords:[[a.lat,a.lng],dest], reel:false }]
+          mode:type,
+          min: versArret.min + attente + minRoule + depuisArret.min,
+          etapes:[
+            {ic:"🚶", txt:"Marcher jusqu’à "+monte.nom, min:versArret.min,
+             sous:formatDist(monte.dist)},
+            {ic:EMOJI_MODE[type], txt:"Monter à "+monte.nom, min:attente,
+             sous:"attente moyenne estimée"},
+            {ic:"🏁", txt:"Descendre à "+descend.nom, min:minRoule,
+             sous:formatDist(distanceM(monte.lat,monte.lng,descend.lat,descend.lng))+" de trajet"},
+            {ic:"🚶", txt:"Finir à pied jusqu’à "+l.titre, min:depuisArret.min,
+             sous:formatDist(descend.dist)}
+          ],
+          segments:[
+            versArret,
+            {coords:[[monte.lat,monte.lng],[descend.lat,descend.lng]], reel:false},
+            depuisArret
+          ]
         });
       }
     }
@@ -1701,6 +1807,8 @@ async function stationsDuSysteme(urlDecouverte, lat, lng){
 /* ================================================================== */
 
 const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16 };
+/* attente moyenne à l'arrêt, faute d'horaires temps réel accessibles partout */
+const ATTENTE_MIN = { metro:4, tram:5, bus:7 };
 
 async function arretsProches(lat,lng){
   try{
@@ -2215,6 +2323,7 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
     if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
     if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
+    if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
     sous.push(esc(x.adresse||""));
     // horaires réels quand OpenStreetMap les connaît
     if(x.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(x.quand)) sous.push(esc(x.quand));
