@@ -278,6 +278,11 @@ body.nav .leaflet-control-zoom{display:none}
 @keyframes monte{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .poignee{display:block;width:46px;height:4px;margin:0 auto 16px;border:0;border-radius:99px;
   background:rgba(20,30,25,.22);padding:0}
+.retour{display:inline-flex;align-items:center;margin-bottom:12px;padding:7px 13px 7px 9px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+.retour:active{transform:scale(.96)}
 
 .d-haut{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tag{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;
@@ -483,6 +488,8 @@ const CATS = {
   spectacle:{label:"Spectacles",  emoji:"🎭", eph:false},
   concert:  {label:"Concerts",    emoji:"🎵", eph:false},
   marche:   {label:"Marchés",     emoji:"🧺", eph:false},
+  friperie: {label:"Friperies",   emoji:"👕", eph:false},
+  commerce: {label:"Commerces",   emoji:"🛍", eph:false},
 
   alimentaire:{label:"Aide alimentaire", emoji:"🥫", eph:false},
   asso:       {label:"Associations",     emoji:"🤝", eph:false},
@@ -503,11 +510,63 @@ const CATS = {
   toilettes:{label:"Toilettes",     emoji:"🚻", eph:false},
 };
 
+/* Classer une banque alimentaire ou un foyer d'urgence par étoiles n'a aucun
+   sens : ces lieux sont toujours triés par distance, sans note ni palmarès. */
+const SANS_CLASSEMENT = new Set(["alimentaire","asso","hebergement","emploi","sante","mairie"]);
+
+/* Ce que les gens tapent réellement dans la recherche, par catégorie. */
+const SYNONYMES = {
+  resto:["restaurant","resto","manger","brasserie","diner","dejeuner"],
+  fastfood:["fast food","fastfood","kebab","burger","tacos","pizza","snack","friterie"],
+  cafe:["cafe","coffee","boulangerie","salon de the","brunch"],
+  bar:["bar","pub","biere","apero","boire","verre","cocktail"],
+  cinema:["cinema","film","seance"],
+  spectacle:["theatre","spectacle","scene","comedie"],
+  concert:["concert","musique","boite","club","live"],
+  marche:["marche","brocante","halles"],
+  friperie:["friperie","fripe","vetement","seconde main","occasion","vintage","depot vente"],
+  commerce:["commerce","boutique","magasin","courses","supermarche","epicerie","coiffeur"],
+  alimentaire:["aide alimentaire","banque alimentaire","epicerie solidaire","soupe populaire","restos du coeur"],
+  asso:["asso","association","ong","benevolat","solidarite","centre social","maison de quartier"],
+  hebergement:["hebergement","dormir","abri","foyer","urgence","115","logement"],
+  sante:["sante","hopital","pharmacie","medecin","docteur","clinique","urgences"],
+  emploi:["emploi","mission locale","france travail","pole emploi","travail","insertion","cv"],
+  biblio:["bibliotheque","mediatheque","livre","lecture","etudier"],
+  musee:["musee","galerie","expo","exposition"],
+  parc:["parc","jardin","square","vert","promenade"],
+  terrain:["terrain","sport","foot","basket","piscine","skate","gym","muscu"],
+  ecole:["ecole","college","lycee","universite","fac","campus"],
+  mairie:["mairie","poste","administration","service public","papiers"],
+  velo:["velo","bike","station velo","libre service"],
+  metro:["metro","station"],
+  bus:["bus","tram","arret","transport"],
+  recharge:["recharge","borne","electrique"],
+  toilettes:["toilette","wc","sanitaire"],
+  food:["street food","food truck","cantine"],
+  event:["evenement","event","soiree","anime"],
+  popup:["popup","pop up","vide grenier"],
+  collecte:["collecte","don","donner","recolte"],
+};
+
+/* Rend « bar », « Bars » et « boire un verre » équivalents. */
+function categorieRecherchee(q){
+  const t = sansAccents(q).trim();
+  if(t.length < 3) return null;
+  for(const [id,c] of Object.entries(CATS)){
+    if(sansAccents(c.label).includes(t)) return id;
+  }
+  for(const [id,mots] of Object.entries(SYNONYMES)){
+    if(mots.some(m=>{ const s=sansAccents(m); return s.includes(t) || t.includes(s); })) return id;
+  }
+  return null;
+}
+
 /* Panneau « Explorer » : une catégorie peut appartenir à plusieurs groupes
    (la street food est à la fois de la nourriture et une sortie). */
 const GROUPES = [
   { label:"Manger", emoji:"🍴", cats:["resto","fastfood","cafe","food","marche"] },
-  { label:"Sortir", emoji:"🎉", cats:["spectacle","concert","bar","cinema","food","event","popup"] },
+  { label:"Acheter",emoji:"🛍", cats:["friperie","commerce","marche","popup"] },
+  { label:"Sortir", emoji:"🎉", cats:["spectacle","concert","bar","cinema","food","event","popup","studio","sport"] },
   { label:"Aide",   emoji:"❤️", cats:["alimentaire","asso","hebergement","sante","emploi","collecte"] },
   { label:"Ville",  emoji:"🏛", cats:["biblio","musee","parc","terrain","ecole","mairie",
                                       "velo","metro","bus","recharge","toilettes"] },
@@ -528,6 +587,13 @@ const REQUETES = [
   ["amenity","hospital","sante"], ["amenity","clinic","sante"],
   ["amenity","doctors","sante"],  ["amenity","pharmacy","sante"],
   ["amenity","health_post","sante"],
+
+  // -- boutiques : la friperie avant les vêtements neufs, sinon elle est absorbée
+  ["shop","second_hand","friperie"], ["shop","charity","friperie"],
+  ["shop","clothes","friperie"], ["shop","books","commerce"],
+  ["shop","convenience","commerce"], ["shop","supermarket","commerce"],
+  ["shop","greengrocer","commerce"], ["shop","butcher","commerce"],
+  ["shop","hairdresser","commerce"], ["shop","bakery","cafe"],
 
   // -- manger
   ["amenity","restaurant","resto"], ["amenity","fast_food","fastfood"],
@@ -1169,7 +1235,7 @@ function rendre(){
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
-      m.on("click", ()=>ouvrirDetail(l.id));
+      m.on("click", ()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); });
       marqueurs.set(l.id,m);
       return;
     }
@@ -1193,14 +1259,33 @@ function rendre(){
 /*  Feuilles                                                          */
 /* ================================================================== */
 
+/* Pile d'écrans : Explorer → liste d'une catégorie → fiche d'un lieu.
+   Chaque entrée est la fonction capable de réafficher son écran, ce qui rend
+   le retour arrière possible sans dupliquer le rendu. */
+let pileEcrans = [];
+
+function pousserEcran(fn){ pileEcrans.push(fn); fn(); }
+
+function retourEcran(){
+  pileEcrans.pop();                                   // on quitte l'écran courant
+  const precedent = pileEcrans[pileEcrans.length-1];
+  if(precedent) precedent(); else fermerFeuille();
+}
+
 function ouvrirFeuille(html){
   $("#voile").hidden=false;
   const f=$("#feuille");
-  f.innerHTML='<button class="poignee" aria-label="Fermer"></button>'+html;
+  const retour = pileEcrans.length > 1
+    ? '<button class="retour" id="btnRetour">‹ Retour</button>' : '';
+  f.innerHTML='<button class="poignee" aria-label="Fermer"></button>'+retour+html;
   f.hidden=false;
+  f.scrollTop = 0;
   f.querySelector(".poignee").onclick=fermerFeuille;
+  const r = f.querySelector("#btnRetour");
+  if(r) r.onclick = retourEcran;
 }
 function fermerFeuille(){
+  pileEcrans = [];
   $("#voile").hidden=true; $("#feuille").hidden=true;
   const avaitTrajet = ligneCouches.length > 0;
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches=[];
@@ -1738,7 +1823,87 @@ function validerPose(){
   if(retourFormulaire && brouillon){ brouillon.lat=c.lat; brouillon.lng=c.lng; }
   else brouillon = nouveauBrouillon();
   retourFormulaire = false;
-  fermerModePose(); dessinerFormulaire();
+  fermerModePose();
+  pileEcrans = [];
+  pousserEcran(dessinerFormulaire);
+}
+
+/* Lieux permanents proches où rien n'est encore prévu aujourd'hui : proposer
+   une adresse qui existe déjà évite les événements posés au milieu de nulle part. */
+function lieuxLibres(){
+  const [lat,lng] = positionMoi;
+  return lieux
+    .filter(l=>!(CATS[l.cat]||{}).eph)
+    .filter(l=>!indexEvenements.get(l.titre))
+    .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
+    .sort((a,b)=>a.dist-b.dist)
+    .slice(0,15);
+}
+
+async function chercherAdresse(q){
+  try{
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=6&q="+
+      encodeURIComponent(q));
+    if(!r.ok) return [];
+    return (await r.json()).map(a=>({
+      nom:a.display_name, lat:parseFloat(a.lat), lng:parseFloat(a.lon)
+    }));
+  }catch(e){ console.error("Recherche d’adresse :", e); return []; }
+}
+
+function ouvrirChoixLieu(){
+  const libres = lieuxLibres();
+  ouvrirFeuille(
+    '<h2 class="pub">Où poser ça&nbsp;?</h2>'+
+    '<label class="champ"><span>Chercher une adresse</span>'+
+      '<input type="text" id="clQ" placeholder="12 rue de la Paix…"></label>'+
+    '<div id="clRes"></div>'+
+    '<p class="ex-groupe">Lieux libres autour de toi</p>'+
+    (libres.length
+      ? libres.map(l=>{
+          const c = CATS[l.cat] || {emoji:"📍"};
+          return '<button class="rang" data-lib="'+esc(l.id)+'">'+
+            '<span class="rang-emoji">'+c.emoji+'</span>'+
+            '<span class="rang-txt"><span class="rang-nom">'+esc(l.titre)+'</span>'+
+            '<span class="rang-sous">'+esc(l.adresse||"")+'</span></span>'+
+            '<span class="rang-dist">'+formatDist(l.dist)+'</span></button>';
+        }).join("")
+      : '<p class="liste-vide">Aucun lieu libre détecté autour.</p>')
+  );
+
+  const poser = (nom, lat, lng)=>{
+    brouillon.adresse = nom; brouillon.lat = lat; brouillon.lng = lng;
+    retourEcran();                       // retour au formulaire, déjà rempli
+  };
+
+  $("#feuille").querySelectorAll("[data-lib]").forEach(b=>b.onclick=()=>{
+    const l = lieux.find(x=>x.id===b.dataset.lib);
+    if(l) poser(l.titre, l.lat, l.lng);
+  });
+
+  const champ = $("#clQ");
+  let minuteur;
+  champ.oninput = ()=>{
+    clearTimeout(minuteur);
+    const q = champ.value.trim();
+    if(q.length < 4){ const z=$("#clRes"); if(z) z.innerHTML=""; return; }
+    // on attend une pause de frappe : Nominatim tolère une requête par seconde
+    minuteur = setTimeout(async ()=>{
+      const res = await chercherAdresse(q);
+      const zone = $("#clRes");
+      if(!zone) return;
+      zone.innerHTML = res.length
+        ? res.map((a,i)=>'<button class="rang" data-adr="'+i+'">'+
+            '<span class="rang-emoji">📍</span>'+
+            '<span class="rang-txt"><span class="rang-sous">'+esc(a.nom)+'</span></span>'+
+          '</button>').join("")
+        : '<p class="liste-vide">Aucune adresse trouvée.</p>';
+      zone.querySelectorAll("[data-adr]").forEach(b=>b.onclick=()=>{
+        const a = res[Number(b.dataset.adr)];
+        poser(a.nom.split(",").slice(0,2).join(",").trim(), a.lat, a.lng);
+      });
+    }, 700);
+  };
 }
 
 function dessinerFormulaire(){
@@ -1756,7 +1921,8 @@ function dessinerFormulaire(){
       '<div class="ou"><span class="ou-txt">'+
         '<span class="ou-nom">'+esc(b.adresse||"Point posé sur la carte")+'</span>'+
         '<span class="ou-coord">'+b.lat.toFixed(5)+', '+b.lng.toFixed(5)+'</span>'+
-      '</span><button class="ou-bouton" id="fDeplacer">Déplacer</button></div>'+
+      '</span><button class="ou-bouton" id="fChoisir">Choisir</button>'+
+      '<button class="ou-bouton" id="fDeplacer">Carte</button></div>'+
       '<input type="text" id="fAdr" maxlength="52" placeholder="Nom du lieu ou adresse" value="'+esc(b.adresse)+'" style="margin-top:9px">'+
     '</div>'+
 
@@ -1824,6 +1990,7 @@ function dessinerFormulaire(){
     f.querySelector(".ou-nom").textContent = b.adresse || "Point posé sur la carte";
   };
 
+  $("#fChoisir").onclick  = ()=>{ memo(); pousserEcran(ouvrirChoixLieu); };
   $("#fDeplacer").onclick = ()=>{ memo(); retourFormulaire=true; fermerFeuille(); ouvrirModePose(); };
   $("#fOk").onclick = ()=>{ memo(); publier(); };
 }
@@ -1984,15 +2151,17 @@ function evenementsDe(lieu){
 /* "auto" = pertinence · "note" = les mieux notés · "distance" = les plus proches */
 let triListe = "auto";
 
-function classer(cat){
+function classerLieux(liste, sansPalmares){
   const [lat,lng] = positionMoi;
-  const dedans = lieux.filter(l=>l.cat===cat).map(l=>{
+  const dedans = liste.map(l=>{
     const d = distanceM(lat,lng,l.lat,l.lng);
-    const evs = (CATS[cat]||{}).eph ? [] : evenementsDe(l);
+    const evs = (CATS[l.cat]||{}).eph ? [] : evenementsDe(l);
     return Object.assign({}, l, {dist:d, evs:evs.length, mien:l.par==="Anonyme"});
   });
 
   dedans.sort((a,b)=>{
+    // une banque alimentaire ou un foyer ne se classe pas : le plus proche d'abord
+    if(sansPalmares) return a.dist - b.dist;
     if(triListe === "distance") return a.dist - b.dist;
     if(triListe === "note"){
       // le nombre d'avis départage : 4,8 sur 6 avis pèse moins que 4,6 sur 800
@@ -2010,26 +2179,39 @@ function classer(cat){
   return dedans;
 }
 
+function classer(cat){
+  return classerLieux(lieux.filter(l=>l.cat===cat), SANS_CLASSEMENT.has(cat));
+}
+
 function ouvrirListe(cat){
   const c = CATS[cat]; if(!c) return;
-  const l = classer(cat);
+  afficherListe(c.emoji, c.label, classer(cat), SANS_CLASSEMENT.has(cat),
+                ()=>ouvrirListe(cat));
+}
+
+/* Une seule mise en page pour les listes d'une catégorie et les résultats de
+   recherche. `sansPalmares` masque le tri et les notes (lieux d'aide). */
+function afficherListe(emoji, titre, l, sansPalmares, redessiner){
   const avecNotes = l.some(x=>x.note);
-  const critere = triListe === "distance" ? "Du plus proche au plus loin."
+  const critere = sansPalmares
+    ? "Trié par distance. Ces lieux ne sont pas classés : ils rendent tous le même service."
+    : triListe === "distance" ? "Du plus proche au plus loin."
     : triListe === "note"
       ? (avecNotes ? "Les mieux notés d’abord, à note égale le plus commenté."
                    : "Aucune note disponible ici : l’ordre retombe sur la distance.")
       : (avecNotes ? "Classé par note, puis par ce qui s’y passe, puis par distance."
                    : "Classé par ce qui s’y passe, puis par distance.");
 
-  const barreTri = '<div class="tri-barre">'+
+  const barreTri = sansPalmares ? "" : '<div class="tri-barre">'+
     [["auto","Pertinence"],["note","Mieux notés"],["distance","Plus proches"]]
       .map(([id,lab])=>'<button class="tri'+(triListe===id?" actif":"")+'" data-tri="'+id+'">'+lab+'</button>')
       .join("")+
     '</div>';
 
   const lignes = l.map((x,i)=>{
+    const c = CATS[x.cat] || {emoji:"📍"};
     const sous = [];
-    if(x.note) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
+    if(x.note && !sansPalmares) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
     if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
     if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
@@ -2047,7 +2229,7 @@ function ouvrirListe(cat){
   }).join("");
 
   ouvrirFeuille(
-    '<div class="liste-tete"><h2>'+c.emoji+' '+c.label+'</h2>'+
+    '<div class="liste-tete"><h2>'+emoji+' '+esc(titre)+'</h2>'+
     '<span class="liste-compte">'+l.length+' autour</span></div>'+
     barreTri+
     '<p class="liste-tri">'+critere+'</p>'+
@@ -2056,16 +2238,33 @@ function ouvrirListe(cat){
 
   $("#feuille").querySelectorAll("[data-tri]").forEach(b=>b.onclick=()=>{
     triListe = b.dataset.tri;
-    ouvrirListe(cat);                     // on redessine la liste dans le nouvel ordre
+    redessiner();          // même écran, nouvel ordre : on n'empile pas de retour
   });
 
   $("#feuille").querySelectorAll("[data-va]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.va, cible = lieux.find(x=>x.id===id);
     if(!cible) return;
-    fermerFeuille();
     map.flyTo([cible.lat,cible.lng], Math.max(map.getZoom(),17), {duration:.7});
-    setTimeout(()=>ouvrirDetail(id), 750);
+    pousserEcran(()=>ouvrirDetail(id));   // le retour ramène à la liste
   });
+}
+
+/* Recherche libre : « bar » ouvre le classement des bars, « chez Momo »
+   cherche par nom. Dans les deux cas on retombe sur la même liste classée. */
+function ouvrirResultats(q){
+  const cat = categorieRecherchee(q);
+  if(cat){
+    filtreActif = cat; dessinerFiltres(); rendre();
+    pileEcrans = [];
+    pousserEcran(()=>ouvrirListe(cat));
+    return;
+  }
+  const t = sansAccents(q);
+  const trouves = lieux.filter(l=>
+    sansAccents(l.titre+" "+(l.adresse||"")).includes(t));
+  pileEcrans = [];
+  pousserEcran(()=>afficherListe("🔎", "« "+q+" »",
+    classerLieux(trouves, false), false, ()=>ouvrirResultats(q)));
 }
 
 /* ================================================================== */
@@ -2105,7 +2304,8 @@ function ouvrirExplorer(){
   $("#feuille").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{
     filtreActif = b.dataset.ex;
     dessinerFiltres(); rendre();
-    if(filtreActif === "tout") fermerFeuille(); else ouvrirListe(filtreActif);
+    if(filtreActif === "tout") fermerFeuille();
+    else pousserEcran(()=>ouvrirListe(filtreActif));
   });
 }
 
@@ -2125,6 +2325,14 @@ $("#btnFermerRech").onclick=()=>{
   $("#rech").value=""; recherche=""; rendre();
 };
 $("#rech").oninput=e=>{ recherche=e.target.value; rendre(); };
+// Entrée : on bascule du filtrage des pastilles vers un vrai classement
+$("#rech").onkeydown=e=>{
+  if(e.key !== "Enter") return;
+  const q = e.target.value.trim();
+  if(!q) return;
+  e.target.blur();
+  ouvrirResultats(q);
+};
 $("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirModePose(); };
 $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
@@ -2135,7 +2343,8 @@ $("#btnExplorer").onclick=(e)=>{
   if(e.target.classList.contains("ex-x")){
     filtreActif = "tout"; dessinerFiltres(); rendre(); return;
   }
-  ouvrirExplorer();
+  pileEcrans = [];
+  pousserEcran(ouvrirExplorer);
 };
 </script>
 </body>
