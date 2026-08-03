@@ -71,6 +71,12 @@ input{font-family:inherit;font-size:16px}
 .poi-nom{max-width:104px;text-align:center;font-size:10px;font-weight:600;line-height:1.15;
   color:#37423D;letter-spacing:-.005em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+.poi-rond{position:relative}
+.poi-pastille{position:absolute;top:-5px;right:-6px;min-width:15px;height:15px;padding:0 3px;
+  border-radius:99px;background:var(--signal);color:#fff;border:1.5px solid #fff;
+  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;font-style:normal;
+  display:grid;place-items:center;animation:battement 2.2s ease-in-out infinite}
+@keyframes battement{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
 .loin .poi-nom{display:none}
 .loin .poi-rond{width:11px;height:11px;font-size:0;border-width:1.5px;background:var(--ardoise)}
 
@@ -187,6 +193,49 @@ input{font-family:inherit;font-size:16px}
 .barre input::placeholder{color:#A3ADA6}
 .icone-btn{border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
 
+/* ---- bouton Explorer : une seule entrée au lieu d'une longue piste ---- */
+.explorer{position:absolute;left:14px;bottom:calc(var(--safe-b) + 16px);z-index:601;
+  display:flex;align-items:center;gap:7px;padding:13px 18px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font-size:14px;font-weight:600;
+  box-shadow:0 3px 14px rgba(20,30,25,.18);transition:transform .18s,background .18s}
+.explorer:active{transform:scale(.96)}
+.explorer.filtre-actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
+.ex-x{margin-left:3px;padding:0 2px;opacity:.7;font-size:15px}
+
+.ex-groupe{margin:20px 0 10px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.ex-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.ex-cat{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:11px 12px;
+  border:1px solid var(--bord);border-radius:3px;background:#fff;text-align:left;
+  transition:transform .15s,background .15s}
+.ex-cat:active{transform:scale(.96)}
+.ex-cat.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.ex-emoji{font-size:17px;line-height:1}
+.ex-lab{font-size:12.5px;font-weight:600;line-height:1.2}
+.ex-n{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;opacity:.6}
+.ex-tout{width:100%;padding:12px;border:1px solid var(--bord);border-radius:3px;background:#fff;
+  font-size:13.5px;font-weight:600;color:var(--ink)}
+.ex-tout.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+
+/* ---- grappes de marqueurs quand la carte est éloignée ---- */
+.grappe{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
+  display:grid;place-items:center;min-width:32px;height:32px;padding:0 8px;border-radius:99px;
+  background:var(--ardoise);color:#fff;border:2px solid #fff;
+  font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+  box-shadow:0 2px 8px rgba(20,30,25,.32);animation:surgit .2s ease-out}
+
+/* ---- mode navigation : la carte prend tout, le reste s'efface ---- */
+#navBarre{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 14px);z-index:700;
+  display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;box-shadow:0 3px 16px rgba(20,30,25,.2);
+  animation:monteT .24s}
+.nav-mode{font-size:19px;line-height:1}
+.nav-txt{flex:1;min-width:0;font-size:14px;font-weight:600;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-x{flex-shrink:0;width:30px;height:30px;border:0;border-radius:50%;background:var(--paper);
+  color:var(--ink);font-size:14px;display:grid;place-items:center}
+body.nav .leaflet-control-zoom{display:none}
+
 .filtres{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 16px);z-index:600;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent);
   mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent)}
@@ -252,6 +301,13 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
 .trajet-temps button{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper);font:inherit;cursor:pointer}
 .trajet-temps button.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
+.trajet-reco{display:flex;flex-direction:column;gap:3px;margin-bottom:11px;padding:11px 13px;
+  border-radius:3px;background:rgba(255,74,23,.08);border:1px solid rgba(255,74,23,.25)}
+.trajet-reco:empty{display:none}
+.reco-titre{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--signal)}
+.reco-mode{font-size:15px;font-weight:700;line-height:1.25}
+.reco-co2{font-size:11.5px;color:#1B7F3B;font-weight:600}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
 .trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
 .trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
@@ -367,7 +423,13 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <button class="mini" id="btnRevenir" hidden>◎ Revenir</button>
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
 
-<div class="filtres" id="filtres" hidden><div class="piste" id="piste"></div></div>
+<button class="explorer" id="btnExplorer" hidden></button>
+
+<div id="navBarre" hidden>
+  <span class="nav-mode" id="navMode"></span>
+  <span class="nav-txt" id="navTxt"></span>
+  <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
+</div>
 <button class="ajouter" id="btnAjouter" hidden aria-label="Publier">
   <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
 </button>
@@ -404,37 +466,96 @@ window.addEventListener("error", e=>{ panne("Ça a coincé", e.message||"Script 
 /* ================================================================== */
 
 const CATS = {
-  popup:   {label:"Pop-up",    emoji:"🧢", eph:true},
-  event:   {label:"Événement", emoji:"🔊", eph:true},
-  collecte:{label:"Collecte",  emoji:"📦", eph:true},
-  studio:  {label:"Studio",    emoji:"🎧", eph:true},
-  sport:   {label:"Sport",     emoji:"⚽", eph:true},
-  food:    {label:"Street food", emoji:"🍜", eph:true},
-  parc:    {label:"Parc",      emoji:"🌳", eph:false},
-  musee:   {label:"Musée",     emoji:"🏛", eph:false},
-  biblio:  {label:"Biblio",    emoji:"📚", eph:false},
-  sportlieu:{label:"Terrain",  emoji:"🛹", eph:false},
-  salle:   {label:"Salle",     emoji:"🎤", eph:false},
-  marche:  {label:"Marché",    emoji:"🧺", eph:false},
-  resto:   {label:"Restos",    emoji:"🍽", eph:false},
-  aide:    {label:"Aide",      emoji:"🤝", eph:false},
-  asso:    {label:"Assos",     emoji:"✊", eph:false},
+  /* ---- couche événements : ce qui se passe, publié par les gens ---- */
+  popup:   {label:"Pop-up",     emoji:"🧢", eph:true},
+  event:   {label:"Événement",  emoji:"🔊", eph:true},
+  collecte:{label:"Collecte",   emoji:"📦", eph:true},
+  studio:  {label:"Studio",     emoji:"🎧", eph:true},
+  sport:   {label:"Sport",      emoji:"⚽", eph:true},
+  food:    {label:"Street food",emoji:"🍜", eph:true},
+
+  /* ---- couche permanente : la ville telle qu'elle existe ---- */
+  resto:    {label:"Restaurants", emoji:"🍔", eph:false},
+  fastfood: {label:"Fast-food",   emoji:"🍕", eph:false},
+  cafe:     {label:"Cafés",       emoji:"☕", eph:false},
+  bar:      {label:"Bars",        emoji:"🍺", eph:false},
+  cinema:   {label:"Cinéma",      emoji:"🎬", eph:false},
+  spectacle:{label:"Spectacles",  emoji:"🎭", eph:false},
+  concert:  {label:"Concerts",    emoji:"🎵", eph:false},
+  marche:   {label:"Marchés",     emoji:"🧺", eph:false},
+
+  alimentaire:{label:"Aide alimentaire", emoji:"🥫", eph:false},
+  asso:       {label:"Associations",     emoji:"🤝", eph:false},
+  hebergement:{label:"Hébergement",      emoji:"🏠", eph:false},
+  sante:      {label:"Santé",            emoji:"🏥", eph:false},
+  emploi:     {label:"Emploi & droits",  emoji:"📋", eph:false},
+
+  biblio:   {label:"Bibliothèques", emoji:"📚", eph:false},
+  musee:    {label:"Musées",        emoji:"🏛", eph:false},
+  parc:     {label:"Parcs",         emoji:"🌳", eph:false},
+  terrain:  {label:"Terrains",      emoji:"🏀", eph:false},
+  ecole:    {label:"Écoles",        emoji:"🎓", eph:false},
+  mairie:   {label:"Services",      emoji:"🏛", eph:false},
+  velo:     {label:"Stations vélo", emoji:"🚲", eph:false},
+  metro:    {label:"Métro",         emoji:"🚇", eph:false},
+  bus:      {label:"Bus & tram",    emoji:"🚌", eph:false},
+  recharge: {label:"Recharge",      emoji:"🔌", eph:false},
+  toilettes:{label:"Toilettes",     emoji:"🚻", eph:false},
 };
 
+/* Panneau « Explorer » : une catégorie peut appartenir à plusieurs groupes
+   (la street food est à la fois de la nourriture et une sortie). */
+const GROUPES = [
+  { label:"Manger", emoji:"🍴", cats:["resto","fastfood","cafe","food","marche"] },
+  { label:"Sortir", emoji:"🎉", cats:["spectacle","concert","bar","cinema","food","event","popup"] },
+  { label:"Aide",   emoji:"❤️", cats:["alimentaire","asso","hebergement","sante","emploi","collecte"] },
+  { label:"Ville",  emoji:"🏛", cats:["biblio","musee","parc","terrain","ecole","mairie",
+                                      "velo","metro","bus","recharge","toilettes"] },
+];
+
+/* [clé OSM, valeur, catégorie] — l'ordre compte : la première règle qui
+   correspond gagne, donc les cas précis passent avant les cas généraux
+   (social_facility=food_bank avant amenity=social_facility). */
 const REQUETES = [
-  ["leisure","park","parc"], ["leisure","garden","parc"],
-  ["tourism","museum","musee"], ["tourism","gallery","musee"],
-  ["amenity","library","biblio"],
-  ["leisure","skatepark","sportlieu"], ["leisure","pitch","sportlieu"],
-  ["amenity","theatre","salle"], ["amenity","community_centre","salle"],
-  ["amenity","marketplace","marche"],
-  ["amenity","restaurant","resto"], ["amenity","cafe","resto"], ["amenity","fast_food","resto"],
-  // aide sociale : CCAS, maisons de quartier, mission locale, Pôle emploi
-  ["amenity","social_facility","aide"], ["amenity","social_centre","aide"],
-  ["office","employment_agency","aide"], ["office","government","aide"],
-  // associations et ONG
+  // -- aide, en premier car ce sont des sous-tags d'amenity plus génériques
+  ["social_facility","food_bank","alimentaire"], ["social_facility","soup_kitchen","alimentaire"],
+  ["social_facility","shelter","hebergement"],   ["social_facility","group_home","hebergement"],
+  ["amenity","social_facility","asso"],          ["amenity","social_centre","asso"],
   ["office","association","asso"], ["office","ngo","asso"], ["office","charity","asso"],
-  ["club","social","asso"],
+  ["office","employment_agency","emploi"], ["office","government","emploi"],
+
+  // -- santé
+  ["amenity","hospital","sante"], ["amenity","clinic","sante"],
+  ["amenity","doctors","sante"],  ["amenity","pharmacy","sante"],
+  ["amenity","health_post","sante"],
+
+  // -- manger
+  ["amenity","restaurant","resto"], ["amenity","fast_food","fastfood"],
+  ["amenity","cafe","cafe"],        ["amenity","marketplace","marche"],
+
+  // -- sortir
+  ["amenity","bar","bar"], ["amenity","pub","bar"], ["amenity","biergarten","bar"],
+  ["amenity","cinema","cinema"], ["amenity","theatre","spectacle"],
+  ["amenity","arts_centre","spectacle"], ["amenity","community_centre","spectacle"],
+  ["amenity","nightclub","concert"], ["amenity","music_venue","concert"],
+
+  // -- ville
+  ["amenity","library","biblio"],
+  ["tourism","museum","musee"], ["tourism","gallery","musee"],
+  ["leisure","park","parc"], ["leisure","garden","parc"],
+  ["leisure","pitch","terrain"], ["leisure","skatepark","terrain"],
+  ["leisure","sports_centre","terrain"], ["leisure","swimming_pool","terrain"],
+  ["leisure","fitness_centre","terrain"],
+  ["amenity","school","ecole"], ["amenity","college","ecole"], ["amenity","university","ecole"],
+  ["amenity","townhall","mairie"], ["amenity","post_office","mairie"],
+  ["amenity","toilets","toilettes"],
+  ["amenity","charging_station","recharge"],
+  ["amenity","bicycle_rental","velo"], ["amenity","bicycle_parking","velo"],
+
+  // -- transports
+  ["station","subway","metro"], ["railway","subway_entrance","metro"],
+  ["railway","station","metro"], ["railway","halt","metro"],
+  ["railway","tram_stop","bus"], ["highway","bus_stop","bus"], ["amenity","bus_station","bus"],
 ];
 
 const SCENARIOS = {
@@ -442,8 +563,8 @@ const SCENARIOS = {
               ["sport","Foot à 5, il manque 2","Ce soir · 20h"],["popup","Vide-grenier","Sam. · 8h → 14h"]],
   musee:     [["event","Nocturne gratuite","Ven. · 18h → 22h"],["popup","Atelier sérigraphie","Sam. · 15h"]],
   biblio:    [["collecte","Don de livres","Dim. · 10h → 13h"],["event","Lecture à voix haute","Mer. · 17h"]],
-  sportlieu: [["sport","Tournoi 3x3","Sam. · 16h"],["event","Session filmée","Ce soir · 19h"]],
-  salle:     [["event","Open mic","Ven. · 19h"],["studio","Répète ouverte","Jeu. · 20h"]],
+  terrain:   [["sport","Tournoi 3x3","Sam. · 16h"],["event","Session filmée","Ce soir · 19h"]],
+  spectacle: [["event","Open mic","Ven. · 19h"],["studio","Répète ouverte","Jeu. · 20h"]],
   marche:    [["popup","Friperie de rue","Sam. · 11h → 18h"],["food","Cantine de rue","Ce soir · 18h30"]],
 };
 
@@ -473,6 +594,7 @@ let map, coucheVille, coucheRues, moi, positionMoi=null, commune="ton quartier";
 let routes=[]; // {couche, base}
 let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
+let modeNav = false;   // itinéraire plein écran : la carte n'affiche que le trajet
 
 const $=(s)=>document.querySelector(s);
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
@@ -545,7 +667,7 @@ async function vraisLieux(lat,lng){
   const bloc = Object.entries(parCle).map(([k,vs])=>
     `nwr(around:1500,${lat},${lng})["${k}"~"^(${vs.join("|")})$"];`).join("");
   // 25 s : mieux vaut attendre que retomber sur des lieux inventés
-  const els = await overpass(`[out:json][timeout:25];(${bloc});out center 120;`, 25000);
+  const els = await overpass(`[out:json][timeout:25];(${bloc});out center 400;`, 25000);
   if(!els) return [];
   return els.map(e=>{
     const t=e.tags||{}, p=e.center||e;
@@ -575,7 +697,7 @@ function catOpenAgenda(evt){
   if(/collecte|don /.test(mots)) return "collecte";
   if(/lecture|bibliotheque|livre/.test(mots)) return "biblio";
   if(/sport|foot|match|tournoi/.test(mots)) return "sport";
-  if(/concert|scene|musique|spectacle/.test(mots)) return "salle";
+  if(/concert|scene|musique|spectacle/.test(mots)) return "concert";
   if(/marche|brocante|vide-grenier/.test(mots)) return "marche";
   if(/repas|cantine|cuisine/.test(mots)) return "food";
   if(/studio|enregistrement/.test(mots)) return "studio";
@@ -630,8 +752,8 @@ const MODELES = [
   ["biblio","Point lecture du quartier"],
   ["musee","Musée municipal"], ["musee","Galerie du Marché"],
   ["parc","Parc des Tilleuls"], ["parc","Square de la Fontaine"], ["parc","Jardin partagé"],
-  ["sportlieu","Skatepark du canal"], ["sportlieu","City stade Nord"],
-  ["salle","Salle des fêtes"], ["salle","Le Kiosque"],
+  ["terrain","Skatepark du canal"], ["terrain","City stade Nord"],
+  ["spectacle","Salle des fêtes"], ["spectacle","Le Kiosque"],
   ["marche","Marché couvert"],
 ];
 
@@ -890,7 +1012,7 @@ async function demarrer(coords){
   }
   positionMoi = coords || [48.8566,2.3522];
   $("#porte").hidden = true;
-  ["#haut","#filtres","#btnAjouter","#btnPartager"].forEach(s=>$(s).hidden=false);
+  ["#haut","#btnExplorer","#btnAjouter","#btnPartager"].forEach(s=>$(s).hidden=false);
 
   map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
         .setView(positionMoi, 16);
@@ -911,6 +1033,7 @@ async function demarrer(coords){
   map.on("moveend zoomend", ()=>{
     document.body.classList.toggle("loin", map.getZoom() < 15);
     majEpaisseurs(); majEtiquettes(); majBoutons();
+    rendre();                 // les grappes se recomposent au fil du zoom
   });
 
   dessinerFiltres();
@@ -959,7 +1082,7 @@ async function demarrer(coords){
 }
 
 function majBoutons(){
-  if(!map||modePose){ $("#btnRevenir").hidden=true; return; }
+  if(!map||modePose||modeNav){ $("#btnRevenir").hidden=true; return; }
   const d = map.distance(map.getCenter(), L.latLng(positionMoi));
   $("#btnRevenir").hidden = (d<350 && map.getZoom()>=15);
 }
@@ -988,23 +1111,80 @@ function htmlMarqueur(l){
       '<span class="a-lieu">'+esc(l.adresse)+'</span>'+
       (l.qr?'<span class="a-qr">▦</span>':'')+'</div></span>';
   }
-  return '<span class="mk-in"><div class="poi"><span class="poi-rond">'+c.emoji+
-    '</span><span class="poi-nom">'+esc(l.titre)+'</span></div></span>';
+  // le lieu reste, l'événement se pose dessus : une pastille signale qu'il s'y
+  // passe quelque chose aujourd'hui sans remplacer le commerce lui-même
+  const evs = indexEvenements.get(l.titre) || 0;
+  return '<span class="mk-in"><div class="poi">'+
+    '<span class="poi-rond">'+c.emoji+
+      (evs ? '<i class="poi-pastille">'+evs+'</i>' : '')+'</span>'+
+    '<span class="poi-nom">'+esc(l.titre)+'</span></div></span>';
+}
+
+/* Regroupement : au-delà d'un certain éloignement, des dizaines de pastilles
+   se chevauchent et la carte devient illisible. On fusionne par cases de
+   ~70 px d'écran, ce qui suit naturellement le zoom. */
+const TAILLE_GRAPPE = 70;
+
+function grouper(liste){
+  if(map.getZoom() >= 16) return liste.map(l=>({seul:l}));
+  const cases = new Map();
+  liste.forEach(l=>{
+    const p = map.latLngToLayerPoint([l.lat,l.lng]);
+    const cle = Math.round(p.x/TAILLE_GRAPPE)+":"+Math.round(p.y/TAILLE_GRAPPE);
+    if(!cases.has(cle)) cases.set(cle, []);
+    cases.get(cle).push(l);
+  });
+  return [...cases.values()].map(g => g.length===1 ? {seul:g[0]} : {grappe:g});
+}
+
+/* Compté une fois par rendu plutôt qu'une fois par marqueur : rendre() tourne
+   à chaque déplacement de carte, et parcourir tous les lieux pour chacun d'eux
+   devenait quadratique dès quelques centaines de POI. */
+let indexEvenements = new Map();
+function majIndexEvenements(){
+  indexEvenements = new Map();
+  lieux.forEach(l=>{
+    if(!(CATS[l.cat]||{}).eph) return;
+    indexEvenements.set(l.adresse, (indexEvenements.get(l.adresse)||0) + 1);
+  });
 }
 
 function rendre(){
   if(!map) return;
+  majIndexEvenements();
+  // en navigation, la carte n'appartient qu'à l'itinéraire
+  if(modeNav){
+    marqueurs.forEach(m=>map.removeLayer(m));
+    marqueurs.clear();
+    return;
+  }
   const garder = new Set();
-  visibles().forEach(l=>{
-    garder.add(l.id);
-    if(marqueurs.has(l.id)) return;
-    const eph = (CATS[l.cat]||{}).eph;
-    const m = L.marker([l.lat,l.lng],{
-      icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
-      riseOnHover:true, zIndexOffset: eph?200:0
+  grouper(visibles()).forEach(item=>{
+    if(item.seul){
+      const l = item.seul;
+      garder.add(l.id);
+      if(marqueurs.has(l.id)) return;
+      const eph = (CATS[l.cat]||{}).eph;
+      const m = L.marker([l.lat,l.lng],{
+        icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
+        riseOnHover:true, zIndexOffset: eph?200:0
+      }).addTo(map);
+      m.on("click", ()=>ouvrirDetail(l.id));
+      marqueurs.set(l.id,m);
+      return;
+    }
+    const g = item.grappe;
+    const lat = g.reduce((s,l)=>s+l.lat,0)/g.length;
+    const lng = g.reduce((s,l)=>s+l.lng,0)/g.length;
+    const id = "grappe:"+lat.toFixed(4)+","+lng.toFixed(4)+"x"+g.length;
+    garder.add(id);
+    if(marqueurs.has(id)) return;
+    const m = L.marker([lat,lng],{
+      icon:L.divIcon({className:"mk", html:'<span class="mk-in"><div class="grappe">'+g.length+'</div></span>', iconSize:[0,0]}),
+      zIndexOffset:100
     }).addTo(map);
-    m.on("click", ()=>ouvrirDetail(l.id));
-    marqueurs.set(l.id,m);
+    m.on("click", ()=>map.flyTo([lat,lng], Math.min(map.getZoom()+2, 17), {duration:.55}));
+    marqueurs.set(id,m);
   });
   marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
 }
@@ -1085,6 +1265,58 @@ const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // repli si OSRM injoign
 const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", metro:"🚇", tram:"🚊", bus:"🚌" };
 const LABEL_MODE = { pied:"À pied", velo:"Vélo", voiture:"Voiture", metro:"Métro", tram:"Tram", bus:"Bus" };
 
+/* grammes de CO₂ par voyageur et par km — ordres de grandeur ADEME */
+const CO2_PAR_KM = { pied:0, velo:0, metro:5, tram:5, bus:100, voiture:193 };
+/* à temps comparable, on met en avant le mode le plus sobre (rang le plus bas) */
+const RANG_ECO   = { pied:1, velo:2, metro:4, tram:5, bus:6, voiture:9 };
+
+/* On n'impose jamais un choix : on met en avant le mode le plus sobre parmi
+   ceux qui restent raisonnables en temps — 25 % ou 5 minutes de plus que le
+   plus rapide. Un vélo à 8 min passe donc devant une voiture à 7 min. */
+function recommander(options){
+  if(!options.length) return 0;
+  let iRapide = 0;
+  options.forEach((o,i)=>{ if(o.min < options[iRapide].min) iRapide = i; });
+  const marge = options[iRapide].min + Math.max(5, options[iRapide].min * 0.25);
+  let iBest = iRapide;
+  options.forEach((o,i)=>{
+    if(o.min <= marge && (RANG_ECO[o.mode]||9) < (RANG_ECO[options[iBest].mode]||9)) iBest = i;
+  });
+  return iBest;
+}
+
+function economieCO2(mode, metres){
+  const g = (CO2_PAR_KM.voiture - (CO2_PAR_KM[mode]||0)) * (metres/1000);
+  return g > 5 ? Math.round(g) : 0;
+}
+
+/* ---- mode navigation : la carte prend tout l'écran, seul le trajet reste ---- */
+function entrerNav(option, titre){
+  modeNav = true;
+  document.body.classList.add("nav");
+  $("#voile").hidden = true; $("#feuille").hidden = true;
+  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir"]
+    .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
+  $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
+  $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
+  $("#navBarre").hidden = false;
+  rendre();                              // les autres marqueurs s'effacent
+  dessinerSegments(option.segments);     // recadrage sur la totalité du parcours
+}
+
+function quitterNav(){
+  if(!modeNav) return;
+  modeNav = false;
+  document.body.classList.remove("nav");
+  $("#navBarre").hidden = true;
+  ["#btnExplorer","#btnAjouter","#haut","#btnPartager"]
+    .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
+  ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
+  $("#voile").hidden = false; $("#feuille").hidden = false;  // la fiche revient
+  rendre();                                                   // et les marqueurs aussi
+  majBoutons();
+}
+
 /* serveurs de démonstration publics OSRM (FOSSGIS/OpenStreetMap.de) — gratuits,
    sans clé, mais non garantis pour un usage intensif : on bascule sur une
    estimation à vol d'oiseau s'ils ne répondent pas */
@@ -1143,7 +1375,9 @@ function dessinerSegments(segments){
   // dans la bande encore visible, sinon le tracé est dessiné sous la feuille
   if(points.length){
     const feuille = $("#feuille");
-    const cache = (feuille && !feuille.hidden) ? feuille.getBoundingClientRect().height : 0;
+    // en navigation la feuille est masquée : le trajet dispose de tout l'écran
+    const cache = (!modeNav && feuille && !feuille.hidden)
+      ? feuille.getBoundingClientRect().height : 0;
     const hauteur = map.getSize().y;
     map.fitBounds(L.latLngBounds(points), {
       paddingTopLeft:[30,30],
@@ -1169,6 +1403,7 @@ async function afficherTrajet(l){
 
   panneau.hidden = false;
   panneau.innerHTML =
+    '<div class="trajet-reco" id="trajetReco"></div>'+
     '<div class="trajet-temps" id="trajetTemps"></div>'+
     '<p class="trajet-aide" id="trajetAide">Estimation immédiate · calcul par les rues en cours…</p>'+
     '<div id="trajetInfos"><p class="trajet-charge">Recherche des vélos et des transports…</p></div>';
@@ -1189,14 +1424,26 @@ async function afficherTrajet(l){
     if(!zone) return false;                       // feuille refermée entre-temps
     zone.innerHTML = rendreOptions(options, iActif);
     zone.querySelectorAll("[data-opt]").forEach(b=>
-      b.onclick=()=>{ iActif = Number(b.dataset.opt); choisiParToi = true; peindre(); });
+      b.onclick=()=>{
+        iActif = Number(b.dataset.opt); choisiParToi = true;
+        peindre();
+        entrerNav(options[iActif], l.titre);   // plein écran, comme Plans ou Maps
+      });
     dessinerSegments(options[iActif].segments);
     return true;
   };
   /* ne réordonne le choix par défaut que tant que tu n'as rien touché toi-même */
   const rafraichir = ()=>{
-    if(!choisiParToi) options.forEach((o,i)=>{ if(o.min<options[iActif].min) iActif=i; });
-    return peindre();
+    if(!choisiParToi) iActif = recommander(options);
+    const ok = peindre();
+    const reco = $("#trajetReco");
+    if(ok && reco){
+      const o = options[iActif], eco = economieCO2(o.mode, dVol);
+      reco.innerHTML = '<span class="reco-titre">⭐ Recommandé</span>'+
+        '<span class="reco-mode">'+EMOJI_MODE[o.mode]+' '+LABEL_MODE[o.mode]+' — '+o.min+' min</span>'+
+        (eco ? '<span class="reco-co2">💚 '+eco+' g de CO₂ évités par rapport à la voiture</span>' : '');
+    }
+    return ok;
   };
   rafraichir();
 
@@ -1468,7 +1715,7 @@ function libelleQuand(b){
 function ouvrirModePose(){
   modePose=true;
   $("#viseur").hidden=false; $("#poseBarre").hidden=false;
-  $("#filtres").hidden=true; $("#btnAjouter").hidden=true;
+  $("#btnExplorer").hidden=true; $("#btnAjouter").hidden=true;
   $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
   $("#poseBarre .txt").textContent = retourFormulaire
     ? "Déplace la carte pour corriger l’endroit."
@@ -1477,7 +1724,7 @@ function ouvrirModePose(){
 function fermerModePose(){
   modePose=false;
   $("#viseur").hidden=true; $("#poseBarre").hidden=true;
-  $("#filtres").hidden=false; $("#btnAjouter").hidden=false;
+  $("#btnExplorer").hidden=false; $("#btnAjouter").hidden=false;
   $("#btnPartager").hidden=false; majBoutons();
 }
 function nouveauBrouillon(){
@@ -1613,9 +1860,14 @@ const TYPES_RESTO = ["restaurant","cafe","bar","bakery","meal_takeaway"];
 
 /* types Google → catégories de l'app, pour les lieux absents d'OpenStreetMap */
 const CAT_GOOGLE = {
-  restaurant:"resto", cafe:"resto", bar:"resto", bakery:"resto",
-  meal_takeaway:"resto", fast_food_restaurant:"resto", pizza_restaurant:"resto",
-  library:"biblio", museum:"musee", art_gallery:"musee", park:"parc"
+  restaurant:"resto", pizza_restaurant:"resto", meal_delivery:"resto",
+  fast_food_restaurant:"fastfood", meal_takeaway:"fastfood", hamburger_restaurant:"fastfood",
+  cafe:"cafe", bakery:"cafe", coffee_shop:"cafe",
+  bar:"bar", pub:"bar", night_club:"concert",
+  movie_theater:"cinema", performing_arts_theater:"spectacle",
+  library:"biblio", museum:"musee", art_gallery:"musee", park:"parc",
+  hospital:"sante", pharmacy:"sante", doctor:"sante",
+  supermarket:"alimentaire", grocery_store:"alimentaire"
 };
 
 async function placesGoogle(lat, lng, types){
@@ -1818,18 +2070,42 @@ function ouvrirListe(cat){
 
 /* ================================================================== */
 
+/* Le nom est conservé : plusieurs endroits l'appellent après une publication.
+   Il ne dessine plus une piste de filtres mais met à jour le bouton Explorer. */
 function dessinerFiltres(){
-  const p=$("#piste");
-  const items=[{id:"tout",label:"Tout",emoji:""}]
-    .concat(Object.entries(CATS).map(([id,c])=>({id,label:c.label,emoji:c.emoji})));
-  p.innerHTML=items.map(f=>'<button class="filtre '+(filtreActif===f.id?'actif':'')+'" data-f="'+f.id+'">'+
-    (f.emoji?'<span>'+f.emoji+'</span>':'')+f.label+'</button>').join("");
-  p.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.f;
-    // retaper la catégorie déjà active la désélectionne
-    if(filtreActif === id && id !== "tout"){ filtreActif = "tout"; dessinerFiltres(); rendre(); return; }
-    filtreActif = id; dessinerFiltres(); rendre();
-    if(id !== "tout") ouvrirListe(id);
+  const b = $("#btnExplorer");
+  if(!b) return;
+  if(filtreActif === "tout"){
+    b.innerHTML = '<span>☰</span> Explorer';
+    b.classList.remove("filtre-actif");
+  }else{
+    const c = CATS[filtreActif] || {};
+    b.innerHTML = '<span>'+(c.emoji||"")+'</span> '+esc(c.label||"")+'<span class="ex-x">✕</span>';
+    b.classList.add("filtre-actif");
+  }
+}
+
+function ouvrirExplorer(){
+  const corps = GROUPES.map(g=>{
+    const cases = g.cats.filter(id=>CATS[id]).map(id=>{
+      const c = CATS[id];
+      const n = lieux.filter(l=>l.cat===id).length;
+      return '<button class="ex-cat'+(filtreActif===id?' actif':'')+'" data-ex="'+id+'">'+
+        '<span class="ex-emoji">'+c.emoji+'</span>'+
+        '<span class="ex-lab">'+esc(c.label)+'</span>'+
+        '<span class="ex-n">'+n+'</span></button>';
+    }).join("");
+    return '<p class="ex-groupe">'+g.emoji+' '+g.label+'</p><div class="ex-grille">'+cases+'</div>';
+  }).join("");
+
+  ouvrirFeuille('<h2 class="pub">Explorer</h2>'+
+    '<button class="ex-tout'+(filtreActif==="tout"?' actif':'')+'" data-ex="tout">Tout afficher</button>'+
+    corps);
+
+  $("#feuille").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{
+    filtreActif = b.dataset.ex;
+    dessinerFiltres(); rendre();
+    if(filtreActif === "tout") fermerFeuille(); else ouvrirListe(filtreActif);
   });
 }
 
@@ -1853,6 +2129,14 @@ $("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirModePose(); };
 $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
 $("#btnPartager").onclick=partagerApp;
+$("#navFermer").onclick=quitterNav;
+$("#btnExplorer").onclick=(e)=>{
+  // la croix sur le bouton retire le filtre sans rouvrir le panneau
+  if(e.target.classList.contains("ex-x")){
+    filtreActif = "tout"; dessinerFiltres(); rendre(); return;
+  }
+  ouvrirExplorer();
+};
 </script>
 </body>
 </html>
