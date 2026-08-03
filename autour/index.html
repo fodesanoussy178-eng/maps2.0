@@ -213,9 +213,16 @@ input{font-family:inherit;font-size:16px}
 .ex-emoji{font-size:17px;line-height:1}
 .ex-lab{font-size:12.5px;font-weight:600;line-height:1.2}
 .ex-n{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;opacity:.6}
+.ex-actions{display:flex;flex-direction:column;gap:7px}
 .ex-tout{width:100%;padding:12px;border:1px solid var(--bord);border-radius:3px;background:#fff;
   font-size:13.5px;font-weight:600;color:var(--ink)}
 .ex-tout.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.ex-case{position:relative}
+.ex-case .ex-cat{width:100%}
+.ex-case.masquee .ex-cat{opacity:.38}
+.ex-oeil{position:absolute;top:4px;right:4px;width:26px;height:26px;padding:0;border:0;
+  border-radius:50%;background:transparent;font-size:12px;line-height:1;opacity:.65}
+.ex-oeil:active{transform:scale(.9)}
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
 .grappe{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
@@ -604,6 +611,38 @@ const SYNONYMES = {
   collecte:["collecte","don","donner","recolte"],
 };
 
+/* Le type de cuisine vit dans le tag OSM `cuisine` (valeurs anglaises) et dans
+   les types Google `turkish_restaurant`. On traduit ce que les gens tapent. */
+const CUISINES = {
+  turc:"turkish", turque:"turkish", kebab:"kebab",
+  africain:"african", africaine:"african", afrique:"african",
+  senegalais:"senegalese", ivoirien:"ivorian", ethiopien:"ethiopian",
+  camerounais:"cameroonian", congolais:"congolese", malien:"malian",
+  marocain:"moroccan", tunisien:"tunisian", algerien:"algerian",
+  maghrebin:"moroccan", couscous:"moroccan", tajine:"moroccan",
+  libanais:"lebanese", syrien:"syrian", oriental:"lebanese",
+  italien:"italian", pizza:"pizza", pates:"italian",
+  japonais:"japanese", sushi:"sushi", ramen:"ramen",
+  chinois:"chinese", vietnamien:"vietnamese", thai:"thai", thailandais:"thai",
+  coreen:"korean", indien:"indian", pakistanais:"pakistani",
+  grec:"greek", portugais:"portuguese", espagnol:"spanish", tapas:"tapas",
+  mexicain:"mexican", bresilien:"brazilian", peruvien:"peruvian",
+  antillais:"caribbean", creole:"caribbean", americain:"american",
+  burger:"burger", francais:"french", brasserie:"french",
+  vegetarien:"vegetarian", vegan:"vegan", halal:"halal", casher:"kosher",
+  poisson:"seafood", "fruits de mer":"seafood",
+};
+
+function cuisineRecherchee(q){
+  const t = sansAccents(q).trim();
+  if(t.length < 3) return null;
+  for(const [mot,val] of Object.entries(CUISINES)){
+    const m = sansAccents(mot);
+    if(t === m || t.includes(m)) return val;
+  }
+  return null;
+}
+
 /* Rend « bar », « Bars » et « boire un verre » équivalents. */
 function categorieRecherchee(q){
   const t = sansAccents(q).trim();
@@ -812,6 +851,7 @@ async function vraisLieux(lat,lng){
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[cat].label),
       cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
       quand: t.opening_hours || "Voir sur place",
+      cuisine: t.cuisine || "",              // turkish, african, pizza…
       service: preciserService(t.name),      // Mission locale ≠ France Travail
       gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
@@ -1264,12 +1304,25 @@ function majBoutons(){
 /*  Marqueurs                                                         */
 /* ================================================================== */
 
+/* Couches masquées par l'utilisateur : la carte se charge vite mais reste
+   dense, chacun doit pouvoir éteindre ce qui ne l'intéresse pas. Le choix
+   est retenu d'une visite à l'autre. */
+let catsMasquees = new Set();
+try{ catsMasquees = new Set(JSON.parse(localStorage.getItem("autour:masquees")||"[]")); }
+catch(e){}
+function enregistrerMasquees(){
+  try{ localStorage.setItem("autour:masquees", JSON.stringify([...catsMasquees])); }
+  catch(e){}
+}
+
 function visibles(){
   const q = recherche.trim().toLowerCase();
   return lieux.filter(l=>{
     if(filtreActif!=="tout" && l.cat!==filtreActif) return false;
+    // une catégorie explicitement demandée reste visible même si masquée
+    if(filtreActif==="tout" && catsMasquees.has(l.cat)) return false;
     if(!q) return true;
-    return (l.titre+" "+l.adresse).toLowerCase().includes(q);
+    return (l.titre+" "+l.adresse+" "+(l.cuisine||"")).toLowerCase().includes(q);
   });
 }
 
@@ -2249,6 +2302,9 @@ async function placesGoogle(lat, lng, types){
     // "ouvert maintenant", pas une plage horaire à interpréter soi-même
     ouvert: p.currentOpeningHours ? p.currentOpeningHours.openNow : undefined,
     prixN: NIVEAU_PRIX[p.priceLevel],
+    // « turkish_restaurant » porte la cuisine dans son préfixe
+    cuisine: /_restaurant$/.test(p.primaryType||"")
+      ? (p.primaryType||"").replace(/_restaurant$/,"") : "",
     type: p.primaryType || "", adresse: p.formattedAddress || ""
   }));
 }
@@ -2290,7 +2346,8 @@ function ajouterLieuxGoogle(fiches){
       adresse:f.adresse || f.nom, cp:commune,
       quand:"Voir sur place", gratuit:true, prix:0,
       places:null, qr:false, par:"Google Maps",
-      lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert, prixN:f.prixN
+      lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert,
+      prixN:f.prixN, cuisine:f.cuisine
     });
     ajoutes++;
   });
@@ -2417,6 +2474,7 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
     if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
     if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
+    if(x.cuisine) sous.push(esc(x.cuisine.replace(/[_;]/g," ")));
     if(x.prixN != null) sous.push('<span class="prix-n">'+SYMBOLE_PRIX[x.prixN]+'</span>');
     if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
     sous.push(esc(x.adresse||""));
@@ -2456,6 +2514,21 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
 /* Recherche libre : « bar » ouvre le classement des bars, « chez Momo »
    cherche par nom. Dans les deux cas on retombe sur la même liste classée. */
 function ouvrirResultats(q){
+  // « restaurant turc », « africain », « sushi » : la cuisine passe avant la
+  // catégorie, sinon « restaurant turc » ouvrirait juste tous les restaurants
+  const cuisine = cuisineRecherchee(q);
+  if(cuisine){
+    const trouves = lieux.filter(l=>{
+      const c = sansAccents(l.cuisine||"");
+      return c && (c.includes(cuisine) || cuisine.includes(c));
+    });
+    if(trouves.length){
+      pileEcrans = [];
+      pousserEcran(()=>afficherListe("🍽", "« "+q+" »",
+        classerLieux(trouves, false), false, ()=>ouvrirResultats(q)));
+      return;
+    }
+  }
   const cat = categorieRecherchee(q);
   if(cat){
     filtreActif = cat; dessinerFiltres(); rendre();
@@ -2465,7 +2538,7 @@ function ouvrirResultats(q){
   }
   const t = sansAccents(q);
   const trouves = lieux.filter(l=>
-    sansAccents(l.titre+" "+(l.adresse||"")).includes(t));
+    sansAccents(l.titre+" "+(l.adresse||"")+" "+(l.cuisine||"")).includes(t));
   pileEcrans = [];
   pousserEcran(()=>afficherListe("🔎", "« "+q+" »",
     classerLieux(trouves, false), false, ()=>ouvrirResultats(q)));
@@ -2493,16 +2566,27 @@ function ouvrirExplorer(){
     const cases = g.cats.filter(id=>CATS[id]).map(id=>{
       const c = CATS[id];
       const n = lieux.filter(l=>l.cat===id).length;
-      return '<button class="ex-cat'+(filtreActif===id?' actif':'')+'" data-ex="'+id+'">'+
-        '<span class="ex-emoji">'+c.emoji+'</span>'+
-        '<span class="ex-lab">'+esc(c.label)+'</span>'+
-        '<span class="ex-n">'+n+'</span></button>';
+      const off = catsMasquees.has(id);
+      return '<div class="ex-case'+(off?' masquee':'')+'">'+
+        '<button class="ex-cat'+(filtreActif===id?' actif':'')+'" data-ex="'+id+'">'+
+          '<span class="ex-emoji">'+c.emoji+'</span>'+
+          '<span class="ex-lab">'+esc(c.label)+'</span>'+
+          '<span class="ex-n">'+n+'</span></button>'+
+        '<button class="ex-oeil" data-oeil="'+id+'" title="Afficher ou masquer sur la carte">'+
+          (off?'🚫':'👁')+'</button>'+
+      '</div>';
     }).join("");
     return '<p class="ex-groupe">'+g.emoji+' '+g.label+'</p><div class="ex-grille">'+cases+'</div>';
   }).join("");
 
+  const toutMasque = catsMasquees.size > 0;
   ouvrirFeuille('<h2 class="pub">Explorer</h2>'+
-    '<button class="ex-tout'+(filtreActif==="tout"?' actif':'')+'" data-ex="tout">Tout afficher</button>'+
+    '<div class="ex-actions">'+
+      '<button class="ex-tout'+(filtreActif==="tout"?' actif':'')+'" data-ex="tout">Tout afficher</button>'+
+      '<button class="ex-tout" id="exBascule">'+
+        (toutMasque ? "Réafficher les couches masquées" : "Masquer toutes les couches")+'</button>'+
+    '</div>'+
+    '<p class="liste-tri">Touche une catégorie pour son classement, l’œil pour la masquer sur la carte.</p>'+
     corps);
 
   $("#feuille").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{
@@ -2511,6 +2595,22 @@ function ouvrirExplorer(){
     if(filtreActif === "tout") fermerFeuille();
     else pousserEcran(()=>ouvrirListe(filtreActif));
   });
+
+  // l'œil ne change que la visibilité : il ne quitte pas le panneau
+  $("#feuille").querySelectorAll("[data-oeil]").forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const id = b.dataset.oeil;
+    if(catsMasquees.has(id)) catsMasquees.delete(id); else catsMasquees.add(id);
+    enregistrerMasquees(); rendre();
+    ouvrirExplorer();                    // même écran, état à jour
+  });
+
+  $("#exBascule").onclick = ()=>{
+    if(catsMasquees.size) catsMasquees.clear();
+    else Object.keys(CATS).forEach(id=>catsMasquees.add(id));
+    enregistrerMasquees(); rendre();
+    ouvrirExplorer();
+  };
 }
 
 $("#btnGeo").onclick=()=>{
