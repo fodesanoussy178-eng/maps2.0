@@ -155,8 +155,12 @@ input{font-family:inherit;font-size:16px}
   display:grid;place-items:center;width:46px;height:46px}
 .moi-in i{position:absolute;width:46px;height:46px;border-radius:50%;
   background:rgba(255,74,23,.16);animation:respire 2.4s ease-in-out infinite}
-.moi-in b{width:13px;height:13px;border-radius:50%;background:var(--signal);
-  border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+/* Un simple point rouge se confond avec les lieux : la personne doit se
+   reconnaître au premier coup d'œil, d'où la pastille et la silhouette. */
+.moi-in b{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;
+  background:var(--signal);border:3px solid #fff;font-size:17px;line-height:1;
+  box-shadow:0 2px 8px rgba(0,0,0,.34)}
+.loin .moi-in b{width:22px;height:22px;font-size:11px;border-width:2.5px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
 #porte{position:absolute;inset:0;z-index:1000;background:var(--paper);
@@ -578,7 +582,7 @@ const SERVICES = [
   [/cap\s*emploi/i,                      "Cap emploi · handicap"],
   [/maison\s*de\s*l['’ ]?emploi/i,       "Maison de l’emploi"],
   [/ccas|centre\s*communal/i,            "CCAS · aide sociale communale"],
-  [/restos?\s*du\s*c(o|œ)ur/i,           "Restos du Cœur"],
+  [/restos?\s*du\s*c(oe|œ|o)ur/i,        "Restos du Cœur"],
   [/secours\s*populaire/i,               "Secours populaire"],
   [/secours\s*catholique/i,              "Secours catholique"],
   [/croix[- ]rouge/i,                    "Croix-Rouge"],
@@ -1185,7 +1189,8 @@ async function demarrer(coords){
   coucheVille = L.layerGroup().addTo(map);
 
   moi = L.marker(positionMoi,{
-    icon:L.divIcon({className:"mk", html:'<span class="moi-in"><i></i><b></b></span>', iconSize:[0,0]}),
+    icon:L.divIcon({className:"mk",
+      html:'<span class="moi-in"><i></i><b>🧍</b></span>', iconSize:[0,0]}),
     interactive:false, keyboard:false, zIndexOffset:400
   }).addTo(map);
 
@@ -2278,12 +2283,60 @@ const CAT_GOOGLE = {
   bar:"bar", pub:"bar", night_club:"concert",
   movie_theater:"cinema", performing_arts_theater:"spectacle",
   library:"biblio", museum:"musee", art_gallery:"musee", park:"parc",
-  hospital:"sante", pharmacy:"sante", doctor:"sante",
+  hospital:"sante", pharmacy:"sante", doctor:"sante", drugstore:"sante",
+  local_government_office:"mairie", city_hall:"mairie", post_office:"mairie",
+  government_office:"emploi", employment_agency:"emploi",
+  association_or_organization:"asso", non_profit_organization:"asso",
+  social_services_organization:"asso", welfare_organization:"asso",
+  school:"ecole", university:"ecole", primary_school:"ecole", secondary_school:"ecole",
+  library:"biblio", tourist_attraction:"musee",
   // un supermarché est un commerce, jamais de l'aide alimentaire : confondre
   // les deux enverrait quelqu'un qui cherche à manger vers une caisse
   supermarket:"commerce", grocery_store:"commerce", convenience_store:"commerce",
   clothing_store:"friperie", thrift_store:"friperie", store:"commerce"
 };
+
+function mapperPlace(p){
+  return {
+    nom:(p.displayName&&p.displayName.text)||"",
+    lat:p.location.latitude, lng:p.location.longitude,
+    note:p.rating, avis:p.userRatingCount,
+    ouvert: p.currentOpeningHours ? p.currentOpeningHours.openNow : undefined,
+    prixN: NIVEAU_PRIX[p.priceLevel],
+    cuisine: /_restaurant$/.test(p.primaryType||"")
+      ? (p.primaryType||"").replace(/_restaurant$/,"") : "",
+    type: p.primaryType || "", adresse: p.formattedAddress || ""
+  };
+}
+
+const CHAMPS_PLACE = "places.displayName,places.location,places.rating,"+
+  "places.userRatingCount,places.currentOpeningHours.openNow,"+
+  "places.primaryType,places.formattedAddress,places.priceLevel";
+
+/* Recherche libre chez Google. OpenStreetMap ignore beaucoup d'équipements
+   publics (une mission locale y est rarement cartographiée) alors que Google
+   sait où ils sont : on l'interroge quand notre propre base ne suffit pas. */
+async function chercherGoogle(q, lat, lng){
+  if(!CLE_GOOGLE) return [];
+  try{
+    const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-Goog-Api-Key":CLE_GOOGLE,
+        "X-Goog-FieldMask":CHAMPS_PLACE
+      },
+      body:JSON.stringify({
+        textQuery:q, languageCode:"fr", maxResultCount:12,
+        locationBias:{circle:{center:{latitude:lat,longitude:lng},radius:6000}}
+      })
+    });
+    if(!r.ok){ console.error("Recherche Google: HTTP", r.status, await r.text()); return []; }
+    const j = await r.json();
+    console.info("Recherche Google «"+q+"» :", (j.places||[]).length, "résultat(s)");
+    return (j.places||[]).map(mapperPlace);
+  }catch(e){ console.error("Recherche Google:", e); return []; }
+}
 
 async function placesGoogle(lat, lng, types){
   const corps = {
@@ -2296,27 +2349,13 @@ async function placesGoogle(lat, lng, types){
     headers:{
       "Content-Type":"application/json",
       "X-Goog-Api-Key":CLE_GOOGLE,
-      "X-Goog-FieldMask":"places.displayName,places.location,places.rating,"+
-        "places.userRatingCount,places.currentOpeningHours.openNow,"+
-        "places.primaryType,places.formattedAddress,places.priceLevel"
+      "X-Goog-FieldMask":CHAMPS_PLACE
     },
     body:JSON.stringify(corps)
   });
   if(!r.ok){ console.error("Google Places: réponse HTTP", r.status, await r.text()); return []; }
   const j = await r.json();
-  return (j.places||[]).map(p=>({
-    nom:(p.displayName&&p.displayName.text)||"",
-    lat:p.location.latitude, lng:p.location.longitude,
-    note:p.rating, avis:p.userRatingCount,
-    // openNow est calculé par Google à l'instant de la requête : un vrai
-    // "ouvert maintenant", pas une plage horaire à interpréter soi-même
-    ouvert: p.currentOpeningHours ? p.currentOpeningHours.openNow : undefined,
-    prixN: NIVEAU_PRIX[p.priceLevel],
-    // « turkish_restaurant » porte la cuisine dans son préfixe
-    cuisine: /_restaurant$/.test(p.primaryType||"")
-      ? (p.primaryType||"").replace(/_restaurant$/,"") : "",
-    type: p.primaryType || "", adresse: p.formattedAddress || ""
-  }));
+  return (j.places||[]).map(mapperPlace);
 }
 
 /* Deux requêtes en parallèle : une ciblée restauration — c'est ce qu'on veut
@@ -2341,12 +2380,18 @@ async function notesGoogle(lat, lng){
 
 /* Les commerces connus de Google mais absents d'OpenStreetMap : sans eux, la
    liste des restos serait amputée de tout ce qui n'est pas cartographié. */
-function ajouterLieuxGoogle(fiches){
-  if(!fiches) return;
+function ajouterLieuxGoogle(fiches, catDefaut){
+  if(!fiches) return 0;
   let ajoutes = 0;
   fiches.forEach(f=>{
-    const cat = affinerCategorie(CAT_GOOGLE[f.type], f.nom);
-    if(!cat || !f.nom) return;
+    if(!f.nom) return;
+    // le nom tranche mieux que le type : Google range la Mission locale en
+    // « organisation à but non lucratif », ce qui la noierait dans les assos
+    const service = preciserService(f.nom);
+    let cat = affinerCategorie(CAT_GOOGLE[f.type] || catDefaut, f.nom);
+    if(/Mission locale|France Travail|Cap emploi|Maison de l’emploi/.test(service)) cat = "emploi";
+    else if(!cat && service) cat = "asso";
+    if(!cat) return;
     const deja = lieux.some(l=>
       distanceM(l.lat,l.lng,f.lat,f.lng) < 80 &&
       sansAccents(l.titre) === sansAccents(f.nom));
@@ -2357,11 +2402,12 @@ function ajouterLieuxGoogle(fiches){
       quand:"Voir sur place", gratuit:true, prix:0,
       places:null, qr:false, par:"Google Maps",
       lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert,
-      prixN:f.prixN, cuisine:f.cuisine
+      prixN:f.prixN, cuisine:f.cuisine, service
     });
     ajoutes++;
   });
   if(ajoutes){ console.info("Google Places :", ajoutes, "lieu(x) ajouté(s)"); rendre(); }
+  return ajoutes;
 }
 
 /* rapproche chaque lieu OSM de la fiche Google la plus proche (< 150 m) */
@@ -2544,14 +2590,32 @@ function ouvrirResultats(q){
     filtreActif = cat; dessinerFiltres(); rendre();
     pileEcrans = [];
     pousserEcran(()=>ouvrirListe(cat));
+    // OSM ignore beaucoup d'équipements publics : on demande à Google et on
+    // complète la liste sans faire attendre devant un écran vide
+    completerParGoogle(q, cat, ()=>ouvrirListe(cat));
     return;
   }
   const t = sansAccents(q);
   const trouves = lieux.filter(l=>
     sansAccents(l.titre+" "+(l.adresse||"")+" "+(l.cuisine||"")).includes(t));
+  const montrer = ()=>{
+    const encore = lieux.filter(l=>
+      sansAccents(l.titre+" "+(l.adresse||"")+" "+(l.cuisine||"")).includes(t));
+    afficherListe("🔎", "« "+q+" »", classerLieux(encore, false), false,
+                  ()=>ouvrirResultats(q));
+  };
   pileEcrans = [];
-  pousserEcran(()=>afficherListe("🔎", "« "+q+" »",
-    classerLieux(trouves, false), false, ()=>ouvrirResultats(q)));
+  pousserEcran(montrer);
+  completerParGoogle(q, null, montrer);
+}
+
+/* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
+function completerParGoogle(q, catDefaut, redessiner){
+  if(!positionMoi) return;
+  chercherGoogle(q, positionMoi[0], positionMoi[1]).then(res=>{
+    if(!res.length) return;
+    if(ajouterLieuxGoogle(res, catDefaut)) redessiner();
+  });
 }
 
 /* ================================================================== */
