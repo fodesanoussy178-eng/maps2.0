@@ -764,12 +764,71 @@ const CUISINES = {
   poisson:"seafood", "fruits de mer":"seafood",
 };
 
+/* Nombres écrits en toutes lettres : « j'ai quinze euros » doit marcher comme
+   « j'ai 15 euros ». La table est construite une seule fois au chargement. */
+const MOTS_NOMBRES = (()=>{
+  const u = ["","un","deux","trois","quatre","cinq","six","sept","huit","neuf"];
+  const p = {0:"zero",1:"un",2:"deux",3:"trois",4:"quatre",5:"cinq",6:"six",7:"sept",
+             8:"huit",9:"neuf",10:"dix",11:"onze",12:"douze",13:"treize",14:"quatorze",
+             15:"quinze",16:"seize"};
+  const m = new Map();
+  for(const [n,mot] of Object.entries(p)) m.set(mot, Number(n));
+  m.set("une",1);
+  for(let i=7;i<=9;i++) m.set("dix "+u[i], 10+i);                    // dix-sept…
+  const diz = {20:"vingt",30:"trente",40:"quarante",50:"cinquante",60:"soixante"};
+  for(const [d,mot] of Object.entries(diz)){
+    m.set(mot, Number(d));
+    m.set(mot+" et un", Number(d)+1);
+    for(let i=2;i<=9;i++) m.set(mot+" "+u[i], Number(d)+i);
+  }
+  m.set("soixante dix",70); m.set("soixante et onze",71);
+  for(let i=2;i<=9;i++) m.set("soixante "+(p[10+i]||("dix "+u[i])), 70+i);
+  m.set("quatre vingt",80); m.set("quatre vingts",80);
+  for(let i=1;i<=9;i++) m.set("quatre vingt "+u[i], 80+i);
+  m.set("quatre vingt dix",90);
+  for(let i=1;i<=9;i++) m.set("quatre vingt "+(p[10+i]||("dix "+u[i])), 90+i);
+  m.set("cent",100);
+  return m;
+})();
+
+/* Index inversé : une seule table pour les cuisines et les catégories, au lieu
+   de reparcourir toutes les listes à chaque frappe. */
+const INDEX_MOTS = (()=>{
+  const m = new Map();
+  for(const [id,mots] of Object.entries(CUISINES))
+    m.set(sansAccents(id), {cuisine:mots});
+  for(const [mot,val] of Object.entries(CUISINES))
+    m.set(sansAccents(mot), {cuisine:val});
+  for(const [id,c] of Object.entries(CATS))
+    m.set(sansAccents(c.label), {cat:id});
+  for(const [id,mots] of Object.entries(SYNONYMES))
+    mots.forEach(x=>{ if(!m.has(sansAccents(x))) m.set(sansAccents(x), {cat:id}); });
+  return m;
+})();
+
+/* Repère un montant, en chiffres ou en lettres. */
+function montantEuros(t){
+  const chiffres = /(\d{1,3})\s*(?:e\b|eu\b|euros?|€)/.exec(t);
+  if(chiffres) return Number(chiffres[1]);
+  const avant = /([a-z ]{3,28})\s*(?:euros?|balles?|€)/.exec(t);
+  if(!avant) return null;
+  const mots = avant[1].trim().split(/\s+/);
+  // on essaie la plus longue suite de mots qui forme un nombre connu
+  for(let d=Math.max(0,mots.length-4); d<mots.length; d++){
+    const cle = mots.slice(d).join(" ");
+    if(MOTS_NOMBRES.has(cle)) return MOTS_NOMBRES.get(cle);
+  }
+  return null;
+}
+
 function cuisineRecherchee(q){
   const t = sansAccents(q).trim();
   if(t.length < 3) return null;
+  const direct = INDEX_MOTS.get(t);          // correspondance exacte, immédiate
+  if(direct && direct.cuisine) return direct.cuisine;
   for(const [mot,val] of Object.entries(CUISINES)){
     const m = sansAccents(mot);
-    if(t === m || t.includes(m)) return val;
+    if(t.includes(m)) return val;
   }
   return null;
 }
@@ -778,6 +837,8 @@ function cuisineRecherchee(q){
 function categorieRecherchee(q){
   const t = sansAccents(q).trim();
   if(t.length < 3) return null;
+  const direct = INDEX_MOTS.get(t);          // correspondance exacte, immédiate
+  if(direct && direct.cat) return direct.cat;
   for(const [id,c] of Object.entries(CATS)){
     if(sansAccents(c.label).includes(t)) return id;
   }
@@ -3237,10 +3298,9 @@ function interpreter(phrase){
   const cat = categorieRecherchee(phrase);
   if(cat && !cuisine){ act.cats = new Set([cat]); act.dit.push((CATS[cat]||{}).label || cat); }
 
-  // un budget chiffré : « j'ai 15 € » → petit budget en dessous de 20 €
-  const euros = /(\d{1,3})\s*(e|eu|euro|euros|€)/.exec(t);
-  if(euros){
-    const n = Number(euros[1]);
+  // budget en chiffres ou en toutes lettres : « quinze euros » vaut « 15 € »
+  const n = montantEuros(t);
+  if(n != null){
     act.filtres.add(n <= 20 ? "budget" : "gratuit");
     act.dit.push(n+" €");
   }
@@ -3434,7 +3494,7 @@ $("#rech").onkeydown=e=>{
   const q = e.target.value.trim();
   if(!q) return;
   e.target.blur();
-  ouvrirResultats(q);
+  appliquerPhrase(q);        // même compréhension que la barre « Autour IA »
 };
 $("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirModePose(); };
 $("#btnPoseOk").onclick=validerPose;
