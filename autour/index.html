@@ -213,13 +213,25 @@ input{font-family:inherit;font-size:16px}
 .icone-btn{border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
 
 /* ---- écran d'intention : on demande ce que la personne veut faire ---- */
-#intentions{position:absolute;left:0;right:0;bottom:0;z-index:640;
-  padding:18px 16px calc(var(--safe-b) + 18px);background:var(--paper);
+#intentions{position:absolute;left:0;right:0;bottom:0;z-index:640;max-height:74%;overflow-y:auto;
+  padding:8px 16px calc(var(--safe-b) + 18px);background:var(--paper);
   border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
   box-shadow:0 -4px 24px rgba(20,30,25,.14);
   animation:monte .3s cubic-bezier(.2,.9,.3,1)}
-.int-titre{margin-bottom:13px;font-family:'Anton',sans-serif;font-size:22px;
-  line-height:1.05;text-transform:uppercase}
+.int-poignee{display:block;width:46px;height:4px;margin:0 auto 12px;border:0;border-radius:99px;
+  background:rgba(20,30,25,.22);padding:0}
+.vitalite{margin-bottom:11px;font-size:13.5px;color:var(--ink2)}
+.vitalite b{color:var(--ink)}
+.vitalite span{font-family:'JetBrains Mono',monospace;font-size:11px}
+.ia{display:block;margin-bottom:11px}
+.ia input{width:100%;padding:13px 15px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink);font-size:14.5px}
+.ia input:focus{outline:2px solid var(--signal);outline-offset:1px}
+.creneaux{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:12px}
+.creneaux::-webkit-scrollbar{display:none}
+.cr{flex:0 0 auto;padding:8px 13px;border:1px solid var(--bord);border-radius:99px;background:#fff;
+  color:var(--ink2);font-size:12.5px;font-weight:600;white-space:nowrap}
+.cr.actif{background:var(--signal);border-color:var(--signal);color:#fff}
 #intentionsGrille{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:9px}
 .intention{display:flex;align-items:center;gap:9px;padding:15px 13px;border:1px solid var(--bord);
   border-radius:12px;background:#fff;text-align:left;font-size:14px;font-weight:600;
@@ -551,7 +563,10 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
 
 <div id="intentions" hidden>
-  <p class="int-titre">Que cherches-tu maintenant&nbsp;?</p>
+  <button class="int-poignee" id="intFermer" aria-label="Fermer"></button>
+  <p class="vitalite" id="vitalite"></p>
+  <label class="ia"><input id="iaTexte" placeholder="Que veux-tu faire aujourd’hui&nbsp;?" /></label>
+  <div class="creneaux" id="creneaux"></div>
   <div id="intentionsGrille"></div>
 </div>
 
@@ -737,6 +752,7 @@ const CUISINES = {
   maghrebin:"moroccan", couscous:"moroccan", tajine:"moroccan",
   libanais:"lebanese", syrien:"syrian", oriental:"lebanese",
   italien:"italian", pizza:"pizza", pates:"italian",
+  asiatique:"asian", asie:"asian", wok:"asian",
   japonais:"japanese", sushi:"sushi", ramen:"ramen",
   chinois:"chinese", vietnamien:"vietnamese", thai:"thai", thailandais:"thai",
   coreen:"korean", indien:"indian", pakistanais:"pakistani",
@@ -1082,6 +1098,10 @@ async function evenementsOpenAgenda(lat,lng){
           if(!t || !t.begin) return "Voir sur place";
           return new Date(t.begin).toLocaleString("fr-FR",
             {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+        })(),
+        debutLe: (()=>{
+          const t = evt.nextTiming || evt.firstTiming || (evt.timings||[])[0];
+          return t && t.begin ? new Date(t.begin).getTime() : null;
         })(),
         // fin réelle, pour ne plus afficher un événement d'hier
         finLe: (()=>{
@@ -1495,23 +1515,53 @@ let catsActives = null;          // Set de catégories, ou null = tout
 let filtreMaintenant = false;
 let filtresHumains = new Set();  // gratuit · ouvert · proche · pmr
 
+/* Certains filtres se lisent dans la donnée (ouvert, prix, accessibilité).
+   D'autres se déduisent des catégories : personne ne publie « convient aux
+   familles », mais un parc, une piscine ou un musée le sont par nature.
+   C'est une heuristique assumée, pas une donnée inventée. */
 const FILTRES_HUMAINS = [
-  { id:"gratuit", label:"Gratuit",        test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
-  { id:"ouvert",  label:"Ouvert",         test:l=>l.ouvert === true },
-  { id:"proche",  label:"< 15 min à pied",test:(l,d)=>d < 1200 },
-  { id:"budget",  label:"Petit budget",   test:l=>l.prixN != null && l.prixN <= 1 },
-  { id:"pmr",     label:"Accessible PMR", test:l=>l.pmr === true },
+  { id:"ouvert",  label:"Ouvert",          test:l=>l.ouvert === true },
+  { id:"proche",  label:"< 15 min à pied", test:(l,d)=>d < 1200 },
+  { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
+  { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
+  { id:"famille", label:"En famille",      cats:["parc","terrain","musee","biblio","marche","cinema"] },
+  { id:"etudier", label:"Étudier",         cats:["biblio","cafe","ecole"] },
+  { id:"monde",   label:"Rencontrer",      cats:["event","concert","bar","asso","terrain","popup","studio","sport"] },
+  { id:"libre",   label:"Sans réservation",cats:["parc","biblio","marche","fastfood","cafe","commerce",
+                                                 "friperie","toilettes","terrain","musee","velo"] },
+  { id:"pmr",     label:"Accessible PMR",  test:l=>l.pmr === true },
+].map(f=> f.cats ? Object.assign(f, {test:l=>f.cats.includes(l.cat)}) : f);
+
+/* Timeline : la même carte, à un autre moment de la journée. */
+const CRENEAUX = [
+  { id:"maintenant", label:"Maintenant",   de:0,          a:2*3600e3 },
+  { id:"1h",         label:"Dans 1 heure", de:45*60e3,    a:3*3600e3 },
+  { id:"soir",       label:"Ce soir",      de:0,          a:0, heure:19 },
+  { id:"demain",     label:"Demain",       de:0,          a:0, heure:10, jour:1 },
 ];
+let creneau = "maintenant";
+
+/* Instant de référence du créneau choisi : c'est lui qui décide des poids
+   horaires et de la fenêtre dans laquelle un événement compte. */
+function instantCreneau(){
+  const c = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
+  const d = new Date();
+  if(c.jour) d.setDate(d.getDate()+c.jour);
+  if(c.heure != null) d.setHours(c.heure, 0, 0, 0);
+  else if(c.id === "1h") d.setTime(d.getTime() + 3600e3);
+  return d;
+}
 
 /* « Maintenant » : ce qui est vivant à cet instant, et rien d'autre. */
 function estVivant(l){
-  if(l.ouvert === true) return true;
+  const t = instantCreneau().getTime();
   if((CATS[l.cat]||{}).eph){
-    // un événement compte s'il n'est pas terminé et commence dans la journée
-    if(l.finLe && l.finLe < Date.now()) return false;
+    if(l.finLe && l.finLe < t) return false;              // déjà terminé
+    if(l.debutLe && l.debutLe > t + 12*3600e3) return false; // trop lointain
     return true;
   }
-  return false;
+  // hors du présent, l'état ouvert/fermé de Google ne veut plus rien dire
+  return creneau === "maintenant" ? l.ouvert === true : true;
 }
 
 function visibles(){
@@ -3020,7 +3070,7 @@ const MOMENTS = [
 ];
 
 function momentActuel(){
-  const h = new Date().getHours();
+  const h = instantCreneau().getHours();
   return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
 }
 
@@ -3060,14 +3110,18 @@ const INTENTIONS = [
   { emoji:"🆘", label:"Trouver de l’aide",   cats:["alimentaire","hebergement","sante","asso","emploi","collecte"], aide:true },
   { emoji:"⚽", label:"Faire du sport",      cats:["terrain","sport"] },
   { emoji:"🤝", label:"Rencontrer du monde", cats:["asso","event","concert","bar","terrain","studio"] },
-  { emoji:"🚲", label:"Me déplacer",         cats:["velo","metro","bus","recharge"] },
+  { emoji:"📚", label:"Étudier",             cats:["biblio","cafe","ecole"] },
+  { emoji:"🚲", label:"Déplacements",        cats:["velo","metro","bus","recharge"] },
   { emoji:"🧳", label:"Je viens d’arriver",  cats:["resto","biblio","musee","marche","asso","emploi","sante",
                                                   "metro","bus","terrain","parc","mairie"], aide:true },
-  { emoji:"📍", label:"Explorer autour",     cats:null },
+  { emoji:"📍", label:"Explorer",            cats:null },
+  { emoji:"🎲", label:"Surprends-moi",       cats:null, hasard:true },
 ];
 
 function appliquerIntention(i){
   const it = INTENTIONS[i];
+  $("#intentions").hidden = true;
+  if(it.hasard){ surprendre(); return; }
   catsActives = it.cats ? new Set(it.cats) : null;
   filtreActif = "tout";
   selectionAccueil = false;
@@ -3078,7 +3132,28 @@ function appliquerIntention(i){
   if(catsActives) toast(it.emoji+" "+it.label);
 }
 
+function majCreneaux(){
+  const z = $("#creneaux");
+  if(!z) return;
+  z.innerHTML = CRENEAUX.map(c=>
+    '<button class="cr'+(creneau===c.id?" actif":"")+'" data-cr="'+c.id+'">'+c.label+'</button>').join("");
+  z.querySelectorAll("[data-cr]").forEach(b=>b.onclick=()=>{
+    creneau = b.dataset.cr;
+    filtreMaintenant = creneau !== "maintenant" ? true : filtreMaintenant;
+    majCreneaux(); majFiltres(); rendre(); majAccueil();
+  });
+}
+
+function majVitalite(){
+  const v = vitalite(), z = $("#vitalite");
+  if(!z) return;
+  if(!v){ z.textContent = ""; return; }
+  z.innerHTML = v.p+' <b>'+v.t+'</b> <span>'+v.n+' ouverts'+
+    (v.e ? ' · '+v.e+' événement'+(v.e>1?'s':'') : '')+' autour</span>';
+}
+
 function ouvrirIntentions(){
+  majCreneaux(); majVitalite();
   const g = $("#intentionsGrille");
   g.innerHTML = INTENTIONS.map((it,i)=>
     '<button class="intention" data-int="'+i+'">'+
@@ -3113,6 +3188,100 @@ function basculerMaintenant(){
   if(filtreMaintenant){ selectionAccueil = false; $("#accueil").hidden = true; }
   $("#intentions").hidden = true;
   majFiltres(); rendre();
+}
+
+/* Indicateur de vie du quartier. Ce n'est pas une donnée officielle mais un
+   comptage de ce que l'app connaît réellement autour de toi ; le libellé le
+   dit, pour qu'on ne le prenne pas pour une mesure. */
+function vitalite(){
+  if(!positionMoi) return null;
+  const [lat,lng] = positionMoi;
+  const proches = lieux.filter(l=>distanceM(lat,lng,l.lat,l.lng) < 900);
+  const ouverts = proches.filter(l=>l.ouvert === true).length;
+  const evs = proches.filter(l=>(CATS[l.cat]||{}).eph && !estPasse(l)).length;
+  const score = ouverts + evs*5;
+  if(score >= 25) return {p:"🟢", t:"Quartier très vivant", n:ouverts, e:evs};
+  if(score >= 8)  return {p:"🟡", t:"Activité normale",     n:ouverts, e:evs};
+  return {p:"🔴", t:"Quartier calme", n:ouverts, e:evs};
+}
+
+/* Découverte : un lieu au hasard, mais tiré parmi les pertinents du moment
+   plutôt que dans toute la liste — sinon on tombe sur un arrêt de bus. */
+function surprendre(){
+  if(!positionMoi) return;
+  const m = momentActuel();
+  const [lat,lng] = positionMoi;
+  const candidats = lieux
+    .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
+    .filter(l=>l.dist < 2000 && !["metro","bus","toilettes","recharge","velo"].includes(l.cat))
+    .map(l=>Object.assign(l, {score:pertinence(l, m.poids)}))
+    .sort((a,b)=>b.score-a.score)
+    .slice(0, 15);
+  if(!candidats.length){ toast("Rien à proposer pour l’instant"); return; }
+  const l = candidats[Math.floor(Math.random()*candidats.length)];
+  map.flyTo([l.lat,l.lng], 17, {duration:.7});
+  pileEcrans = [];
+  pousserEcran(()=>ouvrirDetail(l.id));
+}
+
+/* « Autour IA » : aucune génération, aucun résultat inventé. La phrase est
+   traduite en filtres existants — cuisine, catégorie, budget, créneau — et
+   c'est l'app qui fait le reste. */
+function interpreter(phrase){
+  const t = sansAccents(phrase);
+  const act = {cats:null, filtres:new Set(), creneau:null, cuisine:null, dit:[]};
+
+  const cuisine = cuisineRecherchee(phrase);
+  if(cuisine){ act.cuisine = cuisine; act.dit.push(cuisine); }
+
+  const cat = categorieRecherchee(phrase);
+  if(cat && !cuisine){ act.cats = new Set([cat]); act.dit.push((CATS[cat]||{}).label || cat); }
+
+  // un budget chiffré : « j'ai 15 € » → petit budget en dessous de 20 €
+  const euros = /(\d{1,3})\s*(e|eu|euro|euros|€)/.exec(t);
+  if(euros){
+    const n = Number(euros[1]);
+    act.filtres.add(n <= 20 ? "budget" : "gratuit");
+    act.dit.push(n+" €");
+  }
+  if(/gratuit|sans argent|rien depenser|fauche/.test(t)){ act.filtres.add("gratuit"); act.dit.push("gratuit"); }
+  if(/rencontrer|du monde|des gens|seul|amis/.test(t)){ act.filtres.add("monde"); act.dit.push("rencontrer"); }
+  if(/famille|enfant|gosse|petits/.test(t)){ act.filtres.add("famille"); act.dit.push("en famille"); }
+  if(/etudier|reviser|travailler|calme|bosser/.test(t)){ act.filtres.add("etudier"); act.dit.push("étudier"); }
+  if(/pmr|fauteuil|handicap|accessible/.test(t)){ act.filtres.add("pmr"); act.dit.push("accessible"); }
+  if(/pres|proche|a cote|pas loin/.test(t)){ act.filtres.add("proche"); act.dit.push("tout près"); }
+
+  if(/ce soir|soiree|tantot/.test(t)){ act.creneau = "soir"; act.dit.push("ce soir"); }
+  else if(/demain/.test(t)){ act.creneau = "demain"; act.dit.push("demain"); }
+  else if(/maintenant|tout de suite|la|now/.test(t)){ act.creneau = "maintenant"; act.dit.push("maintenant"); }
+
+  return act;
+}
+
+function appliquerPhrase(phrase){
+  const a = interpreter(phrase);
+  if(!a.dit.length){
+    ouvrirResultats(phrase);            // rien de compris : recherche classique
+    return;
+  }
+  catsActives = a.cats;
+  filtresHumains = a.filtres;
+  if(a.creneau){ creneau = a.creneau; filtreMaintenant = true; }
+  filtreActif = "tout";
+  selectionAccueil = false;
+  $("#accueil").hidden = true; $("#intentions").hidden = true;
+  dessinerFiltres(); majFiltres(); rendre();
+
+  if(a.cuisine){
+    const trouves = lieux.filter(l=>{
+      const c = sansAccents(l.cuisine||"");
+      return c && (c.includes(a.cuisine) || a.cuisine.includes(c));
+    });
+    pileEcrans = [];
+    pousserEcran(()=>afficherListe("🍽", "« "+phrase+" »",
+      classerLieux(trouves, false), false, ()=>appliquerPhrase(phrase)));
+  }
+  toast("Compris : "+a.dit.join(" · "));
 }
 
 function toutAfficher(){
@@ -3168,6 +3337,7 @@ function majAccueil(){
     pousserEcran(()=>ouvrirDetail(id));
   });
 
+  majVitalite();
   $("#accueil").hidden = false;
   $("#btnMaintenant").hidden = false;
   rendre();
@@ -3272,7 +3442,15 @@ $("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
 $("#acPlus").onclick=()=>{ toutAfficher(); ouvrirIntentions(); };
-$("#btnMaintenant").onclick=basculerMaintenant;
+$("#btnMaintenant").onclick=()=>{ basculerMaintenant(); ouvrirIntentions(); };
+$("#intFermer").onclick=()=>{ $("#intentions").hidden = true; };
+$("#iaTexte").onkeydown=e=>{
+  if(e.key !== "Enter") return;
+  const v = e.target.value.trim();
+  if(!v) return;
+  e.target.blur();
+  appliquerPhrase(v);
+};
 $("#btnExplorer").onclick=(e)=>{
   // la croix sur le bouton retire le filtre sans rouvrir le panneau
   if(e.target.classList.contains("ex-x")){
