@@ -369,6 +369,9 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .h-ligne:nth-of-type(1){border-top:0;margin-top:7px}
 .h-jour{font-weight:700;color:var(--ink)}
 .service{font-weight:700;color:var(--ardoise)}
+.non-verifie{margin:-8px 0 14px;padding:10px 12px;border-radius:3px;
+  background:rgba(255,74,23,.1);border:1px solid rgba(255,74,23,.3);
+  font-size:12.5px;line-height:1.45;color:var(--ink)}
 .service-bloc{margin:-8px 0 14px;padding:8px 11px;border-radius:3px;
   background:rgba(44,58,51,.08);font-size:12.5px;font-weight:600;color:var(--ardoise)}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
@@ -525,6 +528,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="panne" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -772,12 +776,88 @@ const REQUETES = [
 ];
 
 
+/* ================================================================== */
+/*  Publications partagées                                            */
+/* ================================================================== */
+
+/* Identité anonyme : aucun formulaire, aucune adresse mail. Elle sert
+   uniquement à ce que chacun puisse retirer ce qu'il a publié et à ce qu'un
+   compte qui abuse puisse être bloqué. Exiger une inscription écarterait en
+   premier les personnes que l'aide alimentaire concerne. */
+const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
+const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
+
+let sb = null, moiId = null;
+
+async function connecter(){
+  if(typeof window.supabase === "undefined"){
+    console.warn("Supabase indisponible : les publications restent locales.");
+    return null;
+  }
+  try{
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
+    let { data:{ session } } = await sb.auth.getSession();
+    if(!session){
+      const { data, error } = await sb.auth.signInAnonymously();
+      if(error) throw error;
+      session = data.session;
+    }
+    moiId = session && session.user ? session.user.id : null;
+    return sb;
+  }catch(e){
+    console.error("Identité anonyme indisponible :", e.message || e);
+    sb = null;
+    return null;
+  }
+}
+
+function versLieu(p){
+  return {
+    id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
+    adresse:p.adresse || "", cp:p.cp || commune,
+    quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
+    par: p.verifie ? "Structure vérifiée" : "Habitant du quartier",
+    verifie: p.verifie, mien: !!(moiId && p.auteur === moiId),
+    lat:p.lat, lng:p.lng,
+    finLe: p.fin_le ? new Date(p.fin_le).getTime() : null
+  };
+}
+
+async function chargerPublications(lat,lng){
+  if(!sb) return [];
+  const d = 0.06;                       // ~6 km, la zone qu'on explore à pied
+  const { data, error } = await sb.from("publications").select("*")
+    .gte("lat", lat-d).lte("lat", lat+d)
+    .gte("lng", lng-d).lte("lng", lng+d)
+    .order("cree_le", {ascending:false}).limit(200);
+  if(error){ console.error("Lecture des publications :", error.message); return []; }
+  return (data||[]).map(versLieu);
+}
+
 const Store = {
-  dispo: typeof window.storage !== "undefined",
-  async lire(){ if(!this.dispo) return [];
-    try{ const r=await window.storage.get("lieux-publies",true); return r?JSON.parse(r.value):[]; }catch(e){ return []; } },
-  async ecrire(l){ if(!this.dispo) return;
-    try{ await window.storage.set("lieux-publies", JSON.stringify(l), true); }catch(e){} }
+  get dispo(){ return !!sb; },
+  async publier(l){
+    if(!sb) return null;
+    const { data, error } = await sb.from("publications").insert({
+      cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
+      gratuit:l.gratuit, prix:l.prix, places:l.places,
+      lat:l.lat, lng:l.lng, fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
+    }).select().single();
+    if(error){
+      console.error("Publication refusée :", error.message);
+      toast(/row-level security|violates/i.test(error.message)
+        ? "Limite de publications atteinte pour aujourd’hui"
+        : "Publication impossible");
+      return null;
+    }
+    return versLieu(data);
+  },
+  async supprimer(dbId){
+    if(!sb || !dbId) return false;
+    const { error } = await sb.from("publications").delete().eq("id", dbId);
+    if(error){ console.error("Suppression refusée :", error.message); return false; }
+    return true;
+  }
 };
 
 /* ================================================================== */
@@ -1302,7 +1382,10 @@ async function demarrer(coords){
   // les événements viennent d'OpenAgenda, jamais d'un générateur
   pEvents.then(ev=>{ fusionner(ev); majAccueil(); });
 
-  Store.lire().then(enr=>{ if(enr && enr.length){ publies = enr; fusionner(enr); } });
+  // identité anonyme puis publications partagées de la zone
+  connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
+    if(pubs && pubs.length){ publies = pubs; fusionner(pubs); }
+  });
 
   const fond = await pFond;
   if(!fond){
@@ -1515,6 +1598,10 @@ function ouvrirDetail(id){
     '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+(l.gratuit?'Gratuit':l.prix+' €')+'</span></div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
     (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
+    // une fausse distribution fait se déplacer quelqu'un qui n'a pas de quoi manger
+    ((CATS[l.cat]||{}).eph && !l.verifie && /alimentaire|collecte|hebergement/.test(l.cat)
+      ? '<p class="non-verifie">Annonce publiée par un habitant, non vérifiée. '+
+        'Renseigne-toi avant de te déplacer.</p>' : '')+
     '<address class="adresse"><span class="ad-rue">'+esc(l.adresse)+'</span>'+
     '<span class="ad-ville">'+esc(l.cp)+'</span>'+
     '<button class="y-aller" id="btnYAller">Y aller</button></address>'+
@@ -1532,7 +1619,7 @@ function ouvrirDetail(id){
       '<div class="sans-billet">Le paiement se fait sur place, entre vous. '+
       'L’app n’encaisse rien.</div>')+
     '<div class="liens"><button id="btnPartLieu">Partager</button>'+
-    (l.par === "Anonyme"
+    (l.mien
       ? '<button id="btnSupprimer" class="lien-danger">Supprimer</button>'
       : '<button id="btnSignal">Signaler</button>')+
     '</div>'
@@ -1548,9 +1635,12 @@ function ouvrirDetail(id){
       sup.textContent = "Confirmer la suppression";
       return;
     }
+    if(l.dbId && !(await Store.supprimer(l.dbId))){
+      toast("Suppression impossible"); return;
+    }
     publies = publies.filter(p=>p.id !== l.id);
     lieux   = lieux.filter(p=>p.id !== l.id);
-    await Store.ecrire(publies);
+    indexPerime = true;
     fermerFeuille(); rendre(); dessinerFiltres();
     toast("Événement supprimé");
   };
@@ -2308,12 +2398,13 @@ async function publier(){
     cp:commune, quand:libelleQuand(b)||"Bientôt",
     gratuit:b.gratuit, prix:b.gratuit?0:b.prix,
     places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng };
-  publies.push(l); lieux.push(l);
-  await Store.ecrire(publies);
+  const enligne = await Store.publier(l);
+  if(!enligne){ fermerFeuille(); return; }   // message déjà affiché
+  publies.push(enligne); lieux.push(enligne);
   fermerFeuille();
   filtreActif="tout"; dessinerFiltres(); rendre();
-  map.flyTo([l.lat,l.lng], Math.max(map.getZoom(),17), {duration:.7});
-  toast(Store.dispo?"Publié · visible par tous":"Publié");
+  map.flyTo([enligne.lat,enligne.lng], Math.max(map.getZoom(),17), {duration:.7});
+  toast("Publié · visible par tous");
 }
 
 /* ================================================================== */
@@ -2525,7 +2616,7 @@ function classerLieux(liste, sansPalmares){
   const dedans = liste.map(l=>{
     const d = distanceM(lat,lng,l.lat,l.lng);
     const evs = (CATS[l.cat]||{}).eph ? [] : evenementsDe(l);
-    return Object.assign({}, l, {dist:d, evs:evs.length, mien:l.par==="Anonyme"});
+    return Object.assign({}, l, {dist:d, evs:evs.length, mien:!!l.mien});
   });
 
   dedans.sort((a,b)=>{
@@ -2732,7 +2823,7 @@ function pertinence(l, poids){
   // logarithme, car passer de 10 à 100 avis compte bien plus que de 900 à 1000.
   if(l.avis) s += Math.min(22, Math.log10(l.avis+1) * 11);
   if(l.note) s += (l.note - 3.5) * 8;
-  if(l.par === "Anonyme") s += 40;          // tes propres publications d'abord
+  if(l.mien) s += 40;          // tes propres publications d'abord
   return s;
 }
 
