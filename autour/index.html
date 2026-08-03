@@ -193,6 +193,29 @@ input{font-family:inherit;font-size:16px}
 .barre input::placeholder{color:#A3ADA6}
 .icone-btn{border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
 
+/* ---- accueil : la réponse à « qu'est-ce qu'il se passe ici, maintenant ? » ---- */
+#accueil{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 82px);z-index:600;
+  padding:13px 15px 7px;border:1px solid var(--bord);border-radius:16px;background:#fff;
+  box-shadow:0 4px 20px rgba(20,30,25,.18);animation:monte .34s cubic-bezier(.2,.9,.3,1)}
+.ac-tete{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
+.ac-titre{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+.ac-plus{border:0;background:none;padding:2px 0;font-size:12px;font-weight:700;
+  color:var(--signal);text-decoration:underline;text-underline-offset:3px}
+.ac-item{display:flex;align-items:center;gap:11px;width:100%;padding:10px 0;border:0;
+  border-top:1px solid rgba(20,30,25,.1);background:none;text-align:left}
+.ac-item:first-child{border-top:0}
+.ac-item:active{opacity:.6}
+.ac-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--paper);
+  border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
+.ac-txt{flex:1;min-width:0}
+.ac-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-sous{display:block;margin-top:2px;font-size:11.5px;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;color:var(--ink2)}
+
 /* ---- bouton Explorer : une seule entrée au lieu d'une longue piste ---- */
 .explorer{position:absolute;left:14px;bottom:calc(var(--safe-b) + 16px);z-index:601;
   display:flex;align-items:center;gap:7px;padding:13px 18px;border:1px solid var(--bord);
@@ -452,6 +475,14 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <button class="mini" id="btnRevenir" hidden>◎ Revenir</button>
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
+
+<div id="accueil" hidden>
+  <div class="ac-tete">
+    <span class="ac-titre" id="acTitre">Autour de toi</span>
+    <button class="ac-plus" id="acPlus">Voir plus</button>
+  </div>
+  <div id="acListe"></div>
+</div>
 
 <button class="explorer" id="btnExplorer" hidden></button>
 
@@ -729,25 +760,6 @@ const REQUETES = [
   ["railway","tram_stop","bus"], ["highway","bus_stop","bus"], ["amenity","bus_station","bus"],
 ];
 
-const SCENARIOS = {
-  parc:      [["event","Cypher ouvert","Ce soir · 21h"],["food","Barbecue du quartier","Dim. · 12h"],
-              ["sport","Foot à 5, il manque 2","Ce soir · 20h"],["popup","Vide-grenier","Sam. · 8h → 14h"]],
-  musee:     [["event","Nocturne gratuite","Ven. · 18h → 22h"],["popup","Atelier sérigraphie","Sam. · 15h"]],
-  biblio:    [["collecte","Don de livres","Dim. · 10h → 13h"],["event","Lecture à voix haute","Mer. · 17h"]],
-  terrain:   [["sport","Tournoi 3x3","Sam. · 16h"],["event","Session filmée","Ce soir · 19h"]],
-  spectacle: [["event","Open mic","Ven. · 19h"],["studio","Répète ouverte","Jeu. · 20h"]],
-  marche:    [["popup","Friperie de rue","Sam. · 11h → 18h"],["food","Cantine de rue","Ce soir · 18h30"]],
-};
-
-const ERRANTS = [
-  ["popup","Pop-up fringues & vinyles","Ce soir · 19h → 23h"],
-  ["collecte","Collecte manteaux","Sam. · toute la journée"],
-  ["studio","Studio ouvert, 4 prises","Demain · 15h"],
-  ["event","Projection sur mur","Sam. · 22h"],
-  ["food","Cantine de rue","Ce soir · 18h30"],
-  ["sport","Tournoi FIFA","Dim. · 14h"],
-];
-const PRENOMS = ["Naïm","Sab","Assia","Kenzo","Yanis","Lina","Marwa","Adam","Nour","Sofia","Ilyes","Maya"];
 
 const Store = {
   dispo: typeof window.storage !== "undefined",
@@ -917,32 +929,6 @@ async function evenementsOpenAgenda(lat,lng){
       };
     }).filter(Boolean);
   }catch(e){ console.error("OpenAgenda: échec de la requête", e); return null; }
-}
-
-/* Quand OpenStreetMap est injoignable, on pose des lieux d'exemple
-   pour que l'app reste testable. Ils sont étiquetés comme tels. */
-const MODELES = [
-  ["biblio","Médiathèque du centre"], ["biblio","Bibliothèque Jean-Moulin"],
-  ["biblio","Point lecture du quartier"],
-  ["musee","Musée municipal"], ["musee","Galerie du Marché"],
-  ["parc","Parc des Tilleuls"], ["parc","Square de la Fontaine"], ["parc","Jardin partagé"],
-  ["terrain","Skatepark du canal"], ["terrain","City stade Nord"],
-  ["spectacle","Salle des fêtes"], ["spectacle","Le Kiosque"],
-  ["marche","Marché couvert"],
-];
-
-function lieuxSecours(lat,lng){
-  const rnd = alea("s"+lat.toFixed(3)+lng.toFixed(3));
-  return MODELES.map(([cat,nom],i)=>{
-    const d = 0.0012 + rnd()*0.0075, a = rnd()*Math.PI*2;
-    return {
-      id:"dem"+i, cat, titre:nom,
-      adresse:"Lieu d’exemple", cp:commune,
-      quand:"Horaires indicatifs", gratuit:true, prix:0,
-      places:null, qr:false, par:"Démonstration",
-      lat: lat + Math.sin(a)*d, lng: lng + Math.cos(a)*d*1.55
-    };
-  });
 }
 
 async function nomCommune(lat,lng){
@@ -1138,41 +1124,6 @@ function majEtiquettes(){
   });
 }
 
-/* ================================================================== */
-/*  Événements fictifs greffés sur les vrais lieux                    */
-/* ================================================================== */
-
-function fabriquerEvenements(reels, lat, lng){
-  const rnd = alea(lat.toFixed(3)+lng.toFixed(3));
-  const out = [];
-  const candidats = reels.filter(l=>SCENARIOS[l.cat]).sort(()=>rnd()-.5).slice(0,9);
-
-  candidats.forEach((l,i)=>{
-    const opts = SCENARIOS[l.cat];
-    const [cat,titre,quand] = opts[Math.floor(rnd()*opts.length)];
-    const payant = rnd()<.3, limite = rnd()<.45;
-    out.push({
-      id:"ev"+i+"-"+l.id, cat, titre, adresse:l.titre, cp:l.cp, quand,
-      gratuit:!payant, prix: payant?[2,3,4,5,6][Math.floor(rnd()*5)]:0,
-      places: limite?[8,10,16,30,40,60,120][Math.floor(rnd()*7)]:null,
-      qr: limite||payant, par: PRENOMS[Math.floor(rnd()*PRENOMS.length)],
-      lat: l.lat+(rnd()-.5)*0.0006, lng: l.lng+(rnd()-.5)*0.0009
-    });
-  });
-
-  ERRANTS.forEach(([cat,titre,quand],i)=>{
-    const d = 0.0025+rnd()*0.005, a = rnd()*Math.PI*2;
-    const payant = rnd()<.3, limite = rnd()<.4;
-    out.push({
-      id:"er"+i, cat, titre, adresse:"Dans le quartier", cp:commune, quand,
-      gratuit:!payant, prix: payant?[2,3,5][Math.floor(rnd()*3)]:0,
-      places: limite?[10,20,50][Math.floor(rnd()*3)]:null,
-      qr: limite&&rnd()<.6, par: PRENOMS[Math.floor(rnd()*PRENOMS.length)],
-      lat: lat+Math.sin(a)*d, lng: lng+Math.cos(a)*d*1.55
-    });
-  });
-  return out;
-}
 
 /* ================================================================== */
 /*  Démarrage                                                         */
@@ -1186,6 +1137,7 @@ function fusionner(nouveaux){
   nouveaux.forEach(l=>{ if(!connus.has(l.id)) lieux.push(l); });
   rendre();
   dessinerFiltres();
+  majAccueil();             // la sélection se reclasse à chaque nouvelle source
   ouvrirLieuPartage();      // le lieu d'un lien partagé s'ouvre dès qu'il arrive
 }
 
@@ -1278,16 +1230,16 @@ async function demarrer(coords){
       fusionner(reels);
       ecrireCacheLieux(lat,lng,reels);
     }else if(!lieux.length){
-      // seulement si vraiment rien n'a pu être chargé
-      fusionner(lieuxSecours(lat,lng));
-      toast("Lieux d’exemple · OSM injoignable");
+      // plus aucun lieu inventé : mieux vaut dire qu'on n'a rien trouvé que
+      // de faire déplacer quelqu'un vers une bibliothèque qui n'existe pas
+      toast("Aucune donnée reçue · réseau ou OSM indisponible");
     }
     charge(null);
-    pEvents.then(ev=>{
-      const permanents = lieux.filter(l=>!(CATS[l.cat]||{}).eph);
-      fusionner((ev && ev.length) ? ev : fabriquerEvenements(permanents, lat, lng));
-    });
+    majAccueil();
   });
+
+  // les événements viennent d'OpenAgenda, jamais d'un générateur
+  pEvents.then(ev=>{ fusionner(ev); majAccueil(); });
 
   Store.lire().then(enr=>{ if(enr && enr.length){ publies = enr; fusionner(enr); } });
 
@@ -1322,6 +1274,9 @@ function enregistrerMasquees(){
 
 function visibles(){
   const q = recherche.trim().toLowerCase();
+  // à l'arrivée, la carte ne porte que la poignée de lieux de l'accueil
+  if(Array.isArray(selectionAccueil) && filtreActif==="tout" && !q)
+    return lieux.filter(l=>selectionAccueil.includes(l.id));
   return lieux.filter(l=>{
     if(filtreActif!=="tout" && l.cat!==filtreActif) return false;
     // une catégorie explicitement demandée reste visible même si masquée
@@ -1565,7 +1520,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir"]
+  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
@@ -1596,6 +1551,7 @@ function quitterNav(){
   $("#navEtapes").hidden = true;
   ["#btnExplorer","#btnAjouter","#haut","#btnPartager"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
+  if(Array.isArray(selectionAccueil)) $("#accueil").hidden = false;
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
   $("#voile").hidden = false; $("#feuille").hidden = false;  // la fiche revient
   rendre();                                                   // et les marqueurs aussi
@@ -2088,6 +2044,7 @@ function fermerModePose(){
   $("#viseur").hidden=true; $("#poseBarre").hidden=true;
   $("#btnExplorer").hidden=false; $("#btnAjouter").hidden=false;
   $("#btnPartager").hidden=false; majBoutons();
+  if(Array.isArray(selectionAccueil)) $("#accueil").hidden = false;
 }
 function nouveauBrouillon(){
   const c=map.getCenter();
@@ -2599,6 +2556,114 @@ function ouvrirResultats(q){
 
 /* ================================================================== */
 
+/* ================================================================== */
+/*  Accueil : trois choses utiles maintenant, pas quatre cents épingles */
+/* ================================================================== */
+
+/* Ce qui compte change avec l'heure. À une heure du matin, une pharmacie ou
+   un hébergement d'urgence valent mieux qu'un musée fermé depuis longtemps. */
+const MOMENTS = [
+  { de:6,  a:11, nom:"ce matin",
+    poids:{cafe:3, marche:3, mairie:2, emploi:2, sante:2, alimentaire:2} },
+  { de:11, a:14, nom:"ce midi",
+    poids:{resto:3, alimentaire:3, fastfood:2, cafe:2, marche:2} },
+  { de:14, a:18, nom:"cet après-midi",
+    poids:{biblio:2, musee:2, parc:2, asso:2, emploi:2, terrain:2, friperie:2, commerce:2} },
+  { de:18, a:23, nom:"ce soir",
+    poids:{concert:4, spectacle:4, bar:3, resto:3, cinema:3, fastfood:2} },
+  { de:23, a:6,  nom:"cette nuit",
+    poids:{sante:3, hebergement:3, bar:2, fastfood:2} },
+];
+
+function momentActuel(){
+  const h = new Date().getHours();
+  return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
+}
+
+/* Le score décide de ce qu'on voit en arrivant. Chaque terme correspond à un
+   ressort documenté du comportement réel, pas à une intuition. */
+function pertinence(l, poids){
+  let s = 0;
+  // Décroissance de la distance : on ne « découvre » pas à deux kilomètres.
+  // Exponentielle et non linéaire, parce que l'envie de se déplacer chute
+  // brutalement passé quelques centaines de mètres.
+  s += 120 * Math.exp(-l.dist / 800);
+  // Ce qui se passe l'emporte sur ce qui existe : c'est la promesse de l'app,
+  // et c'est la seule chose que Google Maps ne dit pas.
+  if((CATS[l.cat]||{}).eph) s += 55;
+  // Un lieu fermé maintenant ne sert à rien, même excellent.
+  if(l.ouvert === true)  s += 30;
+  if(l.ouvert === false) s -= 70;
+  s += (poids[l.cat] || 0) * 14;
+  // Preuve sociale : le nombre d'avis rassure plus que la note seule. En
+  // logarithme, car passer de 10 à 100 avis compte bien plus que de 900 à 1000.
+  if(l.avis) s += Math.min(22, Math.log10(l.avis+1) * 11);
+  if(l.note) s += (l.note - 3.5) * 8;
+  if(l.par === "Anonyme") s += 40;          // tes propres publications d'abord
+  return s;
+}
+
+/* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
+   false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
+let selectionAccueil = null;
+
+function toutAfficher(){
+  selectionAccueil = false;
+  const a = $("#accueil"); if(a) a.hidden = true;
+  rendre();
+}
+
+function majAccueil(){
+  if(!map || !positionMoi || modeNav) return;
+  if(selectionAccueil === false) return;
+  const m = momentActuel();
+  const [lat,lng] = positionMoi;
+
+  const notes = lieux
+    .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
+    .filter(l=>l.dist < 2500)
+    .map(l=>Object.assign(l, {score:pertinence(l, m.poids)}))
+    .sort((a,b)=>b.score - a.score);
+  if(!notes.length) return;
+
+  // on réserve une place à un événement s'il en existe un : sans ça, les
+  // commerces bien notés rafleraient les trois lignes et l'app perdrait
+  // exactement ce qui la distingue
+  const choisis = [];
+  const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
+  if(ev) choisis.push(ev);
+  notes.forEach(l=>{ if(choisis.length < 3 && !choisis.includes(l)) choisis.push(l); });
+
+  selectionAccueil = choisis.map(l=>l.id);
+
+  const heure = new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  $("#acTitre").textContent = "Autour de toi · "+heure;
+  $("#acListe").innerHTML = choisis.map(l=>{
+    const c = CATS[l.cat] || {emoji:"📍"};
+    const bouts = [];
+    if(l.ouvert === true)  bouts.push('<span class="ouvert">Ouvert</span>');
+    if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
+    if(l.note) bouts.push("★ "+l.note.toFixed(1));
+    if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(l.quand)) bouts.push(esc(l.quand));
+    return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
+      '<span class="ac-emoji">'+c.emoji+'</span>'+
+      '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
+      '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
+      '<span class="ac-dist">'+formatDist(l.dist)+'</span></button>';
+  }).join("");
+
+  $("#acListe").querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
+    if(!cible) return;
+    map.flyTo([cible.lat,cible.lng], 17, {duration:.6});
+    pileEcrans = [];
+    pousserEcran(()=>ouvrirDetail(id));
+  });
+
+  $("#accueil").hidden = false;
+  rendre();
+}
+
 /* Le nom est conservé : plusieurs endroits l'appellent après une publication.
    Il ne dessine plus une piste de filtres mais met à jour le bouton Explorer. */
 function dessinerFiltres(){
@@ -2681,7 +2746,7 @@ $("#btnFermerRech").onclick=()=>{
   $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
   $("#rech").value=""; recherche=""; rendre();
 };
-$("#rech").oninput=e=>{ recherche=e.target.value; rendre(); };
+$("#rech").oninput=e=>{ recherche=e.target.value; if(recherche) toutAfficher(); rendre(); };
 // Entrée : on bascule du filtrage des pastilles vers un vrai classement
 $("#rech").onkeydown=e=>{
   if(e.key !== "Enter") return;
@@ -2695,11 +2760,13 @@ $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
+$("#acPlus").onclick=toutAfficher;
 $("#btnExplorer").onclick=(e)=>{
   // la croix sur le bouton retire le filtre sans rouvrir le panneau
   if(e.target.classList.contains("ex-x")){
     filtreActif = "tout"; dessinerFiltres(); rendre(); return;
   }
+  toutAfficher();          // explorer, c'est vouloir sortir de la sélection
   pileEcrans = [];
   pousserEcran(ouvrirExplorer);
 };
