@@ -369,6 +369,7 @@ dl.faits dd{font-size:14.5px;font-weight:600;text-align:right}
 .liens{display:flex;gap:10px;justify-content:center;margin-top:16px}
 .liens button{border:0;background:none;font-size:12px;color:var(--ink2);
   text-decoration:underline;text-underline-offset:3px;padding:6px}
+.liens .lien-danger{color:var(--signal);font-weight:700}
 
 h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transform:uppercase;margin:0 0 20px}
 .champ{display:block;margin-bottom:17px}
@@ -1185,6 +1186,7 @@ function fusionner(nouveaux){
   nouveaux.forEach(l=>{ if(!connus.has(l.id)) lieux.push(l); });
   rendre();
   dessinerFiltres();
+  ouvrirLieuPartage();      // le lieu d'un lien partagé s'ouvre dès qu'il arrive
 }
 
 /* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
@@ -1214,11 +1216,14 @@ async function demarrer(coords){
     return;
   }
   positionMoi = coords || [48.8566,2.3522];
+  // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
+  const partage = lieuPartage();
+  const centre = partage ? [partage.lat, partage.lng] : positionMoi;
   $("#porte").hidden = true;
   ["#haut","#btnExplorer","#btnAjouter","#btnPartager"].forEach(s=>$(s).hidden=false);
 
   map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
-        .setView(positionMoi, 16);
+        .setView(centre, partage ? 17 : 16);
   map.createPane("villePane"); map.getPane("villePane").style.zIndex = 200;
   map.createPane("ruesPane");  map.getPane("ruesPane").style.zIndex = 350;
   map.getPane("ruesPane").style.pointerEvents = "none";
@@ -1495,9 +1500,28 @@ function ouvrirDetail(id){
       : '<div class="sans-billet"><strong>Pas de code.</strong> Tu viens, tu entres.'+
         (l.gratuit?'':' Le paiement se fait sur place, entre vous.')+'</div>')+
     '<div class="liens"><button id="btnPartLieu">Partager</button>'+
-    '<button id="btnSignal">Signaler</button></div>'
+    (l.par === "Anonyme"
+      ? '<button id="btnSupprimer" class="lien-danger">Supprimer</button>'
+      : '<button id="btnSignal">Signaler</button>')+
+    '</div>'
   );
-  $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
+  if($("#btnSignal")) $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
+
+  /* Suppression en deux temps : un appui demande confirmation, le second
+     supprime. Rien d'irréversible sur un simple effleurement. */
+  const sup = $("#btnSupprimer");
+  if(sup) sup.onclick = async ()=>{
+    if(sup.dataset.sur !== "1"){
+      sup.dataset.sur = "1";
+      sup.textContent = "Confirmer la suppression";
+      return;
+    }
+    publies = publies.filter(p=>p.id !== l.id);
+    lieux   = lieux.filter(p=>p.id !== l.id);
+    await Store.ecrire(publies);
+    fermerFeuille(); rendre(); dessinerFiltres();
+    toast("Événement supprimé");
+  };
   $("#btnPartLieu").onclick=()=>partagerLieu(l);
   $("#btnYAller").onclick=()=>afficherTrajet(l);
 }
@@ -1979,11 +2003,40 @@ async function arretsProchesCache(lat,lng){
   return CACHE_TRANSPORT;
 }
 
+/* Un lien qui ouvre vraiment le lieu chez l'autre personne, au lieu de la
+   déposer sur la carte sans contexte. */
+function lienVers(l){
+  const u = new URL(location.href);
+  u.hash = "l="+l.lat.toFixed(5)+","+l.lng.toFixed(5)+"|"+encodeURIComponent(l.titre||"");
+  return u.toString();
+}
+
+function lieuPartage(){
+  const m = /^#l=(-?[\d.]+),(-?[\d.]+)(?:\|(.*))?$/.exec(location.hash||"");
+  if(!m) return null;
+  return { lat:parseFloat(m[1]), lng:parseFloat(m[2]),
+           titre: m[3] ? decodeURIComponent(m[3]) : "" };
+}
+
+/* Une fois les lieux chargés, on ouvre celui que le lien désignait. */
+let partageOuvert = false;
+function ouvrirLieuPartage(){
+  if(partageOuvert) return;
+  const p = lieuPartage();
+  if(!p) return;
+  const cible = lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
+  if(!cible) return;                 // les lieux ne sont pas encore tous arrivés
+  partageOuvert = true;
+  map.flyTo([cible.lat,cible.lng], 17, {duration:.8});
+  setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
+}
+
 async function partagerLieu(l){
+  const url = lienVers(l);
   const txt = l.titre+" — "+l.adresse+", "+l.cp+" · "+l.quand;
   try{
-    if(navigator.share) await navigator.share({title:l.titre,text:txt,url:location.href});
-    else { await navigator.clipboard.writeText(txt+"\n"+location.href); toast("Copié"); }
+    if(navigator.share) await navigator.share({title:l.titre,text:txt,url});
+    else { await navigator.clipboard.writeText(txt+"\n"+url); toast("Lien copié"); }
   }catch(e){}
 }
 async function partagerApp(){
