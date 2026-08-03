@@ -546,6 +546,21 @@ const SERVICES = [
   [/banque\s*alimentaire/i,              "Banque alimentaire"],
   [/emma(ü|u)s/i,                        "Emmaüs"],
 ];
+/* Google range souvent McDonald's ou KFC en « restaurant », et OpenStreetMap
+   n'est pas toujours plus fin. Mélanger une chaîne et un vrai restaurant fausse
+   le classement : on les reclasse d'après l'enseigne. */
+const CHAINES_FASTFOOD = /mc\s?do|burger\s?king|\bkfc\b|\bquick\b|subway|domino|pizza\s?hut|o'?tacos|five\s?guys|tacos|kebab|snack|friterie|frit|chicken|tender|nachos|sushi\s?shop|pok[eé]\b/i;
+const CHAINES_CAFE     = /starbucks|paul\b|brioche\s?dor|columbus|costa\s?coffee|boulangerie|patisserie|maison\s?kayser|pain\s?quotidien/i;
+
+function affinerCategorie(cat, nom){
+  if(!nom) return cat;
+  if(cat === "resto" || cat === "fastfood" || cat === "cafe"){
+    if(CHAINES_CAFE.test(nom))     return "cafe";
+    if(CHAINES_FASTFOOD.test(nom)) return "fastfood";
+  }
+  return cat;
+}
+
 function preciserService(nom){
   for(const [re,lab] of SERVICES) if(re.test(nom||"")) return lab;
   return "";
@@ -622,6 +637,12 @@ const REQUETES = [
   ["social_facility","shelter","hebergement"],   ["social_facility","group_home","hebergement"],
   ["amenity","social_facility","asso"],          ["amenity","social_centre","asso"],
   ["office","association","asso"], ["office","ngo","asso"], ["office","charity","asso"],
+  // une maison de quartier est une asso, pas une salle de spectacle : elle
+  // était classée dans Sortir et n'apparaissait donc jamais dans Aide
+  ["amenity","community_centre","asso"],
+  ["community_centre","community_centre","asso"],
+  ["club","social","asso"], ["club","charity","asso"], ["club","sport","asso"],
+  ["club","culture","asso"], ["club","youth","asso"],
   ["office","employment_agency","emploi"],
   // government=* plutôt que office=government, trop large : il ramenait les
   // impôts et les annexes administratives dans les services d'aide à l'emploi
@@ -646,7 +667,7 @@ const REQUETES = [
   // -- sortir
   ["amenity","bar","bar"], ["amenity","pub","bar"], ["amenity","biergarten","bar"],
   ["amenity","cinema","cinema"], ["amenity","theatre","spectacle"],
-  ["amenity","arts_centre","spectacle"], ["amenity","community_centre","spectacle"],
+  ["amenity","arts_centre","spectacle"],
   ["amenity","nightclub","concert"], ["amenity","music_venue","concert"],
 
   // -- ville
@@ -784,10 +805,11 @@ async function vraisLieux(lat,lng){
     if(!p.lat||!p.lon) return null;
     const regle = REQUETES.find(([k,v])=>t[k]===v);
     if(!regle) return null;
+    const cat = affinerCategorie(regle[2], t.name);
     return {
-      id:"osm"+e.type+e.id, cat:regle[2],
-      titre: t.name || CATS[regle[2]].label,
-      adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[regle[2]].label),
+      id:"osm"+e.type+e.id, cat,
+      titre: t.name || CATS[cat].label,
+      adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[cat].label),
       cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
       quand: t.opening_hours || "Voir sur place",
       service: preciserService(t.name),      // Mission locale ≠ France Travail
@@ -1115,6 +1137,36 @@ function fabriquerEvenements(reels, lat, lng){
 /*  Démarrage                                                         */
 /* ================================================================== */
 
+/* Ajoute sans écraser : chaque source arrive à son rythme et complète les
+   précédentes, au lieu de remplacer la liste entière. */
+function fusionner(nouveaux){
+  if(!nouveaux || !nouveaux.length) return;
+  const connus = new Set(lieux.map(l=>l.id));
+  nouveaux.forEach(l=>{ if(!connus.has(l.id)) lieux.push(l); });
+  rendre();
+  dessinerFiltres();
+}
+
+/* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
+   l'affiche instantanément, sans réinterroger Overpass. */
+const CACHE_HEURES = 24;
+const cleCache = (lat,lng)=>"autour:lieux:"+lat.toFixed(3)+","+lng.toFixed(3);
+
+function lireCacheLieux(lat,lng){
+  try{
+    const brut = localStorage.getItem(cleCache(lat,lng));
+    if(!brut) return null;
+    const o = JSON.parse(brut);
+    if(Date.now() - o.t > CACHE_HEURES*3600*1000) return null;
+    return o.l;
+  }catch(e){ return null; }         // navigation privée, quota plein…
+}
+
+function ecrireCacheLieux(lat,lng,l){
+  try{ localStorage.setItem(cleCache(lat,lng), JSON.stringify({t:Date.now(), l})); }
+  catch(e){}
+}
+
 async function demarrer(coords){
   if(typeof L === "undefined"){
     etat("");
@@ -1153,36 +1205,46 @@ async function demarrer(coords){
 
   charge("Chargement…");
 
-  // fond de carte, lieux et événements réels sont demandés en même temps : plus d'attente en file
+  /* Affichage progressif. Rien n'attend plus rien : chaque source complète la
+     carte dès qu'elle répond. Avant, tout était bloqué derrière Overpass, qui
+     peut mettre 20 s — inacceptable pour quelqu'un à qui on partage le lien. */
   const pFond   = poserFond();
   const pNom    = nomCommune(lat,lng);
-  const pLieux  = vraisLieux(lat,lng);
   const pEvents = evenementsOpenAgenda(lat,lng);
+  const pGoogle = notesGoogle(lat,lng);
 
-  commune = await pNom;
-  let reels = await pLieux;
-  let exemple = false;
-  // uniquement si OSM n'a STRICTEMENT rien donné : mélanger de faux lieux à de
-  // vrais rendait la carte trompeuse (une bibliothèque inventée à côté des vraies)
-  if(!reels || !reels.length){
-    reels = lieuxSecours(lat,lng);
-    exemple = true;
-  }
-  const eventsReels = await pEvents;
-  const evenements = (eventsReels && eventsReels.length) ? eventsReels : fabriquerEvenements(reels,lat,lng);
-  lieux = reels.concat(evenements);
+  commune = await pNom;              // ~300 ms, et les libellés en dépendent
 
-  const enr = await Store.lire();
-  if(enr && enr.length){ publies = enr; lieux = lieux.concat(publies); }
-  rendre();
-  charge(null);
-  if(exemple) toast("Lieux d’exemple · OSM injoignable");
+  // 1. quartier déjà visité : affichage immédiat depuis le cache local
+  const enCache = lireCacheLieux(lat,lng);
+  if(enCache && enCache.length){ fusionner(enCache); charge(null); }
 
-  notesGoogle(lat,lng).then(fiches=>{
+  // 2. Google répond en ~1 s
+  pGoogle.then(fiches=>{
     if(!fiches) return;
     greffeNotes(lieux, fiches);      // notes et ouvert/fermé sur les lieux OSM
     ajouterLieuxGoogle(fiches);      // + les commerces que OSM ne connaît pas
+    charge(null);
   });
+
+  // 3. OpenStreetMap complète quand il arrive, sans bloquer l'affichage
+  vraisLieux(lat,lng).then(reels=>{
+    if(reels && reels.length){
+      fusionner(reels);
+      ecrireCacheLieux(lat,lng,reels);
+    }else if(!lieux.length){
+      // seulement si vraiment rien n'a pu être chargé
+      fusionner(lieuxSecours(lat,lng));
+      toast("Lieux d’exemple · OSM injoignable");
+    }
+    charge(null);
+    pEvents.then(ev=>{
+      const permanents = lieux.filter(l=>!(CATS[l.cat]||{}).eph);
+      fusionner((ev && ev.length) ? ev : fabriquerEvenements(permanents, lat, lng));
+    });
+  });
+
+  Store.lire().then(enr=>{ if(enr && enr.length){ publies = enr; fusionner(enr); } });
 
   const fond = await pFond;
   if(!fond){
@@ -2217,7 +2279,7 @@ function ajouterLieuxGoogle(fiches){
   if(!fiches) return;
   let ajoutes = 0;
   fiches.forEach(f=>{
-    const cat = CAT_GOOGLE[f.type];
+    const cat = affinerCategorie(CAT_GOOGLE[f.type], f.nom);
     if(!cat || !f.nom) return;
     const deja = lieux.some(l=>
       distanceM(l.lat,l.lng,f.lat,f.lng) < 80 &&
