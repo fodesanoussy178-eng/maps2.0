@@ -361,6 +361,13 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .etape-min{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2);padding-top:2px}
 .prix-n{font-weight:700;color:#1B7F3B}
+.horaires{margin:0 0 16px;padding:11px 14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
+.horaires summary{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ink2);cursor:pointer}
+.h-ligne{padding:5px 0;font-size:13px;color:var(--ink2);
+  border-top:1px solid rgba(20,30,25,.09)}
+.h-ligne:nth-of-type(1){border-top:0;margin-top:7px}
+.h-jour{font-weight:700;color:var(--ink)}
 .service{font-weight:700;color:var(--ardoise)}
 .service-bloc{margin:-8px 0 14px;padding:8px 11px;border-radius:3px;
   background:rgba(44,58,51,.08);font-size:12.5px;font-weight:600;color:var(--ardoise)}
@@ -785,7 +792,6 @@ let modeNav = false;   // itinéraire plein écran : la carte n'affiche que le t
 
 const $=(s)=>document.querySelector(s);
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
-const codeEntree=(id)=>"AG-"+(hash(id)%90000+10000);
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function alea(seed){let h=hash(String(seed))||1;return()=>{h=(h*1103515245+12345)&0x7fffffff;return (h>>8)%10000/10000;}}
@@ -926,6 +932,13 @@ async function evenementsOpenAgenda(lat,lng){
           if(!t || !t.begin) return "Voir sur place";
           return new Date(t.begin).toLocaleString("fr-FR",
             {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+        })(),
+        // fin réelle, pour ne plus afficher un événement d'hier
+        finLe: (()=>{
+          const t = evt.nextTiming || evt.firstTiming || (evt.timings||[])[0];
+          if(!t) return null;
+          const f = t.end || t.begin;
+          return f ? new Date(f).getTime() + (t.end ? 0 : 3*3600*1000) : null;
         })(),
         gratuit: !(evt.registration && evt.registration.price), prix:0,
         places:null, qr:false, par:"OpenAgenda",
@@ -1135,10 +1148,16 @@ function majEtiquettes(){
 
 /* Ajoute sans écraser : chaque source arrive à son rythme et complète les
    précédentes, au lieu de remplacer la liste entière. */
+/* Un événement terminé n'a plus rien à faire sur la carte. */
+function estPasse(l){
+  return l.finLe != null && l.finLe < Date.now();
+}
+
 function fusionner(nouveaux){
   if(!nouveaux || !nouveaux.length) return;
   const connus = new Set(lieux.map(l=>l.id));
-  nouveaux.forEach(l=>{ if(!connus.has(l.id)) lieux.push(l); });
+  nouveaux.forEach(l=>{ if(!connus.has(l.id) && !estPasse(l)) lieux.push(l); });
+  indexPerime = true;
   rendre();
   dessinerFiltres();
   majAccueil();             // la sélection se reclasse à chaque nouvelle source
@@ -1163,6 +1182,34 @@ function lireCacheLieux(lat,lng){
 function ecrireCacheLieux(lat,lng,l){
   try{ localStorage.setItem(cleCache(lat,lng), JSON.stringify({t:Date.now(), l})); }
   catch(e){}
+}
+
+/* Les lieux n'étaient chargés qu'autour du point de départ : explorer un autre
+   quartier ne montrait plus rien. On recharge dès qu'on s'en éloigne assez,
+   le cache local évitant de réinterroger ce qu'on a déjà vu. */
+let dernierChargement = null;
+let chargementEnCours = false;
+
+function chargerZone(lat, lng){
+  if(chargementEnCours || !map || map.getZoom() < 13) return;
+  if(dernierChargement &&
+     distanceM(dernierChargement[0], dernierChargement[1], lat, lng) < 800) return;
+  dernierChargement = [lat,lng];
+  chargementEnCours = true;
+
+  const enCache = lireCacheLieux(lat,lng);
+  if(enCache && enCache.length) fusionner(enCache);
+
+  Promise.all([
+    vraisLieux(lat,lng).then(r=>{
+      if(r && r.length){ fusionner(r); ecrireCacheLieux(lat,lng,r); }
+    }),
+    notesGoogle(lat,lng).then(f=>{
+      if(!f) return;
+      greffeNotes(lieux, f);
+      ajouterLieuxGoogle(f);
+    })
+  ]).finally(()=>{ chargementEnCours = false; });
 }
 
 async function demarrer(coords){
@@ -1195,10 +1242,18 @@ async function demarrer(coords){
   }).addTo(map);
 
   document.body.classList.toggle("loin", map.getZoom() < 15);
+  let minuteurRendu;
   map.on("moveend zoomend", ()=>{
     document.body.classList.toggle("loin", map.getZoom() < 15);
     majEpaisseurs(); majEtiquettes(); majBoutons();
-    rendre();                 // les grappes se recomposent au fil du zoom
+    // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
+    // faisait saccader la carte sur téléphone
+    clearTimeout(minuteurRendu);
+    minuteurRendu = setTimeout(()=>{
+      rendre();                          // les grappes suivent le zoom
+      const c = map.getCenter();
+      chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
+    }, 180);
   });
 
   dessinerFiltres();
@@ -1218,6 +1273,7 @@ async function demarrer(coords){
   commune = await pNom;              // ~300 ms, et les libellés en dépendent
 
   // 1. quartier déjà visité : affichage immédiat depuis le cache local
+  dernierChargement = [lat,lng];
   const enCache = lireCacheLieux(lat,lng);
   if(enCache && enCache.length){ fusionner(enCache); charge(null); }
 
@@ -1300,7 +1356,7 @@ function htmlMarqueur(l){
       (l.places!=null?'<span class="a-places">· '+l.places+' pl.</span>':'')+'</span>'+
       '<span class="a-titre">'+esc(l.titre)+'</span>'+
       '<span class="a-lieu">'+esc(l.adresse)+'</span>'+
-      (l.qr?'<span class="a-qr">▦</span>':'')+'</div></span>';
+      '</div></span>';
   }
   // le lieu reste, l'événement se pose dessus : une pastille signale qu'il s'y
   // passe quelque chose aujourd'hui sans remplacer le commerce lui-même
@@ -1332,11 +1388,23 @@ function grouper(liste){
    à chaque déplacement de carte, et parcourir tous les lieux pour chacun d'eux
    devenait quadratique dès quelques centaines de POI. */
 let indexEvenements = new Map();
+let indexPerime = true;          // recalculé seulement quand la liste change
+
 function majIndexEvenements(){
+  if(!indexPerime) return;
+  indexPerime = false;
   indexEvenements = new Map();
-  lieux.forEach(l=>{
-    if(!(CATS[l.cat]||{}).eph) return;
-    indexEvenements.set(l.adresse, (indexEvenements.get(l.adresse)||0) + 1);
+  const permanents = lieux.filter(l=>!(CATS[l.cat]||{}).eph);
+  lieux.forEach(e=>{
+    if(!(CATS[e.cat]||{}).eph) return;
+    // rattachement par proximité : comparer les noms ratait « Le Grand Mix »
+    // face à « Grand Mix », et tout événement dont l'adresse est une rue
+    let proche = null, dMin = 80;
+    permanents.forEach(p=>{
+      const d = distanceM(e.lat,e.lng,p.lat,p.lng);
+      if(d < dMin){ dMin = d; proche = p; }
+    });
+    if(proche) indexEvenements.set(proche.titre, (indexEvenements.get(proche.titre)||0) + 1);
   });
 }
 
@@ -1420,20 +1488,27 @@ function fermerFeuille(){
 }
 $("#voile").onclick=fermerFeuille;
 
-function grilleQR(seed,n=21){
-  const cells=[]; let h=hash(seed)||1;
-  for(let i=0;i<n*n;i++){h=(h*1103515245+12345)&0x7fffffff;cells.push((h>>8)%100<46)}
-  const marq=(r,c)=>{for(let dr=0;dr<7;dr++)for(let dc=0;dc<7;dc++)
-    cells[(r+dr)*n+(c+dc)]=dr===0||dr===6||dc===0||dc===6||(dr>=2&&dr<=4&&dc>=2&&dc<=4)};
-  marq(0,0);marq(0,n-7);marq(n-7,0);
-  return {cells,n};
+/* Google renvoie les sept lignes d'horaires en commençant par lundi ;
+   getDay() commence par dimanche, d'où le décalage. */
+function horaireDuJour(l){
+  if(!l.horaires || !l.horaires.length) return "";
+  const i = (new Date().getDay() + 6) % 7;
+  const ligne = l.horaires[i] || "";
+  return ligne.replace(/^[^:]*:\s*/, "");        // « Lundi : 9h–18h » → « 9h–18h »
+}
+
+function horairesSemaine(l){
+  if(!l.horaires || !l.horaires.length) return "";
+  const aujourdhui = (new Date().getDay() + 6) % 7;
+  return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
+    l.horaires.map((h,i)=>
+      '<div class="h-ligne'+(i===aujourdhui?' h-jour':'')+'">'+esc(h)+'</div>').join("")+
+    '</details>';
 }
 
 function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
   const c = CATS[l.cat]||CATS.event;
-  const {cells,n} = grilleQR(l.id);
-  const note = '<p class="note">Le paiement se fait sur place, entre vous. L’app n’encaisse rien.</p>';
 
   ouvrirFeuille(
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
@@ -1448,17 +1523,14 @@ function ouvrirDetail(id){
       '<div><dt>Quand</dt><dd>'+
         (l.ouvert === true  ? '<span class="ouvert">Ouvert</span> · ' :
          l.ouvert === false ? '<span class="ferme">Fermé</span> · '   : '')+
-        esc(l.quand)+'</dd></div>'+
+        esc(horaireDuJour(l) || l.quand)+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
       '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
     '</dl>'+
-    (l.qr
-      ? '<div class="billet"><div class="qr" style="grid-template-columns:repeat('+n+',1fr)">'+
-        cells.map(o=>'<span class="'+(o?'on':'')+'"></span>').join("")+
-        '</div><div><span class="code">'+codeEntree(l.id)+'</span>'+
-        '<p>Montre ça à l’entrée.</p>'+(l.gratuit?'':note)+'</div></div>'
-      : '<div class="sans-billet"><strong>Pas de code.</strong> Tu viens, tu entres.'+
-        (l.gratuit?'':' Le paiement se fait sur place, entre vous.')+'</div>')+
+    horairesSemaine(l)+
+    (l.gratuit ? '' :
+      '<div class="sans-billet">Le paiement se fait sur place, entre vous. '+
+      'L’app n’encaisse rien.</div>')+
     '<div class="liens"><button id="btnPartLieu">Partager</button>'+
     (l.par === "Anonyme"
       ? '<button id="btnSupprimer" class="lien-danger">Supprimer</button>'
@@ -2196,11 +2268,6 @@ function dessinerFormulaire(){
       (b.limite?'<div class="compteur"><button data-pl="-1">−</button><input type="number" id="fPlaces" min="1" max="999" value="'+b.places+'"><button data-pl="1">+</button></div>':'')+
     '</div>'+
 
-    '<div class="champ"><span>Contrôle à l’entrée</span><div class="bascule">'+
-      '<button class="cote '+(b.qr?'':'actif')+'" data-qr="0">Sans code</button>'+
-      '<button class="cote '+(b.qr?'actif':'')+'" data-qr="1">Avec QR</button></div>'+
-      '<p class="aide">'+(b.qr?"Chacun reçoit un code à te montrer. Utile si les places sont comptées.":"On vient, on entre. Rien à scanner.")+'</p>'+
-    '</div>'+
 
     '<button class="valider" id="fOk">Publier</button>'
   );
@@ -2217,7 +2284,6 @@ function dessinerFormulaire(){
   lier("[data-jour]",   x=>b.date=x.dataset.jour);
   lier("[data-gratuit]",x=>b.gratuit=x.dataset.gratuit==="1");
   lier("[data-limite]", x=>b.limite=x.dataset.limite==="1");
-  lier("[data-qr]",     x=>b.qr=x.dataset.qr==="1");
   lier("[data-pl]",     x=>b.places=clamp(b.places+Number(x.dataset.pl),1,999));
 
   // aperçu du "quand" en direct, sans redessiner tout le formulaire
@@ -2305,13 +2371,15 @@ function mapperPlace(p){
     prixN: NIVEAU_PRIX[p.priceLevel],
     cuisine: /_restaurant$/.test(p.primaryType||"")
       ? (p.primaryType||"").replace(/_restaurant$/,"") : "",
+    horaires: (p.regularOpeningHours||{}).weekdayDescriptions || null,
     type: p.primaryType || "", adresse: p.formattedAddress || ""
   };
 }
 
 const CHAMPS_PLACE = "places.displayName,places.location,places.rating,"+
   "places.userRatingCount,places.currentOpeningHours.openNow,"+
-  "places.primaryType,places.formattedAddress,places.priceLevel";
+  "places.primaryType,places.formattedAddress,places.priceLevel,"+
+  "places.regularOpeningHours.weekdayDescriptions";
 
 /* Recherche libre chez Google. OpenStreetMap ignore beaucoup d'équipements
    publics (une mission locale y est rarement cartographiée) alors que Google
@@ -2402,7 +2470,7 @@ function ajouterLieuxGoogle(fiches, catDefaut){
       quand:"Voir sur place", gratuit:true, prix:0,
       places:null, qr:false, par:"Google Maps",
       lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert,
-      prixN:f.prixN, cuisine:f.cuisine, service
+      prixN:f.prixN, cuisine:f.cuisine, service, horaires:f.horaires
     });
     ajoutes++;
   });
@@ -2430,6 +2498,7 @@ function greffeNotes(liste, fiches){
       l.note = meilleur.note; l.avis = meilleur.avis;
       l.ouvert = meilleur.ouvert;                       // ouvert / fermé maintenant
       if(meilleur.prixN != null) l.prixN = meilleur.prixN;
+      if(meilleur.horaires) l.horaires = meilleur.horaires;
     }
   });
   rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
