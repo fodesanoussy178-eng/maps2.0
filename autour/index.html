@@ -326,6 +326,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .etape-sous{display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--ink2)}
 .etape-min{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2);padding-top:2px}
+.prix-n{font-weight:700;color:#1B7F3B}
 .service{font-weight:700;color:var(--ardoise)}
 .service-bloc{margin:-8px 0 14px;padding:8px 11px;border-radius:3px;
   background:rgba(44,58,51,.08);font-size:12.5px;font-weight:600;color:var(--ardoise)}
@@ -2133,6 +2134,17 @@ const CLE_GOOGLE = "AIzaSyAFjDL4NtNNaTFhD-tbN4escj8xQ9Mpio4";
 
 const TYPES_RESTO = ["restaurant","cafe","bar","bakery","meal_takeaway"];
 
+/* Les notes mesurent la satisfaction, pas le prix. Pour « ce qui coûte le
+   moins cher », le seul signal honnête est priceLevel, que Google calcule à
+   partir des tarifs constatés — on ne le déduit pas des commentaires. */
+const NIVEAU_PRIX = {
+  PRICE_LEVEL_FREE:0, PRICE_LEVEL_INEXPENSIVE:1, PRICE_LEVEL_MODERATE:2,
+  PRICE_LEVEL_EXPENSIVE:3, PRICE_LEVEL_VERY_EXPENSIVE:4
+};
+const SYMBOLE_PRIX = ["Gratuit","€","€€","€€€","€€€€"];
+/* catégories où parler de prix a un sens */
+const AVEC_PRIX = new Set(["resto","fastfood","cafe","bar","commerce","friperie","marche"]);
+
 /* types Google → catégories de l'app, pour les lieux absents d'OpenStreetMap */
 const CAT_GOOGLE = {
   restaurant:"resto", pizza_restaurant:"resto", meal_delivery:"resto",
@@ -2142,7 +2154,10 @@ const CAT_GOOGLE = {
   movie_theater:"cinema", performing_arts_theater:"spectacle",
   library:"biblio", museum:"musee", art_gallery:"musee", park:"parc",
   hospital:"sante", pharmacy:"sante", doctor:"sante",
-  supermarket:"alimentaire", grocery_store:"alimentaire"
+  // un supermarché est un commerce, jamais de l'aide alimentaire : confondre
+  // les deux enverrait quelqu'un qui cherche à manger vers une caisse
+  supermarket:"commerce", grocery_store:"commerce", convenience_store:"commerce",
+  clothing_store:"friperie", thrift_store:"friperie", store:"commerce"
 };
 
 async function placesGoogle(lat, lng, types){
@@ -2158,7 +2173,7 @@ async function placesGoogle(lat, lng, types){
       "X-Goog-Api-Key":CLE_GOOGLE,
       "X-Goog-FieldMask":"places.displayName,places.location,places.rating,"+
         "places.userRatingCount,places.currentOpeningHours.openNow,"+
-        "places.primaryType,places.formattedAddress"
+        "places.primaryType,places.formattedAddress,places.priceLevel"
     },
     body:JSON.stringify(corps)
   });
@@ -2171,6 +2186,7 @@ async function placesGoogle(lat, lng, types){
     // openNow est calculé par Google à l'instant de la requête : un vrai
     // "ouvert maintenant", pas une plage horaire à interpréter soi-même
     ouvert: p.currentOpeningHours ? p.currentOpeningHours.openNow : undefined,
+    prixN: NIVEAU_PRIX[p.priceLevel],
     type: p.primaryType || "", adresse: p.formattedAddress || ""
   }));
 }
@@ -2212,7 +2228,7 @@ function ajouterLieuxGoogle(fiches){
       adresse:f.adresse || f.nom, cp:commune,
       quand:"Voir sur place", gratuit:true, prix:0,
       places:null, qr:false, par:"Google Maps",
-      lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert
+      lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert, prixN:f.prixN
     });
     ajoutes++;
   });
@@ -2238,6 +2254,7 @@ function greffeNotes(liste, fiches){
     if(meilleur){
       l.note = meilleur.note; l.avis = meilleur.avis;
       l.ouvert = meilleur.ouvert;                       // ouvert / fermé maintenant
+      if(meilleur.prixN != null) l.prixN = meilleur.prixN;
     }
   });
   rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
@@ -2271,6 +2288,15 @@ function classerLieux(liste, sansPalmares){
     // une banque alimentaire ou un foyer ne se classe pas : le plus proche d'abord
     if(sansPalmares) return a.dist - b.dist;
     if(triListe === "distance") return a.dist - b.dist;
+    if(triListe === "prix"){
+      // le moins cher d'abord, et à prix égal le mieux noté : le but est de
+      // trouver ce qui fait économiser sans tomber sur ce que personne n'aime
+      const pa = a.prixN==null ? 9 : a.prixN, pb = b.prixN==null ? 9 : b.prixN;
+      if(pa !== pb) return pa - pb;
+      const na = a.note||0, nb = b.note||0;
+      if(na !== nb) return nb - na;
+      return a.dist - b.dist;
+    }
     if(triListe === "note"){
       // le nombre d'avis départage : 4,8 sur 6 avis pèse moins que 4,6 sur 800
       const na=a.note||0, nb=b.note||0;
@@ -2301,8 +2327,12 @@ function ouvrirListe(cat){
    recherche. `sansPalmares` masque le tri et les notes (lieux d'aide). */
 function afficherListe(emoji, titre, l, sansPalmares, redessiner){
   const avecNotes = l.some(x=>x.note);
+  const avecPrix  = l.some(x=>x.prixN != null);
   const critere = sansPalmares
     ? "Trié par distance. Ces lieux ne sont pas classés : ils rendent tous le même service."
+    : triListe === "prix"
+      ? (avecPrix ? "Du moins cher au plus cher, à prix égal le mieux noté. Le niveau de prix vient de Google, pas des commentaires."
+                  : "Aucun niveau de prix connu ici : l’ordre retombe sur la distance.")
     : triListe === "distance" ? "Du plus proche au plus loin."
     : triListe === "note"
       ? (avecNotes ? "Les mieux notés d’abord, à note égale le plus commenté."
@@ -2310,9 +2340,11 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
       : (avecNotes ? "Classé par note, puis par ce qui s’y passe, puis par distance."
                    : "Classé par ce qui s’y passe, puis par distance.");
 
+  const tris = [["auto","Pertinence"],["note","Mieux notés"],["distance","Plus proches"]];
+  // « Moins cher » n'apparaît que là où le prix veut dire quelque chose
+  if(avecPrix || l.some(x=>AVEC_PRIX.has(x.cat))) tris.push(["prix","Moins cher"]);
   const barreTri = sansPalmares ? "" : '<div class="tri-barre">'+
-    [["auto","Pertinence"],["note","Mieux notés"],["distance","Plus proches"]]
-      .map(([id,lab])=>'<button class="tri'+(triListe===id?" actif":"")+'" data-tri="'+id+'">'+lab+'</button>')
+    tris.map(([id,lab])=>'<button class="tri'+(triListe===id?" actif":"")+'" data-tri="'+id+'">'+lab+'</button>')
       .join("")+
     '</div>';
 
@@ -2323,6 +2355,7 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
     if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
     if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
+    if(x.prixN != null) sous.push('<span class="prix-n">'+SYMBOLE_PRIX[x.prixN]+'</span>');
     if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
     sous.push(esc(x.adresse||""));
     // horaires réels quand OpenStreetMap les connaît
