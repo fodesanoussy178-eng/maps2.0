@@ -36,7 +36,7 @@
 <style>
 :root{
   --paper:#F7F8F5; --ink:#1F2A25; --ink2:#5D6B63; --signal:#FF4A17; --trait:#141E19;
-  --bord:#DCE0D8; --ardoise:#2C3A33;
+  --bord:#DCE0D8; --ardoise:#2C3A33; --aide:#B82A3A;
   --sol:#F2F1EC; --bati:#E7E4DE; --vert:#C9E6C4; --eau:#A5CDEA;
   --voie:#FFFFFF; --liseré:#DFDCD5; --vite:#F8D28D; --vite-bord:#E9B96A;
   --label:#5F6863;
@@ -180,12 +180,12 @@ input{font-family:inherit;font-size:16px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
 
-#bandeauGeo{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
+#bandeauGeo,#bandeauVide{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
-#bandeauTxt{flex:1;min-width:0}
-#bandeauOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+#bandeauTxt,#videTxt{flex:1;min-width:0}
+#bandeauOk,#videOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
   color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
 #charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
@@ -217,67 +217,100 @@ input{font-family:inherit;font-size:16px}
 .sg-rapide{flex:0 0 auto;padding:7px 12px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
 
-/* ---- écran d'intention : on demande ce que la personne veut faire ---- */
-#intentions{position:absolute;left:0;right:0;bottom:0;z-index:640;max-height:74%;overflow-y:auto;
-  padding:8px 16px calc(var(--safe-b) + 18px);background:var(--paper);
-  border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
-  box-shadow:0 -4px 24px rgba(20,30,25,.14);
-  animation:monte .3s cubic-bezier(.2,.9,.3,1)}
-.int-poignee{display:block;width:46px;height:4px;margin:0 auto 12px;border:0;border-radius:99px;
-  background:rgba(20,30,25,.22);padding:0}
-.vitalite{margin-bottom:11px;font-size:13.5px;color:var(--ink2)}
-.vitalite b{color:var(--ink)}
-.vitalite span{font-family:'JetBrains Mono',monospace;font-size:11px}
-.ia{display:block;margin-bottom:11px}
-.ia input{width:100%;padding:13px 15px;border:1px solid var(--bord);border-radius:99px;
-  background:#fff;color:var(--ink);font-size:14.5px}
-.ia input:focus{outline:2px solid var(--signal);outline-offset:1px}
-.creneaux{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:12px}
-.creneaux::-webkit-scrollbar{display:none}
-.cr{flex:0 0 auto;padding:8px 13px;border:1px solid var(--bord);border-radius:99px;background:#fff;
-  color:var(--ink2);font-size:12.5px;font-weight:600;white-space:nowrap}
-.cr.actif{background:var(--signal);border-color:var(--signal);color:#fff}
-#intentionsGrille{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:9px}
-.intention{display:flex;align-items:center;gap:9px;padding:15px 13px;border:1px solid var(--bord);
-  border-radius:12px;background:#fff;text-align:left;font-size:14px;font-weight:600;
-  color:var(--ink);box-shadow:0 1px 4px rgba(20,30,25,.07);
-  transition:transform .16s,background .16s}
-.intention:active{transform:scale(.96);background:var(--paper)}
-.int-emoji{font-size:20px;line-height:1}
-.int-plus{opacity:.72}
-.int-lab{flex:1;min-width:0;line-height:1.2}
+/* ---- bas d'écran : quatre raccourcis, une seule action principale ---- */
+#barreBas{position:absolute;left:0;right:0;bottom:0;z-index:601;
+  display:flex;flex-direction:column;gap:8px;
+  padding:0 14px calc(var(--safe-b) + 14px);
+  width:100%;max-width:520px;margin:0 auto;pointer-events:none}
+#barreBas > *{pointer-events:auto}
+#raccourcis{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:4px 0}
+#raccourcis::-webkit-scrollbar{display:none}
+.rc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:9px 4px;border:1px solid var(--bord);border-radius:14px;background:#fff;
+  color:var(--ink);font-size:11.5px;font-weight:600;line-height:1.15;text-align:center;
+  box-shadow:0 1px 6px rgba(20,30,25,.10)}
+.rc em{font-size:19px;font-style:normal;line-height:1}
+.rc:active{background:var(--paper)}
+.rc.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.rc.aide.actif{background:var(--aide);border-color:var(--aide)}
+#btnQuoi{width:100%;padding:16px;border:0;border-radius:16px;background:var(--trait);color:#fff;
+  font-size:16px;font-weight:700;box-shadow:0 3px 12px rgba(20,30,25,.24)}
+#btnQuoi:active{transform:translateY(1px)}
 
-/* ---- « Maintenant » : ce qui est vivant à cet instant ---- */
-#btnMaintenant{position:absolute;right:14px;bottom:calc(var(--safe-b) + 16px);z-index:601;
-  padding:13px 17px;border:1px solid var(--bord);border-radius:99px;background:#fff;
-  color:var(--ink);font-size:14px;font-weight:700;
-  box-shadow:0 3px 14px rgba(20,30,25,.18);transition:transform .18s,background .18s}
-#btnMaintenant:active{transform:scale(.95)}
-#btnMaintenant.actif{background:var(--signal);border-color:var(--signal);color:#fff;
-  box-shadow:0 3px 16px rgba(255,74,23,.4)}
-#filtresHumains{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 74px);z-index:600;
+/* ---- « Maintenant » : ce qui est utilisable à cet instant ---- */
+#btnMaintenant{flex-shrink:0;display:flex;align-items:center;gap:5px;height:46px;padding:0 15px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink2);
+  font-size:14px;font-weight:700;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+#btnMaintenant span{font-size:13px}
+#btnMaintenant.actif{background:var(--signal);border-color:var(--signal);color:#fff}
+#filtresHumains{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 150px);z-index:600;
   display:flex;gap:7px;padding:4px 14px;overflow-x:auto;scrollbar-width:none;
-  animation:monteT .24s}
+  width:100%;max-width:520px;margin:0 auto}
 #filtresHumains::-webkit-scrollbar{display:none}
 .fh{flex:0 0 auto;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;color:var(--ink);font-size:13px;font-weight:600;white-space:nowrap;
-  box-shadow:0 2px 8px rgba(20,30,25,.12)}
+  box-shadow:0 1px 6px rgba(20,30,25,.10)}
 .fh.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
-/* ---- accueil : la réponse à « qu'est-ce qu'il se passe ici, maintenant ? » ---- */
-#accueil{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 82px);z-index:600;
-  padding:13px 15px 7px;border:1px solid var(--bord);border-radius:16px;background:#fff;
-  box-shadow:0 4px 20px rgba(20,30,25,.18);animation:monte .34s cubic-bezier(.2,.9,.3,1)}
-.ac-tete{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
-.ac-titre{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
-  letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
-.ac-plus{border:0;background:none;padding:2px 0;font-size:12px;font-weight:700;
-  color:var(--signal);text-decoration:underline;text-underline-offset:3px}
-.ac-item{display:flex;align-items:center;gap:11px;width:100%;padding:10px 0;border:0;
+/* ---- boutons flottants : se repérer, et publier — dans cet ordre ---- */
+.rond-flottant{position:absolute;right:14px;z-index:601;width:46px;height:46px;
+  border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
+  font-size:20px;line-height:1;display:grid;place-items:center;
+  box-shadow:0 2px 10px rgba(20,30,25,.14)}
+#btnRevenir{bottom:calc(var(--safe-b) + 150px)}
+#btnAjouter{bottom:calc(var(--safe-b) + 204px);color:var(--ink2);font-size:24px;
+  box-shadow:0 1px 6px rgba(20,30,25,.10)}
+.rond-flottant:active{transform:scale(.94)}
+
+/* ---- bottom sheet : fermée · compacte · dépliée ---- */
+#feuilleBesoins{position:absolute;left:0;right:0;bottom:0;z-index:640;
+  display:flex;flex-direction:column;
+  width:100%;max-width:520px;margin:0 auto;
+  height:34%;max-height:34%;
+  background:var(--paper);border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
+  box-shadow:0 -3px 18px rgba(20,30,25,.13);
+  transition:height .22s ease,max-height .22s ease}
+#feuilleBesoins.deplie{height:78%;max-height:78%}
+.fb-poignee{flex-shrink:0;display:block;width:46px;height:5px;margin:9px auto 4px;border:0;
+  border-radius:99px;background:rgba(20,30,25,.2);padding:0}
+.fb-tete{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:2px 12px 8px}
+.fb-titre{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-retour,.fb-x{flex-shrink:0;width:32px;height:32px;border:0;border-radius:50%;
+  background:#fff;border:1px solid var(--bord);color:var(--ink);
+  font-size:16px;line-height:1;display:grid;place-items:center}
+.fb-retour{font-size:22px}
+.fb-corps{flex:1;min-height:0;overflow-y:auto;padding:0 12px calc(var(--safe-b) + 14px);
+  -webkit-overflow-scrolling:touch}
+
+/* les grands choix : un par ligne, larges, lisibles de loin */
+.bn{display:flex;align-items:center;gap:12px;width:100%;padding:15px 14px;margin-bottom:8px;
+  border:1px solid var(--bord);border-radius:14px;background:#fff;text-align:left;
+  font-size:15.5px;font-weight:600;color:var(--ink)}
+.bn em{font-size:22px;font-style:normal;line-height:1}
+.bn b{flex:1;min-width:0;font-weight:600}
+.bn i{flex-shrink:0;font-style:normal;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;color:var(--ink2)}
+.bn:active{background:var(--paper)}
+.bn.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.bn.actif i{color:rgba(255,255,255,.72)}
+.bn.actif::after{content:"✓";font-size:15px;font-weight:700}
+.fb-section{margin:14px 2px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.fb-vide{padding:16px 4px;font-size:14px;line-height:1.5;color:var(--ink2)}
+.fb-vide button{margin-top:10px;padding:12px 18px;border:0;border-radius:12px;
+  background:var(--trait);color:#fff;font-size:14px;font-weight:700}
+.fb-pied{display:flex;flex-wrap:wrap;gap:14px;margin:18px 2px 4px;
+  padding-top:14px;border-top:1px solid rgba(20,30,25,.1)}
+.fb-pied button{border:0;background:none;padding:2px 0;font-size:12.5px;
+  color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+
+/* ---- résultats : cinq suggestions, pas trente ---- */
+.ac-item{display:flex;align-items:center;gap:11px;width:100%;padding:11px 2px;border:0;
   border-top:1px solid rgba(20,30,25,.1);background:none;text-align:left}
 .ac-item:first-child{border-top:0}
 .ac-item:active{opacity:.6}
-.ac-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--paper);
+.ac-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#fff;
   border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
 .ac-txt{flex:1;min-width:0}
 .ac-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
@@ -287,37 +320,6 @@ input{font-family:inherit;font-size:16px}
 .raison{color:var(--signal);font-weight:600}
 .ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2)}
-
-/* ---- bouton Explorer : une seule entrée au lieu d'une longue piste ---- */
-.explorer{position:absolute;left:14px;bottom:calc(var(--safe-b) + 16px);z-index:601;max-width:52%;
-  display:flex;align-items:center;gap:7px;padding:13px 18px;border:1px solid var(--bord);
-  border-radius:99px;background:#fff;color:var(--ink);font-size:14px;font-weight:600;
-  box-shadow:0 3px 14px rgba(20,30,25,.18);transition:transform .18s,background .18s}
-.explorer:active{transform:scale(.96)}
-.explorer.filtre-actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
-.ex-x{margin-left:3px;padding:0 2px;opacity:.7;font-size:15px}
-
-.ex-groupe{margin:20px 0 10px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
-  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
-.ex-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
-.ex-cat{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:11px 12px;
-  border:1px solid var(--bord);border-radius:3px;background:#fff;text-align:left;
-  transition:transform .15s,background .15s}
-.ex-cat:active{transform:scale(.96)}
-.ex-cat.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
-.ex-emoji{font-size:17px;line-height:1}
-.ex-lab{font-size:12.5px;font-weight:600;line-height:1.2}
-.ex-n{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;opacity:.6}
-.ex-actions{display:flex;flex-direction:column;gap:7px}
-.ex-tout{width:100%;padding:12px;border:1px solid var(--bord);border-radius:3px;background:#fff;
-  font-size:13.5px;font-weight:600;color:var(--ink)}
-.ex-tout.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
-.ex-case{position:relative}
-.ex-case .ex-cat{width:100%}
-.ex-case.masquee .ex-cat{opacity:.38}
-.ex-oeil{position:absolute;top:4px;right:4px;width:26px;height:26px;padding:0;border:0;
-  border-radius:50%;background:transparent;font-size:12px;line-height:1;opacity:.65}
-.ex-oeil:active{transform:scale(.9)}
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
 .grappe{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
@@ -352,28 +354,15 @@ body.nav .leaflet-control-zoom{display:none}
   font-size:13.5px;font-weight:600;white-space:nowrap;box-shadow:0 2px 10px rgba(20,30,25,.14)}
 .filtre.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
 
-.ajouter{position:absolute;right:14px;bottom:calc(var(--safe-b) + 74px);z-index:601;
-  display:flex;align-items:center;gap:6px;padding:14px 18px;border-radius:99px;
-  border:1px solid var(--bord);background:var(--signal);color:#fff;font-size:17px;
-  font-weight:700;box-shadow:0 4px 14px rgba(255,74,23,.34)}
-.ajouter span{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase}
-.ajouter:active{transform:translateY(1px)}
-.de{position:absolute;right:14px;bottom:calc(var(--safe-b) + 140px);z-index:601;
-  width:50px;height:50px;border-radius:50%;border:1px solid var(--bord);background:#fff;
-  font-size:22px;line-height:1;display:grid;place-items:center;
-  box-shadow:0 3px 14px rgba(20,30,25,.2);transition:transform .18s}
-.de:active{transform:scale(.9) rotate(20deg)}
 .sp-tete{margin-bottom:2px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
   font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
 .sp-raison{margin:-6px 0 15px;font-size:13.5px;font-weight:600;color:var(--signal)}
 
-.mini{position:absolute;top:calc(var(--safe-t) + 72px);left:14px;z-index:600;
+.mini{position:absolute;top:calc(var(--safe-t) + 72px);right:14px;z-index:600;
   display:flex;align-items:center;gap:6px;padding:9px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;
   font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
   box-shadow:0 2px 10px rgba(20,30,25,.14)}
-.mini.droite{left:auto;right:14px}
 [hidden]{display:none!important}
 
 #viseur{position:absolute;left:50%;top:50%;z-index:602;transform:translate(-50%,-100%);pointer-events:none}
@@ -388,7 +377,7 @@ body.nav .leaflet-control-zoom{display:none}
 
 #voile{position:absolute;inset:0;z-index:900;background:rgba(20,30,25,.38);animation:fondu .2s}
 @keyframes fondu{from{opacity:0}to{opacity:1}}
-#feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:90%;overflow-y:auto;
+#feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:72%;overflow-y:auto;
   padding:10px 20px calc(var(--safe-b) + 26px);background:var(--paper);
   border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
   animation:monte .28s cubic-bezier(.2,.9,.3,1)}
@@ -556,6 +545,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="bandeauOk">Activer</button>
 </div>
 
+<div id="bandeauVide" hidden>
+  <span id="videTxt">Rien d’ouvert autour de toi en ce moment.</span>
+  <button id="videOk">Tout voir</button>
+</div>
+
 <div class="haut" id="haut" hidden>
   <button class="rond" id="btnLoupe" aria-label="Chercher">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
@@ -567,32 +561,32 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
+  <button id="btnMaintenant" title="Ce qui est utilisable maintenant">⚡ <span>Maintenant</span></button>
   <div id="suggestions" hidden></div>
 </div>
 
-<button class="mini" id="btnRevenir" hidden>◎ Revenir</button>
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
 
-<div id="intentions" hidden>
-  <button class="int-poignee" id="intFermer" aria-label="Fermer"></button>
-  <p class="vitalite" id="vitalite"></p>
-  <label class="ia"><input id="iaTexte" placeholder="Que veux-tu faire aujourd’hui&nbsp;?" /></label>
-  <div class="creneaux" id="creneaux"></div>
-  <div id="intentionsGrille"></div>
+<!-- Bas d'écran : quatre raccourcis et une seule action principale. Rien
+     d'autre ne s'ouvre tout seul. -->
+<div id="barreBas" hidden>
+  <div id="raccourcis"></div>
+  <button id="btnQuoi">Que faire autour de moi&nbsp;?</button>
 </div>
 
-<button id="btnMaintenant" hidden>⚡ Maintenant</button>
-<div id="filtresHumains" hidden></div>
+<button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">◎</button>
+<button class="rond-flottant discret" id="btnAjouter" hidden aria-label="Publier">+</button>
 
-<div id="accueil" hidden>
-  <div class="ac-tete">
-    <span class="ac-titre" id="acTitre">Autour de toi</span>
-    <button class="ac-plus" id="acPlus">Voir plus</button>
+<!-- Bottom sheet : fermée, compacte, ou dépliée à la demande. -->
+<div id="feuilleBesoins" hidden>
+  <button class="fb-poignee" id="fbPoignee" aria-label="Agrandir ou réduire"></button>
+  <div class="fb-tete">
+    <button class="fb-retour" id="fbRetour" hidden aria-label="Retour">‹</button>
+    <span class="fb-titre" id="fbTitre">Que faire autour de moi ?</span>
+    <button class="fb-x" id="fbFermer" aria-label="Fermer">✕</button>
   </div>
-  <div id="acListe"></div>
+  <div class="fb-corps" id="fbCorps"></div>
 </div>
-
-<button class="explorer" id="btnExplorer" hidden></button>
 
 <div id="navBarre" hidden>
   <span class="nav-mode" id="navMode"></span>
@@ -600,8 +594,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
 </div>
 <div id="navEtapes" hidden></div>
-<button class="ajouter" id="btnAjouter" hidden>+ <span>Publier</span></button>
-<button class="de" id="btnDe" hidden aria-label="Surprends-moi">🎲</button>
+<div id="filtresHumains" hidden></div>
 
 <div id="viseur" hidden>
   <svg width="34" height="42" viewBox="0 0 34 42" fill="none">
@@ -662,6 +655,7 @@ const CATS = {
   emploi:     {label:"Emploi & droits",  emoji:"📋", eph:false},
 
   biblio:   {label:"Bibliothèques", emoji:"📚", eph:false},
+  coworking:{label:"Espaces de travail", emoji:"💻", eph:false},
   musee:    {label:"Musées",        emoji:"🏛", eph:false},
   parc:     {label:"Parcs",         emoji:"🌳", eph:false},
   terrain:  {label:"Terrains",      emoji:"🏀", eph:false},
@@ -712,9 +706,27 @@ function preciserService(nom){
   return "";
 }
 
+/* Un vestiaire solidaire et une boutique de vêtements portent le même tag
+   OSM. Dans le mode Aide, envoyer quelqu'un chez Zara sous « Vêtements »
+   serait la même faute que confondre Carrefour et l'aide alimentaire : on
+   marque donc ce qui relève réellement de la solidarité. */
+const NOMS_SOLIDAIRES = /emma(ü|u)s|vestiaire|solidair|secours|croix[- ]rouge|caritas|abb[ée]\s*pierre|sdf|sans[- ]abri|social|entraide|resto|banque\s*alimentaire|ccas|samu\s*social|accueil\s*de\s*jour/i;
+function estSolidaire(nom, tagCharite){
+  return !!tagCharite || NOMS_SOLIDAIRES.test(nom||"") || !!preciserService(nom);
+}
+
 /* Classer une banque alimentaire ou un foyer d'urgence par étoiles n'a aucun
    sens : ces lieux sont toujours triés par distance, sans note ni palmarès. */
 const SANS_CLASSEMENT = new Set(["alimentaire","asso","hebergement","emploi","sante","mairie"]);
+
+/* ---- Ce qu'on ne propose jamais de soi-même ----------------------------
+   Un collège, une préfecture ou un bureau de poste sont sur la carte parce
+   qu'ils existent et qu'on doit pouvoir les retrouver par leur nom. Mais
+   personne n'ouvre Autour pour qu'on lui suggère un lycée : ces lieux ne
+   sont pas ouverts au public, on n'y entre pas parce qu'on passait devant.
+   Ils restent donc silencieux tant qu'ils n'ont pas été demandés — par une
+   recherche nommée, une catégorie choisie ou une intention qui les inclut. */
+const JAMAIS_AUTO = new Set(["ecole","mairie"]);
 
 /* Ce que les gens tapent réellement dans la recherche, par catégorie. */
 const SYNONYMES = {
@@ -733,7 +745,8 @@ const SYNONYMES = {
   hebergement:["hebergement","dormir","abri","foyer","urgence","115","logement"],
   sante:["sante","hopital","pharmacie","medecin","docteur","clinique","urgences"],
   emploi:["emploi","mission locale","france travail","pole emploi","travail","insertion","cv"],
-  biblio:["bibliotheque","mediatheque","livre","lecture","etudier"],
+  biblio:["bibliotheque","mediatheque","livre","lecture","etudier","salle d etude","reviser"],
+  coworking:["coworking","espace de travail","bureau partage","tiers lieu","travailler"],
   musee:["musee","galerie","expo","exposition"],
   parc:["parc","jardin","square","vert","promenade"],
   terrain:["terrain","sport","foot","basket","piscine","skate","gym","muscu"],
@@ -857,16 +870,40 @@ function categorieRecherchee(q){
   return null;
 }
 
-/* Panneau « Explorer » : une catégorie peut appartenir à plusieurs groupes
-   (la street food est à la fois de la nourriture et une sortie). */
-const GROUPES = [
-  { label:"Manger", emoji:"🍴", cats:["resto","fastfood","cafe","food","marche"] },
-  { label:"Acheter",emoji:"🛍", cats:["friperie","commerce","marche","popup"] },
-  { label:"Sortir", emoji:"🎉", cats:["spectacle","concert","bar","cinema","food","event","popup","studio","sport"] },
-  { label:"Aide",   emoji:"❤️", cats:["alimentaire","asso","hebergement","sante","emploi","collecte"] },
-  { label:"Ville",  emoji:"🏛", cats:["biblio","musee","parc","terrain","ecole","mairie",
-                                      "velo","metro","bus","recharge","toilettes"] },
+/* ---- Quatre besoins, pas trente-trois catégories -----------------------
+   L'utilisateur ne doit pas explorer une base de données : il choisit un
+   besoin, et l'app traduit. Une catégorie interne peut servir plusieurs
+   filtres, mais elle n'a qu'UN seul foyer dans l'interface — sinon on
+   retrouve « Street food » à deux endroits et personne ne sait lequel
+   cliquer. Six sous-choix au maximum par besoin. */
+const BESOINS = [
+  { id:"manger", emoji:"🍴", label:"Manger", sous:[
+      { label:"Restaurants",            cats:["resto"] },
+      { label:"Fast-food",              cats:["fastfood"] },
+      { label:"Cafés",                  cats:["cafe"] },
+      { label:"Marchés et street food", cats:["marche","food"] },
+  ]},
+  { id:"sortir", emoji:"🎉", label:"Sortir", sous:[
+      { label:"Événements",             cats:["event","studio"] },
+      { label:"Concerts et spectacles", cats:["concert","spectacle"] },
+      { label:"Bars",                   cats:["bar"] },
+      { label:"Cinéma",                 cats:["cinema"] },
+      { label:"Sport",                  cats:["sport","terrain"] },
+      { label:"Boutiques et fripes",    cats:["friperie","commerce","popup"] },
+  ]},
+  // l'aide n'est pas une liste de cases : c'est un mode entier, avec ses
+  // propres priorités et ses besoins écrits en français, pas en tags
+  { id:"aide", emoji:"❤️", label:"Trouver de l’aide", aide:true },
+  { id:"services", emoji:"🏙️", label:"Services autour de moi", sous:[
+      { label:"Transports",             cats:["metro","bus","velo"] },
+      { label:"Bibliothèques et musées",cats:["biblio","coworking","musee"] },
+      { label:"Parcs et équipements",   cats:["parc"] },
+      { label:"Services publics",       cats:["mairie"] },
+      { label:"Écoles",                 cats:["ecole"] },
+      { label:"Toilettes et recharge",  cats:["toilettes","recharge"] },
+  ]},
 ];
+const BESOIN_DE = id => BESOINS.find(b=>b.id === id);
 
 /* [clé OSM, valeur, catégorie] — l'ordre compte : la première règle qui
    correspond gagne, donc les cas précis passent avant les cas généraux
@@ -911,7 +948,10 @@ const REQUETES = [
   ["amenity","nightclub","concert"], ["amenity","music_venue","concert"],
 
   // -- ville
-  ["amenity","library","biblio"],
+  ["amenity","library","biblio"], ["amenity","public_bookcase","biblio"],
+  // là où on peut réellement s'installer pour travailler : c'est ce que
+  // demande « Étudier », pas un lycée dont les portes sont fermées au public
+  ["amenity","coworking_space","coworking"], ["office","coworking","coworking"],
   ["tourism","museum","musee"], ["tourism","gallery","musee"],
   ["leisure","park","parc"], ["leisure","garden","parc"],
   ["leisure","pitch","terrain"], ["leisure","skatepark","terrain"],
@@ -1069,11 +1109,15 @@ const SERVEURS = [
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
 ];
 
-async function overpass(q, msMax){
+async function overpass(q, msMax, signal){
   for(const url of SERVEURS){
+    if(signal && signal.aborted) return null;
     try{
       const stop = new AbortController();
       const t = setTimeout(()=>stop.abort(), msMax||14000);
+      // une nouvelle zone demandée annule vraiment la précédente : avant, la
+      // requête partait quand même et seul son résultat était jeté
+      if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
       const r = await fetch(url,{method:"POST", signal:stop.signal,
         body:"data="+encodeURIComponent(q),
         headers:{"Content-Type":"application/x-www-form-urlencoded"}});
@@ -1109,12 +1153,26 @@ out geom;`;
 }
 
 /* ---------- lieux remarquables ---------- */
-async function vraisLieux(lat,lng,bornes){
+/* Ce qu'on demande à l'ouverture : de quoi manger, sortir et se repérer.
+   Les écoles, les administrations, les toilettes et les bornes de recharge
+   ne sont jamais proposées d'office — les demander au démarrage allongeait
+   la requête sans rien afficher de plus. Elles arrivent quand on ouvre le
+   besoin correspondant. */
+const CATS_DEPART = new Set(["resto","fastfood","cafe","marche","bar","cinema",
+  "spectacle","concert","friperie","commerce","biblio","musee","parc","metro","bus"]);
+
+async function vraisLieux(lat,lng,bornes,opts){
+  const o = opts || {};
   // Une sous-requête par CLÉ (avec regex sur les valeurs) au lieu d'une par
   // couple clé/valeur : ~5 lignes au lieu de 40. Les serveurs publics saturaient
   // sur l'ancienne version, d'où les "lieux d'exemple" affichés à la place.
+  const garder = o.cats ? new Set(o.cats) : (o.tout ? null : CATS_DEPART);
   const parCle = {};
-  REQUETES.forEach(([k,v])=>{ (parCle[k] = parCle[k] || []).push(v); });
+  REQUETES.forEach(([k,v,cat])=>{
+    if(garder && !garder.has(cat)) return;
+    (parCle[k] = parCle[k] || []).push(v);
+  });
+  if(!Object.keys(parCle).length) return [];
   // On interroge la zone effectivement affichée plutôt qu'un rayon fixe :
   // en vue serrée on ramène beaucoup moins, en vue large on couvre vraiment
   // ce que la personne regarde. Bornée pour ne pas demander une ville entière.
@@ -1123,7 +1181,7 @@ async function vraisLieux(lat,lng,bornes){
   const bloc = Object.entries(parCle).map(([k,vs])=>
     `nwr${zone}["${k}"~"^(${vs.join("|")})$"];`).join("");
   // 25 s : mieux vaut attendre que retomber sur des lieux inventés
-  const els = await overpass(`[out:json][timeout:25];(${bloc});out center 400;`, 25000);
+  const els = await overpass(`[out:json][timeout:25];(${bloc});out center 300;`, 25000, o.signal);
   if(!els) return [];
   return els.map(e=>{
     const t=e.tags||{}, p=e.center||e;
@@ -1134,6 +1192,7 @@ async function vraisLieux(lat,lng,bornes){
     return {
       id:"osm"+e.type+e.id, cat,
       titre: t.name || CATS[cat].label,
+      sansNom: !t.name,                      // « un résultat sans nom exploitable »
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[cat].label),
       cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
       quand: t.opening_hours || "Voir sur place",
@@ -1141,6 +1200,8 @@ async function vraisLieux(lat,lng,bornes){
       tel: t.phone || t["contact:phone"] || "",
       pmr: t.wheelchair === "yes" ? true : (t.wheelchair === "no" ? false : undefined),
       service: preciserService(t.name),      // Mission locale ≠ France Travail
+      solidaire: estSolidaire(t.name, regle[1]==="charity" || /^(social_facility|social_centre)$/.test(regle[1])
+                              || regle[0] === "social_facility"),
       gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
     };
@@ -1217,6 +1278,7 @@ async function evenementsOpenAgenda(lat,lng){
   }catch(e){ console.error("OpenAgenda: échec de la requête", e); return null; }
 }
 
+let dernierNom = [0,0];         // là où le nom de commune a été demandé
 async function nomCommune(lat,lng){
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
@@ -1485,15 +1547,29 @@ function bornesVisibles(){
            o:(c.lng-dLng).toFixed(5), e:(c.lng+dLng).toFixed(5) };
 }
 
-function chargerZone(lat, lng){
+/* Ce qu'on a déjà demandé : zone arrondie + zoom + jeu de catégories. Revenir
+   sur ses pas ne redemande rien, et changer de besoin ne redemande que ce qui
+   manque. */
+const zonesVues = new Set();
+function cleZone(lat, lng, z, cats){
+  return lat.toFixed(2)+","+lng.toFixed(2)+"@"+Math.round(z/2)+":"+(cats ? [...cats].sort().join("+") : "depart");
+}
+
+function chargerZone(lat, lng, opts){
   if(!map || map.getZoom() < 13) return;
-  if(dernierChargement &&
+  const o = opts || {};
+  const cle = cleZone(lat, lng, map.getZoom(), o.cats);
+  if(!o.force && zonesVues.has(cle)) return;
+  if(!o.force && !o.cats && dernierChargement &&
      distanceM(dernierChargement[0], dernierChargement[1], lat, lng) < 800) return;
-  // une zone demandée en remplace une autre : inutile d'attendre la précédente
+  zonesVues.add(cle);
+
+  // une zone demandée en remplace une autre : la requête précédente est
+  // réellement coupée, pas seulement ignorée
   if(abandonZone) abandonZone.abort();
   abandonZone = new AbortController();
   const signal = abandonZone.signal;
-  dernierChargement = [lat,lng];
+  if(!o.cats) dernierChargement = [lat,lng];
   chargementEnCours = true;
   performance.mark("zone:debut");
 
@@ -1501,21 +1577,33 @@ function chargerZone(lat, lng){
   if(enCache && enCache.length) fusionner(enCache);
 
   // allSettled : une source lente ou en panne ne retient pas les autres
-  Promise.allSettled([
-    vraisLieux(lat,lng,bornesVisibles()).then(r=>{
+  const travaux = [
+    vraisLieux(lat,lng,bornesVisibles(),{signal, cats:o.cats}).then(r=>{
       if(signal.aborted) return;
-      if(r && r.length){ fusionner(r); ecrireCacheLieux(lat,lng,r); }
+      if(r && r.length){ fusionner(r); if(!o.cats) ecrireCacheLieux(lat,lng,r); }
       performance.mark("zone:osm");
       performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
-    }),
-    notesGoogle(lat,lng).then(f=>{
+    })
+  ];
+  // Google ne sert qu'à enrichir les lieux courants : inutile de le relancer
+  // quand on va simplement chercher les toilettes ou les écoles
+  if(!o.cats) travaux.push(
+    notesGoogle(lat,lng,{signal}).then(f=>{
       if(signal.aborted || !f) return;
       greffeNotes(lieux, f);
       ajouterLieuxGoogle(f);
       performance.mark("zone:google");
       performance.measure("lieux Google", "zone:debut", "zone:google");
     })
-  ]).finally(()=>{ chargementEnCours = false; });
+  );
+  Promise.allSettled(travaux).finally(()=>{ chargementEnCours = false; });
+}
+
+/* Un besoin ouvert va chercher ce qui lui manque, et seulement ça. */
+function chargerPourCats(cats){
+  if(!map || !cats || !cats.length) return;
+  const c = map.getCenter();
+  chargerZone(c.lat, c.lng, {cats});
 }
 
 /* Dernière position connue : évite de démarrer à Paris quelqu'un qui vit à
@@ -1541,7 +1629,7 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#haut","#btnExplorer","#btnAjouter","#btnPartager","#btnMaintenant","#btnDe"].forEach(s=>$(s).hidden=false);
+  ["#haut","#barreBas","#btnAjouter","#btnRevenir"].forEach(s=>$(s).hidden=false);
 
   map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
         .setView(centre, partage ? 17 : 16);
@@ -1566,31 +1654,34 @@ async function demarrer(coords){
     majEpaisseurs(); majEtiquettes(); majBoutons();
     // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
     // faisait saccader la carte sur téléphone
+    // on ne relance rien tant que la carte bouge : un balayage de trois
+    // secondes déclenchait une dizaine de requêtes pour un seul quartier
     clearTimeout(minuteurRendu);
     minuteurRendu = setTimeout(()=>{
       rendre();                          // les grappes suivent le zoom
       const c = map.getCenter();
       chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
-    }, 180);
+      if(catsActives) chargerPourCats([...catsActives]);
+    }, 350);
   });
 
   dessinerFiltres();
-  ouvrirIntentions();          // on demande l'intention avant tout le reste
-  map.on("click", ()=>{ $("#intentions").hidden = true; });
+  majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
+  // toucher la carte referme la feuille : la carte reprend tout l'écran
+  map.on("click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
 
   const [lat,lng] = positionMoi;
 
   charge("Recherche autour de toi…");
 
   /* Affichage progressif. Rien n'attend plus rien : chaque source complète la
-     carte dès qu'elle répond. Avant, tout était bloqué derrière Overpass, qui
-     peut mettre 20 s — inacceptable pour quelqu'un à qui on partage le lien. */
+     carte dès qu'elle répond, et surtout la carte est déjà là. Le nom de la
+     commune était attendu avant de lancer quoi que ce soit — il ne sert qu'à
+     étiqueter des adresses, il n'a rien à faire sur le chemin critique. */
   const pFond   = poserFond();
-  const pNom    = nomCommune(lat,lng);
-  const pEvents = evenementsOpenAgenda(lat,lng);
+  dernierNom = [lat,lng];
+  nomCommune(lat,lng).then(n=>{ if(n) commune = n; });
   const pGoogle = notesGoogle(lat,lng);
-
-  commune = await pNom;              // ~300 ms, et les libellés en dépendent
 
   // 1. quartier déjà visité : affichage immédiat depuis le cache local
   dernierChargement = [lat,lng];
@@ -1619,48 +1710,52 @@ async function demarrer(coords){
     majAccueil();
   });
 
-  // les événements viennent d'OpenAgenda, jamais d'un générateur
-  pEvents.then(ev=>{ fusionner(ev); majAccueil(); });
+  /* Couche éphémère, chargée à part et après les lieux : un événement de ce
+     soir n'a pas à retarder l'affichage du quartier. */
+  const differer = (f)=> (window.requestIdleCallback || (g=>setTimeout(g, 400)))(f);
 
-  // identité anonyme puis publications partagées de la zone
-  connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
-    if(pubs && pubs.length){ publies = pubs; fusionner(pubs); }
+  differer(()=>{
+    evenementsOpenAgenda(lat,lng).then(ev=>{ fusionner(ev); majAccueil(); });
+    // identité anonyme puis publications partagées de la zone
+    connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
+      if(pubs && pubs.length){ publies = pubs; fusionner(pubs); }
+    });
   });
 
-  const fond = await pFond;
-  if(!fond){
-    const geo = await geometrieVille(lat,lng);
-    if(geo && geo.length) dessinerVille(geo);
-    else grilleSecours(lat,lng);
-  }
+  // le décor de la ville arrive en dernier : c'est du confort, pas de l'info
+  pFond.then(fond=>{
+    if(fond) return;
+    differer(()=>geometrieVille(lat,lng).then(geo=>{
+      if(geo && geo.length) dessinerVille(geo); else grilleSecours(lat,lng);
+    }));
+  });
 }
 
+/* Le bouton de position reste là en permanence : c'est l'un des quatre
+   repères de l'écran de départ, il ne doit pas disparaître sous les pieds
+   de quelqu'un qui le cherche. */
 function majBoutons(){
-  if(!map||modePose||modeNav){ $("#btnRevenir").hidden=true; return; }
-  const d = map.distance(map.getCenter(), L.latLng(positionMoi));
-  $("#btnRevenir").hidden = (d<350 && map.getZoom()>=15);
+  const b = $("#btnRevenir");
+  if(!b) return;
+  b.hidden = !map || modePose || modeNav;
 }
 
 /* ================================================================== */
 /*  Marqueurs                                                         */
 /* ================================================================== */
 
-/* Couches masquées par l'utilisateur : la carte se charge vite mais reste
-   dense, chacun doit pouvoir éteindre ce qui ne l'intéresse pas. Le choix
-   est retenu d'une visite à l'autre. */
-let catsMasquees = new Set();
-try{ catsMasquees = new Set(JSON.parse(localStorage.getItem("autour:masquees")||"[]")); }
-catch(e){}
-function enregistrerMasquees(){
-  try{ localStorage.setItem("autour:masquees", JSON.stringify([...catsMasquees])); }
-  catch(e){}
-}
+/* Le masquage manuel par catégorie a disparu avec les petits yeux : une
+   catégorie est choisie ou elle ne l'est pas, il n'y a pas de troisième
+   état à comprendre. On nettoie l'ancien réglage au passage. */
+try{ localStorage.removeItem("autour:masquees"); }catch(e){}
 
 /* Une intention regroupe plusieurs catégories : « Manger » ne se réduit pas à
    une case, et demander à quelqu'un de cocher restos + fast-food + cafés +
    marchés est exactement le travail que l'app doit lui épargner. */
 let catsActives = null;          // Set de catégories, ou null = tout
-let filtreMaintenant = false;
+/* Actif par défaut : quelqu'un qui ouvre l'app cherche ce qui lui sert
+   maintenant, pas l'inventaire de ce qui existe. Un bouton l'éteint. */
+let filtreMaintenant = true;
 let filtresHumains = new Set();  // gratuit · ouvert · proche · pmr
 
 /* Certains filtres se lisent dans la donnée (ouvert, prix, accessibilité).
@@ -1673,7 +1768,7 @@ const FILTRES_HUMAINS = [
   { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
   { id:"famille", label:"En famille",      cats:["parc","terrain","musee","biblio","marche","cinema"] },
-  { id:"etudier", label:"Étudier",         cats:["biblio","cafe","ecole"] },
+  { id:"etudier", label:"Étudier",         cats:["biblio","coworking","cafe"] },
   { id:"monde",   label:"Rencontrer",      cats:["event","concert","bar","asso","terrain","popup","studio","sport"] },
   { id:"libre",   label:"Sans réservation",cats:["parc","biblio","marche","fastfood","cafe","commerce",
                                                  "friperie","toilettes","terrain","musee","velo"] },
@@ -1708,21 +1803,28 @@ function estVivant(l){
     if(l.debutLe && l.debutLe > t + 12*3600e3) return false; // trop lointain
     return true;
   }
-  // hors du présent, l'état ouvert/fermé de Google ne veut plus rien dire
-  return creneau === "maintenant" ? l.ouvert === true : true;
+  // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
+  // la plupart des lieux OpenStreetMap n'ont aucune donnée d'ouverture, et
+  // les exiger vidait la carte à l'ouverture de l'application
+  return creneau === "maintenant" ? l.ouvert !== false : true;
 }
 
 function visibles(){
   const q = recherche.trim().toLowerCase();
-  if(Array.isArray(selectionAccueil) && !catsActives && !filtreMaintenant && !q)
+  // au repos, la carte se limite à la poignée de lieux de la carte d'accueil.
+  // Pas en mode Aide : là, on veut voir tous les points d'aide autour, la
+  // carte d'accueil ne servant qu'à donner les premiers.
+  if(Array.isArray(selectionAccueil) && !modeAide && !catsActives && !filtreMaintenant && !q)
     return lieux.filter(l=>selectionAccueil.includes(l.id));
 
   const [mLat,mLng] = positionMoi || [0,0];
   return lieux.filter(l=>{
+    // un point sans nom exploitable n'apprend rien : « Restaurants · 3 » sur
+    // la carte au lieu d'une enseigne, personne ne sait où il va
+    if(!nomExploitable(l)) return false;
     if(catsActives && !catsActives.has(l.cat)) return false;
     if(!catsActives && filtreActif!=="tout" && l.cat!==filtreActif) return false;
     // une catégorie explicitement demandée reste visible même si masquée
-    if(!catsActives && filtreActif==="tout" && catsMasquees.has(l.cat)) return false;
     if(filtreMaintenant && !estVivant(l)) return false;
     if(filtresHumains.size){
       const d = distanceM(mLat,mLng,l.lat,l.lng);
@@ -1798,6 +1900,7 @@ function majIndexEvenements(){
 /* Classement puis plafonnement : la carte ne porte que les mieux notés.
    Montrer trois cents épingles revient à n'en montrer aucune. */
 let derniereSelection = [];
+let ecartesAuto = 0;          // combien de lieux la règle a écartés au dernier rendu
 
 function selectionner(){
   const t0 = performance.now();
@@ -1805,10 +1908,19 @@ function selectionner(){
   const brut = visibles();
   const cible = ctx.large ? POIDS.PLAFOND_LARGE : POIDS.PLAFOND_SERRE;
 
-  const notes = brut.map(l=>{
+  // avant de noter quoi que ce soit : écarter ce qui n'a rien à faire sur la
+  // carte tant qu'on ne l'a pas demandé — écoles, administrations, et tout ce
+  // qui est fermé à l'instant regardé
+  const admis = brut.filter(l=>proposableAuto(l, ctx));
+
+  let notes = admis.map(l=>{
     const r = scoreLieu(l, ctx);
     return {l, score:r.score, raison:r.raison, niveau:niveauLieu(l, ctx, r.score)};
   });
+  const avant = notes.length;
+  if(modeAide && !montrerFermes) notes = ecarterFermesSiAlternative(notes);
+  // ce que la règle a retiré : sert au bandeau « rien d'ouvert · tout voir »
+  ecartesAuto = (brut.length - admis.length) + (avant - notes.length);
 
   // un filtre ou une recherche explicite lève le masquage du niveau C :
   // ce que l'utilisateur demande ne doit jamais lui être caché
@@ -1819,7 +1931,8 @@ function selectionner(){
 
   derniereSelection = retenus;
   if(window.__autourDebug)
-    console.info("[Autour] reçus", brut.length, "· retenus", retenus.length,
+    console.info("[Autour] reçus", brut.length, "· écartés d'office", ecartesAuto,
+      "· retenus", retenus.length,
       "· niveau A", notes.filter(x=>x.niveau==="A").length,
       "· classement", (performance.now()-t0).toFixed(1)+" ms",
       "· meilleur", retenus[0] ? retenus[0].l.titre+" ("+Math.round(retenus[0].score)+", "+retenus[0].raison+")" : "—");
@@ -1829,6 +1942,22 @@ function selectionner(){
 function raisonDe(id){
   const x = derniereSelection.find(y=>y.l.id === id);
   return x ? x.raison : "";
+}
+
+/* La carte se vide surtout la nuit ou le dimanche : dire pourquoi vaut mieux
+   qu'un écran blanc, et l'échappatoire reste à un doigt. */
+function majBandeauVide(retenus){
+  const b = $("#bandeauVide");
+  if(!b) return;
+  // un seul bandeau à la fois : celui de la géolocalisation passe avant
+  const montrer = retenus === 0 && lieux.length > 0 && !montrerFermes && !modeNav
+    && $("#bandeauGeo").hidden;
+  b.hidden = !montrer;
+  if(!montrer) return;
+  $("#videTxt").textContent = ecartesAuto
+    ? "Rien d’ouvert autour de toi en ce moment."
+    : "Rien à afficher dans cette zone.";
+  $("#videOk").hidden = !ecartesAuto;
 }
 
 function rendre(){
@@ -1841,7 +1970,10 @@ function rendre(){
     return;
   }
   const garder = new Set();
-  grouper(selectionner()).forEach(item=>{
+  const choisis = selectionner();
+  majBandeauVide(choisis.length);
+  if(feuilleNiveau !== null) majFeuille2();
+  grouper(choisis).forEach(item=>{
     if(item.seul){
       const l = item.seul;
       garder.add(l.id);
@@ -1948,6 +2080,14 @@ function basculerGarde(id){
   return gardes.has(id);
 }
 
+function noteVacances(l){
+  if(l.cat !== "ecole") return "";
+  const v = vacancesScolaires(new Date());
+  if(!v) return "";
+  return '<p class="non-verifie">Nous sommes '+(v.sur ? "en " : "probablement en ")+v.nom+
+    ' : l’établissement est sans doute fermé.</p>';
+}
+
 function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
   const c = CATS[l.cat]||CATS.event;
@@ -1974,6 +2114,9 @@ function ouvrirDetail(id){
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Enregistré':'Enregistrer')+'</button>'+
     '</div>'+
     (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
+    // un établissement scolaire trouvé par son nom en pleines vacances : le
+    // dire évite un déplacement pour rien devant une grille fermée
+    noteVacances(l)+
     // une fausse distribution fait se déplacer quelqu'un qui n'a pas de quoi manger
     ((CATS[l.cat]||{}).eph && !l.verifie && /alimentaire|collecte|hebergement/.test(l.cat)
       ? '<p class="non-verifie">Annonce publiée par un habitant, non vérifiée. '+
@@ -2067,8 +2210,9 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions","#btnDe"]
+  ["#barreBas","#btnAjouter","#haut","#btnPartager","#btnRevenir","#filtresHumains","#feuilleBesoins","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
+  feuilleNiveau = null;
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
   $("#navBarre").hidden = false;
@@ -2096,10 +2240,9 @@ function quitterNav(){
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
   $("#navEtapes").hidden = true;
-  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnMaintenant"]
+  ["#barreBas","#btnAjouter","#haut","#btnPartager"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
-  majFiltres();
-  if(Array.isArray(selectionAccueil)) $("#accueil").hidden = false;
+  majFiltres(); majRaccourcis();
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
   $("#voile").hidden = false; $("#feuille").hidden = false;  // la fiche revient
   rendre();                                                   // et les marqueurs aussi
@@ -2267,7 +2410,7 @@ async function afficherTrajet(l){
   Promise.all([
     stationsVeloProchesCache(depart[0], depart[1]),
     arretsProchesCache(depart[0], depart[1]),
-    arretsProches(dest[0], dest[1])        // pour savoir à quel arrêt descendre
+    arretsAvecRepli(dest[0], dest[1])      // pour savoir à quel arrêt descendre
   ]).then(async ([stations, arrets, arretsArrivee])=>{
     const zone = $("#trajetInfos");
     if(!zone) return;
@@ -2537,6 +2680,15 @@ async function stationsVeloProchesCache(lat,lng){
   if(!CACHE_VELO || !CACHE_VELO.length) CACHE_VELO = await stationsVeloProches(lat,lng);
   return CACHE_VELO;
 }
+/* Le repli Google n'était branché que sur les arrêts de départ : ceux de
+   l'arrivée restaient tributaires d'Overpass, donc aucune option métro ou bus
+   n'était jamais proposée quand il ne répond pas. */
+async function arretsAvecRepli(lat,lng){
+  let a = await arretsProches(lat,lng);
+  if(!a || !a.length) a = await arretsGoogle(lat,lng);
+  return a;
+}
+
 async function arretsProchesCache(lat,lng){
   if(CACHE_TRANSPORT && CACHE_TRANSPORT.length) return CACHE_TRANSPORT;
   CACHE_TRANSPORT = await arretsProches(lat,lng);
@@ -2623,8 +2775,9 @@ function libelleQuand(b){
 function ouvrirModePose(){
   modePose=true;
   $("#viseur").hidden=false; $("#poseBarre").hidden=false;
-  $("#btnExplorer").hidden=true; $("#btnAjouter").hidden=true;
+  $("#barreBas").hidden=true; $("#btnAjouter").hidden=true;
   $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
+  $("#feuilleBesoins").hidden=true;
   $("#poseBarre .txt").textContent = retourFormulaire
     ? "Déplace la carte pour corriger l’endroit."
     : "Déplace la carte : l’épingle se pose ici.";
@@ -2632,9 +2785,9 @@ function ouvrirModePose(){
 function fermerModePose(){
   modePose=false;
   $("#viseur").hidden=true; $("#poseBarre").hidden=true;
-  $("#btnExplorer").hidden=false; $("#btnAjouter").hidden=false;
+  $("#barreBas").hidden=false; $("#btnAjouter").hidden=false;
   $("#btnPartager").hidden=false; majBoutons();
-  if(Array.isArray(selectionAccueil)) $("#accueil").hidden = false;
+  majRaccourcis(); majFeuille2();
 }
 function nouveauBrouillon(){
   const c=map.getCenter();
@@ -2863,6 +3016,7 @@ const CAT_GOOGLE = {
   bar:"bar", pub:"bar", night_club:"concert",
   movie_theater:"cinema", performing_arts_theater:"spectacle",
   library:"biblio", museum:"musee", art_gallery:"musee", park:"parc",
+  coworking_space:"coworking",
   hospital:"sante", pharmacy:"sante", doctor:"sante", drugstore:"sante",
   local_government_office:"mairie", city_hall:"mairie", post_office:"mairie",
   government_office:"emploi", employment_agency:"emploi",
@@ -2923,14 +3077,14 @@ async function chercherGoogle(q, lat, lng){
   }catch(e){ console.error("Recherche Google:", e); return []; }
 }
 
-async function placesGoogle(lat, lng, types){
+async function placesGoogle(lat, lng, types, signal){
   const corps = {
     maxResultCount:20,
     locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1500}}
   };
   if(types) corps.includedTypes = types;
   const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-    method:"POST",
+    method:"POST", signal,
     headers:{
       "Content-Type":"application/json",
       "X-Goog-Api-Key":CLE_GOOGLE,
@@ -2943,24 +3097,40 @@ async function placesGoogle(lat, lng, types){
   return (j.places||[]).map(mapperPlace);
 }
 
-/* Deux requêtes en parallèle : une ciblée restauration — c'est ce qu'on veut
-   classer en priorité et 20 résultats génériques n'en contiendraient qu'une
-   poignée — et une généraliste pour le reste du quartier. */
-async function notesGoogle(lat, lng){
+/* Une requête généraliste suffit à l'ouverture. La passe ciblée restauration
+   coûtait une seconde requête facturée à chaque zone alors que personne
+   n'avait encore demandé à manger : elle part maintenant quand on ouvre
+   « Manger », et pas avant. */
+async function notesGoogle(lat, lng, opts){
   if(!CLE_GOOGLE) return null;
+  const o = opts || {};
   try{
-    const [restos, tout] = await Promise.all([
-      placesGoogle(lat, lng, TYPES_RESTO),
-      placesGoogle(lat, lng, null)
-    ]);
+    const listes = [placesGoogle(lat, lng, null, o.signal)];
+    if(o.resto) listes.push(placesGoogle(lat, lng, TYPES_RESTO, o.signal));
+    const recus = await Promise.all(listes);
     const uniques = new Map();
-    restos.concat(tout).forEach(f=>{
-      if(f.nom) uniques.set(f.nom+"|"+f.lat.toFixed(4), f);
-    });
+    recus.flat().forEach(f=>{ if(f.nom) uniques.set(f.nom+"|"+f.lat.toFixed(4), f); });
     const fiches = [...uniques.values()];
     console.info("Google Places :", fiches.length, "fiche(s) reçue(s)");
     return fiches;
-  }catch(e){ console.error("notesGoogle: échec de la requête", e); return null; }
+  }catch(e){
+    if(e && e.name === "AbortError") return null;
+    console.error("notesGoogle: échec de la requête", e); return null;
+  }
+}
+
+/* Complément restauration, déclenché seulement quand le besoin « Manger »
+   s'ouvre. Une fois par zone : on ne repaie pas à chaque aller-retour. */
+const zonesResto = new Set();
+function completerRestauration(){
+  if(!positionMoi || !CLE_GOOGLE) return;
+  const [lat,lng] = positionMoi;
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(zonesResto.has(cle)) return;
+  zonesResto.add(cle);
+  placesGoogle(lat, lng, TYPES_RESTO)
+    .then(f=>{ if(f && f.length){ greffeNotes(lieux, f); ajouterLieuxGoogle(f); majAccueil(); } })
+    .catch(()=>{});
 }
 
 /* Les commerces connus de Google mais absents d'OpenStreetMap : sans eux, la
@@ -2988,6 +3158,8 @@ function ajouterLieuxGoogle(fiches, catDefaut){
       places:null, qr:false, par:"Google Maps",
       lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert,
       prixN:f.prixN, cuisine:f.cuisine, service, horaires:f.horaires,
+      // un lieu ramené par une recherche de réseau d'aide l'est par construction
+      solidaire: f.solidaire === true || estSolidaire(f.nom, false),
       tel:f.tel, pmr:f.pmr
     });
     ajoutes++;
@@ -3226,16 +3398,30 @@ const RESEAUX_AIDE = [
   { q:"CCAS action sociale",        cat:"emploi" },
   { q:"accueil de jour sans-abri",  cat:"hebergement" },
   { q:"hébergement d'urgence",      cat:"hebergement" },
+  // accès aux droits et insertion : trois guichets distincts qu'OSM range
+  // sous le même tag, et qui ne reçoivent pas les mêmes personnes
+  { q:"Mission locale",             cat:"emploi" },
+  { q:"France Travail",             cat:"emploi" },
+  { q:"France Services accès aux droits", cat:"emploi" },
+  { q:"vestiaire solidaire vêtements", cat:"friperie" },
+  { q:"bains-douches municipaux",   cat:"toilettes" },
 ];
 
 /* Ces adresses ne bougent quasiment jamais : on les garde une semaine plutôt
    que de relancer dix recherches facturées à chaque ouverture de l'app. */
 const cleAide = (lat,lng)=>"autour:aide:"+lat.toFixed(2)+","+lng.toFixed(2);
 let aideChargee = false;
+let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
 
 async function chargerAide(lat,lng){
   if(aideChargee) return;
   aideChargee = true;
+  aideEnCours = true;
+  try{ await chargerAideVraiment(lat,lng); }
+  finally{ aideEnCours = false; }
+}
+
+async function chargerAideVraiment(lat,lng){
 
   try{
     const brut = localStorage.getItem(cleAide(lat,lng));
@@ -3255,6 +3441,7 @@ async function chargerAide(lat,lng){
     res.forEach(f=>{
       // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
       if(distanceM(lat,lng,f.lat,f.lng) > 15000) return;
+      f.solidaire = true;              // trouvé en cherchant un réseau d'aide
       garder.push({f, cat:r.cat});
       ajouterLieuxGoogle([f], r.cat);
     });
@@ -3312,7 +3499,7 @@ async function rechercherAilleurs(phrase, ville){
   positionMoi = vrai;
 
   selectionAccueil = false;
-  $("#accueil").hidden = true; $("#intentions").hidden = true;
+  fermerFeuille2();
   pileEcrans = [];
   pousserEcran(()=>afficherListe("📍", esc(ville), classes, false,
     ()=>rechercherAilleurs(phrase, ville)));
@@ -3336,12 +3523,14 @@ function completerParGoogle(q, catDefaut, redessiner){
 /* Ce qui compte change avec l'heure. À une heure du matin, une pharmacie ou
    un hébergement d'urgence valent mieux qu'un musée fermé depuis longtemps. */
 const MOMENTS = [
+  // la mairie a disparu d'ici : elle était favorisée tous les matins alors
+  // que personne n'ouvre l'app pour qu'on lui propose un guichet
   { de:6,  a:11, nom:"ce matin",
-    poids:{cafe:3, marche:3, mairie:2, emploi:2, sante:2, alimentaire:2} },
+    poids:{cafe:3, marche:3, emploi:2, sante:2, alimentaire:2, coworking:2} },
   { de:11, a:14, nom:"ce midi",
     poids:{resto:3, alimentaire:3, fastfood:2, cafe:2, marche:2} },
   { de:14, a:18, nom:"cet après-midi",
-    poids:{biblio:2, musee:2, parc:2, asso:2, emploi:2, terrain:2, friperie:2, commerce:2} },
+    poids:{biblio:2, coworking:2, musee:2, parc:2, asso:2, emploi:2, terrain:2, friperie:2, commerce:2} },
   { de:18, a:23, nom:"ce soir",
     poids:{concert:4, spectacle:4, bar:3, resto:3, cinema:3, fastfood:2} },
   { de:23, a:6,  nom:"cette nuit",
@@ -3351,6 +3540,86 @@ const MOMENTS = [
 function momentActuel(){
   const h = instantCreneau().getHours();
   return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
+}
+
+/* Propositions posées avant la moindre frappe : à 8 h on ne cherche pas la
+   même chose qu'à 23 h, et écrire sa demande est déjà un effort. Quatre
+   raccourcis suffisent — au-delà on ne choisit plus, on lit une liste. */
+const SUGGESTIONS_MOMENT = {
+  "ce matin": [
+    {t:"Petit-déjeuner",   cats:["cafe"]},
+    {t:"Bosser au calme",  cats:["biblio","coworking","cafe"]},
+    {t:"Marché",           cats:["marche"]},
+    {t:"Prendre l’air",    cats:["parc"]},
+  ],
+  "ce midi": [
+    {t:"Manger",           cats:["resto","fastfood","food"]},
+    {t:"Pas cher",         f:"budget"},
+    {t:"Près de moi",      f:"proche"},
+    {t:"Ouvert maintenant",f:"ouvert"},
+  ],
+  "cet après-midi": [
+    {t:"Étudier",          cats:["biblio","coworking","cafe"]},
+    {t:"Prendre l’air",    cats:["parc"]},
+    {t:"Fripes & pop-up",  cats:["friperie","popup","marche"]},
+    {t:"Bouger",           cats:["terrain","sport"]},
+  ],
+  "ce soir": [
+    {t:"Restaurant",       cats:["resto"]},
+    {t:"Sortir",           cats:["concert","spectacle","bar","event"]},
+    {t:"Cinéma",           cats:["cinema"]},
+    {t:"Surprends-moi",    hasard:true},
+  ],
+  "cette nuit": [
+    {t:"Ouvert maintenant",f:"ouvert"},
+    {t:"Pharmacie",        cats:["sante"]},
+    {t:"Rentrer",          cats:["metro","bus","velo"]},
+    {t:"Un abri",          modeAide:true, sous:"dormir"},
+  ],
+};
+
+function suggestionsDuMoment(){
+  return SUGGESTIONS_MOMENT[momentActuel().nom] || SUGGESTIONS_MOMENT["cet après-midi"];
+}
+
+function appliquerSuggestion(s){
+  const z = $("#suggestions"); if(z) z.hidden = true;
+  const r = $("#rech"); if(r) r.blur();
+  if(s.hasard){ surprendre(); return; }
+  // « Un abri » à deux heures du matin : on entre dans le mode Aide, direct
+  // sur le bon besoin, sans passer par un écran de plus
+  if(s.modeAide){
+    if(!modeAide) basculerAide();
+    sousAide = s.sous || null;
+    majFiltres(); rendre(); majAccueil(); majFeuille2();
+    return;
+  }
+  if(s.f){
+    filtresHumains.add(s.f);
+    toutAfficher(); majFiltres();
+    toast(s.t);
+    return;
+  }
+  catsActives = new Set(s.cats);
+  filtreActif = "tout";
+  selectionAccueil = false;
+  if(s.aide && positionMoi) chargerAide(positionMoi[0], positionMoi[1]);
+  mettreAJourProfil("categorie", s.cats[0]);
+  dessinerFiltres(); majFiltres(); rendre();
+  toast(s.t);
+}
+
+/* Une même rangée de raccourcis, rendue au même endroit dans deux contextes :
+   sous la barre de recherche et dans la carte d'accueil. */
+function rangeeSuggestions(){
+  return '<div class="sg-rapides">'+suggestionsDuMoment().map((s,i)=>
+    '<button class="sg-rapide" data-sug="'+i+'">'+esc(s.t)+'</button>').join("")+'</div>';
+}
+
+function brancherSuggestions(zone){
+  const liste = suggestionsDuMoment();
+  zone.querySelectorAll("[data-sug]").forEach(b=>
+    b.onclick=()=>appliquerSuggestion(liste[Number(b.dataset.sug)]));
 }
 
 /* ================================================================== */
@@ -3374,8 +3643,8 @@ const POIDS = {
   ignore:           -10,
   DECROISSANCE:     800,   // mètres : au-delà l'envie de se déplacer chute
   RAYON_PROCHE:     400,
-  PLAFOND_SERRE:     30,   // marqueurs max en vue rapprochée
-  PLAFOND_LARGE:     15,
+  PLAFOND_SERRE:     24,   // marqueurs max en vue rapprochée
+  PLAFOND_LARGE:     14,
   SEUIL_NIVEAU_B:    45,   // en dessous, le lieu passe en niveau C (masqué)
 };
 
@@ -3445,9 +3714,191 @@ function contexteActuel(){
   };
 }
 
+/* ---- Vacances scolaires -----------------------------------------------
+   Sert uniquement à ne pas laisser croire qu'un établissement scolaire est
+   ouvert. Les dates de la Toussaint, de Noël et de l'été sont nationales ;
+   celles de février et d'avril dépendent de la zone (A, B ou C) et on ne
+   sait pas dans laquelle se trouve la personne : on les signale alors comme
+   probables plutôt que de les affirmer. */
+function vacancesScolaires(d){
+  const m = d.getMonth() + 1, j = d.getDate();
+  if(m === 7 || m === 8) return {nom:"vacances d’été", sur:true};
+  if(m === 9 && j <= 1)  return {nom:"vacances d’été", sur:true};
+  if(m === 10 && j >= 18) return {nom:"vacances de la Toussaint", sur:true};
+  if(m === 11 && j <= 2)  return {nom:"vacances de la Toussaint", sur:true};
+  if(m === 12 && j >= 20) return {nom:"vacances de Noël", sur:true};
+  if(m === 1 && j <= 5)   return {nom:"vacances de Noël", sur:true};
+  if(m === 2 || (m === 3 && j <= 9))  return {nom:"vacances d’hiver", sur:false};
+  if((m === 4 && j >= 8) || (m === 5 && j <= 10)) return {nom:"vacances de printemps", sur:false};
+  return null;
+}
+
+/* Une catégorie « silencieuse » redevient visible dès qu'on la demande :
+   en tapant son nom, en la choisissant dans Explorer, ou par une intention
+   qui l'inclut explicitement (« Je viens d'arriver » a besoin de la mairie).  */
+function demandeExplicite(l, ctx){
+  if(catsActives && catsActives.has(l.cat)) return true;
+  if(filtreActif === l.cat) return true;
+  if(!ctx.q || ctx.q.length < 3) return false;
+  if(sansAccents(l.titre).includes(ctx.q)) return true;   // « lycée Baggio »
+  return categorieRecherchee(ctx.q) === l.cat;            // « collège », « mairie »
+}
+
+/* Le filtre unique qui décide de ce qui a le droit de s'inviter sur la
+   carte sans qu'on l'ait demandé. Mieux vaut cinq propositions justes que
+   trente approximatives : ce qui est fermé ou fermé au public dégage. */
+/* Quand il n'y a vraiment plus rien d'ouvert — une nuit, un dimanche — la
+   carte vide est honnête mais inutilisable. On propose alors de lever la
+   règle, à la demande, et le bandeau le dit. */
+let montrerFermes = false;
+
+/* ================================================================== */
+/*  Mode Aide                                                          */
+/* ================================================================== */
+
+/* Chercher où manger ce soir et chercher où dormir cette nuit ne sont pas
+   la même recherche. Le mode Aide ne filtre pas la carte : il change ce que
+   « pertinent » veut dire. Une note Google ne compte plus, une porte ouverte
+   compte énormément, et l'urgence du besoin passe devant la découverte. */
+let modeAide = false;
+
+const CATS_AIDE = ["alimentaire","hebergement","asso","emploi","sante","toilettes","collecte"];
+const SET_AIDE  = new Set(CATS_AIDE);
+
+/* Six besoins écrits comme on les dit, pas comme la base les nomme. « Aide
+   alimentaire » est un intitulé d'administration ; « manger gratuitement ou
+   à petit prix » est ce que la personne cherche. Le second se comprend sans
+   avoir jamais utilisé l'app. */
+const SOUS_AIDE = [
+  { id:"manger",    emoji:"🍽", label:"Manger gratuitement",  cats:["alimentaire","collecte","food"] },
+  { id:"dormir",    emoji:"🛏", label:"Trouver un hébergement", cats:["hebergement"] },
+  { id:"asso",      emoji:"🤝", label:"Parler à une association", cats:["asso"] },
+  { id:"sante",     emoji:"🏥", label:"Santé",                cats:["sante"] },
+  { id:"emploi",    emoji:"💼", label:"Emploi et droits",     cats:["emploi","asso","mairie"] },
+  { id:"urgence",   emoji:"🚨", label:"Urgence",              cats:["hebergement","sante","asso"],
+    urgentSeul:true },
+];
+let sousAide = null;          // id du sous-filtre actif, ou null
+
+/* Ce qu'on risque à ne pas trouver. Dormir dehors ou renoncer à des soins ne
+   se compare pas à récupérer un vêtement : à distance égale, l'urgent passe. */
+const URGENCE = {
+  hebergement:5, sante:5, alimentaire:4, collecte:4,
+  asso:3, emploi:3, friperie:2, toilettes:2, mairie:2, food:3,
+};
+const URGENT_AU_NOM = /urgence|\b115\b|samu\s*social|sans[- ]abri|maraude|accueil\s*de\s*jour|halte\s*de\s*nuit|nuit[ée]e/i;
+
+const POIDS_AIDE = {
+  ouvert:        130,   // 1. une porte ouverte maintenant prime sur tout
+  aujourdhui:     60,   // 2. sinon : ouvre encore aujourd'hui
+  proximite:      90,   // 3. proximité, décroissance douce
+  DECROISSANCE: 1600,   // on marche plus loin pour manger que pour un café
+  urgence:        13,   // 4. multiplié par le niveau d'urgence (1 à 5)
+  solidaire:      25,
+  verifie:        18,
+  ferme:        -140,
+  inconnu:       -20,   // horaires inconnus : utile, mais après ce qui est sûr
+};
+
+/* « Disponible aujourd'hui » : vrai, faux, ou null quand on ne sait pas.
+   Inventer une réponse ici ferait se déplacer quelqu'un pour rien. */
+function disponibleAujourdhui(l){
+  if((CATS[l.cat]||{}).eph){
+    if(!l.debutLe) return true;
+    const d = new Date(l.debutLe), n = new Date();
+    return d.toDateString() === n.toDateString() || (l.finLe && l.finLe > n.getTime());
+  }
+  const h = horaireDuJour(l);
+  if(h) return !/ferm/i.test(h);
+  if(l.ouvert === true) return true;
+  return null;
+}
+
+function niveauUrgence(l){
+  let u = URGENCE[l.cat] || 1;
+  if(URGENT_AU_NOM.test(l.titre+" "+(l.service||""))) u += 2;
+  return Math.min(7, u);
+}
+
+/* Score du mode Aide : l'ordre demandé, dans l'ordre. */
+function scoreAide(l, ctx){
+  const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
+  const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
+  let s = 0, raisons = [];
+
+  if(l.ouvert === true){ s += POIDS_AIDE.ouvert; raisons.push([POIDS_AIDE.ouvert,"Ouvert maintenant"]); }
+  else if(l.ouvert === false) s += POIDS_AIDE.ferme;
+
+  const dispo = disponibleAujourdhui(l);
+  if(dispo === true && l.ouvert !== true){
+    s += POIDS_AIDE.aujourdhui;
+    raisons.push([POIDS_AIDE.aujourdhui,"Ouvre encore aujourd’hui"]);
+  }else if(dispo === null) s += POIDS_AIDE.inconnu;
+
+  const p = POIDS_AIDE.proximite * Math.exp(-Math.min(dMoi,dVue) / POIDS_AIDE.DECROISSANCE);
+  s += p;
+  if(dMoi < 700) raisons.push([p,"À quelques minutes"]);
+
+  const u = niveauUrgence(l);
+  s += u * POIDS_AIDE.urgence;
+  if(u >= 5) raisons.push([u*POIDS_AIDE.urgence,"Service d’urgence"]);
+
+  if(l.solidaire){ s += POIDS_AIDE.solidaire; raisons.push([POIDS_AIDE.solidaire,"Structure solidaire"]); }
+  // le service n'ajoute pas de points — il n'y a pas de raison de mieux
+  // classer une Mission locale qu'un CCAS — mais il passe devant la distance
+  // dans ce qu'on affiche : savoir à qui s'adresse le guichet évite le trajet
+  // de trop, et la distance est déjà écrite à côté
+  if(l.service) raisons.push([POIDS_AIDE.ouvert - 1, l.service]);
+  if(l.verifie) s += POIDS_AIDE.verifie;
+  // ni note ni nombre d'avis : on ne classe pas une distribution alimentaire
+  // par étoiles, et les mieux notées ne sont pas les plus utiles
+
+  raisons.sort((a,b)=>b[0]-a[0]);
+  return { score:s, raison: raisons.length ? raisons[0][1] : "Point d’aide" };
+}
+
+/* Le sous-filtre actif, ou le mode Aide entier s'il n'y en a pas. */
+function catsAideActives(){
+  const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+  return s ? new Set(s.cats) : SET_AIDE;
+}
+
+function proposableAuto(l, ctx){
+  if(modeAide){
+    // même ici, ce qu'on cherche par son nom ou qu'on choisit dans Explorer
+    // reste trouvable : le mode change les priorités, il n'enferme personne
+    if(demandeExplicite(l, ctx)) return true;
+    // pour le reste, la ville s'efface : on ne propose que ce qui aide
+    if(!catsAideActives().has(l.cat)) return false;
+    const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+    if(s && s.solidaireSeul && !l.solidaire) return false;
+    // « Urgence » ne montre que ce qui reçoit en urgence : un club de sport
+    // classé « association » n'a rien à faire dans cette liste-là
+    if(s && s.urgentSeul && niveauUrgence(l) < 5) return false;
+    return true;   // le tri fermé/ouvert se fait plus loin, par catégorie
+  }
+  if(demandeExplicite(l, ctx)) return true;
+  if(JAMAIS_AUTO.has(l.cat)) return false;
+  // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
+  // demain, l'information de Google ne dit plus rien du moment regardé
+  if(l.ouvert === false && creneau === "maintenant" && !montrerFermes) return false;
+  return true;
+}
+
+/* « Les structures fermées ne doivent pas être proposées si une alternative
+   ouverte existe. » La comparaison se fait catégorie par catégorie : cinq
+   distributions ouvertes ne remplacent pas l'hébergement d'urgence fermé,
+   et masquer celui-ci parce qu'un autre service est ouvert serait faux. */
+function ecarterFermesSiAlternative(liste){
+  const ouvertes = new Set();
+  liste.forEach(x=>{ if(x.l.ouvert === true) ouvertes.add(x.l.cat); });
+  return liste.filter(x=> x.l.ouvert !== false || !ouvertes.has(x.l.cat));
+}
+
 /* Score explicable : chaque terme est nommé, et la raison affichée à
    l'utilisateur est simplement le terme qui a le plus pesé. */
 function scoreLieu(l, ctx){
+  if(modeAide) return scoreAide(l, ctx);
   let s = 0, raisons = [];
   const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
   const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
@@ -3496,6 +3947,9 @@ function scoreLieu(l, ctx){
 /* Trois niveaux. A : incontournables, toujours là. B : pertinents dans le
    contexte. C : le reste, masqué mais retrouvé par recherche ou catégorie. */
 function niveauLieu(l, ctx, sc){
+  // en mode Aide, rien n'est « secondaire » : tout ce qui a passé le filtre
+  // mérite d'être vu, c'est le classement qui fait le tri
+  if(modeAide) return "A";
   const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
   const eph = !!(CATS[l.cat]||{}).eph;
   if(l.mien) return "A";
@@ -3505,117 +3959,267 @@ function niveauLieu(l, ctx, sc){
   return sc >= POIDS.SEUIL_NIVEAU_B ? "B" : "C";
 }
 
-/* Ancienne signature conservée : plusieurs appels s'appuient dessus. */
-function pertinence(l, poids){
-  let s = 0;
-  // Décroissance de la distance : on ne « découvre » pas à deux kilomètres.
-  // Exponentielle et non linéaire, parce que l'envie de se déplacer chute
-  // brutalement passé quelques centaines de mètres.
-  s += 120 * Math.exp(-l.dist / 800);
-  // Ce qui se passe l'emporte sur ce qui existe : c'est la promesse de l'app,
-  // et c'est la seule chose que Google Maps ne dit pas.
-  if((CATS[l.cat]||{}).eph) s += 55;
-  // Un lieu fermé maintenant ne sert à rien, même excellent.
-  if(l.ouvert === true)  s += 30;
-  if(l.ouvert === false) s -= 70;
-  s += (poids[l.cat] || 0) * 14;
-  // Preuve sociale : le nombre d'avis rassure plus que la note seule. En
-  // logarithme, car passer de 10 à 100 avis compte bien plus que de 900 à 1000.
-  if(l.avis) s += Math.min(22, Math.log10(l.avis+1) * 11);
-  if(l.note) s += (l.note - 3.5) * 8;
-  if(l.mien) s += 40;          // tes propres publications d'abord
-  return s;
-}
 
 /* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
    false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
 let selectionAccueil = null;
 
-/* Huit intentions au lieu de trente-deux catégories : on demande ce que la
-   personne veut faire, pas de traduire son envie en vocabulaire de carte. */
-const INTENTIONS = [
-  { emoji:"🍽️", label:"Manger",             cats:["resto","fastfood","cafe","food","marche"] },
-  { emoji:"🎉", label:"Sortir aujourd’hui",  cats:["concert","spectacle","bar","cinema","event","popup"] },
-  { emoji:"🛍️", label:"Pop-up & fripes",    cats:["popup","friperie","marche","commerce"] },
-  { emoji:"🆘", label:"Trouver de l’aide",   cats:["alimentaire","hebergement","sante","asso","emploi","collecte"], aide:true },
-  { emoji:"⚽", label:"Faire du sport",      cats:["terrain","sport"] },
-  { emoji:"🤝", label:"Rencontrer du monde", cats:["asso","event","concert","bar","terrain","studio"] },
-  { emoji:"📚", label:"Étudier",             cats:["biblio","cafe","ecole"] },
-  { emoji:"🚲", label:"Déplacements",        cats:["velo","metro","bus","recharge"] },
-  { emoji:"🧳", label:"Je viens d’arriver",  cats:["resto","biblio","musee","marche","asso","emploi","sante",
-                                                  "metro","bus","terrain","parc","mairie"], aide:true },
-  { emoji:"📍", label:"Explorer",            cats:null },
-  { emoji:"🎲", label:"Surprends-moi",       cats:null, hasard:true },
-];
-/* Six choix suffisent : au-delà, on ne choisit plus, on hésite. */
-const INTENTIONS_CLES = [0,1,3,4,6,9];   // Manger, Sortir, Aide, Sport, Étudier, Explorer
-let toutesIntentions = false;
+/* ================================================================== */
+/*  Bottom sheet : un besoin, puis ses sous-choix. Jamais les deux.    */
+/* ================================================================== */
 
+/* null = fermée · "racine" = les quatre besoins · sinon l'id du besoin.
+   La feuille ne s'ouvre jamais toute seule : l'écran de départ, c'est la
+   carte, et rien d'autre. */
+let feuilleNiveau = null;
+let sousChoisi = null;          // index du sous-choix coché, ou null
 
-function appliquerIntention(i){
-  const it = INTENTIONS[i];
-  $("#intentions").hidden = true;
-  if(it.hasard){ surprendre(); return; }
-  catsActives = it.cats ? new Set(it.cats) : null;
-  filtreActif = "tout";
-  selectionAccueil = false;
-  $("#accueil").hidden = true;
-  $("#intentions").hidden = true;
-  if(it.aide && positionMoi) chargerAide(positionMoi[0], positionMoi[1]);
-  dessinerFiltres(); majFiltres(); rendre();
-  if(catsActives) toast(it.emoji+" "+it.label);
+/* Un lieu sans nom exploitable n'a rien à dire. Sauf là où le nom n'a
+   jamais existé : des toilettes publiques ou un arrêt de bus sont utiles
+   sans s'appeler quelque chose. */
+const NOM_FACULTATIF = new Set(["toilettes","recharge","velo","metro","bus","parc","terrain"]);
+function nomExploitable(l){
+  // un libellé vide n'est jamais affichable, quelle que soit la catégorie
+  if(!l.titre || l.titre.trim().length < 2) return false;
+  if(NOM_FACULTATIF.has(l.cat)) return true;
+  return !l.sansNom;
 }
 
-function majCreneaux(){
-  const z = $("#creneaux");
-  if(!z) return;
-  z.innerHTML = CRENEAUX.map(c=>
-    '<button class="cr'+(creneau===c.id?" actif":"")+'" data-cr="'+c.id+'">'+c.label+'</button>').join("");
-  z.querySelectorAll("[data-cr]").forEach(b=>b.onclick=()=>{
-    creneau = b.dataset.cr;
-    filtreMaintenant = creneau !== "maintenant" ? true : filtreMaintenant;
-    majCreneaux(); majFiltres(); rendre(); majAccueil();
+/* Rayon de travail. « Élargir » le double au lieu d'inventer des résultats. */
+let rayonRecherche = 2500;
+
+function elargirZone(){
+  rayonRecherche = Math.min(rayonRecherche * 2, 20000);
+  if(map) map.setZoom(Math.max(12, map.getZoom() - 1));
+  dernierChargement = null;                 // on force un nouveau tour
+  if(positionMoi) chargerZone(positionMoi[0], positionMoi[1]);
+  toast("Zone élargie à " + Math.round(rayonRecherche/1000) + " km");
+  rendre(); majAccueil();
+}
+
+/* Combien de lieux réellement montrables se cachent derrière un sous-choix.
+   Sert à ne jamais afficher une catégorie à zéro. */
+function compterCats(cats){
+  const set = new Set(cats);
+  const [lat,lng] = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  let n = 0;
+  for(const l of lieux){
+    if(!set.has(l.cat)) continue;
+    if(!nomExploitable(l)) continue;
+    if(filtreMaintenant && !estVivant(l)) continue;
+    if(distanceM(lat,lng,l.lat,l.lng) > rayonRecherche) continue;
+    n++;
+    if(n > 99) break;
+  }
+  return n;
+}
+
+function ouvrirFeuille2(niveau){
+  feuilleNiveau = niveau;
+  sousChoisi = null;
+  const f = $("#feuilleBesoins");
+  f.hidden = false;
+  f.classList.remove("deplie");
+  majFeuille2();
+  // ouvrir un besoin déclenche sa recherche : c'est le moment où elle sert
+  const b = BESOIN_DE(niveau);
+  if(b && b.sous){
+    const manquantes = b.sous.flatMap(x=>x.cats).filter(c=>!CATS_DEPART.has(c));
+    if(manquantes.length) chargerPourCats(manquantes);
+    if(niveau === "manger") completerRestauration();
+  }
+}
+
+function fermerFeuille2(){
+  feuilleNiveau = null;
+  sousChoisi = null;
+  const f = $("#feuilleBesoins");
+  if(!f) return;
+  f.hidden = true;
+  f.classList.remove("deplie");
+  majRaccourcis();
+}
+
+/* Rendu de la feuille. Trois écrans possibles, jamais mélangés. */
+function majFeuille2(){
+  const f = $("#feuilleBesoins");
+  if(!f || feuilleNiveau === null || modeNav || modePose){ if(f) f.hidden = true; return; }
+  f.hidden = false;
+
+  const corps = $("#fbCorps");
+  const retour = $("#fbRetour");
+
+  if(feuilleNiveau === "racine"){
+    $("#fbTitre").textContent = "Que faire autour de moi ?";
+    retour.hidden = true;
+    corps.innerHTML = BESOINS.map(b=>
+      '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
+    ).join("") + blocResultats() + piedFeuille();
+  }else if(feuilleNiveau === "aide"){
+    $("#fbTitre").textContent = "❤️ Trouver de l’aide";
+    retour.hidden = false;
+    corps.innerHTML = SOUS_AIDE.map((x,i)=>
+      '<button class="bn'+(sousAide===x.id?" actif":"")+'" data-sa="'+x.id+'">'+
+      '<em>'+x.emoji+'</em><b>'+esc(x.label)+'</b></button>'
+    ).join("") + blocResultats();
+  }else{
+    const b = BESOIN_DE(feuilleNiveau);
+    if(!b){ fermerFeuille2(); return; }
+    $("#fbTitre").textContent = b.emoji+" "+b.label;
+    retour.hidden = false;
+    // une catégorie vide ne s'affiche pas : elle ne mène nulle part
+    const dispo = b.sous.map((s,i)=>({s, i, n:compterCats(s.cats)})).filter(x=>x.n > 0);
+    corps.innerHTML = (dispo.length
+      ? dispo.map(x=>
+          '<button class="bn'+(sousChoisi===x.i?" actif":"")+'" data-sc="'+x.i+'">'+
+          '<b>'+esc(x.s.label)+'</b><i>'+x.n+'</i></button>').join("")
+      : messageVide()) + blocResultats();
+  }
+
+  brancherFeuille2();
+}
+
+/* Trois liens discrets, tout en bas : le hasard, le partage, et le réglage
+   de personnalisation — qui doit rester accessible puisqu'on l'a promis.
+   Du texte, pas des boutons : ils ne concurrencent pas l'action principale. */
+function piedFeuille(){
+  return '<div class="fb-pied">'+
+    '<button data-pied="hasard">🎲 Surprends-moi</button>'+
+    '<button data-pied="partage">↗ Partager Autour</button>'+
+    '<button data-pied="perso">'+(personnalisation ? "Ne plus personnaliser" : "Personnaliser")+'</button>'+
+    '</div>';
+}
+
+function messageVide(){
+  return '<div class="fb-vide">Aucun résultat proche pour ce filtre. Élargir la zone&nbsp;?'+
+         '<br><button data-elargir="1">Élargir</button></div>';
+}
+
+/* Les cinq meilleures suggestions, sous les choix. C'est la réponse, pas
+   un catalogue : au-delà de cinq lignes on ne lit plus, on fait défiler. */
+function blocResultats(){
+  if(!Array.isArray(selectionAccueil) || !selectionAccueil.length){
+    return feuilleNiveau === "racine" ? "" : "";
+  }
+  const [lat,lng] = positionMoi || [0,0];
+  const items = selectionAccueil
+    .map(id=>lieux.find(l=>l.id === id)).filter(Boolean);
+  if(!items.length) return "";
+  return '<p class="fb-section">Autour de toi maintenant</p>' + items.map(l=>{
+    const c = CATS[l.cat] || {emoji:"📍"};
+    const d = distanceM(lat,lng,l.lat,l.lng);
+    const bouts = [];
+    if(l.ouvert === true)  bouts.push('<span class="ouvert">Ouvert</span>');
+    if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
+    if(l.note) bouts.push("★ "+l.note.toFixed(1));
+    const r = l.raison || raisonDe(l.id);
+    if(r && !(l.ouvert === true && /^Ouvert/.test(r)))
+      bouts.push('<span class="raison">'+esc(r)+'</span>');
+    return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
+      '<span class="ac-emoji">'+c.emoji+'</span>'+
+      '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
+      '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
+      '<span class="ac-dist">'+formatDist(d)+'</span></button>';
+  }).join("");
+}
+
+function brancherFeuille2(){
+  const corps = $("#fbCorps");
+
+  corps.querySelectorAll("[data-bn]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.bn;
+    if(id === "aide"){ if(!modeAide) basculerAide(); ouvrirFeuille2("aide"); return; }
+    if(modeAide) basculerAide();
+    ouvrirFeuille2(id);
+  });
+
+  corps.querySelectorAll("[data-sc]").forEach(b=>b.onclick=()=>{
+    const bes = BESOIN_DE(feuilleNiveau);
+    const i = Number(b.dataset.sc);
+    // retoucher le choix coché le décoche : tout le besoin revient
+    sousChoisi = (sousChoisi === i) ? null : i;
+    catsActives = sousChoisi === null ? null : new Set(bes.sous[i].cats);
+    filtreActif = "tout";
+    if(sousChoisi !== null){
+      mettreAJourProfil("categorie", bes.sous[i].cats[0]);
+      // on ne va chercher ces catégories qu'ici, au moment où on les demande
+      chargerPourCats(bes.sous[i].cats);
+      if(feuilleNiveau === "manger") completerRestauration();
+    }
+    rendre(); majAccueil(); majFeuille2(); majRaccourcis();
+  });
+
+  corps.querySelectorAll("[data-sa]").forEach(b=>b.onclick=()=>{
+    sousAide = (sousAide === b.dataset.sa) ? null : b.dataset.sa;
+    rendre(); majAccueil(); majFeuille2();
+  });
+
+  corps.querySelectorAll("[data-elargir]").forEach(b=>b.onclick=elargirZone);
+
+  corps.querySelectorAll("[data-pied]").forEach(b=>b.onclick=()=>{
+    const q = b.dataset.pied;
+    if(q === "hasard"){ fermerFeuille2(); surprendre(); return; }
+    if(q === "partage"){ partagerApp(); return; }
+    personnalisation = !personnalisation;
+    try{ localStorage.setItem("autour:perso", personnalisation ? "oui" : "non"); }catch(e){}
+    if(!personnalisation) reinitialiserProfil();
+    rendre(); majAccueil(); majFeuille2();
+    toast(personnalisation ? "Suggestions personnalisées" : "Préférences oubliées");
+  });
+
+  corps.querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
+    if(!cible) return;
+    mettreAJourProfil("clic", cible.cat);
+    map.flyTo([cible.lat,cible.lng], 17, {duration:.5});
+    pileEcrans = [];
+    pousserEcran(()=>ouvrirDetail(id));
   });
 }
 
-function majVitalite(){
-  const v = vitalite(), z = $("#vitalite");
+/* Les quatre raccourcis du bas : le chemin court vers le même endroit. */
+function majRaccourcis(){
+  const z = $("#raccourcis");
   if(!z) return;
-  if(!v){ z.textContent = ""; return; }
-  z.innerHTML = v.p+' <b>'+v.t+'</b> <span>'+v.n+' ouverts'+
-    (v.e ? ' · '+v.e+' événement'+(v.e>1?'s':'') : '')+' autour</span>';
+  z.innerHTML = BESOINS.map(b=>{
+    const actif = b.id === "aide" ? modeAide : (feuilleNiveau === b.id && catsActives);
+    return '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
+      '<em>'+b.emoji+'</em>'+esc(b.label.replace("Trouver de l’aide","Aide").replace(" autour de moi",""))+
+      '</button>';
+  }).join("");
+  z.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.rc;
+    if(id === "aide"){
+      if(modeAide){ basculerAide(); fermerFeuille2(); return; }
+      basculerAide(); ouvrirFeuille2("aide"); return;
+    }
+    if(modeAide) basculerAide();
+    if(feuilleNiveau === id){ fermerFeuille2(); return; }
+    ouvrirFeuille2(id);
+  });
 }
 
-function ouvrirIntentions(){
-  majCreneaux(); majVitalite();
-  const g = $("#intentionsGrille");
-  const montres = toutesIntentions
-    ? INTENTIONS.map((it,i)=>i)
-    : INTENTIONS_CLES;
-  g.innerHTML = montres.map(i=>{
-    const it = INTENTIONS[i];
-    return '<button class="intention" data-int="'+i+'">'+
-      '<span class="int-emoji">'+it.emoji+'</span>'+
-      '<span class="int-lab">'+esc(it.label)+'</span></button>';
-  }).join("") +
-    (toutesIntentions ? '' : '<button class="intention int-plus" id="intPlus">'+
-      '<span class="int-emoji">⋯</span><span class="int-lab">Plus</span></button>');
-  g.querySelectorAll("[data-int]").forEach(b=>
-    b.onclick=()=>appliquerIntention(Number(b.dataset.int)));
-  const plus = $("#intPlus");
-  if(plus) plus.onclick=()=>{ toutesIntentions = true; ouvrirIntentions(); };
-  $("#intentions").hidden = false;
-}
-
-/* Barre de filtres humains, visible seulement quand on explore. */
+/* Barre de filtres humains, visible seulement quand on explore. En mode
+   Aide, la même barre porte les six besoins : un seul rail de boutons à
+   lire, jamais deux superposés. */
 function majFiltres(){
   const b = $("#btnMaintenant");
   if(b) b.classList.toggle("actif", filtreMaintenant);
   const z = $("#filtresHumains");
   if(!z) return;
-  const montrer = !!catsActives || filtreActif !== "tout" || filtreMaintenant;
+
+  // en mode Aide, les six besoins tiennent lieu de filtres, et ils sont
+  // affichés dans la feuille : ce rail-là reste vide
+  if(modeAide){ z.hidden = true; z.innerHTML = ""; return; }
+
+  // « Maintenant » étant actif par défaut, il ne suffit plus à faire
+  // apparaître ce rail : l'écran de départ doit rester nu. Il ne sort que
+  // si l'utilisateur a réellement restreint quelque chose.
+  const montrer = !!catsActives || filtreActif !== "tout" || filtresHumains.size > 0;
   z.hidden = !montrer;
-  if(!montrer) return;
+  // vidée et pas seulement masquée : en sortant du mode Aide, les six besoins
+  // restaient dans le document, prêts à réapparaître au prochain affichage
+  if(!montrer){ z.innerHTML = ""; return; }
   z.innerHTML = FILTRES_HUMAINS.map(f=>
     '<button class="fh'+(filtresHumains.has(f.id)?' actif':'')+'" data-fh="'+f.id+'">'+
       f.label+'</button>').join("");
@@ -3626,11 +4230,35 @@ function majFiltres(){
   });
 }
 
+/* Un clic pour entrer, un clic pour sortir. Rien n'est chargé tant que le
+   mode n'est pas demandé : l'ouverture de l'app ne paie pas ce mode. */
+function basculerAide(){
+  modeAide = !modeAide;
+  sousAide = null;
+  document.body.classList.toggle("aide", modeAide);
+
+  // on sort de toute sélection en cours : le mode Aide repart d'une page nette
+  catsActives = null;
+  sousChoisi = null;
+  filtreActif = "tout";
+  filtresHumains.clear();
+  recherche = ""; if($("#rech")) $("#rech").value = "";
+  selectionAccueil = null;
+  montrerFermes = false;
+  $("#suggestions").hidden = true;
+
+  majFiltres(); rendre(); majAccueil(); majRaccourcis();
+
+  if(modeAide && positionMoi){
+    // les réseaux d'aide arrivent après coup, la carte est déjà utilisable
+    chargerAide(positionMoi[0], positionMoi[1])
+      .then(()=>{ rendre(); majAccueil(); majFeuille2(); });
+  }
+}
+
 function basculerMaintenant(){
   filtreMaintenant = !filtreMaintenant;
-  if(filtreMaintenant){ selectionAccueil = false; $("#accueil").hidden = true; }
-  $("#intentions").hidden = true;
-  majFiltres(); rendre();
+  majFiltres(); rendre(); majAccueil(); majFeuille2();
 }
 
 /* Indicateur de vie du quartier. Ce n'est pas une donnée officielle mais un
@@ -3670,6 +4298,7 @@ function choisirSurprise(liste, ctx, profil){
   const depuis = ctx.moi && ctx.moi[0] ? ctx.moi : ctx.centre;   // géoloc refusée : le centre de la carte suffit
   const possibles = liste.filter(l=>{
     if(l.ouvert === false) return false;                       // fermé : inutile
+    if(JAMAIS_AUTO.has(l.cat)) return false;                   // une surprise n'est jamais une administration
     if(!l.titre || l.titre.length < 3) return false;           // fiche sans information
     if(CATS_SANS_INTERET.includes(l.cat)) return false;
     if(surprisesVues.includes(l.id)) return false;             // déjà proposé récemment
@@ -3781,7 +4410,6 @@ function appliquerPhrase(phrase){
   if(a.creneau){ creneau = a.creneau; filtreMaintenant = true; }
   filtreActif = "tout";
   selectionAccueil = false;
-  $("#accueil").hidden = true; $("#intentions").hidden = true;
   dessinerFiltres(); majFiltres(); rendre();
 
   if(a.cuisine){
@@ -3798,142 +4426,66 @@ function appliquerPhrase(phrase){
 
 function toutAfficher(){
   selectionAccueil = false;
-  const a = $("#accueil"); if(a) a.hidden = true;
   rendre();
 }
+
+/* Ce que l'accueil garde. Cinq lignes au maximum, mais surtout : aucune
+   ligne de remplissage. Une proposition qui ne passe pas la barre est une
+   proposition en moins, pas une proposition médiocre de plus. */
+const ACCUEIL_MAX = 5;
+const ACCUEIL_SEUIL = 55;
 
 function majAccueil(){
   if(!map || !positionMoi || modeNav) return;
   if(selectionAccueil === false) return;
-  const m = momentActuel();
+  const ctx = contexteActuel();
   const [lat,lng] = positionMoi;
 
-  const notes = lieux
+  // en mode Aide on accepte d'aller plus loin : cinq kilomètres pour un
+  // hébergement d'urgence, ce n'est pas la même chose que pour un café
+  const rayon = modeAide ? 6000 : 2500;
+  let notes = lieux
+    .filter(l=>nomExploitable(l) && proposableAuto(l, ctx))
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
-    .filter(l=>l.dist < 2500)
-    .map(l=>Object.assign(l, {score:pertinence(l, m.poids)}))
+    .filter(l=>l.dist < rayon)
+    .map(l=>{ const r = scoreLieu(l, ctx); return Object.assign(l, {score:r.score, raison:r.raison}); })
     .sort((a,b)=>b.score - a.score);
-  if(!notes.length) return;
+  if(modeAide && !montrerFermes)
+    notes = ecarterFermesSiAlternative(notes.map(l=>({l}))).map(x=>x.l);
 
-  // on réserve une place à un événement s'il en existe un : sans ça, les
-  // commerces bien notés rafleraient les trois lignes et l'app perdrait
-  // exactement ce qui la distingue
   const choisis = [];
-  const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
-  if(ev) choisis.push(ev);
-  notes.forEach(l=>{ if(choisis.length < 3 && !choisis.includes(l)) choisis.push(l); });
+  if(modeAide){
+    // couvrir les besoins plutôt que trôner cinq banques alimentaires : un
+    // seul lieu par catégorie, le meilleur. Et pas de seuil — si le seul
+    // hébergement du secteur est fermé, il doit quand même s'afficher, sinon
+    // quelqu'un qui cherche où dormir ne voit rien du tout.
+    const vues = new Set();
+    notes.forEach(l=>{
+      if(choisis.length >= ACCUEIL_MAX || vues.has(l.cat)) return;
+      vues.add(l.cat); choisis.push(l);
+    });
+    notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  }else{
+    notes = notes.filter(l=>l.score >= ACCUEIL_SEUIL);
+    // on réserve une place à un événement s'il en existe un : sans ça, les
+    // commerces bien notés rafleraient toutes les lignes et l'app perdrait
+    // exactement ce qui la distingue
+    const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
+    if(ev) choisis.push(ev);
+    notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  }
 
   selectionAccueil = choisis.map(l=>l.id);
 
-  const heure = new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
-  $("#acTitre").textContent = "Autour de toi · "+heure;
-  $("#acListe").innerHTML = choisis.map(l=>{
-    const c = CATS[l.cat] || {emoji:"📍"};
-    const bouts = [];
-    if(l.ouvert === true)  bouts.push('<span class="ouvert">Ouvert</span>');
-    if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
-    if(l.note) bouts.push("★ "+l.note.toFixed(1));
-    if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(l.quand)) bouts.push(esc(l.quand));
-    const r = raisonDe(l.id);
-    if(r) bouts.push('<span class="raison">'+esc(r)+'</span>');
-    return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
-      '<span class="ac-emoji">'+c.emoji+'</span>'+
-      '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
-      '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
-      '<span class="ac-dist">'+formatDist(l.dist)+'</span></button>';
-  }).join("");
-
-  $("#acListe").querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
-    if(!cible) return;
-    map.flyTo([cible.lat,cible.lng], 17, {duration:.6});
-    pileEcrans = [];
-    pousserEcran(()=>ouvrirDetail(id));
-  });
-
-  majVitalite();
-  $("#accueil").hidden = false;
-  $("#btnMaintenant").hidden = false;
+  // le rendu appartient à la feuille : ici on ne fait que choisir
+  if(feuilleNiveau !== null) majFeuille2();
   rendre();
 }
 
-/* Le nom est conservé : plusieurs endroits l'appellent après une publication.
-   Il ne dessine plus une piste de filtres mais met à jour le bouton Explorer. */
-function dessinerFiltres(){
-  const b = $("#btnExplorer");
-  if(!b) return;
-  if(filtreActif === "tout"){
-    b.innerHTML = '<span>☰</span> Explorer';
-    b.classList.remove("filtre-actif");
-  }else{
-    const c = CATS[filtreActif] || {};
-    b.innerHTML = '<span>'+(c.emoji||"")+'</span> '+esc(c.label||"")+'<span class="ex-x">✕</span>';
-    b.classList.add("filtre-actif");
-  }
-}
-
-function ouvrirExplorer(){
-  const corps = GROUPES.map(g=>{
-    const cases = g.cats.filter(id=>CATS[id]).map(id=>{
-      const c = CATS[id];
-      const n = lieux.filter(l=>l.cat===id).length;
-      const off = catsMasquees.has(id);
-      return '<div class="ex-case'+(off?' masquee':'')+'">'+
-        '<button class="ex-cat'+(filtreActif===id?' actif':'')+'" data-ex="'+id+'">'+
-          '<span class="ex-emoji">'+c.emoji+'</span>'+
-          '<span class="ex-lab">'+esc(c.label)+'</span>'+
-          '<span class="ex-n">'+n+'</span></button>'+
-        '<button class="ex-oeil" data-oeil="'+id+'" title="Afficher ou masquer sur la carte">'+
-          (off?'🚫':'👁')+'</button>'+
-      '</div>';
-    }).join("");
-    return '<p class="ex-groupe">'+g.emoji+' '+g.label+'</p><div class="ex-grille">'+cases+'</div>';
-  }).join("");
-
-  const toutMasque = catsMasquees.size > 0;
-  ouvrirFeuille('<h2 class="pub">Explorer</h2>'+
-    '<div class="ex-actions">'+
-      '<button class="ex-tout'+(filtreActif==="tout"?' actif':'')+'" data-ex="tout">Tout afficher</button>'+
-      '<button class="ex-tout" id="exPerso">'+
-        (personnalisation ? "Personnalisation activée · désactiver" : "Personnalisation désactivée · activer")+'</button>'+
-      '<button class="ex-tout" id="exOubli">Oublier mes préférences</button>'+
-      '<button class="ex-tout" id="exBascule">'+
-        (toutMasque ? "Réafficher les couches masquées" : "Masquer toutes les couches")+'</button>'+
-    '</div>'+
-    '<p class="liste-tri">Touche une catégorie pour son classement, l’œil pour la masquer sur la carte.</p>'+
-    corps);
-
-  $("#feuille").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{
-    filtreActif = b.dataset.ex;
-    if(SANS_CLASSEMENT.has(filtreActif) && positionMoi)
-      chargerAide(positionMoi[0], positionMoi[1]);
-    dessinerFiltres(); rendre();
-    if(filtreActif === "tout") fermerFeuille();
-    else pousserEcran(()=>ouvrirListe(filtreActif));
-  });
-
-  // l'œil ne change que la visibilité : il ne quitte pas le panneau
-  $("#feuille").querySelectorAll("[data-oeil]").forEach(b=>b.onclick=(e)=>{
-    e.stopPropagation();
-    const id = b.dataset.oeil;
-    if(catsMasquees.has(id)) catsMasquees.delete(id); else catsMasquees.add(id);
-    enregistrerMasquees(); rendre();
-    ouvrirExplorer();                    // même écran, état à jour
-  });
-
-  $("#exPerso").onclick = ()=>{
-    personnalisation = !personnalisation;
-    try{ localStorage.setItem("autour:perso", personnalisation ? "oui" : "non"); }catch(e){}
-    rendre(); majAccueil(); ouvrirExplorer();
-  };
-  $("#exOubli").onclick = ()=>{ reinitialiserProfil(); ouvrirExplorer(); };
-  $("#exBascule").onclick = ()=>{
-    if(catsMasquees.size) catsMasquees.clear();
-    else Object.keys(CATS).forEach(id=>catsMasquees.add(id));
-    enregistrerMasquees(); rendre();
-    ouvrirExplorer();
-  };
-}
+/* Le nom est conservé : plusieurs endroits l'appellent après une publication
+   ou une suppression. Il n'y a plus de piste de filtres à dessiner : les
+   quatre raccourcis et la feuille disent déjà où on en est. */
+function dessinerFiltres(){ majRaccourcis(); }
 
 /* On ne demande plus la permission avant de construire quoi que ce soit :
    la carte s'affiche tout de suite à la dernière position connue, et glisse
@@ -3952,7 +4504,12 @@ function suivreMaPosition(){
       if(bouge && map){
         map.flyTo(c, 16, {duration:.9});
         chargerZone(c[0], c[1]);
-        nomCommune(c[0],c[1]).then(n=>{ commune = n; });
+        // le nom de commune n'est redemandé que si on a réellement changé de
+        // coin : deux appels au démarrage pour la même ville, c'est un de trop
+        if(distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
+          dernierNom = c;
+          nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
+        }
         majAccueil();
       }
       $("#bandeauGeo").hidden = true;
@@ -3963,6 +4520,8 @@ function suivreMaPosition(){
 }
 
 $("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
+$("#videOk").onclick=()=>{ montrerFermes = true; $("#bandeauVide").hidden = true;
+  toast("Les lieux fermés sont affichés"); rendre(); };
 
 /* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
 performance.mark("autour:script");
@@ -3971,17 +4530,13 @@ demarrer(positionMemorisee()).then(()=>{
   performance.measure("interface prête", "autour:script", "autour:carte");
   suivreMaPosition();
 });
-$("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
+// la loupe prend toute la barre : chercher, c'est une seule chose à la fois
+$("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#btnMaintenant").hidden=true;
+  $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
-  $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
-  $("#rech").value=""; recherche=""; $("#suggestions").hidden=true; rendre();
+  $("#barreRech").hidden=true; $("#btnLoupe").hidden=false; $("#btnMaintenant").hidden=false;
+  $("#rech").value=""; recherche=""; $("#suggestions").hidden=true; rendre(); majAccueil();
 };
-const RECHERCHES_RAPIDES = [
-  {t:"Maintenant", f:"maintenant"}, {t:"Gratuit", f:"gratuit"},
-  {t:"Près de moi", f:"proche"},    {t:"Ouvert", f:"ouvert"},
-  {t:"Ce soir", f:"soir"}
-];
-
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
    chargés : aucune requête, donc aucun effet sur le temps de chargement. */
 function suggerer(q){
@@ -3989,16 +4544,10 @@ function suggerer(q){
   if(!z) return;
   const t = sansAccents(q).trim();
 
+  // rien de tapé : on propose ce qui correspond à l'heure qu'il est
   if(!t){
-    z.innerHTML = '<div class="sg-rapides">'+RECHERCHES_RAPIDES.map(r=>
-      '<button class="sg-rapide" data-rap="'+r.f+'">'+r.t+'</button>').join("")+'</div>';
-    z.querySelectorAll("[data-rap]").forEach(b=>b.onclick=()=>{
-      const f = b.dataset.rap;
-      z.hidden = true; $("#rech").blur();
-      if(f === "maintenant"){ basculerMaintenant(); return; }
-      if(f === "soir"){ creneau = "soir"; filtreMaintenant = true; majFiltres(); rendre(); return; }
-      filtresHumains.add(f); toutAfficher(); majFiltres(); rendre();
-    });
+    z.innerHTML = rangeeSuggestions();
+    brancherSuggestions(z);
     z.hidden = false;
     return;
   }
@@ -4054,30 +4603,32 @@ $("#rech").onkeydown=e=>{
 };
 $("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirModePose(); };
 $("#btnPoseOk").onclick=validerPose;
-$("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
+$("#btnRevenir").onclick=()=>{
+  if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
+  else suivreMaPosition();
+};
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
-$("#btnDe").onclick=surprendre;
-$("#acPlus").onclick=()=>{ toutAfficher(); ouvrirIntentions(); };
-$("#btnMaintenant").onclick=()=>{ basculerMaintenant(); ouvrirIntentions(); };
-$("#intFermer").onclick=()=>{ $("#intentions").hidden = true; };
-$("#iaTexte").onkeydown=e=>{
-  if(e.key !== "Enter") return;
-  const v = e.target.value.trim();
-  if(!v) return;
-  e.target.blur();
-  appliquerPhrase(v);
+
+/* L'action principale : une seule, et elle ouvre la feuille sur les besoins. */
+$("#btnQuoi").onclick=()=>{
+  if(feuilleNiveau !== null){ fermerFeuille2(); return; }
+  if(modeAide) basculerAide();
+  catsActives = null; sousChoisi = null; filtreActif = "tout";
+  rendre(); majAccueil();
+  ouvrirFeuille2("racine");
 };
-$("#btnExplorer").onclick=(e)=>{
-  // la croix sur le bouton retire le filtre sans rouvrir le panneau
-  if(e.target.classList.contains("ex-x")){
-    filtreActif = "tout"; dessinerFiltres(); rendre(); return;
-  }
-  toutAfficher();          // explorer, c'est vouloir sortir de la sélection
-  catsActives = null; filtreMaintenant = false; filtresHumains.clear(); majFiltres();
-  pileEcrans = [];
-  pousserEcran(ouvrirExplorer);
+$("#fbFermer").onclick = fermerFeuille2;
+$("#fbRetour").onclick = ()=>{
+  // revenir aux quatre besoins : on relâche la sélection en cours
+  if(modeAide) basculerAide();
+  catsActives = null; sousChoisi = null;
+  rendre(); majAccueil(); ouvrirFeuille2("racine"); majRaccourcis();
 };
+/* Poignée : compacte ⇄ dépliée. C'est le seul geste de redimensionnement,
+   et il est facultatif — la feuille est déjà lisible en position basse. */
+$("#fbPoignee").onclick = ()=>$("#feuilleBesoins").classList.toggle("deplie");
+$("#btnMaintenant").onclick = basculerMaintenant;
 </script>
 </body>
 </html>
