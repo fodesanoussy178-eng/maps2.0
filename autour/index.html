@@ -244,6 +244,7 @@ input{font-family:inherit;font-size:16px}
   transition:transform .16s,background .16s}
 .intention:active{transform:scale(.96);background:var(--paper)}
 .int-emoji{font-size:20px;line-height:1}
+.int-plus{opacity:.72}
 .int-lab{flex:1;min-width:0;line-height:1.2}
 
 /* ---- « Maintenant » : ce qui est vivant à cet instant ---- */
@@ -351,8 +352,11 @@ body.nav .leaflet-control-zoom{display:none}
 .filtre.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
 
 .ajouter{position:absolute;right:14px;bottom:calc(var(--safe-b) + 74px);z-index:601;
-  width:58px;height:58px;border-radius:50%;border:1px solid var(--bord);
-  background:var(--signal);color:#fff;display:grid;place-items:center;box-shadow:0 4px 14px rgba(255,74,23,.34)}
+  display:flex;align-items:center;gap:6px;padding:14px 18px;border-radius:99px;
+  border:1px solid var(--bord);background:var(--signal);color:#fff;font-size:17px;
+  font-weight:700;box-shadow:0 4px 14px rgba(255,74,23,.34)}
+.ajouter span{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase}
 .ajouter:active{transform:translateY(1px)}
 
 .mini{position:absolute;top:calc(var(--safe-t) + 72px);left:14px;z-index:600;
@@ -542,14 +546,14 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <div id="porte">
   <div class="onde"><span></span><span></span><span></span><i></i></div>
-  <h1>Tu es où&nbsp;?</h1>
-  <p>On dessine ton quartier et ce qui s'y passe. Rien d'autre n'est collecté.</p>
-  <button class="valider" style="max-width:290px" id="btnGeo">Autoriser la localisation</button>
-  <button class="plus-tard" id="btnSansGeo">Sans localisation</button>
+  <h1>Autour</h1>
+  <p>Découvre ce qu’il y a autour de toi, maintenant.</p>
+  <button class="valider" style="max-width:290px" id="btnGeo">Voir autour de moi</button>
+  <button class="plus-tard" id="btnSansGeo">Plus tard</button>
   <div id="porteEtat"></div>
 </div>
 
-<div id="charge" hidden>Dessin du quartier…</div>
+<div id="charge" hidden>Recherche autour de toi…</div>
 
 <div class="haut" id="haut" hidden>
   <button class="rond" id="btnLoupe" aria-label="Chercher">
@@ -594,9 +598,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
 </div>
 <div id="navEtapes" hidden></div>
-<button class="ajouter" id="btnAjouter" hidden aria-label="Publier">
-  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-</button>
+<button class="ajouter" id="btnAjouter" hidden>+ <span>Publier</span></button>
 
 <div id="viseur" hidden>
   <svg width="34" height="42" viewBox="0 0 34 42" fill="none">
@@ -1549,7 +1551,7 @@ async function demarrer(coords){
 
   const [lat,lng] = positionMoi;
 
-  charge("Chargement…");
+  charge("Recherche autour de toi…");
 
   /* Affichage progressif. Rien n'attend plus rien : chaque source complète la
      carte dès qu'elle répond. Avant, tout était bloqué derrière Overpass, qui
@@ -3234,6 +3236,10 @@ const INTENTIONS = [
   { emoji:"📍", label:"Explorer",            cats:null },
   { emoji:"🎲", label:"Surprends-moi",       cats:null, hasard:true },
 ];
+/* Six choix suffisent : au-delà, on ne choisit plus, on hésite. */
+const INTENTIONS_CLES = [0,1,3,4,6,9];   // Manger, Sortir, Aide, Sport, Étudier, Explorer
+let toutesIntentions = false;
+
 
 function appliquerIntention(i){
   const it = INTENTIONS[i];
@@ -3272,12 +3278,21 @@ function majVitalite(){
 function ouvrirIntentions(){
   majCreneaux(); majVitalite();
   const g = $("#intentionsGrille");
-  g.innerHTML = INTENTIONS.map((it,i)=>
-    '<button class="intention" data-int="'+i+'">'+
+  const montres = toutesIntentions
+    ? INTENTIONS.map((it,i)=>i)
+    : INTENTIONS_CLES;
+  g.innerHTML = montres.map(i=>{
+    const it = INTENTIONS[i];
+    return '<button class="intention" data-int="'+i+'">'+
       '<span class="int-emoji">'+it.emoji+'</span>'+
-      '<span class="int-lab">'+esc(it.label)+'</span></button>').join("");
+      '<span class="int-lab">'+esc(it.label)+'</span></button>';
+  }).join("") +
+    (toutesIntentions ? '' : '<button class="intention int-plus" id="intPlus">'+
+      '<span class="int-emoji">⋯</span><span class="int-lab">Plus</span></button>');
   g.querySelectorAll("[data-int]").forEach(b=>
     b.onclick=()=>appliquerIntention(Number(b.dataset.int)));
+  const plus = $("#intPlus");
+  if(plus) plus.onclick=()=>{ toutesIntentions = true; ouvrirIntentions(); };
   $("#intentions").hidden = false;
 }
 
