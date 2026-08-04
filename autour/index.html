@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#141E19" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -41,20 +41,25 @@
   --voie:#FFFFFF; --liseré:#DFDCD5; --vite:#F8D28D; --vite-bord:#E9B96A;
   --label:#5F6863;
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --sheet-visible-height:0px;
+  --map-control-bottom:max(calc(var(--safe-b) + 150px),calc(var(--sheet-visible-height) + 12px));
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overscroll-behavior:none}
 body{font-family:'Inter Tight',system-ui,-apple-system,sans-serif;color:var(--ink);
   background:var(--paper);-webkit-font-smoothing:antialiased;position:fixed;inset:0;width:100%}
+body.ui-modal-open{overflow:hidden;touch-action:none}
 button{font-family:inherit;cursor:pointer}
 input{font-family:inherit;font-size:16px}
 
 #map{position:absolute;inset:0;background:var(--sol)}
 .leaflet-container{font-family:inherit;background:var(--sol)}
 .leaflet-control-attribution{font-size:9px;background:rgba(255,255,255,.7)}
-.leaflet-bottom.leaflet-right{margin-bottom:calc(var(--safe-b) + 2px)}
+.leaflet-bottom.leaflet-right{margin-bottom:calc(var(--safe-b) + var(--sheet-visible-height) + 2px);
+  transition:margin-bottom .22s ease}
 .leaflet-control-zoom{border:1px solid var(--bord)!important;border-radius:4px!important;
   box-shadow:0 2px 10px rgba(20,30,25,.14)!important;margin-right:14px!important}
+body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
 .leaflet-control-zoom a{color:var(--ink)!important;font-weight:700}
 
 /* étiquettes de rue */
@@ -187,7 +192,7 @@ input{font-family:inherit;font-size:16px}
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
 #bandeauTxt,#videTxt{flex:1;min-width:0}
-#bandeauOk,#videOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+#bandeauOk,#videOk{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
   color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
 #charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
@@ -203,7 +208,7 @@ input{font-family:inherit;font-size:16px}
   box-shadow:0 2px 10px rgba(20,30,25,.14);color:var(--ink2)}
 .barre input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink)}
 .barre input::placeholder{color:#A3ADA6}
-.icone-btn{border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
+.icone-btn{width:44px;height:44px;border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
 #suggestions{position:absolute;left:54px;right:0;top:52px;z-index:610;max-height:46vh;overflow-y:auto;
   border:1px solid var(--bord);border-radius:14px;background:#fff;
   box-shadow:0 4px 20px rgba(20,30,25,.2);animation:monteT .18s}
@@ -259,32 +264,36 @@ input{font-family:inherit;font-size:16px}
   border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
   font-size:20px;line-height:1;display:grid;place-items:center;
   box-shadow:0 2px 10px rgba(20,30,25,.14)}
-#btnRevenir{bottom:calc(var(--safe-b) + 150px);width:auto;padding:0 15px;border-radius:99px;
+#btnRevenir{bottom:var(--map-control-bottom);width:auto;padding:0 15px;border-radius:99px;
   display:flex;gap:7px;font-size:13px;font-weight:700}
-#btnAjouter{bottom:calc(var(--safe-b) + 204px);color:var(--ink2);font-size:24px;
+#btnAjouter{bottom:calc(var(--map-control-bottom) + 54px);color:var(--ink2);font-size:24px;
   box-shadow:0 1px 6px rgba(20,30,25,.10)}
+.rond-flottant{transition:bottom .22s ease,transform .15s ease}
 .rond-flottant:active{transform:scale(.94)}
 
 /* ---- bottom sheet : fermée · compacte · dépliée ---- */
-#feuilleBesoins{position:absolute;left:0;right:0;bottom:0;z-index:640;
+#feuilleBesoins{position:absolute;left:8px;right:8px;bottom:0;z-index:640;
   display:flex;flex-direction:column;
-  width:100%;max-width:520px;margin:0 auto;
-  height:34%;max-height:34%;
-  background:var(--paper);border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
+  width:auto;max-width:none;margin:0;
+  height:52dvh;max-height:52dvh;
+  background:var(--paper);border:1px solid var(--bord);border-bottom:0;border-radius:22px 22px 0 0;
   box-shadow:0 -3px 18px rgba(20,30,25,.13);
   transition:height .22s ease,max-height .22s ease}
-#feuilleBesoins.deplie{height:78%;max-height:78%}
-.fb-poignee{flex-shrink:0;display:block;width:46px;height:5px;margin:9px auto 4px;border:0;
-  border-radius:99px;background:rgba(20,30,25,.2);padding:0}
-.fb-tete{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:2px 12px 8px}
+#feuilleBesoins.deplie{height:90dvh;max-height:90dvh}
+.fb-poignee{position:relative;flex-shrink:0;display:block;width:64px;height:44px;margin:0 auto;border:0;
+  background:transparent;padding:0;touch-action:none}
+.fb-poignee::before{content:"";position:absolute;left:9px;right:9px;top:16px;height:5px;
+  border-radius:99px;background:rgba(20,30,25,.25)}
+.fb-tete{position:relative;z-index:2;flex-shrink:0;display:flex;align-items:center;gap:8px;
+  min-height:52px;padding:0 12px 8px;background:var(--paper)}
 .fb-titre{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.2;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fb-retour,.fb-x{flex-shrink:0;width:32px;height:32px;border:0;border-radius:50%;
+.fb-retour,.fb-x{flex-shrink:0;width:44px;height:44px;border:0;border-radius:50%;
   background:#fff;border:1px solid var(--bord);color:var(--ink);
   font-size:16px;line-height:1;display:grid;place-items:center}
 .fb-retour{font-size:22px}
 .fb-corps{flex:1;min-height:0;overflow-y:auto;padding:0 12px calc(var(--safe-b) + 14px);
-  -webkit-overflow-scrolling:touch}
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable}
 
 /* les grands choix : un par ligne, larges, lisibles de loin */
 .bn{display:flex;align-items:center;gap:12px;width:100%;padding:15px 14px;margin-bottom:8px;
@@ -300,16 +309,28 @@ input{font-family:inherit;font-size:16px}
 .bn.actif::after{content:"✓";font-size:15px;font-weight:700}
 .fb-section{margin:14px 2px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
   font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.fb-resultats-tete{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
+  margin:2px 2px 6px}
+.fb-resultats-tete strong{font-size:14px;line-height:1.25}
+.fb-resultats-tete span{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--ink2);
+  text-transform:uppercase;letter-spacing:.08em;text-align:right}
+.fb-statut{margin:4px 0 10px;padding:11px 12px;border-radius:12px;background:#fff;
+  border:1px solid var(--bord);font-size:13px;line-height:1.4;color:var(--ink2)}
+.fb-statut.erreur{border-color:#E6B3AA;background:#FFF4F1;color:#713127}
+.fb-statut button{min-height:44px;margin-top:8px;padding:8px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font-weight:700}
+.fb-plus{display:block;margin:8px 0 4px;padding:9px 0;border-top:1px solid var(--bord);
+  color:var(--ink2);font-size:12px;text-align:center}
 .fb-vide{padding:16px 4px;font-size:14px;line-height:1.5;color:var(--ink2)}
 .fb-vide button{margin-top:10px;padding:12px 18px;border:0;border-radius:12px;
   background:var(--trait);color:#fff;font-size:14px;font-weight:700}
 .fb-pied{display:flex;flex-wrap:wrap;gap:14px;margin:18px 2px 4px;
   padding-top:14px;border-top:1px solid rgba(20,30,25,.1)}
-.fb-pied button{border:0;background:none;padding:2px 0;font-size:12.5px;
+.fb-pied button{min-height:44px;border:0;background:none;padding:8px 0;font-size:12.5px;
   color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
 
 /* ---- résultats : cinq suggestions, pas trente ---- */
-.ac-item{display:flex;align-items:center;gap:11px;width:100%;padding:11px 2px;border:0;
+.ac-item{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;padding:11px 2px;border:0;
   border-top:1px solid rgba(20,30,25,.1);background:none;text-align:left}
 .ac-item:first-child{border-top:0}
 .ac-item:active{opacity:.6}
@@ -323,6 +344,21 @@ input{font-family:inherit;font-size:16px}
 .raison{color:var(--signal);font-weight:600}
 .ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2)}
+
+@media (min-width:768px) and (max-width:1099px){
+  #feuilleBesoins{left:50%;right:auto;bottom:12px;width:min(720px,calc(100% - 32px));
+    height:58dvh;max-height:58dvh;transform:translateX(-50%);border-bottom:1px solid var(--bord);
+    border-radius:22px}
+  #feuilleBesoins.deplie{height:86dvh;max-height:86dvh}
+}
+
+@media (min-width:1100px){
+  #feuilleBesoins,#feuilleBesoins.deplie{left:auto;right:20px;top:calc(var(--safe-t) + 76px);
+    bottom:20px;width:420px;height:auto;max-height:none;border:1px solid var(--bord);border-radius:22px}
+  .fb-poignee{display:none}
+  .fb-tete{padding-top:8px;border-radius:22px 22px 0 0}
+  body.sheet-open .leaflet-control-zoom{margin-right:14px!important}
+}
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
 .grappe{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
@@ -339,7 +375,7 @@ input{font-family:inherit;font-size:16px}
 .nav-mode{font-size:19px;line-height:1}
 .nav-txt{flex:1;min-width:0;font-size:14px;font-weight:600;line-height:1.25;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nav-x{flex-shrink:0;width:30px;height:30px;border:0;border-radius:50%;background:var(--paper);
+.nav-x{flex-shrink:0;width:44px;height:44px;border:0;border-radius:50%;background:var(--paper);
   color:var(--ink);font-size:14px;display:grid;place-items:center}
 body.nav .leaflet-control-zoom{display:none}
 #navEtapes{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);z-index:700;
@@ -387,9 +423,11 @@ body.nav .leaflet-control-zoom{display:none}
   border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
   overscroll-behavior:contain;animation:monte .28s cubic-bezier(.2,.9,.3,1)}
 @keyframes monte{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.poignee{display:block;width:46px;height:4px;margin:0 auto 16px;border:0;border-radius:99px;
-  background:rgba(20,30,25,.22);padding:0}
-.feuille-x{position:sticky;top:0;z-index:3;float:right;width:38px;height:38px;margin:0 0 4px 8px;
+.poignee{position:relative;display:block;width:64px;height:44px;margin:-8px auto 4px;border:0;
+  background:transparent;padding:0}
+.poignee::before{content:"";position:absolute;left:9px;right:9px;top:16px;height:4px;
+  border-radius:99px;background:rgba(20,30,25,.22)}
+.feuille-x{position:sticky;top:0;z-index:3;float:right;width:44px;height:44px;margin:0 0 4px 8px;
   border:1px solid var(--bord);border-radius:50%;background:#fff;color:var(--ink);
   font-size:17px;font-weight:700;box-shadow:0 2px 8px rgba(20,30,25,.14)}
 .annuler-publication{width:100%;margin-top:10px;padding:14px;border:1px solid var(--bord);
@@ -606,8 +644,8 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <button class="rond-flottant discret" id="btnAjouter" hidden aria-label="Publier">+</button>
 
 <!-- Bottom sheet : fermée, compacte, ou dépliée à la demande. -->
-<div id="feuilleBesoins" hidden>
-  <button class="fb-poignee" id="fbPoignee" aria-label="Agrandir ou réduire"></button>
+<div id="feuilleBesoins" role="dialog" aria-labelledby="fbTitre" hidden>
+  <button class="fb-poignee" id="fbPoignee" aria-label="Agrandir la feuille" aria-expanded="false"></button>
   <div class="fb-tete">
     <button class="fb-retour" id="fbRetour" hidden aria-label="Retour">‹</button>
     <span class="fb-titre" id="fbTitre">Que faire autour de moi ?</span>
@@ -665,7 +703,116 @@ const {
   matchesCategory,
   dedupeItems,
   isAvailableNow,
+  rankResults,
 } = window.AutourCore;
+
+/* Le responsive décrit uniquement la présentation. Les requêtes et le
+   classement ne dépendent jamais d'un userAgent ni d'un modèle d'appareil. */
+function useResponsiveLayout(onChange){
+  const medias = {
+    mobile:window.matchMedia("(max-width: 767px)"),
+    tablet:window.matchMedia("(min-width: 768px) and (max-width: 1099px)"),
+    touch:window.matchMedia("(pointer: coarse)"),
+  };
+  const read = ()=>({
+    isMobile:medias.mobile.matches,
+    isTablet:medias.tablet.matches,
+    isDesktop:!medias.mobile.matches && !medias.tablet.matches,
+    isTouch:medias.touch.matches,
+  });
+  let value = read();
+  const listeners = new Set();
+  if(onChange) listeners.add(onChange);
+  const notify = ()=>{
+    value = read();
+    listeners.forEach(listener=>listener(value));
+  };
+  Object.values(medias).forEach(media=>{
+    if(media.addEventListener) media.addEventListener("change",notify);
+    else media.addListener(notify);
+  });
+  if(onChange) onChange(value);
+  return {
+    get value(){ return value; },
+    subscribe(listener){ listeners.add(listener); listener(value); return ()=>listeners.delete(listener); },
+    destroy(){
+      Object.values(medias).forEach(media=>{
+        if(media.removeEventListener) media.removeEventListener("change",notify);
+        else media.removeListener(notify);
+      });
+      listeners.clear();
+    },
+  };
+}
+
+let responsiveLayoutState = {isMobile:false,isTablet:false,isDesktop:true,isTouch:false};
+const responsiveLayout = useResponsiveLayout(layout=>{
+  responsiveLayoutState = layout;
+  document.body.dataset.layout = layout.isMobile ? "mobile" : layout.isTablet ? "tablet" : "desktop";
+  document.body.classList.toggle("touch",layout.isTouch);
+  requestAnimationFrame(()=>{
+    synchroniserHauteurFeuille();
+    if(map) map.invalidateSize({pan:false});
+  });
+});
+
+function synchroniserHauteurFeuille(){
+  const feuille = document.getElementById("feuilleBesoins");
+  const visible = feuille && !feuille.hidden && !responsiveLayoutState.isDesktop;
+  const hauteur = visible ? Math.round(feuille.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--sheet-visible-height",hauteur+"px");
+}
+
+const NOMS_COUCHES = Object.freeze({
+  mainSheet:"mainSheet",
+  placeDetails:"placeDetails",
+  publishModal:"publishModal",
+  confirmationDialog:"confirmationDialog",
+  searchOverlay:"searchOverlay",
+});
+
+/* Une seule couche principale reste interactive. La sheet peut être suspendue
+   derrière une fiche, mais elle est alors hidden et restaurée à la fermeture. */
+const layerManager = {
+  stack:[],
+  activate(name){
+    const confirmation = name === NOMS_COUCHES.confirmationDialog;
+    if(!confirmation) this.stack = this.stack.filter(x=>x===NOMS_COUCHES.confirmationDialog);
+    if(!this.stack.includes(name)) this.stack.push(name);
+    const sheet = document.getElementById("feuilleBesoins");
+    if(name !== NOMS_COUCHES.mainSheet && sheet && !sheet.hidden){
+      sheet.dataset.suspended = "true";
+      sheet.hidden = true;
+    }
+    if(name !== NOMS_COUCHES.searchOverlay){
+      const suggestions = document.getElementById("suggestions");
+      if(suggestions) suggestions.hidden = true;
+    }
+    this.sync();
+  },
+  deactivate(name){
+    this.stack = this.stack.filter(x=>x!==name);
+    const sheet = document.getElementById("feuilleBesoins");
+    const autrePrincipale = this.stack.some(x=>x!==NOMS_COUCHES.confirmationDialog);
+    if(!autrePrincipale && sheet && sheet.dataset.suspended === "true" && feuilleNiveau !== null && !modePose && !modeNav){
+      delete sheet.dataset.suspended;
+      sheet.hidden = false;
+      this.stack.push(NOMS_COUCHES.mainSheet);
+    }
+    this.sync();
+  },
+  top(){ return this.stack[this.stack.length-1] || null; },
+  sync(){
+    document.body.classList.toggle("ui-modal-open",this.stack.some(x=>
+      [NOMS_COUCHES.placeDetails,NOMS_COUCHES.publishModal,NOMS_COUCHES.confirmationDialog].includes(x)));
+    document.body.classList.toggle("sheet-open",this.stack.includes(NOMS_COUCHES.mainSheet));
+    requestAnimationFrame(synchroniserHauteurFeuille);
+  },
+};
+
+if(window.ResizeObserver){
+  new ResizeObserver(()=>synchroniserHauteurFeuille()).observe(document.getElementById("feuilleBesoins"));
+}
 
 function normaliserItem(item, source){
   return toCommonItem(item, {source});
@@ -931,7 +1078,7 @@ function categorieRecherchee(q){
   return null;
 }
 
-/* ---- Quatre besoins, pas trente-trois catégories -----------------------
+/* ---- Cinq besoins, pas trente-trois catégories -------------------------
    L'utilisateur ne doit pas explorer une base de données : il choisit un
    besoin, et l'app traduit. Une catégorie interne peut servir plusieurs
    filtres, mais elle n'a qu'UN seul foyer dans l'interface — sinon on
@@ -952,6 +1099,13 @@ const BESOINS = [
       { label:"En famille",             cats:["family"] },
       { label:"Sport",                  cats:["sport","terrain"] },
       { label:"Boutiques et fripes",    cats:["friperie","commerce","popup"] },
+  ]},
+  { id:"famille", emoji:"👨‍👩‍👧", label:"Famille", sous:[
+      { label:"Cinéma",                 cats:["cinema"] },
+      { label:"Parcs et aires de jeux", cats:["parc","park","playground"] },
+      { label:"Bibliothèques et musées",cats:["biblio","musee","library","museum"] },
+      { label:"Piscines et loisirs",    cats:["swimming_pool","bowling_alley","zoo","educational_farm"] },
+      { label:"Activités jeunesse",     cats:["kids_event","family_event","workshop","youth_activity"] },
   ]},
   // l'aide n'est pas une liste de cases : c'est un mode entier, avec ses
   // propres priorités et ses besoins écrits en français, pas en tags
@@ -1176,6 +1330,43 @@ function etat(t, montrer){
 }
 function charge(t){const c=$("#charge"); if(t){c.textContent=t;c.hidden=false}else c.hidden=true}
 
+const SEARCH_STATES = Object.freeze({
+  IDLE:"idle",
+  REQUESTING_LOCATION:"requestingLocation",
+  LOADING_PLACES:"loadingPlaces",
+  LOADING_EVENTS:"loadingEvents",
+  SUCCESS:"success",
+  EMPTY:"empty",
+  PARTIAL_ERROR:"partialError",
+  LOCATION_DENIED:"locationDenied",
+  NETWORK_ERROR:"networkError",
+  OVERPASS_UNAVAILABLE:"overpassUnavailable",
+});
+const rechercheEtat = {
+  location:SEARCH_STATES.IDLE,
+  places:SEARCH_STATES.IDLE,
+  events:SEARCH_STATES.IDLE,
+  overpass:SEARCH_STATES.IDLE,
+};
+function definirEtatRecherche(canal,etat){
+  rechercheEtat[canal] = etat;
+  if(feuilleNiveau !== null) majFeuille2();
+  // Un changement d'état ne doit pas reconstruire tous les marqueurs : les
+  // chargements peuvent notifier plusieurs sources à la suite et bloqueraient
+  // alors le thread principal. Seul le bandeau d'état dépend de cette valeur.
+  if(map) majBandeauVide(selectionner().length);
+}
+function rechercheEnCours(){
+  return rechercheEtat.location === SEARCH_STATES.REQUESTING_LOCATION ||
+    rechercheEtat.places === SEARCH_STATES.LOADING_PLACES ||
+    rechercheEtat.events === SEARCH_STATES.LOADING_EVENTS;
+}
+function etatErreurPartielle(){
+  return rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.PARTIAL_ERROR ||
+    rechercheEtat.events === SEARCH_STATES.PARTIAL_ERROR;
+}
+
 /* ================================================================== */
 /*  Overpass                                                          */
 /* ================================================================== */
@@ -1189,6 +1380,12 @@ const SERVEURS = [
 ];
 
 async function overpass(q, msMax, signal){
+  const simule = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) &&
+    new URLSearchParams(location.search).get("simulateOverpassFailure") === "1";
+  if(simule){
+    console.warn("Overpass : panne simulée pour le test local");
+    return null;
+  }
   for(const url of SERVEURS){
     if(signal && signal.aborted) return null;
     try{
@@ -1261,7 +1458,8 @@ async function vraisLieux(lat,lng,bornes,opts){
     `nwr${zone}["${k}"~"^(${vs.join("|")})$"];`).join("");
   // 25 s : mieux vaut attendre que retomber sur des lieux inventés
   const els = await overpass(`[out:json][timeout:25];(${bloc});out center 300;`, 25000, o.signal);
-  if(!els) return [];
+  if(!els){ definirEtatRecherche("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE); return []; }
+  definirEtatRecherche("overpass",SEARCH_STATES.SUCCESS);
   return els.map(e=>{
     const t=e.tags||{}, p=e.center||e;
     if(!p.lat||!p.lon) return null;
@@ -1704,6 +1902,8 @@ function chargerZone(lat, lng, opts){
   if(!o.cats) dernierChargement = [lat,lng];
   nombreChargementsZone++;
   chargementEnCours = true;
+  definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
+  rechercheEtat.overpass = SEARCH_STATES.IDLE;
   performance.mark("zone:debut");
 
   const enCache = lireCacheLieux(lat,lng);
@@ -1733,6 +1933,11 @@ function chargerZone(lat, lng, opts){
     chargementsZone.delete(cle);
     nombreChargementsZone = Math.max(0, nombreChargementsZone-1);
     chargementEnCours = nombreChargementsZone > 0;
+    if(!chargementEnCours){
+      if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE)
+        definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
+      else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
+    }
   });
   chargementsZone.set(cle, promesse);
   return promesse;
@@ -1754,12 +1959,18 @@ function chargerDonneesTemporaires(lat, lng, opts){
   const dernier = derniersChargementsTemporaires.get(cle) || 0;
   if(!o.force && Date.now()-dernier < 5*60*1000) return Promise.resolve([]);
   derniersChargementsTemporaires.set(cle,Date.now());
+  definirEtatRecherche("events",SEARCH_STATES.LOADING_EVENTS);
   charge("Recherche des événements autour de ce point…");
   const promesse = Promise.allSettled([
     evenementsOpenAgenda(lat,lng).then(ev=>{ if(ev && ev.length) fusionner(ev,"external"); }),
     connecter().then(()=>chargerPublications(lat,lng))
       .then(pubs=>{ if(pubs && pubs.length) fusionner(pubs,"user"); })
-  ]).finally(()=>{
+  ]).then(resultats=>{
+    const erreurs = resultats.filter(x=>x.status === "rejected").length;
+    if(erreurs === resultats.length) definirEtatRecherche("events",SEARCH_STATES.NETWORK_ERROR);
+    else if(erreurs) definirEtatRecherche("events",SEARCH_STATES.PARTIAL_ERROR);
+    else definirEtatRecherche("events",SEARCH_STATES.SUCCESS);
+  }).finally(()=>{
     chargementsTemporaires.delete(cle);
     charge(null);
     majAccueil();
@@ -1877,6 +2088,7 @@ async function demarrer(coords){
 
   const [lat,lng] = positionMoi;
 
+  definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
   charge("Recherche autour de toi…");
 
   /* Affichage progressif. Rien n'attend plus rien : chaque source complète la
@@ -1912,6 +2124,9 @@ async function demarrer(coords){
       toast("Aucune donnée reçue · réseau ou OSM indisponible");
     }
     charge(null);
+    if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE)
+      definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
+    else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
     majAccueil();
   });
 
@@ -2152,13 +2367,23 @@ function majBandeauVide(retenus){
   const b = $("#bandeauVide");
   if(!b) return;
   // un seul bandeau à la fois : celui de la géolocalisation passe avant
-  const montrer = retenus === 0 && lieux.length > 0 && !montrerFermes && !modeNav
-    && $("#bandeauGeo").hidden;
+  const erreurPartielle = etatErreurPartielle();
+  const videReel = retenus === 0 && lieux.length > 0 && !montrerFermes && !rechercheEnCours();
+  const montrer = (erreurPartielle || videReel) && !modeNav && $("#bandeauGeo").hidden;
   b.hidden = !montrer;
   if(!montrer) return;
+  if(erreurPartielle){
+    $("#videTxt").textContent = "Certains lieux n’ont pas pu être chargés.";
+    $("#videOk").textContent = "Réessayer";
+    $("#videOk").dataset.action = "retry";
+    $("#videOk").hidden = false;
+    return;
+  }
   $("#videTxt").textContent = ecartesAuto
-    ? "Rien d’ouvert autour de toi en ce moment."
+    ? "Rien d’ouvert à proximité pour le moment."
     : "Rien à afficher dans cette zone.";
+  $("#videOk").textContent = "Tout voir";
+  $("#videOk").dataset.action = "all";
   $("#videOk").hidden = !ecartesAuto;
 }
 
@@ -2249,6 +2474,7 @@ function ouvrirFeuille(html, options){
   const f=$("#feuille");
   if(f.hidden) dernierFocusFeuille = document.activeElement;
   typeFeuille = o.kind || (typeFeuille === "publication" && pileEcrans.length > 1 ? "publication" : "contenu");
+  layerManager.activate(typeFeuille === "publication" ? NOMS_COUCHES.publishModal : NOMS_COUCHES.placeDetails);
   f.setAttribute("aria-label", o.ariaLabel || (typeFeuille === "publication" ? "Publier un événement" : "Panneau Autour"));
   const retour = pileEcrans.length > 1
     ? '<button class="retour" id="btnRetour">‹ Retour</button>' : '';
@@ -2268,11 +2494,14 @@ function ouvrirFeuille(html, options){
 function fermerFeuille(options){
   const o = options || {};
   const profondeur = profondeurHistorique;
+  const coucheFermee = typeFeuille === "publication" ? NOMS_COUCHES.publishModal : NOMS_COUCHES.placeDetails;
   pileEcrans = [];
   typeFeuille = null;
   if(!o.preserverPublication) publicationModifiee = false;
   $("#voile").hidden=true; $("#feuille").hidden=true;
   $("#abandonVoile").hidden=true;
+  layerManager.deactivate(NOMS_COUCHES.confirmationDialog);
+  layerManager.deactivate(coucheFermee);
   if(o.nettoyerHistorique !== false && profondeur > 0){
     profondeurHistorique = 0;
     ignorerProchainPop = true;
@@ -2296,6 +2525,7 @@ function afficherConfirmationAbandon(action){
   actionApresAbandon = action || (()=>fermerFeuille());
   const v = $("#abandonVoile");
   v.hidden = false;
+  layerManager.activate(NOMS_COUCHES.confirmationDialog);
   $("#abandonContinuer").focus();
 }
 
@@ -2310,6 +2540,7 @@ function demanderFermetureFeuille(action){
 
 function continuerPublication(){
   $("#abandonVoile").hidden=true;
+  layerManager.deactivate(NOMS_COUCHES.confirmationDialog);
   actionApresAbandon = null;
   const cible = $("#feuille").querySelector("input,button,select,textarea");
   if(cible) cible.focus();
@@ -2325,6 +2556,7 @@ $("#abandonConfirmer").onclick=()=>{
   actionApresAbandon = null;
   publicationModifiee = false;
   $("#abandonVoile").hidden=true;
+  layerManager.deactivate(NOMS_COUCHES.confirmationDialog);
   action();
 };
 
@@ -3522,7 +3754,7 @@ function ajouterLieuxGoogle(fiches, catDefaut){
     // le nom tranche mieux que le type : Google range la Mission locale en
     // « organisation à but non lucratif », ce qui la noierait dans les assos
     const service = preciserService(f.nom);
-    let cat = affinerCategorie(CAT_GOOGLE[f.type] || catDefaut, f.nom);
+    let cat = affinerCategorie(CAT_GOOGLE[f.type] || f.autourCat || catDefaut, f.nom);
     if(/Mission locale|France Travail|Cap emploi|Maison de l’emploi/.test(service)) cat = "emploi";
     else if(!cat && service) cat = "asso";
     if(!cat) return;
@@ -3545,7 +3777,7 @@ function ajouterLieuxGoogle(fiches, catDefaut){
   });
   const ajoutes = aAjouter.length;
   if(ajoutes) fusionner(aAjouter, "permanent");
-  if(ajoutes){ console.info("Google Places :", ajoutes, "lieu(x) ajouté(s)"); rendre(); }
+  if(ajoutes) console.info("Google Places :", ajoutes, "lieu(x) ajouté(s)");
   return ajoutes;
 }
 
@@ -3798,8 +4030,16 @@ async function chargerAide(lat,lng){
   if(aideChargee) return;
   aideChargee = true;
   aideEnCours = true;
+  definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
+  // Laisse la feuille s'afficher avant de normaliser un éventuel cache.
+  // Le double passage rAF → tâche garantit au navigateur un premier paint.
+  await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
   try{ await chargerAideVraiment(lat,lng); }
-  finally{ aideEnCours = false; }
+  finally{
+    aideEnCours = false;
+    const trouve = lieux.some(l=>correspondUneCategorie(l,SET_AIDE));
+    definirEtatRecherche("places",trouve ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
+  }
 }
 
 async function chargerAideVraiment(lat,lng){
@@ -3809,7 +4049,10 @@ async function chargerAideVraiment(lat,lng){
     if(brut){
       const o = JSON.parse(brut);
       if(Date.now() - o.t < 7*24*3600*1000){
-        o.l.forEach(x=>ajouterLieuxGoogle([x.f], x.cat));
+        // Un seul pipeline de fusion/rendu pour tout le cache. Auparavant,
+        // chaque adresse reconstruisait tous les marqueurs et bloquait le clic.
+        const fiches = o.l.map(x=>Object.assign({},x.f,{autourCat:x.cat}));
+        ajouterLieuxGoogle(fiches);
         return;
       }
     }
@@ -4005,7 +4248,11 @@ function rangeeSuggestions(){
 function brancherSuggestions(zone){
   const liste = suggestionsDuMoment();
   zone.querySelectorAll("[data-sug]").forEach(b=>
-    b.onclick=()=>appliquerSuggestion(liste[Number(b.dataset.sug)]));
+    b.onclick=()=>{
+      zone.hidden=true;
+      layerManager.deactivate(NOMS_COUCHES.searchOverlay);
+      appliquerSuggestion(liste[Number(b.dataset.sug)]);
+    });
 }
 
 /* ================================================================== */
@@ -4358,13 +4605,14 @@ let selectionAccueil = null;
 /*  Bottom sheet : un besoin, puis ses sous-choix. Jamais les deux.    */
 /* ================================================================== */
 
-/* null = fermée · "racine" = les quatre besoins · sinon l'id du besoin.
+/* null = fermée · "racine" = les cinq besoins · sinon l'id du besoin.
    La feuille ne s'ouvre jamais toute seule : l'écran de départ, c'est la
    carte, et rien d'autre. */
 let feuilleNiveau = null;
 let sousChoisi = null;          // index du sous-choix coché, ou null
 let historiqueFeuilleBesoins = false;
 let ignorerPopFeuilleBesoins = false;
+let dernierFocusMainSheet = null;
 
 /* Un lieu sans nom exploitable n'a rien à dire. Sauf là où le nom n'a
    jamais existé : des toilettes publiques ou un arrêt de bus sont utiles
@@ -4414,14 +4662,64 @@ function typeEditorial(sousChoix){
   return "autre";
 }
 
+function categoriesClassementFeuille(){
+  if(feuilleNiveau === "aide"){
+    const choix = sousAide && SOUS_AIDE.find(x=>x.id===sousAide);
+    return choix ? choix.cats : CATS_AIDE;
+  }
+  const besoin = BESOIN_DE(feuilleNiveau);
+  if(!besoin || !besoin.sous) return [];
+  if(sousChoisi !== null && besoin.sous[sousChoisi]) return besoin.sous[sousChoisi].cats;
+  return [...new Set(besoin.sous.flatMap(x=>x.cats))];
+}
+
+function classementFeuille(){
+  if(feuilleNiveau === null || feuilleNiveau === "racine") return [];
+  const centre = positionMoi || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
+  let candidats = lieux.filter(nomExploitable);
+  if(feuilleNiveau === "aide"){
+    const choix = sousAide && SOUS_AIDE.find(x=>x.id===sousAide);
+    if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
+  }
+  return rankResults(candidats,{
+    intent:feuilleNiveau,
+    categories:categoriesClassementFeuille(),
+    position:centre,
+    now:instantCreneau().getTime(),
+    nowOnly:filtreMaintenant && !montrerFermes,
+    radius:feuilleNiveau === "aide" ? Math.max(rayonRecherche,6000) : rayonRecherche,
+    distanceBetween:distanceM,
+  });
+}
+
+function reinitialiserScrollFeuille(){
+  requestAnimationFrame(()=>{
+    const corps = $("#fbCorps");
+    if(corps) corps.scrollTo({top:0,behavior:"auto"});
+  });
+}
+
+function reglerFeuilleDeplie(deplie){
+  const feuille = $("#feuilleBesoins");
+  if(!feuille) return;
+  feuille.classList.toggle("deplie",!!deplie);
+  $("#fbPoignee").setAttribute("aria-expanded",String(!!deplie));
+  $("#fbPoignee").setAttribute("aria-label",deplie ? "Réduire la feuille" : "Agrandir la feuille");
+  requestAnimationFrame(synchroniserHauteurFeuille);
+}
+
 function ouvrirFeuille2(niveau){
   const etaitFermee = feuilleNiveau === null;
+  if(etaitFermee) dernierFocusMainSheet = document.activeElement;
   feuilleNiveau = niveau;
   sousChoisi = null;
   const f = $("#feuilleBesoins");
   f.hidden = false;
-  f.classList.remove("deplie");
+  delete f.dataset.suspended;
+  reglerFeuilleDeplie(false);
+  layerManager.activate(NOMS_COUCHES.mainSheet);
   majFeuille2();
+  reinitialiserScrollFeuille();
   if(etaitFermee){
     history.pushState({autourBesoins:true},"",location.href);
     historiqueFeuilleBesoins=true;
@@ -4432,6 +4730,8 @@ function ouvrirFeuille2(niveau){
     const manquantes = b.sous.flatMap(x=>x.cats).filter(c=>!CATS_DEPART.has(c));
     if(manquantes.length) chargerPourCats(manquantes);
     if(niveau === "manger") completerRestauration();
+    if(niveau === "famille") chargerEditorial("family");
+    if(niveau === "sortir") chargerEditorial("events");
   }
 }
 
@@ -4442,19 +4742,31 @@ function fermerFeuille2(options){
   const f = $("#feuilleBesoins");
   if(!f) return;
   f.hidden = true;
-  f.classList.remove("deplie");
+  delete f.dataset.suspended;
+  reglerFeuilleDeplie(false);
+  layerManager.deactivate(NOMS_COUCHES.mainSheet);
   majRaccourcis();
   if(o.nettoyerHistorique !== false && historiqueFeuilleBesoins){
     historiqueFeuilleBesoins=false;
     ignorerPopFeuilleBesoins=true;
     history.back();
   }
+  const focus = dernierFocusMainSheet;
+  dernierFocusMainSheet = null;
+  requestAnimationFrame(()=>{
+    const cible = focus && document.contains(focus) ? focus : $("#btnQuoi");
+    if(cible && !cible.hidden) cible.focus({preventScroll:true});
+  });
 }
 
 /* Rendu de la feuille. Trois écrans possibles, jamais mélangés. */
 function majFeuille2(){
   const f = $("#feuilleBesoins");
-  if(!f || feuilleNiveau === null || modeNav || modePose){ if(f) f.hidden = true; return; }
+  if(!f || feuilleNiveau === null || modeNav || modePose){
+    if(f) f.hidden = true;
+    synchroniserHauteurFeuille();
+    return;
+  }
   f.hidden = false;
 
   const corps = $("#fbCorps");
@@ -4469,10 +4781,10 @@ function majFeuille2(){
   }else if(feuilleNiveau === "aide"){
     $("#fbTitre").textContent = "❤️ Trouver de l’aide";
     retour.hidden = false;
-    corps.innerHTML = SOUS_AIDE.map((x,i)=>
+    corps.innerHTML = blocResultats()+'<p class="fb-section">Préciser mon besoin</p>'+SOUS_AIDE.map((x,i)=>
       '<button class="bn'+(sousAide===x.id?" actif":"")+'" data-sa="'+x.id+'">'+
       '<em>'+x.emoji+'</em><b>'+esc(x.label)+'</b></button>'
-    ).join("") + blocResultats();
+    ).join("");
   }else{
     const b = BESOIN_DE(feuilleNiveau);
     if(!b){ fermerFeuille2(); return; }
@@ -4482,14 +4794,14 @@ function majFeuille2(){
     // vide explique quoi faire et permet de relancer une recherche plus large.
     const choix = b.sous.map((s,i)=>({s, i, n:compterCats(s.cats)}));
     const selection = sousChoisi === null ? null : choix.find(x=>x.i===sousChoisi);
-    corps.innerHTML = choix.map(x=>
+    corps.innerHTML = blocResultats()+'<p class="fb-section">Préciser mon besoin</p>'+choix.map(x=>
       '<button class="bn'+(sousChoisi===x.i?" actif":"")+'" data-sc="'+x.i+'">'+
       '<b>'+esc(x.s.label)+'</b><i>'+x.n+'</i></button>').join("")+
-      (selection && selection.n===0 ? messageVide(typeEditorial(selection.s)) : "")+
-      blocResultats();
+      (selection && selection.n===0 && !rechercheEnCours() ? messageVide(typeEditorial(selection.s)) : "");
   }
 
   brancherFeuille2();
+  requestAnimationFrame(synchroniserHauteurFeuille);
 }
 
 /* Trois liens discrets, tout en bas : le hasard, le partage, et le réglage
@@ -4513,32 +4825,47 @@ function messageVide(type){
     '</div></div>';
 }
 
-/* Les cinq meilleures suggestions, sous les choix. C'est la réponse, pas
-   un catalogue : au-delà de cinq lignes on ne lit plus, on fait défiler. */
+function statutRechercheHTML(nombreResultats){
+  if(rechercheEnCours()) return '<div class="fb-statut" role="status">Recherche autour de toi…</div>';
+  if(rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED && !positionMoi)
+    return '<div class="fb-statut">Active ta position ou choisis un endroit sur la carte.</div>';
+  if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE || rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE)
+    return '<div class="fb-statut erreur">Certains lieux n’ont pas pu être chargés. Réessayer.'+
+      '<br><button data-etat-action="retry">Réessayer</button></div>';
+  if(rechercheEtat.places === SEARCH_STATES.NETWORK_ERROR || rechercheEtat.events === SEARCH_STATES.NETWORK_ERROR)
+    return '<div class="fb-statut erreur">Connexion indisponible. Réessayer.'+
+      '<br><button data-etat-action="retry">Réessayer</button></div>';
+  if(etatErreurPartielle())
+    return '<div class="fb-statut erreur">Certains lieux n’ont pas pu être chargés. Réessayer.'+
+      '<br><button data-etat-action="retry">Réessayer</button></div>';
+  if(!nombreResultats)
+    return '<div class="fb-statut">Rien d’ouvert à proximité pour le moment.'+
+      '<br><button data-etat-action="all">Tout voir</button></div>';
+  return "";
+}
+
+/* Les cinq meilleures recommandations appartiennent à l'intention ouverte,
+   pas à une ancienne sélection d'accueil. Elles précèdent toujours les menus. */
 function blocResultats(){
-  if(!Array.isArray(selectionAccueil) || !selectionAccueil.length){
-    return feuilleNiveau === "racine" ? "" : "";
-  }
-  const [lat,lng] = positionMoi || [0,0];
-  const items = selectionAccueil
-    .map(id=>lieux.find(l=>l.id === id)).filter(Boolean);
-  if(!items.length) return "";
-  return '<p class="fb-section">Autour de toi maintenant</p>' + items.map(l=>{
+  const classement = classementFeuille();
+  const items = classement.slice(0,5);
+  const statut = statutRechercheHTML(items.length);
+  if(!items.length) return statut;
+  const ouverts = classement.filter(l=>l.ouvert === true || (l.isTemporary && isAvailableNow(l,Date.now()))).length;
+  const entete = '<div class="fb-resultats-tete" data-testid="primary-results">'+
+    '<strong>'+items.length+' '+(items.length>1?'solutions':'solution')+' près de toi</strong>'+
+    '<span>'+(ouverts ? ouverts+' '+(ouverts>1?'ouvertes':'ouverte') : 'Les mieux classées')+'</span></div>';
+  return entete+statut+items.map((l,index)=>{
     const c = CATS[l.cat] || {emoji:"📍"};
-    const d = distanceM(lat,lng,l.lat,l.lng);
-    const bouts = [];
-    if(l.ouvert === true)  bouts.push('<span class="ouvert">Ouvert</span>');
-    if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
+    const bouts = ['<span class="raison">'+esc(l.rankReason)+'</span>'];
     if(l.note) bouts.push("★ "+l.note.toFixed(1));
-    const r = l.raison || raisonDe(l.id);
-    if(r && !(l.ouvert === true && /^Ouvert/.test(r)))
-      bouts.push('<span class="raison">'+esc(r)+'</span>');
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
-      '<span class="ac-emoji">'+c.emoji+'</span>'+
+      '<span class="ac-emoji">'+(index+1)+'</span>'+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
       '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
-      '<span class="ac-dist">'+formatDist(d)+'</span></button>';
-  }).join("");
+      '<span class="ac-dist" aria-hidden="true">'+c.emoji+'</span></button>';
+  }).join("")+(classement.length>5
+    ? '<span class="fb-plus">Fais défiler pour préciser · '+(classement.length-5)+' autres résultats</span>' : "");
 }
 
 function brancherFeuille2(){
@@ -4566,12 +4893,26 @@ function brancherFeuille2(){
       if(editorial !== "autre") chargerEditorial(editorial);
       if(feuilleNiveau === "manger") completerRestauration();
     }
-    rendre(); majAccueil(); majFeuille2(); majRaccourcis();
+    rendre(); majAccueil(); majFeuille2(); majRaccourcis(); reinitialiserScrollFeuille();
   });
 
   corps.querySelectorAll("[data-sa]").forEach(b=>b.onclick=()=>{
     sousAide = (sousAide === b.dataset.sa) ? null : b.dataset.sa;
-    rendre(); majAccueil(); majFeuille2();
+    rendre(); majAccueil(); majFeuille2(); reinitialiserScrollFeuille();
+  });
+
+  corps.querySelectorAll("[data-etat-action]").forEach(b=>b.onclick=()=>{
+    const action = b.dataset.etatAction;
+    if(action === "all"){
+      filtreMaintenant = false;
+      montrerFermes = true;
+      majFiltres(); rendre(); majFeuille2(); reinitialiserScrollFeuille();
+      return;
+    }
+    const centre = map.getCenter();
+    rechercheEtat.overpass = SEARCH_STATES.IDLE;
+    definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
+    chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
   });
 
   corps.querySelectorAll("[data-elargir]").forEach(b=>b.onclick=elargirZone);
@@ -4693,7 +5034,10 @@ function basculerAide(){
   montrerFermes = false;
   $("#suggestions").hidden = true;
 
-  majFiltres(); rendre(); majAccueil(); majRaccourcis();
+  majFiltres(); majRaccourcis();
+  // Ouvrir la feuille doit rester instantané même si beaucoup de marqueurs
+  // sont déjà en cache. La carte se reclasse juste après le premier paint.
+  requestAnimationFrame(()=>setTimeout(()=>{ rendre(); majAccueil(); },0));
 
   if(modeAide && positionMoi){
     // les réseaux d'aide arrivent après coup, la carte est déjà utilisable
@@ -4938,7 +5282,12 @@ function dessinerFiltres(){ majRaccourcis(); }
    vers l'utilisateur dès que la géolocalisation répond. Un refus ou un échec
    laisse une application parfaitement utilisable. */
 function suivreMaPosition(){
-  if(!navigator.geolocation){ etat("Géolocalisation absente sur cet appareil.", true); return; }
+  if(!navigator.geolocation){
+    definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
+    etat("Active ta position ou choisis un endroit sur la carte.", true);
+    return;
+  }
+  definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
   etat("Recherche de ta position…", true);
   navigator.geolocation.getCurrentPosition(
     p=>{
@@ -4958,16 +5307,29 @@ function suivreMaPosition(){
         }
         majAccueil();
       }
+      definirEtatRecherche("location",SEARCH_STATES.SUCCESS);
       $("#bandeauGeo").hidden = true;
     },
-    ()=>{ etat("Position refusée. Tu peux quand même explorer la carte.", true); },
+    ()=>{
+      definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
+      etat("Active ta position ou choisis un endroit sur la carte.", true);
+    },
     {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
 }
 
 $("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
-$("#videOk").onclick=()=>{ montrerFermes = true; $("#bandeauVide").hidden = true;
-  toast("Les lieux fermés sont affichés"); rendre(); };
+$("#videOk").onclick=()=>{
+  $("#bandeauVide").hidden = true;
+  if($("#videOk").dataset.action === "retry"){
+    const centre=map.getCenter();
+    rechercheEtat.overpass=SEARCH_STATES.IDLE;
+    chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
+    return;
+  }
+  montrerFermes = true;
+  toast("Les lieux fermés sont affichés"); rendre();
+};
 
 /* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
 performance.mark("autour:script");
@@ -4982,7 +5344,8 @@ $("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#btnMaintenant").hid
   $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
   $("#barreRech").hidden=true; $("#btnLoupe").hidden=false; $("#btnMaintenant").hidden=false;
-  $("#rech").value=""; recherche=""; $("#suggestions").hidden=true; rendre(); majAccueil();
+  $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
+  layerManager.deactivate(NOMS_COUCHES.searchOverlay); rendre(); majAccueil();
 };
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
    chargés : aucune requête, donc aucun effet sur le temps de chargement. */
@@ -4996,6 +5359,7 @@ function suggerer(q){
     z.innerHTML = rangeeSuggestions();
     brancherSuggestions(z);
     z.hidden = false;
+    layerManager.activate(NOMS_COUCHES.searchOverlay);
     return;
   }
 
@@ -5016,17 +5380,18 @@ function suggerer(q){
     sug.push({emo:(CATS[l.cat]||{}).emoji||"📍", lab:l.titre, sous:"lieu", id:l.id});
   });
 
-  if(!sug.length){ z.hidden = true; return; }
+  if(!sug.length){ z.hidden = true; layerManager.deactivate(NOMS_COUCHES.searchOverlay); return; }
   z.innerHTML = sug.map((x,i)=>
     '<button class="sg" data-sg="'+i+'"><span class="sg-emo">'+x.emo+'</span>'+
     '<span>'+esc(x.lab)+'</span><span class="sg-sous">'+x.sous+'</span></button>').join("");
   z.querySelectorAll("[data-sg]").forEach(b=>b.onclick=()=>{
     const x = sug[Number(b.dataset.sg)];
-    z.hidden = true; $("#rech").blur();
+    z.hidden = true; layerManager.deactivate(NOMS_COUCHES.searchOverlay); $("#rech").blur();
     if(x.id){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(x.id)); }
     else appliquerPhrase(x.q);
   });
   z.hidden = false;
+  layerManager.activate(NOMS_COUCHES.searchOverlay);
 }
 
 let minuteurSug;
@@ -5072,9 +5437,25 @@ $("#fbRetour").onclick = ()=>{
   catsActives = null; sousChoisi = null;
   rendre(); majAccueil(); ouvrirFeuille2("racine"); majRaccourcis();
 };
-/* Poignée : compacte ⇄ dépliée. C'est le seul geste de redimensionnement,
-   et il est facultatif — la feuille est déjà lisible en position basse. */
-$("#fbPoignee").onclick = ()=>$("#feuilleBesoins").classList.toggle("deplie");
+/* Poignée : compacte ⇄ dépliée. Un balayage vers le bas réduit d'abord la
+   feuille, puis la ferme ; vers le haut il la développe. */
+const poigneeFeuille = $("#fbPoignee");
+poigneeFeuille.onclick = ()=>reglerFeuilleDeplie(!$("#feuilleBesoins").classList.contains("deplie"));
+let glissementFeuille = null;
+poigneeFeuille.addEventListener("pointerdown",e=>{
+  glissementFeuille={id:e.pointerId,y:e.clientY};
+  poigneeFeuille.setPointerCapture(e.pointerId);
+});
+poigneeFeuille.addEventListener("pointerup",e=>{
+  if(!glissementFeuille || glissementFeuille.id!==e.pointerId) return;
+  const dy=e.clientY-glissementFeuille.y;
+  glissementFeuille=null;
+  if(dy < -45){ reglerFeuilleDeplie(true); return; }
+  if(dy > 70){
+    if($("#feuilleBesoins").classList.contains("deplie")) reglerFeuilleDeplie(false);
+    else fermerFeuille2();
+  }
+});
 $("#btnMaintenant").onclick = basculerMaintenant;
 </script>
 </body>

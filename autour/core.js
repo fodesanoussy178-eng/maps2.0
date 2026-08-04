@@ -276,6 +276,163 @@
     return item.ouvert !== false;
   }
 
+  const INTENT_PROFILES = Object.freeze({
+    manger: Object.freeze({
+      categories: ["resto", "fastfood", "cafe", "marche", "food", "restaurant", "eat"],
+      exact: ["resto", "fastfood", "cafe", "marche", "food"],
+      open: 150, event: 70, distance: 120, distanceScale: 1200, rating: 18,
+    }),
+    sortir: Object.freeze({
+      categories: ["event", "studio", "concert", "spectacle", "show", "bar", "cinema", "outing", "culture", "sport", "terrain"],
+      exact: ["event", "studio", "concert", "spectacle", "bar", "cinema", "sport"],
+      open: 105, event: 185, distance: 85, distanceScale: 2200, rating: 7,
+    }),
+    famille: Object.freeze({
+      categories: ["family", ...FAMILY_CATEGORIES, "parc", "biblio", "musee", "terrain", "sport"],
+      exact: ["cinema", "parc", "biblio", "musee", "playground", "park", "library", "museum", "kids_event", "family_event"],
+      open: 125, event: 150, distance: 95, distanceScale: 2000, rating: 5,
+    }),
+    aide: Object.freeze({
+      categories: ["help", "alimentaire", "hebergement", "asso", "emploi", "sante", "toilettes", "collecte", "food_aid", "shelter", "association", "employment", "health", "mairie"],
+      exact: ["alimentaire", "hebergement", "sante", "emploi", "asso", "collecte"],
+      open: 205, event: 85, distance: 105, distanceScale: 2600, rating: 0,
+    }),
+    services: Object.freeze({
+      categories: ["services", "metro", "bus", "velo", "biblio", "coworking", "musee", "parc", "mairie", "ecole", "toilettes", "recharge", "transport", "library", "museum", "park", "education"],
+      exact: ["mairie", "toilettes", "recharge", "biblio", "coworking", "metro", "bus", "velo"],
+      open: 115, event: 45, distance: 115, distanceScale: 1700, rating: 2,
+    }),
+  });
+
+  function distanceApprox(aLat, aLng, bLat, bLng) {
+    const lat = ((Number(aLat) + Number(bLat)) / 2) * Math.PI / 180;
+    const dy = (Number(bLat) - Number(aLat)) * 111000;
+    const dx = (Number(bLng) - Number(aLng)) * 111000 * Math.cos(lat);
+    return Math.hypot(dx, dy);
+  }
+
+  function hasAnyCategory(item, categories) {
+    const own = new Set([item.cat, ...(item.categories || [])]);
+    return (categories || []).some((category) => own.has(category));
+  }
+
+  function dataQuality(item) {
+    const values = [
+      item.title || item.titre,
+      item.address || item.adresse,
+      item.description,
+      item.openingHours || item.quand,
+      item.phone || item.tel,
+      item.url,
+      item.image,
+    ];
+    let quality = values.filter((value) => value != null && String(value).trim()).length * 3;
+    if (item.verifie) quality += 12;
+    if ((item.sources || []).length > 1) quality += 7;
+    return quality;
+  }
+
+  function travelMinutes(distance) {
+    if (!Number.isFinite(distance)) return null;
+    return Math.max(1, Math.round(distance / 80));
+  }
+
+  function rankResults(results, context) {
+    const ctx = context || {};
+    const intent = ctx.intent || "sortir";
+    const profile = INTENT_PROFILES[intent] || INTENT_PROFILES.sortir;
+    const now = Number.isFinite(Number(ctx.now)) ? Number(ctx.now) : Date.now();
+    const distanceBetween = typeof ctx.distanceBetween === "function" ? ctx.distanceBetween : distanceApprox;
+    const position = Array.isArray(ctx.position) ? ctx.position : [0, 0];
+    const categories = Array.isArray(ctx.categories) && ctx.categories.length ? ctx.categories : profile.categories;
+    const radius = Number.isFinite(Number(ctx.radius)) ? Number(ctx.radius) : Infinity;
+    const deduped = dedupeItems(results || [], distanceBetween);
+
+    return deduped.map((item) => {
+      const startsAt = parseTime(item.startsAt != null ? item.startsAt : item.debutLe);
+      const endsAt = parseTime(item.endsAt != null ? item.endsAt : item.finLe);
+      const temporary = item.isTemporary === true || ["event", "popup", "collecte", "studio", "sport", "food"].includes(item.cat);
+      if (temporary && endsAt != null && endsAt < now) return null;
+      if (ctx.nowOnly && !isAvailableNow(Object.assign({}, item, {startsAt, endsAt, isTemporary:temporary}), now)) return null;
+      if (!hasAnyCategory(item, categories)) return null;
+
+      const latitude = Number(item.latitude != null ? item.latitude : item.lat);
+      const longitude = Number(item.longitude != null ? item.longitude : item.lng);
+      const distance = distanceBetween(position[0], position[1], latitude, longitude);
+      if (!Number.isFinite(distance) || distance > radius) return null;
+
+      const exactMatch = hasAnyCategory(item, profile.exact);
+      const intentMatch = exactMatch ? 2 : 1;
+      let score = exactMatch ? 145 : 105;
+      const quality = dataQuality(item);
+      score += quality;
+      score += profile.distance * Math.exp(-distance / profile.distanceScale);
+
+      let availability = 2;
+      let temporalReason = "";
+      if (item.ouvert === true) {
+        availability = 4;
+        score += profile.open;
+      } else if (item.ouvert === false) {
+        availability = 0;
+        score -= ctx.nowOnly ? 1000 : 155;
+      } else {
+        score -= 12;
+      }
+
+      if (temporary) {
+        const inProgress = (startsAt == null || startsAt <= now) && (endsAt == null || endsAt >= now);
+        const minutesUntil = startsAt == null ? null : Math.round((startsAt - now) / 60000);
+        if (inProgress) {
+          availability = 6;
+          score += profile.event + 70;
+          temporalReason = "En cours";
+        } else if (minutesUntil != null && minutesUntil >= 0 && minutesUntil <= 120) {
+          availability = 5;
+          score += profile.event + Math.max(0, 120 - minutesUntil);
+          temporalReason = "Commence dans " + minutesUntil + " min";
+        } else if (startsAt != null) {
+          availability = Math.max(availability, 1);
+          score += Math.max(20, profile.event * .35);
+        }
+      }
+
+      if (intent === "aide") {
+        const urgency = {hebergement:80, sante:78, alimentaire:72, collecte:65, emploi:42, asso:38, mairie:30};
+        score += urgency[item.cat] || 20;
+        if (item.solidaire) score += 30;
+      }
+      if (intent === "famille" && hasAnyCategory(item, ["kids_event", "family_event", "playground", "cinema", "park", "library"])) score += 34;
+      if (intent === "manger") {
+        if (Number.isFinite(Number(item.note))) score += Math.max(0, Number(item.note) - 3) * profile.rating;
+        if (item.prix != null || item.gratuit === true) score += 8;
+      } else if (Number.isFinite(Number(item.note))) {
+        score += Math.max(0, Number(item.note) - 3) * profile.rating;
+      }
+
+      const minutes = travelMinutes(distance);
+      let rankReason;
+      if (temporalReason) rankReason = temporalReason + (minutes != null ? " · " + minutes + " min" : "");
+      else if (item.ouvert === true) rankReason = "Ouvert maintenant" + (minutes != null ? " · " + minutes + " min" : "");
+      else if (item.ouvert == null) rankReason = "Horaires inconnus" + (minutes != null ? " · " + minutes + " min" : "");
+      else rankReason = "Le plus proche" + (minutes != null ? " · " + minutes + " min" : "");
+
+      return Object.assign({}, item, {
+        rankScore: Math.round(score * 10) / 10,
+        rankReason,
+        rankDistance: distance,
+        rankBreakdown: {availability, intentMatch, distance, startsAt, quality},
+      });
+    }).filter(Boolean).sort((a, b) =>
+      b.rankBreakdown.availability - a.rankBreakdown.availability ||
+      b.rankBreakdown.intentMatch - a.rankBreakdown.intentMatch ||
+      a.rankBreakdown.distance - b.rankBreakdown.distance ||
+      (a.rankBreakdown.startsAt || Infinity) - (b.rankBreakdown.startsAt || Infinity) ||
+      b.rankBreakdown.quality - a.rankBreakdown.quality ||
+      b.rankScore - a.rankScore
+    );
+  }
+
   root.AutourCore = Object.freeze({
     FAMILY_CATEGORIES,
     normalizeText,
@@ -284,5 +441,7 @@
     matchesCategory,
     dedupeItems,
     isAvailableNow,
+    INTENT_PROFILES,
+    rankResults,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
