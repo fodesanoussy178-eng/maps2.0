@@ -79,7 +79,6 @@ input{font-family:inherit;font-size:16px}
 .a-titre{font-size:12px;font-weight:600;line-height:1.25}
 .a-lieu{font-size:10px;line-height:1.2;opacity:.72}
 .a-places{opacity:.72;font-weight:500}
-.a-qr{position:absolute;top:4px;right:5px;font-size:9px;opacity:.5}
 .gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
 .payant{background:#fff;color:var(--ink)}
 .payant .a-haut{color:var(--ink2)}
@@ -158,9 +157,6 @@ input{font-family:inherit;font-size:16px}
 .pastille{display:flex;align-items:center;gap:5px;padding:5px 9px 5px 6px;width:max-content;
   max-width:150px;border:1px solid var(--bord);border-radius:99px;
   background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(20,30,25,.14);animation:surgit .2s ease-out}
-.pastille .pl-mot{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes surgit{from{opacity:0}to{opacity:1}}
 
 .loin .affiche,.loin .pastille{width:13px;height:13px;max-width:none;padding:0;gap:0;
@@ -183,25 +179,15 @@ input{font-family:inherit;font-size:16px}
 .loin .moi-in b{width:22px;height:22px;font-size:11px;border-width:2.5px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
-#porte{position:absolute;inset:0;z-index:1000;background:var(--paper);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  text-align:center;padding:var(--safe-t) 34px var(--safe-b)}
-#porte h1{font-family:'Anton',sans-serif;font-size:clamp(32px,10vw,42px);
-  line-height:1;text-transform:uppercase;margin:30px 0 12px}
-#porte p{margin:0 0 30px;font-size:15px;line-height:1.55;color:var(--ink2);max-width:290px}
-.onde{position:relative;width:104px;height:104px;display:grid;place-items:center}
-.onde span{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--signal);
-  opacity:0;animation:pulse 2.6s ease-out infinite}
-.onde span:nth-child(2){animation-delay:.85s}
-.onde span:nth-child(3){animation-delay:1.7s}
-.onde i{width:15px;height:15px;border-radius:50%;background:var(--signal);
-  border:2px solid #fff;box-shadow:0 0 0 1.5px var(--signal)}
-@keyframes pulse{0%{transform:scale(.28);opacity:.85}100%{transform:scale(1);opacity:0}}
-.plus-tard{margin-top:14px;padding:10px;border:0;background:none;font-size:13.5px;
-  color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
-#porteEtat{margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:10px;
-  font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);min-height:14px}
 
+#bandeauGeo{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
+  display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
+  box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
+#bandeauTxt{flex:1;min-width:0}
+#bandeauOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+  color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
 #charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
@@ -430,10 +416,6 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .act:active{transform:scale(.95)}
 .act-1{background:var(--signal);border-color:var(--signal);color:#fff}
 .act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
-.y-aller{align-self:flex-start;margin-top:12px;padding:10px 16px;text-decoration:none;
-  border:1px solid var(--bord);border-radius:99px;background:var(--signal);color:#fff;
-  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;display:inline-block}
 
 .trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
 .trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
@@ -558,16 +540,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <div id="map"></div>
 
-<div id="porte">
-  <div class="onde"><span></span><span></span><span></span><i></i></div>
-  <h1>Autour</h1>
-  <p>Découvre ce qu’il y a autour de toi, maintenant.</p>
-  <button class="valider" style="max-width:290px" id="btnGeo">Voir autour de moi</button>
-  <button class="plus-tard" id="btnSansGeo">Plus tard</button>
-  <div id="porteEtat"></div>
-</div>
-
 <div id="charge" hidden>Recherche autour de toi…</div>
+
+<div id="bandeauGeo" hidden>
+  <span id="bandeauTxt">Autorise ta position pour voir ton quartier.</span>
+  <button id="bandeauOk">Activer</button>
+</div>
 
 <div class="haut" id="haut" hidden>
   <button class="rond" id="btnLoupe" aria-label="Chercher">
@@ -1047,7 +1025,7 @@ const Store = {
 
 let lieux=[], publies=[], marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
-let map, coucheVille, coucheRues, moi, positionMoi=null, commune="ton quartier";
+let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
 let routes=[]; // {couche, base}
 let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
@@ -1059,7 +1037,14 @@ const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function alea(seed){let h=hash(String(seed))||1;return()=>{h=(h*1103515245+12345)&0x7fffffff;return (h>>8)%10000/10000;}}
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(el._t);el._t=setTimeout(()=>el.hidden=true,2400)}
-function etat(t){$("#porteEtat").textContent=t}
+/* Les messages d'état s'écrivaient dans l'écran d'accueil, qui ne s'affiche
+   plus depuis que la carte démarre seule : ils étaient donc invisibles. */
+function etat(t, montrer){
+  const b = $("#bandeauGeo"), z = $("#bandeauTxt");
+  if(!b || !z) return;
+  z.textContent = t;
+  if(montrer !== undefined) b.hidden = !montrer;
+}
 function charge(t){const c=$("#charge"); if(t){c.textContent=t;c.hidden=false}else c.hidden=true}
 
 /* ================================================================== */
@@ -1546,7 +1531,6 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  $("#porte").hidden = true;
   ["#haut","#btnExplorer","#btnAjouter","#btnPartager","#btnMaintenant"].forEach(s=>$(s).hidden=false);
 
   map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
@@ -3583,8 +3567,8 @@ function ouvrirExplorer(){
    vers l'utilisateur dès que la géolocalisation répond. Un refus ou un échec
    laisse une application parfaitement utilisable. */
 function suivreMaPosition(){
-  if(!navigator.geolocation){ etat("Géolocalisation absente"); return; }
-  etat("Recherche de ta position…");
+  if(!navigator.geolocation){ etat("Géolocalisation absente sur cet appareil.", true); return; }
+  etat("Recherche de ta position…", true);
   navigator.geolocation.getCurrentPosition(
     p=>{
       const c = [p.coords.latitude, p.coords.longitude];
@@ -3598,15 +3582,14 @@ function suivreMaPosition(){
         nomCommune(c[0],c[1]).then(n=>{ commune = n; });
         majAccueil();
       }
-      $("#porte").hidden = true;
+      $("#bandeauGeo").hidden = true;
     },
-    ()=>{ etat("Position indisponible — on reste sur ce quartier"); },
+    ()=>{ etat("Position refusée. Tu peux quand même explorer la carte.", true); },
     {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
 }
 
-$("#btnGeo").onclick=()=>{ $("#porte").hidden = true; suivreMaPosition(); };
-$("#btnSansGeo").onclick=()=>{ $("#porte").hidden = true; };
+$("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
 
 /* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
 performance.mark("autour:script");
@@ -3614,8 +3597,6 @@ demarrer(positionMemorisee()).then(()=>{
   performance.mark("autour:carte");
   performance.measure("interface prête", "autour:script", "autour:carte");
   suivreMaPosition();
-  // l'écran d'accueil ne masque la carte qu'un instant
-  setTimeout(()=>{ if($("#porte")) $("#porte").hidden = true; }, 1400);
 });
 $("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
