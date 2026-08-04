@@ -359,6 +359,14 @@ body.nav .leaflet-control-zoom{display:none}
 .ajouter span{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase}
 .ajouter:active{transform:translateY(1px)}
+.de{position:absolute;right:14px;bottom:calc(var(--safe-b) + 140px);z-index:601;
+  width:50px;height:50px;border-radius:50%;border:1px solid var(--bord);background:#fff;
+  font-size:22px;line-height:1;display:grid;place-items:center;
+  box-shadow:0 3px 14px rgba(20,30,25,.2);transition:transform .18s}
+.de:active{transform:scale(.9) rotate(20deg)}
+.sp-tete{margin-bottom:2px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
+.sp-raison{margin:-6px 0 15px;font-size:13.5px;font-weight:600;color:var(--signal)}
 
 .mini{position:absolute;top:calc(var(--safe-t) + 72px);left:14px;z-index:600;
   display:flex;align-items:center;gap:6px;padding:9px 13px;border:1px solid var(--bord);
@@ -593,6 +601,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 </div>
 <div id="navEtapes" hidden></div>
 <button class="ajouter" id="btnAjouter" hidden>+ <span>Publier</span></button>
+<button class="de" id="btnDe" hidden aria-label="Surprends-moi">🎲</button>
 
 <div id="viseur" hidden>
   <svg width="34" height="42" viewBox="0 0 34 42" fill="none">
@@ -1532,7 +1541,7 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#haut","#btnExplorer","#btnAjouter","#btnPartager","#btnMaintenant"].forEach(s=>$(s).hidden=false);
+  ["#haut","#btnExplorer","#btnAjouter","#btnPartager","#btnMaintenant","#btnDe"].forEach(s=>$(s).hidden=false);
 
   map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
         .setView(centre, partage ? 17 : 16);
@@ -2058,7 +2067,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions"]
+  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions","#btnDe"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
@@ -3546,23 +3555,90 @@ function vitalite(){
   return {p:"🔴", t:"Quartier calme", n:ouverts, e:evs};
 }
 
-/* Découverte : un lieu au hasard, mais tiré parmi les pertinents du moment
-   plutôt que dans toute la liste — sinon on tombe sur un arrêt de bus. */
+/* ---- Surprise contrôlée ----------------------------------------------
+   Un tirage uniforme proposait aussi bien une pharmacie qu'un concert, et
+   pouvait resservir le même lieu trois fois de suite. On compose désormais
+   70 % de pertinence, 20 % de découverte — ce que tu ne regardes jamais —
+   et 10 % de hasard, en excluant ce qui ne peut pas convenir.            */
+const MEMOIRE_SURPRISES = 12;
+let surprisesVues = (()=>{
+  try{ return JSON.parse(localStorage.getItem("autour:surprises")||"[]"); }
+  catch(e){ return []; }
+})();
+function memoriserSurprise(id){
+  surprisesVues.unshift(id);
+  surprisesVues = surprisesVues.slice(0, MEMOIRE_SURPRISES);
+  try{ localStorage.setItem("autour:surprises", JSON.stringify(surprisesVues)); }catch(e){}
+}
+
+const CATS_SANS_INTERET = ["metro","bus","toilettes","recharge","velo","commerce"];
+
+function choisirSurprise(liste, ctx, profil){
+  const depuis = ctx.moi && ctx.moi[0] ? ctx.moi : ctx.centre;   // géoloc refusée : le centre de la carte suffit
+  const possibles = liste.filter(l=>{
+    if(l.ouvert === false) return false;                       // fermé : inutile
+    if(!l.titre || l.titre.length < 3) return false;           // fiche sans information
+    if(CATS_SANS_INTERET.includes(l.cat)) return false;
+    if(surprisesVues.includes(l.id)) return false;             // déjà proposé récemment
+    if((profil.ignores[l.cat]||0) >= 3) return false;          // tu l'écartes systématiquement
+    return distanceM(depuis[0], depuis[1], l.lat, l.lng) <= 2500;
+  });
+  if(!possibles.length) return null;
+
+  const notes = possibles.map(l=>{
+    const r = scoreLieu(l, ctx);
+    // découverte : plus tu as consulté une catégorie, moins elle surprend
+    const vues = (profil.categories[l.cat]||0);
+    const decouverte = 100 / (1 + vues);
+    return { l, raison:r.raison,
+             total: 0.7*r.score + 0.2*decouverte + 0.1*(Math.random()*100) };
+  }).sort((a,b)=>b.total - a.total);
+
+  // on tire dans le haut du panier : toujours le premier ne surprendrait plus
+  const haut = notes.slice(0, Math.min(5, notes.length));
+  return haut[Math.floor(Math.random()*haut.length)];
+}
+
 function surprendre(){
-  if(!positionMoi) return;
-  const m = momentActuel();
-  const [lat,lng] = positionMoi;
-  const candidats = lieux
-    .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
-    .filter(l=>l.dist < 2000 && !["metro","bus","toilettes","recharge","velo"].includes(l.cat))
-    .map(l=>Object.assign(l, {score:pertinence(l, m.poids)}))
-    .sort((a,b)=>b.score-a.score)
-    .slice(0, 15);
-  if(!candidats.length){ toast("Rien à proposer pour l’instant"); return; }
-  const l = candidats[Math.floor(Math.random()*candidats.length)];
-  map.flyTo([l.lat,l.lng], 17, {duration:.7});
+  if(!map) return;
+  const ctx = contexteActuel();
+  const choix = choisirSurprise(lieux, ctx, PROFIL);
+  if(!choix){
+    toast(surprisesVues.length ? "Plus rien de neuf dans le coin" : "Rien à proposer pour l’instant");
+    return;
+  }
+  const l = choix.l;
+  memoriserSurprise(l.id);
+  const depuis = (ctx.moi && ctx.moi[0]) ? ctx.moi : ctx.centre;
+  const d = distanceM(depuis[0], depuis[1], l.lat, l.lng);
+  const c = CATS[l.cat] || {emoji:"📍", label:""};
+
+  map.flyTo([l.lat, l.lng], 17, {duration:.7});
   pileEcrans = [];
-  pousserEcran(()=>ouvrirDetail(l.id));
+  pousserEcran(()=>{
+    ouvrirFeuille(
+      '<p class="sp-tete">🎲 Surprise</p>'+
+      '<h2 class="titre">'+esc(l.titre)+'</h2>'+
+      '<p class="resume">'+
+        '<span>'+c.emoji+' '+esc(c.label)+'</span>'+
+        '<span>'+formatDist(d)+'</span>'+
+        '<span>'+tempsTrajetMinutes(d, VITESSES_KMH.pied)+' min à pied</span>'+
+        (l.ouvert === true  ? '<span class="ouvert">Ouvert</span>' :
+         l.ouvert === false ? '<span class="ferme">Fermé</span>' : '')+
+        (l.note ? '<span>★ '+l.note.toFixed(1)+'</span>' : '')+
+      '</p>'+
+      '<p class="sp-raison">'+esc(choix.raison)+'</p>'+
+      '<div class="actions">'+
+        '<button class="act act-1" id="spAller">Y aller</button>'+
+        '<button class="act" id="spEncore">Une autre surprise</button>'+
+        '<button class="act" id="spFiche">Voir la fiche</button>'+
+      '</div>'+
+      '<div class="trajet" id="trajet" hidden></div>'
+    );
+    $("#spAller").onclick  = ()=>afficherTrajet(l);
+    $("#spEncore").onclick = ()=>{ mettreAJourProfil("ignore", l.cat); surprendre(); };
+    $("#spFiche").onclick  = ()=>pousserEcran(()=>ouvrirDetail(l.id));
+  });
 }
 
 /* « Autour IA » : aucune génération, aucun résultat inventé. La phrase est
@@ -3886,6 +3962,7 @@ $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
+$("#btnDe").onclick=surprendre;
 $("#acPlus").onclick=()=>{ toutAfficher(); ouvrirIntentions(); };
 $("#btnMaintenant").onclick=()=>{ basculerMaintenant(); ouvrirIntentions(); };
 $("#intFermer").onclick=()=>{ $("#intentions").hidden = true; };
