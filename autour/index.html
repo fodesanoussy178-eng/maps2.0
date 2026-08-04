@@ -169,13 +169,15 @@ input{font-family:inherit;font-size:16px}
 
 .moi-in{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
   display:grid;place-items:center;width:46px;height:46px}
+.mk-user{width:46px!important;height:46px!important}
+.mk-user .moi-in{left:23px;top:23px}
 .moi-in i{position:absolute;width:46px;height:46px;border-radius:50%;
-  background:rgba(255,74,23,.16);animation:respire 2.4s ease-in-out infinite}
+  background:rgba(39,112,255,.18);animation:respire 2.4s ease-in-out infinite}
 /* Un simple point rouge se confond avec les lieux : la personne doit se
    reconnaître au premier coup d'œil, d'où la pastille et la silhouette. */
 .moi-in b{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;
-  background:var(--signal);border:3px solid #fff;font-size:17px;line-height:1;
-  box-shadow:0 2px 8px rgba(0,0,0,.34)}
+  background:#fff;border:3px solid #2673E8;font-size:17px;line-height:1;
+  box-shadow:0 2px 8px rgba(19,72,157,.34)}
 .loin .moi-in b{width:22px;height:22px;font-size:11px;border-width:2.5px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
@@ -253,11 +255,12 @@ input{font-family:inherit;font-size:16px}
 .fh.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
 /* ---- boutons flottants : se repérer, et publier — dans cet ordre ---- */
-.rond-flottant{position:absolute;right:14px;z-index:601;width:46px;height:46px;
+.rond-flottant{position:absolute;right:14px;z-index:601;min-width:46px;height:46px;
   border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
   font-size:20px;line-height:1;display:grid;place-items:center;
   box-shadow:0 2px 10px rgba(20,30,25,.14)}
-#btnRevenir{bottom:calc(var(--safe-b) + 150px)}
+#btnRevenir{bottom:calc(var(--safe-b) + 150px);width:auto;padding:0 15px;border-radius:99px;
+  display:flex;gap:7px;font-size:13px;font-weight:700}
 #btnAjouter{bottom:calc(var(--safe-b) + 204px);color:var(--ink2);font-size:24px;
   box-shadow:0 1px 6px rgba(20,30,25,.10)}
 .rond-flottant:active{transform:scale(.94)}
@@ -366,7 +369,9 @@ body.nav .leaflet-control-zoom{display:none}
 [hidden]{display:none!important}
 
 #viseur{position:absolute;left:50%;top:50%;z-index:602;transform:translate(-50%,-100%);pointer-events:none}
-#viseur svg{filter:drop-shadow(0 3px 5px rgba(0,0,0,.3))}
+.pin-choix{display:block;font-size:40px;line-height:1;filter:drop-shadow(0 3px 5px rgba(0,0,0,.32));
+  transform-origin:50% 100%;animation:pinPose .22s ease-out}
+@keyframes pinPose{from{transform:translateY(-8px);opacity:.4}to{transform:translateY(0);opacity:1}}
 #poseBarre{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);
   z-index:603;display:flex;gap:8px;align-items:center}
 #poseBarre .txt{flex:1;padding:12px 14px;border:1px solid var(--bord);border-radius:99px;
@@ -380,10 +385,33 @@ body.nav .leaflet-control-zoom{display:none}
 #feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:72%;overflow-y:auto;
   padding:10px 20px calc(var(--safe-b) + 26px);background:var(--paper);
   border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
-  animation:monte .28s cubic-bezier(.2,.9,.3,1)}
+  overscroll-behavior:contain;animation:monte .28s cubic-bezier(.2,.9,.3,1)}
 @keyframes monte{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .poignee{display:block;width:46px;height:4px;margin:0 auto 16px;border:0;border-radius:99px;
   background:rgba(20,30,25,.22);padding:0}
+.feuille-x{position:sticky;top:0;z-index:3;float:right;width:38px;height:38px;margin:0 0 4px 8px;
+  border:1px solid var(--bord);border-radius:50%;background:#fff;color:var(--ink);
+  font-size:17px;font-weight:700;box-shadow:0 2px 8px rgba(20,30,25,.14)}
+.annuler-publication{width:100%;margin-top:10px;padding:14px;border:1px solid var(--bord);
+  border-radius:2px;background:#fff;color:var(--ink);font-size:14px;font-weight:700}
+.etat-vide-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.etat-vide-actions button{width:100%;padding:12px;border:1px solid var(--bord);border-radius:10px;
+  background:#fff;color:var(--ink);font-size:13.5px;font-weight:700}
+.etat-vide-actions button:first-child{background:var(--trait);border-color:var(--trait);color:#fff}
+
+#abandonVoile{position:absolute;inset:0;z-index:1100;background:rgba(20,30,25,.52);display:grid;
+  place-items:center;padding:20px}
+#abandonDialog{width:min(100%,390px);padding:22px;border:1px solid var(--bord);border-radius:16px;
+  background:#fff;box-shadow:0 8px 36px rgba(20,30,25,.28)}
+#abandonDialog h2{font-size:21px;line-height:1.2;margin-bottom:10px}
+#abandonDialog p{font-size:14px;line-height:1.5;color:var(--ink2)}
+.abandon-actions{display:flex;gap:8px;margin-top:18px}
+.abandon-actions button{flex:1;padding:12px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink);font-weight:700}
+.abandon-actions .danger{background:var(--signal);border-color:var(--signal);color:#fff}
+
+button:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:3px solid #2673E8!important;outline-offset:3px!important}
 .retour{display:inline-flex;align-items:center;margin-bottom:12px;padding:7px 13px 7px 9px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
   font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
@@ -574,7 +602,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="btnQuoi">Que faire autour de moi&nbsp;?</button>
 </div>
 
-<button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">◎</button>
+<button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">◎ <span>Ma position</span></button>
 <button class="rond-flottant discret" id="btnAjouter" hidden aria-label="Publier">+</button>
 
 <!-- Bottom sheet : fermée, compacte, ou dépliée à la demande. -->
@@ -597,11 +625,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="filtresHumains" hidden></div>
 
 <div id="viseur" hidden>
-  <svg width="34" height="42" viewBox="0 0 34 42" fill="none">
-    <path d="M17 41V17" stroke="#2C3A33" stroke-width="2.5"/>
-    <rect x="1.5" y="1.5" width="31" height="17" rx="2" fill="#FF4A17" stroke="#2C3A33" stroke-width="2"/>
-    <circle cx="17" cy="41" r="2" fill="#2C3A33"/>
-  </svg>
+  <span class="pin-choix" aria-hidden="true">📍</span>
 </div>
 <div id="poseBarre" hidden>
   <div class="txt">Déplace la carte : l'épingle se pose ici.</div>
@@ -609,11 +633,22 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 </div>
 
 <div id="voile" hidden></div>
-<section id="feuille" hidden role="dialog" aria-modal="true"></section>
+<section id="feuille" hidden role="dialog" aria-modal="true" aria-label="Panneau Autour"></section>
+<div id="abandonVoile" hidden>
+  <div id="abandonDialog" role="alertdialog" aria-modal="true" aria-labelledby="abandonTitre" aria-describedby="abandonTexte">
+    <h2 id="abandonTitre">Abandonner cette publication&nbsp;?</h2>
+    <p id="abandonTexte">Les informations saisies ne seront pas conservées.</p>
+    <div class="abandon-actions">
+      <button id="abandonContinuer">Continuer</button>
+      <button class="danger" id="abandonConfirmer">Abandonner</button>
+    </div>
+  </div>
+</div>
 <div id="toast" hidden></div>
 <div id="panne" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="core.js"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -622,6 +657,31 @@ function panne(titre, corps){
   p.hidden = false;
 }
 window.addEventListener("error", e=>{ panne("Ça a coincé", e.message||"Script externe indisponible."); });
+
+const {
+  FAMILY_CATEGORIES,
+  classifyPlace,
+  toCommonItem,
+  matchesCategory,
+  dedupeItems,
+  isAvailableNow,
+} = window.AutourCore;
+
+function normaliserItem(item, source){
+  return toCommonItem(item, {source});
+}
+
+function correspondCategorie(item, categorie){
+  return matchesCategory(item, categorie);
+}
+
+function correspondUneCategorie(item, categories){
+  return [...categories].some(categorie=>correspondCategorie(item, categorie));
+}
+
+function estTemporaire(item){
+  return !!(item && item.isTemporary);
+}
 
 /* ================================================================== */
 /*  Catégories                                                        */
@@ -694,6 +754,7 @@ const CHAINES_CAFE     = /starbucks|paul\b|brioche\s?dor|columbus|costa\s?coffee
 
 function affinerCategorie(cat, nom){
   if(!nom) return cat;
+  if(classifyPlace({cat, title:nom}).includes("cinema")) return "cinema";
   if(cat === "resto" || cat === "fastfood" || cat === "cafe"){
     if(CHAINES_CAFE.test(nom))     return "cafe";
     if(CHAINES_FASTFOOD.test(nom)) return "fastfood";
@@ -875,7 +936,7 @@ function categorieRecherchee(q){
    besoin, et l'app traduit. Une catégorie interne peut servir plusieurs
    filtres, mais elle n'a qu'UN seul foyer dans l'interface — sinon on
    retrouve « Street food » à deux endroits et personne ne sait lequel
-   cliquer. Six sous-choix au maximum par besoin. */
+   cliquer. Les sous-choix restent courts et orientés vers une intention. */
 const BESOINS = [
   { id:"manger", emoji:"🍴", label:"Manger", sous:[
       { label:"Restaurants",            cats:["resto"] },
@@ -888,6 +949,7 @@ const BESOINS = [
       { label:"Concerts et spectacles", cats:["concert","spectacle"] },
       { label:"Bars",                   cats:["bar"] },
       { label:"Cinéma",                 cats:["cinema"] },
+      { label:"En famille",             cats:["family"] },
       { label:"Sport",                  cats:["sport","terrain"] },
       { label:"Boutiques et fripes",    cats:["friperie","commerce","popup"] },
   ]},
@@ -943,7 +1005,8 @@ const REQUETES = [
 
   // -- sortir
   ["amenity","bar","bar"], ["amenity","pub","bar"], ["amenity","biergarten","bar"],
-  ["amenity","cinema","cinema"], ["amenity","theatre","spectacle"],
+  ["amenity","cinema","cinema"], ["leisure","cinema","cinema"],
+  ["amenity","theatre","spectacle"],
   ["amenity","arts_centre","spectacle"],
   ["amenity","nightclub","concert"], ["amenity","music_venue","concert"],
 
@@ -954,9 +1017,11 @@ const REQUETES = [
   ["amenity","coworking_space","coworking"], ["office","coworking","coworking"],
   ["tourism","museum","musee"], ["tourism","gallery","musee"],
   ["leisure","park","parc"], ["leisure","garden","parc"],
+  ["leisure","playground","parc"], ["leisure","bowling_alley","terrain"],
   ["leisure","pitch","terrain"], ["leisure","skatepark","terrain"],
   ["leisure","sports_centre","terrain"], ["leisure","swimming_pool","terrain"],
   ["leisure","fitness_centre","terrain"],
+  ["tourism","zoo","parc"], ["tourism","farm","parc"],
   ["amenity","school","ecole"], ["amenity","college","ecole"], ["amenity","university","ecole"],
   ["amenity","townhall","mairie"], ["amenity","post_office","mairie"],
   ["amenity","toilets","toilettes"],
@@ -986,6 +1051,7 @@ let sb = null, moiId = null;
 /* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
    chemin critique du premier affichage. */
 let pSupabase = null;
+let pConnexion = null;
 function chargerSupabase(){
   if(window.supabase) return Promise.resolve(true);
   if(pSupabase) return pSupabase;
@@ -1000,34 +1066,44 @@ function chargerSupabase(){
 }
 
 async function connecter(){
-  if(!(await chargerSupabase())) return null;
-  try{
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
-    let { data:{ session } } = await sb.auth.getSession();
-    if(!session){
-      const { data, error } = await sb.auth.signInAnonymously();
-      if(error) throw error;
-      session = data.session;
+  if(sb && moiId) return sb;
+  if(pConnexion) return pConnexion;
+  pConnexion = (async()=>{
+    if(!(await chargerSupabase())) return null;
+    try{
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
+      let { data:{ session } } = await sb.auth.getSession();
+      if(!session){
+        const { data, error } = await sb.auth.signInAnonymously();
+        if(error) throw error;
+        session = data.session;
+      }
+      moiId = session && session.user ? session.user.id : null;
+      return sb;
+    }catch(e){
+      console.error("Identité anonyme indisponible :", e.message || e);
+      sb = null;
+      return null;
     }
-    moiId = session && session.user ? session.user.id : null;
-    return sb;
-  }catch(e){
-    console.error("Identité anonyme indisponible :", e.message || e);
-    sb = null;
-    return null;
-  }
+  })();
+  const resultat = await pConnexion;
+  if(!resultat) pConnexion = null;
+  return resultat;
 }
 
 function versLieu(p){
-  return {
+  return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    adresse:p.adresse || "", cp:p.cp || commune,
+    description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : "Habitant du quartier",
     verifie: p.verifie, mien: !!(moiId && p.auteur === moiId),
     lat:p.lat, lng:p.lng,
-    finLe: p.fin_le ? new Date(p.fin_le).getTime() : null
-  };
+    categories:Array.isArray(p.categories) ? p.categories : [p.cat],
+    debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
+    finLe: p.fin_le ? new Date(p.fin_le).getTime() : null,
+    isTemporary:true, url:p.url || "", image:p.image || ""
+  }, "autour");
 }
 
 /* Passe par une fonction en base plutôt que par un select * : seules les
@@ -1052,7 +1128,9 @@ const Store = {
     const { data, error } = await sb.from("publications").insert({
       cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
       gratuit:l.gratuit, prix:l.prix, places:l.places,
-      lat:l.lat, lng:l.lng, fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
+      lat:l.lat, lng:l.lng,
+      debut_le:l.debutLe ? new Date(l.debutLe).toISOString() : null,
+      fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
     }).select().single();
     if(error){
       console.error("Publication refusée :", error.message);
@@ -1073,7 +1151,8 @@ const Store = {
 
 /* ================================================================== */
 
-let lieux=[], publies=[], marqueurs=new Map(), etiquettes=[];
+let permanentPlaces=[], externalEvents=[], userPublications=[];
+let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
 let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
 let routes=[]; // {couche, base}
@@ -1189,9 +1268,11 @@ async function vraisLieux(lat,lng,bornes,opts){
     const regle = REQUETES.find(([k,v])=>t[k]===v);
     if(!regle) return null;
     const cat = affinerCategorie(regle[2], t.name);
-    return {
+    return normaliserItem({
       id:"osm"+e.type+e.id, cat,
       titre: t.name || CATS[cat].label,
+      description:t.description || t.note || "", tags:t,
+      type:t.amenity || t.leisure || t.tourism || t.office || "",
       sansNom: !t.name,                      // « un résultat sans nom exploitable »
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[cat].label),
       cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
@@ -1204,18 +1285,17 @@ async function vraisLieux(lat,lng,bornes,opts){
                               || regle[0] === "social_facility"),
       gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
-    };
+    }, "openstreetmap");
   }).filter(Boolean);
 }
 
-/* Pour de vrais événements locaux (collectes, ateliers lecture, marchés…),
-   il faut une clé API OpenAgenda gratuite : https://developers.openagenda.com/.
-   Colle-la ici. Laissée vide, l'app invente des événements plausibles
-   autour des vrais lieux — ce qui reste honnête et déjà utile. */
+/* Événements locaux publiés sur les agendas officiels OpenAgenda. La clé est
+   une clé publique de lecture ; aucun événement n'est inventé en repli. */
 const CLE_OPENAGENDA = "oa_pk_iWmzFaEujSWtgBdvWCdXQnRtgtrqkpokQbkRGVUrscALWleiwQesAucPIQNUGLjS";
 
 function catOpenAgenda(evt){
   const mots = sansAccents((evt.title&&evt.title.fr||"")+" "+((evt.keywords&&evt.keywords.fr)||[]).join(" "));
+  if(/screening|movie|film|projection|seance cinema/.test(mots)) return "event";
   if(/collecte|don /.test(mots)) return "collecte";
   if(/lecture|bibliotheque|livre/.test(mots)) return "biblio";
   if(/sport|foot|match|tournoi/.test(mots)) return "sport";
@@ -1229,28 +1309,43 @@ function catOpenAgenda(evt){
 async function evenementsOpenAgenda(lat,lng){
   if(!CLE_OPENAGENDA) return null;
   try{
-    // l'API v2 filtre sur une boîte englobante, pas sur un rayon :
-    // on convertit ~4 km autour du point en degrés (la longitude se resserre
-    // à mesure qu'on monte en latitude, d'où le cosinus)
-    const dLat = 0.036;
-    const dLng = 0.036 / Math.max(0.2, Math.cos(lat * Math.PI/180));
-    const params = new URLSearchParams({
-      key: CLE_OPENAGENDA,
-      "geo[northEast][lat]": lat + dLat, "geo[northEast][lng]": lng + dLng,
-      "geo[southWest][lat]": lat - dLat, "geo[southWest][lng]": lng - dLng,
-      "relative[]": "upcoming",
-      size: 20, detailed: 1
+    // La lecture transverse /v2/events est expérimentale et n'est pas ouverte
+    // à cette clé. On découvre donc les agendas officiels de la commune, puis
+    // on lit leurs événements publiés avec les routes publiques documentées.
+    const ville = await nomCommune(lat,lng);
+    const rechercheAgendas = new URLSearchParams({
+      key:CLE_OPENAGENDA, search:ville, size:"8", official:"1"
     });
-    const r = await fetch("https://api.openagenda.com/v2/events?"+params.toString());
-    if(!r.ok){ console.error("OpenAgenda: réponse HTTP", r.status, await r.text()); return null; }
-    const j = await r.json();
-    console.info("OpenAgenda:", (j.events||[]).length, "événement(s) reçu(s)");
-    return (j.events||[]).map(evt=>{
+    const rAgendas = await fetch("https://api.openagenda.com/v2/agendas?"+rechercheAgendas.toString());
+    if(!rAgendas.ok){ console.error("OpenAgenda agendas : réponse HTTP", rAgendas.status); return null; }
+    const agendas = ((await rAgendas.json()).agendas||[]).slice(0,8);
+    const segments = await Promise.allSettled(agendas.map(async agenda=>{
+      const params = new URLSearchParams({
+        key:CLE_OPENAGENDA, size:"30", detailed:"1"
+      });
+      params.append("relative[]","current");
+      params.append("relative[]","upcoming");
+      const r = await fetch("https://api.openagenda.com/v2/agendas/"+agenda.uid+"/events?"+params.toString());
+      if(!r.ok) throw new Error("agenda "+agenda.uid+" : HTTP "+r.status);
+      return (await r.json()).events || [];
+    }));
+    const uniques = new Map();
+    segments.forEach(segment=>{
+      if(segment.status !== "fulfilled") return;
+      segment.value.forEach(evt=>uniques.set(evt.uid,evt));
+    });
+    const bruts = [...uniques.values()];
+    console.info("OpenAgenda:", bruts.length, "événement(s) bruts depuis", agendas.length, "agenda(s)");
+    const classes = bruts.map(evt=>{
       const loc = evt.location || {};
       if(loc.latitude==null || loc.longitude==null) return null;
-      return {
+      if(distanceM(lat,lng,Number(loc.latitude),Number(loc.longitude)) > 8000) return null;
+      return normaliserItem({
         id:"oa"+evt.uid, cat:catOpenAgenda(evt),
         titre:(evt.title && (evt.title.fr||Object.values(evt.title)[0])) || "Événement",
+        description:(evt.description && (evt.description.fr||Object.values(evt.description)[0])) || "",
+        keywords:(evt.keywords && (evt.keywords.fr||Object.values(evt.keywords)[0])) || [],
+        eventCategory:(evt.keywords && (evt.keywords.fr||[]).join(" ")) || "",
         adresse: loc.name || loc.address || commune,
         cp: [loc.postalCode, loc.city].filter(Boolean).join(" ") || commune,
         quand: (()=>{
@@ -1272,9 +1367,14 @@ async function evenementsOpenAgenda(lat,lng){
         })(),
         gratuit: !(evt.registration && evt.registration.price), prix:0,
         places:null, qr:false, par:"OpenAgenda",
+        isTemporary:true,
+        url:evt.canonicalUrl || evt.originAgenda && evt.originAgenda.url || "",
+        image:evt.image ? (evt.image.base || "")+(evt.image.filename || "") : "",
         lat:loc.latitude, lng:loc.longitude
-      };
+      }, "openagenda");
     }).filter(Boolean);
+    journaliserPipeline("OpenAgenda", bruts.length, classes, classes);
+    return classes;
   }catch(e){ console.error("OpenAgenda: échec de la requête", e); return null; }
 }
 
@@ -1489,14 +1589,45 @@ function majEtiquettes(){
    précédentes, au lieu de remplacer la liste entière. */
 /* Un événement terminé n'a plus rien à faire sur la carte. */
 function estPasse(l){
-  return l.finLe != null && l.finLe < Date.now();
+  return l.endsAt != null && l.endsAt < Date.now();
 }
 
-function fusionner(nouveaux){
-  if(!nouveaux || !nouveaux.length) return;
-  const connus = new Set(lieux.map(l=>l.id));
-  nouveaux.forEach(l=>{ if(!connus.has(l.id) && !estPasse(l)) lieux.push(l); });
+function journaliserPipeline(source, brut, classes, dedupliques){
+  const apresMaintenant = (dedupliques||[]).filter(l=>isAvailableNow(l, Date.now())).length;
+  console.info("[Autour][données]", {
+    source,
+    bruts:brut,
+    apresClassification:(classes||[]).length,
+    apresDeduplication:(dedupliques||[]).length,
+    apresMaintenant
+  });
+}
+
+function reconstruireLieux(){
+  lieux = dedupeItems([
+    ...permanentPlaces,
+    ...externalEvents,
+    ...userPublications
+  ], distanceM);
+  publies = userPublications;
   indexPerime = true;
+}
+
+function fusionner(nouveaux, flux){
+  if(!nouveaux || !nouveaux.length) return;
+  const type = flux || "permanent";
+  const source = nouveaux[0] && nouveaux[0].source || type;
+  const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source)).filter(l=>!estPasse(l));
+  const courant = type === "external" ? externalEvents
+    : type === "user" ? userPublications : permanentPlaces;
+  const parId = new Map(courant.map(l=>[l.id,l]));
+  classes.forEach(l=>parId.set(l.id,l));
+  const dedupliques = dedupeItems([...parId.values()], distanceM);
+  if(type === "external") externalEvents = dedupliques;
+  else if(type === "user") userPublications = dedupliques;
+  else permanentPlaces = dedupliques;
+  reconstruireLieux();
+  journaliserPipeline(source, nouveaux.length, classes, dedupliques);
   if(!window.__premiereDonnee){
     window.__premiereDonnee = true;
     performance.mark("autour:donnees");
@@ -1511,7 +1642,7 @@ function fusionner(nouveaux){
 /* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
    l'affiche instantanément, sans réinterroger Overpass. */
 const CACHE_HEURES = 24;
-const cleCache = (lat,lng)=>"autour:lieux:"+lat.toFixed(3)+","+lng.toFixed(3);
+const cleCache = (lat,lng)=>"autour:lieux:v4:"+lat.toFixed(3)+","+lng.toFixed(3);
 
 function lireCacheLieux(lat,lng){
   try{
@@ -1534,7 +1665,8 @@ function ecrireCacheLieux(lat,lng,l){
 let dernierChargement = null;
 let chargementEnCours = false;
 
-let abandonZone = null;
+const chargementsZone = new Map();
+let nombreChargementsZone = 0;
 
 /* Bornes de la vue, ramenées à 5 km de côté au maximum : au-delà, la requête
    pèserait autant qu'une ville entière pour un écran qu'on ne lit plus. */
@@ -1556,20 +1688,21 @@ function cleZone(lat, lng, z, cats){
 }
 
 function chargerZone(lat, lng, opts){
-  if(!map || map.getZoom() < 13) return;
+  if(!map || map.getZoom() < 13) return Promise.resolve([]);
   const o = opts || {};
   const cle = cleZone(lat, lng, map.getZoom(), o.cats);
-  if(!o.force && zonesVues.has(cle)) return;
+  if(chargementsZone.has(cle)) return chargementsZone.get(cle);
+  if(!o.force && zonesVues.has(cle)) return Promise.resolve([]);
   if(!o.force && !o.cats && dernierChargement &&
-     distanceM(dernierChargement[0], dernierChargement[1], lat, lng) < 800) return;
+     distanceM(dernierChargement[0], dernierChargement[1], lat, lng) < 800) return Promise.resolve([]);
   zonesVues.add(cle);
 
-  // une zone demandée en remplace une autre : la requête précédente est
-  // réellement coupée, pas seulement ignorée
-  if(abandonZone) abandonZone.abort();
-  abandonZone = new AbortController();
-  const signal = abandonZone.signal;
+  // Une clé de requête ne part qu'une fois. Des quartiers différents peuvent
+  // en revanche se compléter sans s'annuler mutuellement.
+  const controleur = new AbortController();
+  const signal = controleur.signal;
   if(!o.cats) dernierChargement = [lat,lng];
+  nombreChargementsZone++;
   chargementEnCours = true;
   performance.mark("zone:debut");
 
@@ -1596,14 +1729,73 @@ function chargerZone(lat, lng, opts){
       performance.measure("lieux Google", "zone:debut", "zone:google");
     })
   );
-  Promise.allSettled(travaux).finally(()=>{ chargementEnCours = false; });
+  const promesse = Promise.allSettled(travaux).finally(()=>{
+    chargementsZone.delete(cle);
+    nombreChargementsZone = Math.max(0, nombreChargementsZone-1);
+    chargementEnCours = nombreChargementsZone > 0;
+  });
+  chargementsZone.set(cle, promesse);
+  return promesse;
 }
 
 /* Un besoin ouvert va chercher ce qui lui manque, et seulement ça. */
 function chargerPourCats(cats){
-  if(!map || !cats || !cats.length) return;
+  if(!map || !cats || !cats.length) return Promise.resolve([]);
   const c = map.getCenter();
-  chargerZone(c.lat, c.lng, {cats});
+  return chargerZone(c.lat, c.lng, {cats});
+}
+
+const chargementsTemporaires = new Map();
+const derniersChargementsTemporaires = new Map();
+function chargerDonneesTemporaires(lat, lng, opts){
+  const o = opts || {};
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
+  const dernier = derniersChargementsTemporaires.get(cle) || 0;
+  if(!o.force && Date.now()-dernier < 5*60*1000) return Promise.resolve([]);
+  derniersChargementsTemporaires.set(cle,Date.now());
+  charge("Recherche des événements autour de ce point…");
+  const promesse = Promise.allSettled([
+    evenementsOpenAgenda(lat,lng).then(ev=>{ if(ev && ev.length) fusionner(ev,"external"); }),
+    connecter().then(()=>chargerPublications(lat,lng))
+      .then(pubs=>{ if(pubs && pubs.length) fusionner(pubs,"user"); })
+  ]).finally(()=>{
+    chargementsTemporaires.delete(cle);
+    charge(null);
+    majAccueil();
+  });
+  chargementsTemporaires.set(cle, promesse);
+  return promesse;
+}
+
+function chargerAutourDuPoint(lat, lng, opts){
+  const o = opts || {};
+  return Promise.allSettled([
+    chargerZone(lat,lng,{force:!!o.force}),
+    chargerDonneesTemporaires(lat,lng,{force:!!o.force})
+  ]);
+}
+
+const chargementsEditoriaux = new Map();
+function chargerEditorial(type){
+  if(!map) return Promise.resolve([]);
+  const c = map.getCenter();
+  const cle = type+":"+c.lat.toFixed(2)+","+c.lng.toFixed(2);
+  if(chargementsEditoriaux.has(cle)) return chargementsEditoriaux.get(cle);
+  const cats = type === "family" ? ["cinema","parc","terrain","musee","biblio"]
+    : type === "cinema" ? ["cinema"] : [];
+  charge(type === "family" ? "Recherche des sorties en famille…"
+    : type === "cinema" ? "Recherche des cinémas et projections…"
+    : "Recherche des événements autour de toi…");
+  const travaux = [chargerDonneesTemporaires(c.lat,c.lng)];
+  if(cats.length) travaux.push(chargerZone(c.lat,c.lng,{cats}));
+  const promesse = Promise.allSettled(travaux).finally(()=>{
+    chargementsEditoriaux.delete(cle);
+    charge(null);
+    rendre(); majAccueil(); majFeuille2();
+  });
+  chargementsEditoriaux.set(cle, promesse);
+  return promesse;
 }
 
 /* Dernière position connue : évite de démarrer à Paris quelqu'un qui vit à
@@ -1614,6 +1806,17 @@ function positionMemorisee(){
     if(v && Math.abs(v[0])<=90 && Math.abs(v[1])<=180) return v;
   }catch(e){}
   return null;
+}
+
+/* Point reproductible pour les contrôles locaux. Ignoré sur le site public,
+   il permet de tester Tourcoing sans détourner la vraie géolocalisation. */
+function positionLocaleDeTest(){
+  if(!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return null;
+  const valeur = new URLSearchParams(location.search).get("testPosition");
+  if(!valeur) return null;
+  const [lat,lng] = valeur.split(",").map(Number);
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat)<=90 && Math.abs(lng)<=180
+    ? [lat,lng] : null;
 }
 function memoriserPosition(c){
   try{ localStorage.setItem("autour:position", JSON.stringify(c)); }catch(e){}
@@ -1642,10 +1845,11 @@ async function demarrer(coords){
   coucheVille = L.layerGroup().addTo(map);
 
   moi = L.marker(positionMoi,{
-    icon:L.divIcon({className:"mk",
-      html:'<span class="moi-in"><i></i><b>🧍</b></span>', iconSize:[0,0]}),
-    interactive:false, keyboard:false, zIndexOffset:400
+    icon:L.divIcon({className:"mk mk-user",
+      html:'<span class="moi-in"><i></i><b>🙂</b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
+    interactive:true, keyboard:true, title:"Vous êtes ici", zIndexOffset:400
   }).addTo(map);
+  moi.on("click", ()=>toast("Vous êtes ici"));
 
   document.body.classList.toggle("loin", map.getZoom() < 15);
   let minuteurRendu;
@@ -1661,6 +1865,7 @@ async function demarrer(coords){
       rendre();                          // les grappes suivent le zoom
       const c = map.getCenter();
       chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
+      chargerDonneesTemporaires(c.lat, c.lng);
       if(catsActives) chargerPourCats([...catsActives]);
     }, 350);
   });
@@ -1715,11 +1920,7 @@ async function demarrer(coords){
   const differer = (f)=> (window.requestIdleCallback || (g=>setTimeout(g, 400)))(f);
 
   differer(()=>{
-    evenementsOpenAgenda(lat,lng).then(ev=>{ fusionner(ev); majAccueil(); });
-    // identité anonyme puis publications partagées de la zone
-    connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
-      if(pubs && pubs.length){ publies = pubs; fusionner(pubs); }
-    });
+    chargerDonneesTemporaires(lat,lng);
   });
 
   // le décor de la ville arrive en dernier : c'est du confort, pas de l'info
@@ -1767,13 +1968,14 @@ const FILTRES_HUMAINS = [
   { id:"proche",  label:"< 15 min à pied", test:(l,d)=>d < 1200 },
   { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
-  { id:"famille", label:"En famille",      cats:["parc","terrain","musee","biblio","marche","cinema"] },
+  { id:"famille", label:"En famille",      test:l=>
+      correspondCategorie(l,"family") || FAMILY_CATEGORIES.some(c=>correspondCategorie(l,c)) },
   { id:"etudier", label:"Étudier",         cats:["biblio","coworking","cafe"] },
   { id:"monde",   label:"Rencontrer",      cats:["event","concert","bar","asso","terrain","popup","studio","sport"] },
   { id:"libre",   label:"Sans réservation",cats:["parc","biblio","marche","fastfood","cafe","commerce",
                                                  "friperie","toilettes","terrain","musee","velo"] },
   { id:"pmr",     label:"Accessible PMR",  test:l=>l.pmr === true },
-].map(f=> f.cats ? Object.assign(f, {test:l=>f.cats.includes(l.cat)}) : f);
+].map(f=> f.cats ? Object.assign(f, {test:l=>f.cats.some(c=>correspondCategorie(l,c))}) : f);
 
 /* Timeline : la même carte, à un autre moment de la journée. */
 const CRENEAUX = [
@@ -1798,9 +2000,9 @@ function instantCreneau(){
 /* « Maintenant » : ce qui est vivant à cet instant, et rien d'autre. */
 function estVivant(l){
   const t = instantCreneau().getTime();
-  if((CATS[l.cat]||{}).eph){
-    if(l.finLe && l.finLe < t) return false;              // déjà terminé
-    if(l.debutLe && l.debutLe > t + 12*3600e3) return false; // trop lointain
+  if(estTemporaire(l)){
+    if(l.endsAt && l.endsAt < t) return false;              // déjà terminé
+    if(l.startsAt && l.startsAt > t + 12*3600e3) return false; // trop lointain
     return true;
   }
   // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
@@ -1822,8 +2024,8 @@ function visibles(){
     // un point sans nom exploitable n'apprend rien : « Restaurants · 3 » sur
     // la carte au lieu d'une enseigne, personne ne sait où il va
     if(!nomExploitable(l)) return false;
-    if(catsActives && !catsActives.has(l.cat)) return false;
-    if(!catsActives && filtreActif!=="tout" && l.cat!==filtreActif) return false;
+    if(catsActives && !correspondUneCategorie(l,catsActives)) return false;
+    if(!catsActives && filtreActif!=="tout" && !correspondCategorie(l,filtreActif)) return false;
     // une catégorie explicitement demandée reste visible même si masquée
     if(filtreMaintenant && !estVivant(l)) return false;
     if(filtresHumains.size){
@@ -1838,7 +2040,7 @@ function visibles(){
 
 function htmlMarqueur(l){
   const c = CATS[l.cat]||CATS.event;
-  if(c.eph){
+  if(estTemporaire(l)){
     const tilt = ((hash(l.id)%700)/100-3.5).toFixed(2);
     return '<span class="mk-in"><div class="affiche '+(l.gratuit?'gratuit':'payant')+'" style="--tilt:'+tilt+'deg">'+
       '<span class="a-haut"><span>'+c.emoji+'</span><span>'+(l.gratuit?'GRATUIT':l.prix+' €')+'</span>'+
@@ -1883,9 +2085,9 @@ function majIndexEvenements(){
   if(!indexPerime) return;
   indexPerime = false;
   indexEvenements = new Map();
-  const permanents = lieux.filter(l=>!(CATS[l.cat]||{}).eph);
+  const permanents = lieux.filter(l=>!estTemporaire(l));
   lieux.forEach(e=>{
-    if(!(CATS[e.cat]||{}).eph) return;
+    if(!estTemporaire(e)) return;
     // rattachement par proximité : comparer les noms ratait « Le Grand Mix »
     // face à « Grand Mix », et tout événement dont l'adresse est une rue
     let proche = null, dMin = 80;
@@ -1978,7 +2180,7 @@ function rendre(){
       const l = item.seul;
       garder.add(l.id);
       if(marqueurs.has(l.id)) return;
-      const eph = (CATS[l.cat]||{}).eph;
+      const eph = estTemporaire(l);
       const m = L.marker([l.lat,l.lng],{
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
@@ -2020,37 +2222,179 @@ function rendre(){
    Chaque entrée est la fonction capable de réafficher son écran, ce qui rend
    le retour arrière possible sans dupliquer le rendu. */
 let pileEcrans = [];
+let typeFeuille = null;
+let publicationModifiee = false;
+let dernierFocusFeuille = null;
+let profondeurHistorique = 0;
+let ignorerProchainPop = false;
+let actionApresAbandon = null;
 
-function pousserEcran(fn){ pileEcrans.push(fn); fn(); }
+function pousserEcran(fn){
+  pileEcrans.push(fn);
+  fn();
+  history.pushState({autour:true, profondeur:pileEcrans.length}, "", location.href);
+  profondeurHistorique++;
+}
 
 function retourEcran(){
-  pileEcrans.pop();                                   // on quitte l'écran courant
+  if(profondeurHistorique > 0){ history.back(); return; }
+  pileEcrans.pop();
   const precedent = pileEcrans[pileEcrans.length-1];
-  if(precedent) precedent(); else fermerFeuille();
+  if(precedent) precedent(); else demanderFermetureFeuille();
 }
 
-function ouvrirFeuille(html){
+function ouvrirFeuille(html, options){
+  const o = options || {};
   $("#voile").hidden=false;
   const f=$("#feuille");
+  if(f.hidden) dernierFocusFeuille = document.activeElement;
+  typeFeuille = o.kind || (typeFeuille === "publication" && pileEcrans.length > 1 ? "publication" : "contenu");
+  f.setAttribute("aria-label", o.ariaLabel || (typeFeuille === "publication" ? "Publier un événement" : "Panneau Autour"));
   const retour = pileEcrans.length > 1
     ? '<button class="retour" id="btnRetour">‹ Retour</button>' : '';
-  f.innerHTML='<button class="poignee" aria-label="Fermer"></button>'+retour+html;
+  f.innerHTML='<button class="feuille-x" id="feuilleX" aria-label="Fermer">✕</button>'+
+    '<button class="poignee" aria-label="Fermer"></button>'+retour+html;
   f.hidden=false;
   f.scrollTop = 0;
-  f.querySelector(".poignee").onclick=fermerFeuille;
+  f.querySelector("#feuilleX").onclick=()=>demanderFermetureFeuille();
+  f.querySelector(".poignee").onclick=()=>demanderFermetureFeuille();
   const r = f.querySelector("#btnRetour");
   if(r) r.onclick = retourEcran;
+  requestAnimationFrame(()=>{
+    const cible = f.querySelector("input:not([disabled]),button:not([disabled]),select:not([disabled]),textarea:not([disabled])");
+    if(cible) cible.focus({preventScroll:true});
+  });
 }
-function fermerFeuille(){
+function fermerFeuille(options){
+  const o = options || {};
+  const profondeur = profondeurHistorique;
   pileEcrans = [];
+  typeFeuille = null;
+  if(!o.preserverPublication) publicationModifiee = false;
   $("#voile").hidden=true; $("#feuille").hidden=true;
+  $("#abandonVoile").hidden=true;
+  if(o.nettoyerHistorique !== false && profondeur > 0){
+    profondeurHistorique = 0;
+    ignorerProchainPop = true;
+    history.go(-profondeur);
+  }
   const avaitTrajet = ligneCouches.length > 0;
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches=[];
   // cadrer un itinéraire dézoome souvent au point de réduire les lieux à des
   // pastilles : on revient sur le quartier pour qu'ils réapparaissent
   if(avaitTrajet && positionMoi) map.flyTo(positionMoi, 16, {duration:.6});
+  const cible = dernierFocusFeuille;
+  dernierFocusFeuille = null;
+  requestAnimationFrame(()=>{
+    const retour = cible && document.contains(cible) && cible.getClientRects().length
+      ? cible : $("#btnAjouter");
+    if(retour && !retour.hidden) retour.focus();
+  });
 }
-$("#voile").onclick=fermerFeuille;
+
+function afficherConfirmationAbandon(action){
+  actionApresAbandon = action || (()=>fermerFeuille());
+  const v = $("#abandonVoile");
+  v.hidden = false;
+  $("#abandonContinuer").focus();
+}
+
+function demanderFermetureFeuille(action){
+  const fermer = action || (()=>fermerFeuille());
+  if(typeFeuille === "publication" && publicationModifiee){
+    afficherConfirmationAbandon(fermer);
+    return;
+  }
+  fermer();
+}
+
+function continuerPublication(){
+  $("#abandonVoile").hidden=true;
+  actionApresAbandon = null;
+  const cible = $("#feuille").querySelector("input,button,select,textarea");
+  if(cible) cible.focus();
+}
+
+$("#voile").onclick=()=>demanderFermetureFeuille();
+$("#feuille").onclick=e=>e.stopPropagation();
+$("#abandonDialog").onclick=e=>e.stopPropagation();
+$("#abandonVoile").onclick=continuerPublication;
+$("#abandonContinuer").onclick=continuerPublication;
+$("#abandonConfirmer").onclick=()=>{
+  const action = actionApresAbandon || (()=>fermerFeuille());
+  actionApresAbandon = null;
+  publicationModifiee = false;
+  $("#abandonVoile").hidden=true;
+  action();
+};
+
+window.addEventListener("popstate", ()=>{
+  if(ignorerProchainPop){ ignorerProchainPop=false; return; }
+  if(profondeurHistorique > 0 && !$("#feuille").hidden){
+    profondeurHistorique--;
+    if(pileEcrans.length > 1){
+      pileEcrans.pop();
+      pileEcrans[pileEcrans.length-1]();
+      return;
+    }
+    if(typeFeuille === "publication" && publicationModifiee){
+      history.pushState({autour:true, profondeur:1}, "", location.href);
+      profondeurHistorique++;
+      afficherConfirmationAbandon(()=>fermerFeuille());
+      return;
+    }
+    fermerFeuille({nettoyerHistorique:false});
+    return;
+  }
+  if(ignorerPopFeuilleBesoins){ ignorerPopFeuilleBesoins=false; return; }
+  if(historiqueFeuilleBesoins && feuilleNiveau !== null){
+    historiqueFeuilleBesoins=false;
+    fermerFeuille2({nettoyerHistorique:false});
+    return;
+  }
+});
+
+function elementsFocusables(conteneur){
+  return [...conteneur.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>!el.hidden && el.getClientRects().length);
+}
+
+document.addEventListener("keydown", e=>{
+  const abandonOuvert = !$("#abandonVoile").hidden;
+  const feuilleOuverte = !$("#feuille").hidden;
+  if(e.key === "Escape"){
+    if(abandonOuvert){ e.preventDefault(); continuerPublication(); return; }
+    if(feuilleOuverte){
+      e.preventDefault();
+      if(pileEcrans.length > 1) retourEcran(); else demanderFermetureFeuille();
+      return;
+    }
+    if(modeNav){ e.preventDefault(); quitterNav(); return; }
+    if(feuilleNiveau !== null){ e.preventDefault(); fermerFeuille2(); return; }
+    if(modePose){ e.preventDefault(); fermerModePose(); return; }
+    if(!$("#barreRech").hidden){ e.preventDefault(); $("#btnFermerRech").click(); }
+    return;
+  }
+  if(e.key !== "Tab" || (!abandonOuvert && !feuilleOuverte)) return;
+  const conteneur = abandonOuvert ? $("#abandonDialog") : $("#feuille");
+  const focusables = elementsFocusables(conteneur);
+  if(!focusables.length){ e.preventDefault(); conteneur.focus(); return; }
+  const premier = focusables[0], dernier = focusables[focusables.length-1];
+  if(e.shiftKey && document.activeElement === premier){ e.preventDefault(); dernier.focus(); }
+  else if(!e.shiftKey && document.activeElement === dernier){ e.preventDefault(); premier.focus(); }
+});
+
+let debutBalayageFeuille = null;
+$("#feuille").addEventListener("touchstart", e=>{
+  const t=e.changedTouches[0]; debutBalayageFeuille={x:t.clientX,y:t.clientY};
+},{passive:true});
+$("#feuille").addEventListener("touchend", e=>{
+  if(!debutBalayageFeuille) return;
+  const t=e.changedTouches[0], dy=t.clientY-debutBalayageFeuille.y;
+  const dx=Math.abs(t.clientX-debutBalayageFeuille.x);
+  debutBalayageFeuille=null;
+  if(dy>90 && dx<70) demanderFermetureFeuille();
+},{passive:true});
 
 /* Google renvoie les sept lignes d'horaires en commençant par lundi ;
    getDay() commence par dimanche, d'où le décalage. */
@@ -2059,6 +2403,13 @@ function horaireDuJour(l){
   const i = (new Date().getDay() + 6) % 7;
   const ligne = l.horaires[i] || "";
   return ligne.replace(/^[^:]*:\s*/, "");        // « Lundi : 9h–18h » → « 9h–18h »
+}
+
+function libelleHoraires(l){
+  const horaire = horaireDuJour(l);
+  if(horaire) return horaire;
+  if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/i.test(l.quand)) return l.quand;
+  return "Horaires inconnus";
 }
 
 function horairesSemaine(l){
@@ -2118,7 +2469,7 @@ function ouvrirDetail(id){
     // dire évite un déplacement pour rien devant une grille fermée
     noteVacances(l)+
     // une fausse distribution fait se déplacer quelqu'un qui n'a pas de quoi manger
-    ((CATS[l.cat]||{}).eph && !l.verifie && /alimentaire|collecte|hebergement/.test(l.cat)
+    (estTemporaire(l) && !l.verifie && /alimentaire|collecte|hebergement/.test(l.cat)
       ? '<p class="non-verifie">Annonce publiée par un habitant, non vérifiée. '+
         'Renseigne-toi avant de te déplacer.</p>' : '')+
     '<address class="adresse"><span class="ad-rue">'+esc(l.adresse)+'</span>'+
@@ -2129,7 +2480,7 @@ function ouvrirDetail(id){
       '<div><dt>Quand</dt><dd>'+
         (l.ouvert === true  ? '<span class="ouvert">Ouvert</span> · ' :
          l.ouvert === false ? '<span class="ferme">Fermé</span> · '   : '')+
-        esc(horaireDuJour(l) || l.quand)+'</dd></div>'+
+        esc(libelleHoraires(l))+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
       '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
     '</dl>'+
@@ -2157,9 +2508,8 @@ function ouvrirDetail(id){
     if(l.dbId && !(await Store.supprimer(l.dbId))){
       toast("Suppression impossible"); return;
     }
-    publies = publies.filter(p=>p.id !== l.id);
-    lieux   = lieux.filter(p=>p.id !== l.id);
-    indexPerime = true;
+    userPublications = userPublications.filter(p=>p.id !== l.id);
+    reconstruireLieux();
     fermerFeuille(); rendre(); dessinerFiltres();
     toast("Événement supprimé");
   };
@@ -2797,8 +3147,16 @@ function nouveauBrouillon(){
 }
 function validerPose(){
   const c = map.getCenter();
-  if(retourFormulaire && brouillon){ brouillon.lat=c.lat; brouillon.lng=c.lng; }
-  else brouillon = nouveauBrouillon();
+  if(retourFormulaire && brouillon){
+    brouillon.lat=c.lat; brouillon.lng=c.lng;
+    publicationModifiee = true;
+  }else{
+    brouillon = nouveauBrouillon();
+    publicationModifiee = false;
+  }
+  // « C'est là » choisit un point de recherche. Il n'altère jamais le repère
+  // bleu de géolocalisation, qui continue de représenter uniquement l'utilisateur.
+  chargerAutourDuPoint(c.lat,c.lng,{force:true});
   retourFormulaire = false;
   fermerModePose();
   pileEcrans = [];
@@ -2810,7 +3168,7 @@ function validerPose(){
 function lieuxLibres(){
   const [lat,lng] = positionMoi;
   return lieux
-    .filter(l=>!(CATS[l.cat]||{}).eph)
+    .filter(l=>!estTemporaire(l))
     .filter(l=>!indexEvenements.get(l.titre))
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
     .sort((a,b)=>a.dist-b.dist)
@@ -2845,11 +3203,13 @@ function ouvrirChoixLieu(){
             '<span class="rang-sous">'+esc(l.adresse||"")+'</span></span>'+
             '<span class="rang-dist">'+formatDist(l.dist)+'</span></button>';
         }).join("")
-      : '<p class="liste-vide">Aucun lieu libre détecté autour.</p>')
+      : '<p class="liste-vide">Aucun lieu libre détecté autour.</p>'),
+    {kind:"publication", ariaLabel:"Choisir le lieu de la publication"}
   );
 
   const poser = (nom, lat, lng)=>{
     brouillon.adresse = nom; brouillon.lat = lat; brouillon.lng = lng;
+    publicationModifiee = true;
     retourEcran();                       // retour au formulaire, déjà rempli
   };
 
@@ -2935,17 +3295,23 @@ function dessinerFormulaire(){
     '</div>'+
 
 
-    '<button class="valider" id="fOk">Publier</button>'
+    '<button class="valider" id="fOk">Publier</button>'+
+    '<button class="annuler-publication" id="fAnnuler">Annuler</button>',
+    {kind:"publication", ariaLabel:"Publier un événement"}
   );
 
   const f=$("#feuille");
   const memo=()=>{
+    const avant = JSON.stringify(b);
     b.titre=$("#fTitre").value; b.adresse=$("#fAdr").value;
     b.date=$("#fDate").value; b.heure=$("#fHeure").value; b.fin=$("#fFin").value;
     if($("#fPrix")) b.prix=clamp(Number($("#fPrix").value)||1,1,99);
     if($("#fPlaces")) b.places=clamp(Number($("#fPlaces").value)||1,1,999);
+    if(JSON.stringify(b) !== avant) publicationModifiee = true;
   };
-  const lier=(sel,fn)=>f.querySelectorAll(sel).forEach(x=>x.onclick=()=>{memo();fn(x);dessinerFormulaire()});
+  const lier=(sel,fn)=>f.querySelectorAll(sel).forEach(x=>x.onclick=()=>{
+    memo(); fn(x); publicationModifiee=true; dessinerFormulaire();
+  });
   lier("[data-cat]",    x=>b.cat=x.dataset.cat);
   lier("[data-jour]",   x=>b.date=x.dataset.jour);
   lier("[data-gratuit]",x=>b.gratuit=x.dataset.gratuit==="1");
@@ -2957,26 +3323,39 @@ function dessinerFormulaire(){
     f.querySelector(s).onchange = ()=>{ memo(); $("#fQuand").textContent = libelleQuand(b); };
   });
   f.querySelector("#fAdr").oninput = ()=>{
+    publicationModifiee = true;
     b.adresse = $("#fAdr").value;
     f.querySelector(".ou-nom").textContent = b.adresse || "Point posé sur la carte";
   };
+  f.querySelectorAll("input").forEach(input=>input.addEventListener("input",()=>{ publicationModifiee=true; }));
 
   $("#fChoisir").onclick  = ()=>{ memo(); pousserEcran(ouvrirChoixLieu); };
-  $("#fDeplacer").onclick = ()=>{ memo(); retourFormulaire=true; fermerFeuille(); ouvrirModePose(); };
+  $("#fDeplacer").onclick = ()=>{
+    memo(); retourFormulaire=true;
+    fermerFeuille({preserverPublication:true});
+    ouvrirModePose();
+  };
+  $("#fAnnuler").onclick = ()=>demanderFermetureFeuille();
   $("#fOk").onclick = ()=>{ memo(); publier(); };
 }
 
 async function publier(){
   const b=brouillon;
-  const l={ id:"n"+Date.now(), cat:b.cat,
+  const debut = new Date(b.date+"T"+(b.heure||"00:00")+":00");
+  let fin = b.fin ? new Date(b.date+"T"+b.fin+":00") : null;
+  if(fin && fin <= debut) fin.setDate(fin.getDate()+1);
+  const l=normaliserItem({ id:"n"+Date.now(), cat:b.cat,
     titre:(b.titre||"").trim()||"Sans titre",
     adresse:(b.adresse||"").trim()||"Sur place",
     cp:commune, quand:libelleQuand(b)||"Bientôt",
     gratuit:b.gratuit, prix:b.gratuit?0:b.prix,
-    places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng };
+    places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng,
+    debutLe:Number.isFinite(debut.getTime()) ? debut.getTime() : null,
+    finLe:fin && Number.isFinite(fin.getTime()) ? fin.getTime() : null,
+    isTemporary:true }, "autour");
   const enligne = await Store.publier(l);
-  if(!enligne){ fermerFeuille(); return; }   // message déjà affiché
-  publies.push(enligne); lieux.push(enligne);
+  if(!enligne) return;                       // message déjà affiché, brouillon conservé
+  fusionner([enligne], "user");
   fermerFeuille();
   filtreActif="tout"; dessinerFiltres(); rendre();
   map.flyTo([enligne.lat,enligne.lng], Math.max(map.getZoom(),17), {duration:.7});
@@ -3137,7 +3516,7 @@ function completerRestauration(){
    liste des restos serait amputée de tout ce qui n'est pas cartographié. */
 function ajouterLieuxGoogle(fiches, catDefaut){
   if(!fiches) return 0;
-  let ajoutes = 0;
+  const aAjouter = [];
   fiches.forEach(f=>{
     if(!f.nom) return;
     // le nom tranche mieux que le type : Google range la Mission locale en
@@ -3151,8 +3530,9 @@ function ajouterLieuxGoogle(fiches, catDefaut){
       distanceM(l.lat,l.lng,f.lat,f.lng) < 80 &&
       sansAccents(l.titre) === sansAccents(f.nom));
     if(deja) return;
-    lieux.push({
+    aAjouter.push(normaliserItem({
       id:"g"+hash(f.nom+f.lat), cat, titre:f.nom,
+      description:f.description || "", type:f.type,
       adresse:f.adresse || f.nom, cp:commune,
       quand:"Voir sur place", gratuit:true, prix:0,
       places:null, qr:false, par:"Google Maps",
@@ -3161,9 +3541,10 @@ function ajouterLieuxGoogle(fiches, catDefaut){
       // un lieu ramené par une recherche de réseau d'aide l'est par construction
       solidaire: f.solidaire === true || estSolidaire(f.nom, false),
       tel:f.tel, pmr:f.pmr
-    });
-    ajoutes++;
+    }, "google_places"));
   });
+  const ajoutes = aAjouter.length;
+  if(ajoutes) fusionner(aAjouter, "permanent");
   if(ajoutes){ console.info("Google Places :", ajoutes, "lieu(x) ajouté(s)"); rendre(); }
   return ajoutes;
 }
@@ -3206,7 +3587,7 @@ const formatDist = (m)=> m<1000 ? Math.round(m/10)*10+" m" : (m/1000).toFixed(1)
 
 /* événements éphémères qui se passent dans un lieu donné */
 function evenementsDe(lieu){
-  return lieux.filter(l=>(CATS[l.cat]||{}).eph && l.adresse === lieu.titre);
+  return lieux.filter(l=>estTemporaire(l) && l.adresse === lieu.titre);
 }
 
 /* "auto" = pertinence · "note" = les mieux notés · "distance" = les plus proches */
@@ -3216,7 +3597,7 @@ function classerLieux(liste, sansPalmares){
   const [lat,lng] = positionMoi;
   const dedans = liste.map(l=>{
     const d = distanceM(lat,lng,l.lat,l.lng);
-    const evs = (CATS[l.cat]||{}).eph ? [] : evenementsDe(l);
+    const evs = estTemporaire(l) ? [] : evenementsDe(l);
     return Object.assign({}, l, {dist:d, evs:evs.length, mien:!!l.mien});
   });
 
@@ -3250,7 +3631,7 @@ function classerLieux(liste, sansPalmares){
 }
 
 function classer(cat){
-  return classerLieux(lieux.filter(l=>l.cat===cat), SANS_CLASSEMENT.has(cat));
+  return classerLieux(lieux.filter(l=>correspondCategorie(l,cat)), SANS_CLASSEMENT.has(cat));
 }
 
 function ouvrirListe(cat){
@@ -3303,7 +3684,7 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
     if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
     sous.push(esc(x.adresse||""));
     // horaires réels quand OpenStreetMap les connaît
-    if(x.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(x.quand)) sous.push(esc(x.quand));
+    sous.push(esc(libelleHoraires(x)));
     return '<button class="rang" data-va="'+esc(x.id)+'">'+
       '<span class="rang-n">'+(i+1)+'</span>'+
       '<span class="rang-emoji">'+c.emoji+'</span>'+
@@ -3596,6 +3977,7 @@ function appliquerSuggestion(s){
   }
   if(s.f){
     filtresHumains.add(s.f);
+    if(s.f === "famille") chargerEditorial("family");
     toutAfficher(); majFiltres();
     toast(s.t);
     return;
@@ -3603,6 +3985,10 @@ function appliquerSuggestion(s){
   catsActives = new Set(s.cats);
   filtreActif = "tout";
   selectionAccueil = false;
+  chargerPourCats(s.cats);
+  if(s.cats.includes("family")) chargerEditorial("family");
+  else if(s.cats.includes("cinema")) chargerEditorial("cinema");
+  else if(s.cats.includes("event")) chargerEditorial("events");
   if(s.aide && positionMoi) chargerAide(positionMoi[0], positionMoi[1]);
   mettreAJourProfil("categorie", s.cats[0]);
   dessinerFiltres(); majFiltres(); rendre();
@@ -3737,8 +4123,8 @@ function vacancesScolaires(d){
    en tapant son nom, en la choisissant dans Explorer, ou par une intention
    qui l'inclut explicitement (« Je viens d'arriver » a besoin de la mairie).  */
 function demandeExplicite(l, ctx){
-  if(catsActives && catsActives.has(l.cat)) return true;
-  if(filtreActif === l.cat) return true;
+  if(catsActives && correspondUneCategorie(l,catsActives)) return true;
+  if(correspondCategorie(l,filtreActif)) return true;
   if(!ctx.q || ctx.q.length < 3) return false;
   if(sansAccents(l.titre).includes(ctx.q)) return true;   // « lycée Baggio »
   return categorieRecherchee(ctx.q) === l.cat;            // « collège », « mairie »
@@ -3803,7 +4189,7 @@ const POIDS_AIDE = {
 /* « Disponible aujourd'hui » : vrai, faux, ou null quand on ne sait pas.
    Inventer une réponse ici ferait se déplacer quelqu'un pour rien. */
 function disponibleAujourdhui(l){
-  if((CATS[l.cat]||{}).eph){
+  if(estTemporaire(l)){
     if(!l.debutLe) return true;
     const d = new Date(l.debutLe), n = new Date();
     return d.toDateString() === n.toDateString() || (l.finLe && l.finLe > n.getTime());
@@ -3869,7 +4255,7 @@ function proposableAuto(l, ctx){
     // reste trouvable : le mode change les priorités, il n'enferme personne
     if(demandeExplicite(l, ctx)) return true;
     // pour le reste, la ville s'efface : on ne propose que ce qui aide
-    if(!catsAideActives().has(l.cat)) return false;
+    if(!correspondUneCategorie(l,catsAideActives())) return false;
     const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
     if(s && s.solidaireSeul && !l.solidaire) return false;
     // « Urgence » ne montre que ce qui reçoit en urgence : un club de sport
@@ -3902,7 +4288,7 @@ function scoreLieu(l, ctx){
   let s = 0, raisons = [];
   const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
   const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
-  const eph = !!(CATS[l.cat]||{}).eph;
+  const eph = estTemporaire(l);
 
   // proximité au centre regardé, pas seulement à toi : explorer une autre
   // zone doit y faire remonter les lieux
@@ -3918,9 +4304,13 @@ function scoreLieu(l, ctx){
 
   if(eph){
     s += 55;
-    if(l.debutLe && l.debutLe > ctx.t && l.debutLe < ctx.t + 2*3600e3){
+    if(l.startsAt && l.startsAt > ctx.t && l.startsAt < ctx.t + 2*3600e3){
       s += POIDS.evenementImminent; raisons.push([POIDS.evenementImminent+55,"Commence bientôt"]);
-    }else raisons.push([55,"Ça se passe maintenant"]);
+    }else if(l.startsAt && l.startsAt <= ctx.t && (!l.endsAt || l.endsAt >= ctx.t)){
+      raisons.push([55,"Ça se passe maintenant"]);
+    }else if(l.startsAt && l.startsAt > ctx.t){
+      raisons.push([55,"À venir"]);
+    }else raisons.push([55,"Horaire à vérifier"]);
   }
 
   const pm = (ctx.moment.poids[l.cat]||0);
@@ -3951,7 +4341,7 @@ function niveauLieu(l, ctx, sc){
   // mérite d'être vu, c'est le classement qui fait le tri
   if(modeAide) return "A";
   const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
-  const eph = !!(CATS[l.cat]||{}).eph;
+  const eph = estTemporaire(l);
   if(l.mien) return "A";
   if(dMoi < 250) return "A";
   if(eph && (!l.debutLe || l.debutLe < ctx.t + 6*3600e3)) return "A";
@@ -3973,6 +4363,8 @@ let selectionAccueil = null;
    carte, et rien d'autre. */
 let feuilleNiveau = null;
 let sousChoisi = null;          // index du sous-choix coché, ou null
+let historiqueFeuilleBesoins = false;
+let ignorerPopFeuilleBesoins = false;
 
 /* Un lieu sans nom exploitable n'a rien à dire. Sauf là où le nom n'a
    jamais existé : des toilettes publiques ou un arrêt de bus sont utiles
@@ -4004,7 +4396,7 @@ function compterCats(cats){
   const [lat,lng] = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
   let n = 0;
   for(const l of lieux){
-    if(!set.has(l.cat)) continue;
+    if(!correspondUneCategorie(l,set)) continue;
     if(!nomExploitable(l)) continue;
     if(filtreMaintenant && !estVivant(l)) continue;
     if(distanceM(lat,lng,l.lat,l.lng) > rayonRecherche) continue;
@@ -4014,13 +4406,26 @@ function compterCats(cats){
   return n;
 }
 
+function typeEditorial(sousChoix){
+  const cats = (sousChoix && sousChoix.cats) || [];
+  if(cats.includes("family")) return "family";
+  if(cats.includes("cinema")) return "cinema";
+  if(cats.includes("event")) return "events";
+  return "autre";
+}
+
 function ouvrirFeuille2(niveau){
+  const etaitFermee = feuilleNiveau === null;
   feuilleNiveau = niveau;
   sousChoisi = null;
   const f = $("#feuilleBesoins");
   f.hidden = false;
   f.classList.remove("deplie");
   majFeuille2();
+  if(etaitFermee){
+    history.pushState({autourBesoins:true},"",location.href);
+    historiqueFeuilleBesoins=true;
+  }
   // ouvrir un besoin déclenche sa recherche : c'est le moment où elle sert
   const b = BESOIN_DE(niveau);
   if(b && b.sous){
@@ -4030,7 +4435,8 @@ function ouvrirFeuille2(niveau){
   }
 }
 
-function fermerFeuille2(){
+function fermerFeuille2(options){
+  const o = options || {};
   feuilleNiveau = null;
   sousChoisi = null;
   const f = $("#feuilleBesoins");
@@ -4038,6 +4444,11 @@ function fermerFeuille2(){
   f.hidden = true;
   f.classList.remove("deplie");
   majRaccourcis();
+  if(o.nettoyerHistorique !== false && historiqueFeuilleBesoins){
+    historiqueFeuilleBesoins=false;
+    ignorerPopFeuilleBesoins=true;
+    history.back();
+  }
 }
 
 /* Rendu de la feuille. Trois écrans possibles, jamais mélangés. */
@@ -4067,13 +4478,15 @@ function majFeuille2(){
     if(!b){ fermerFeuille2(); return; }
     $("#fbTitre").textContent = b.emoji+" "+b.label;
     retour.hidden = false;
-    // une catégorie vide ne s'affiche pas : elle ne mène nulle part
-    const dispo = b.sous.map((s,i)=>({s, i, n:compterCats(s.cats)})).filter(x=>x.n > 0);
-    corps.innerHTML = (dispo.length
-      ? dispo.map(x=>
-          '<button class="bn'+(sousChoisi===x.i?" actif":"")+'" data-sc="'+x.i+'">'+
-          '<b>'+esc(x.s.label)+'</b><i>'+x.n+'</i></button>').join("")
-      : messageVide()) + blocResultats();
+    // Les catégories éditoriales restent accessibles même à zéro : l'état
+    // vide explique quoi faire et permet de relancer une recherche plus large.
+    const choix = b.sous.map((s,i)=>({s, i, n:compterCats(s.cats)}));
+    const selection = sousChoisi === null ? null : choix.find(x=>x.i===sousChoisi);
+    corps.innerHTML = choix.map(x=>
+      '<button class="bn'+(sousChoisi===x.i?" actif":"")+'" data-sc="'+x.i+'">'+
+      '<b>'+esc(x.s.label)+'</b><i>'+x.n+'</i></button>').join("")+
+      (selection && selection.n===0 ? messageVide(typeEditorial(selection.s)) : "")+
+      blocResultats();
   }
 
   brancherFeuille2();
@@ -4090,9 +4503,14 @@ function piedFeuille(){
     '</div>';
 }
 
-function messageVide(){
-  return '<div class="fb-vide">Aucun résultat proche pour ce filtre. Élargir la zone&nbsp;?'+
-         '<br><button data-elargir="1">Élargir</button></div>';
+function messageVide(type){
+  return '<div class="fb-vide" data-vide="'+esc(type||"autre")+'">'+
+    'Aucun résultat trouvé à proximité.'+
+    '<div class="etat-vide-actions">'+
+      '<button data-vide-action="5km">Élargir à 5 km</button>'+
+      '<button data-vide-action="tout">Voir toutes les catégories</button>'+
+      '<button data-vide-action="publier">Publier un événement</button>'+
+    '</div></div>';
 }
 
 /* Les cinq meilleures suggestions, sous les choix. C'est la réponse, pas
@@ -4144,6 +4562,8 @@ function brancherFeuille2(){
       mettreAJourProfil("categorie", bes.sous[i].cats[0]);
       // on ne va chercher ces catégories qu'ici, au moment où on les demande
       chargerPourCats(bes.sous[i].cats);
+      const editorial = typeEditorial(bes.sous[i]);
+      if(editorial !== "autre") chargerEditorial(editorial);
       if(feuilleNiveau === "manger") completerRestauration();
     }
     rendre(); majAccueil(); majFeuille2(); majRaccourcis();
@@ -4155,6 +4575,31 @@ function brancherFeuille2(){
   });
 
   corps.querySelectorAll("[data-elargir]").forEach(b=>b.onclick=elargirZone);
+  corps.querySelectorAll("[data-vide-action]").forEach(b=>b.onclick=()=>{
+    const action = b.dataset.videAction;
+    if(action === "5km"){
+      rayonRecherche = Math.max(rayonRecherche,5000);
+      if(map) map.setZoom(Math.min(map.getZoom(),14));
+      const centre = map.getCenter();
+      chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
+      if(sousChoisi !== null){
+        const besoin = BESOIN_DE(feuilleNiveau);
+        const sous = besoin && besoin.sous[sousChoisi];
+        const editorial = typeEditorial(sous);
+        if(editorial !== "autre") chargerEditorial(editorial);
+      }
+      toast("Recherche élargie à 5 km");
+      return;
+    }
+    if(action === "tout"){
+      catsActives=null; sousChoisi=null; selectionAccueil=false;
+      rendre(); majAccueil(); majFeuille2(); majRaccourcis();
+      return;
+    }
+    fermerFeuille2();
+    retourFormulaire=false;
+    ouvrirModePose();
+  });
 
   corps.querySelectorAll("[data-pied]").forEach(b=>b.onclick=()=>{
     const q = b.dataset.pied;
@@ -4226,6 +4671,7 @@ function majFiltres(){
   z.querySelectorAll("[data-fh]").forEach(x=>x.onclick=()=>{
     const id = x.dataset.fh;
     if(filtresHumains.has(id)) filtresHumains.delete(id); else filtresHumains.add(id);
+    if(id === "famille" && filtresHumains.has(id)) chargerEditorial("family");
     majFiltres(); rendre();
   });
 }
@@ -4269,7 +4715,7 @@ function vitalite(){
   const [lat,lng] = positionMoi;
   const proches = lieux.filter(l=>distanceM(lat,lng,l.lat,l.lng) < 900);
   const ouverts = proches.filter(l=>l.ouvert === true).length;
-  const evs = proches.filter(l=>(CATS[l.cat]||{}).eph && !estPasse(l)).length;
+  const evs = proches.filter(l=>estTemporaire(l) && !estPasse(l)).length;
   const score = ouverts + evs*5;
   if(score >= 25) return {p:"🟢", t:"Quartier très vivant", n:ouverts, e:evs};
   if(score >= 8)  return {p:"🟡", t:"Activité normale",     n:ouverts, e:evs};
@@ -4444,7 +4890,7 @@ function majAccueil(){
   // en mode Aide on accepte d'aller plus loin : cinq kilomètres pour un
   // hébergement d'urgence, ce n'est pas la même chose que pour un café
   const rayon = modeAide ? 6000 : 2500;
-  let notes = lieux
+  let notes = visibles()
     .filter(l=>nomExploitable(l) && proposableAuto(l, ctx))
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
     .filter(l=>l.dist < rayon)
@@ -4470,7 +4916,7 @@ function majAccueil(){
     // on réserve une place à un événement s'il en existe un : sans ça, les
     // commerces bien notés rafleraient toutes les lignes et l'app perdrait
     // exactement ce qui la distingue
-    const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
+    const ev = notes.find(l=>estTemporaire(l));
     if(ev) choisis.push(ev);
     notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
   }
@@ -4525,10 +4971,11 @@ $("#videOk").onclick=()=>{ montrerFermes = true; $("#bandeauVide").hidden = true
 
 /* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
 performance.mark("autour:script");
-demarrer(positionMemorisee()).then(()=>{
+const positionTest = positionLocaleDeTest();
+demarrer(positionTest || positionMemorisee()).then(()=>{
   performance.mark("autour:carte");
   performance.measure("interface prête", "autour:script", "autour:carte");
-  suivreMaPosition();
+  if(!positionTest) suivreMaPosition();
 });
 // la loupe prend toute la barre : chercher, c'est une seule chose à la fois
 $("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#btnMaintenant").hidden=true;
