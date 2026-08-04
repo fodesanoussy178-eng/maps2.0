@@ -36,7 +36,7 @@
 <style>
 :root{
   --paper:#F7F8F5; --ink:#1F2A25; --ink2:#5D6B63; --signal:#FF4A17; --trait:#141E19;
-  --bord:#DCE0D8; --ardoise:#2C3A33;
+  --bord:#DCE0D8; --ardoise:#2C3A33; --aide:#B82A3A;
   --sol:#F2F1EC; --bati:#E7E4DE; --vert:#C9E6C4; --eau:#A5CDEA;
   --voie:#FFFFFF; --liseré:#DFDCD5; --vite:#F8D28D; --vite-bord:#E9B96A;
   --label:#5F6863;
@@ -263,6 +263,32 @@ input{font-family:inherit;font-size:16px}
   background:#fff;color:var(--ink);font-size:13px;font-weight:600;white-space:nowrap;
   box-shadow:0 2px 8px rgba(20,30,25,.12)}
 .fh.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.fh.aide.actif{background:var(--aide);border-color:var(--aide)}
+
+/* ---- mode Aide : un bouton fixe, et une carte qui change de priorités ---- */
+.aide-mode{flex-shrink:0;display:flex;align-items:center;gap:6px;height:46px;padding:0 16px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:14px;font-weight:700;box-shadow:0 2px 10px rgba(20,30,25,.14);
+  transition:transform .16s,background .16s,color .16s}
+.aide-mode:active{transform:scale(.95)}
+.aide-mode.actif{background:var(--aide);border-color:var(--aide);color:#fff;
+  box-shadow:0 3px 16px rgba(184,42,58,.38)}
+.aide-mode.actif span::after{content:" ✕";opacity:.75;font-weight:600}
+/* Le mode et ses six besoins vivent en haut : le bas de l'écran est déjà
+   pris par la carte d'accueil, qui masquait la rangée de besoins. */
+#aideTete{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:598;
+  padding:9px 4px 8px 4px;border-radius:16px;background:var(--aide);color:#fff;
+  box-shadow:0 3px 14px rgba(184,42,58,.32);animation:monteT .24s}
+#aideTxt{margin:0 10px 8px;font-size:12.5px;line-height:1.4}
+#aideTxt b{font-weight:700}
+#aideBesoins{display:flex;gap:6px;padding:0 10px;overflow-x:auto;scrollbar-width:none}
+#aideBesoins::-webkit-scrollbar{display:none}
+.bs{flex:0 0 auto;padding:8px 13px;border:1px solid rgba(255,255,255,.45);border-radius:99px;
+  background:transparent;color:#fff;font-size:13px;font-weight:600;white-space:nowrap}
+.bs.actif{background:#fff;border-color:#fff;color:var(--aide);font-weight:700}
+/* le bandeau du mode occupe la ligne sous la barre : les autres descendent */
+body.aide #bandeauGeo,body.aide #bandeauVide{top:calc(var(--safe-t) + 178px)}
+body.aide .mini{top:calc(var(--safe-t) + 178px)}
 
 /* ---- accueil : la réponse à « qu'est-ce qu'il se passe ici, maintenant ? » ---- */
 #accueil{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 82px);z-index:600;
@@ -558,6 +584,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="bandeauOk">Activer</button>
 </div>
 
+<div id="aideTete" hidden>
+  <p id="aideTxt"></p>
+  <div id="aideBesoins"></div>
+</div>
+
 <div id="bandeauVide" hidden>
   <span id="videTxt">Rien d’ouvert autour de toi en ce moment.</span>
   <button id="videOk">Tout voir</button>
@@ -574,6 +605,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
+  <button class="aide-mode" id="btnAide">❤️ <span>Aide</span></button>
   <div id="suggestions" hidden></div>
 </div>
 
@@ -719,6 +751,15 @@ function affinerCategorie(cat, nom){
 function preciserService(nom){
   for(const [re,lab] of SERVICES) if(re.test(nom||"")) return lab;
   return "";
+}
+
+/* Un vestiaire solidaire et une boutique de vêtements portent le même tag
+   OSM. Dans le mode Aide, envoyer quelqu'un chez Zara sous « Vêtements »
+   serait la même faute que confondre Carrefour et l'aide alimentaire : on
+   marque donc ce qui relève réellement de la solidarité. */
+const NOMS_SOLIDAIRES = /emma(ü|u)s|vestiaire|solidair|secours|croix[- ]rouge|caritas|abb[ée]\s*pierre|sdf|sans[- ]abri|social|entraide|resto|banque\s*alimentaire|ccas|samu\s*social|accueil\s*de\s*jour/i;
+function estSolidaire(nom, tagCharite){
+  return !!tagCharite || NOMS_SOLIDAIRES.test(nom||"") || !!preciserService(nom);
 }
 
 /* Classer une banque alimentaire ou un foyer d'urgence par étoiles n'a aucun
@@ -1163,6 +1204,8 @@ async function vraisLieux(lat,lng,bornes){
       tel: t.phone || t["contact:phone"] || "",
       pmr: t.wheelchair === "yes" ? true : (t.wheelchair === "no" ? false : undefined),
       service: preciserService(t.name),      // Mission locale ≠ France Travail
+      solidaire: estSolidaire(t.name, regle[1]==="charity" || /^(social_facility|social_centre)$/.test(regle[1])
+                              || regle[0] === "social_facility"),
       gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
     };
@@ -1736,7 +1779,10 @@ function estVivant(l){
 
 function visibles(){
   const q = recherche.trim().toLowerCase();
-  if(Array.isArray(selectionAccueil) && !catsActives && !filtreMaintenant && !q)
+  // au repos, la carte se limite à la poignée de lieux de la carte d'accueil.
+  // Pas en mode Aide : là, on veut voir tous les points d'aide autour, la
+  // carte d'accueil ne servant qu'à donner les premiers.
+  if(Array.isArray(selectionAccueil) && !modeAide && !catsActives && !filtreMaintenant && !q)
     return lieux.filter(l=>selectionAccueil.includes(l.id));
 
   const [mLat,mLng] = positionMoi || [0,0];
@@ -1832,12 +1878,15 @@ function selectionner(){
   // carte tant qu'on ne l'a pas demandé — écoles, administrations, et tout ce
   // qui est fermé à l'instant regardé
   const admis = brut.filter(l=>proposableAuto(l, ctx));
-  ecartesAuto = brut.length - admis.length;
 
-  const notes = admis.map(l=>{
+  let notes = admis.map(l=>{
     const r = scoreLieu(l, ctx);
     return {l, score:r.score, raison:r.raison, niveau:niveauLieu(l, ctx, r.score)};
   });
+  const avant = notes.length;
+  if(modeAide && !montrerFermes) notes = ecarterFermesSiAlternative(notes);
+  // ce que la règle a retiré : sert au bandeau « rien d'ouvert · tout voir »
+  ecartesAuto = (brut.length - admis.length) + (avant - notes.length);
 
   // un filtre ou une recherche explicite lève le masquage du niveau C :
   // ce que l'utilisateur demande ne doit jamais lui être caché
@@ -1889,6 +1938,7 @@ function rendre(){
   const garder = new Set();
   const choisis = selectionner();
   majBandeauVide(choisis.length);
+  if(modeAide) majTeteAide();
   grouper(choisis).forEach(item=>{
     if(item.seul){
       const l = item.seul;
@@ -2126,7 +2176,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions","#btnDe"]
+  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions","#btnDe","#aideTete","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
@@ -2157,7 +2207,7 @@ function quitterNav(){
   $("#navEtapes").hidden = true;
   ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnMaintenant"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
-  majFiltres();
+  majFiltres(); majTeteAide();
   if(Array.isArray(selectionAccueil)) $("#accueil").hidden = false;
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
   $("#voile").hidden = false; $("#feuille").hidden = false;  // la fiche revient
@@ -2693,6 +2743,7 @@ function ouvrirModePose(){
   $("#viseur").hidden=false; $("#poseBarre").hidden=false;
   $("#btnExplorer").hidden=true; $("#btnAjouter").hidden=true;
   $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
+  $("#btnAide").hidden=true; $("#aideTete").hidden=true;
   $("#poseBarre .txt").textContent = retourFormulaire
     ? "Déplace la carte pour corriger l’endroit."
     : "Déplace la carte : l’épingle se pose ici.";
@@ -2702,6 +2753,8 @@ function fermerModePose(){
   $("#viseur").hidden=true; $("#poseBarre").hidden=true;
   $("#btnExplorer").hidden=false; $("#btnAjouter").hidden=false;
   $("#btnPartager").hidden=false; majBoutons();
+  if($("#barreRech").hidden) $("#btnAide").hidden=false;
+  majTeteAide();
   if(Array.isArray(selectionAccueil)) $("#accueil").hidden = false;
 }
 function nouveauBrouillon(){
@@ -3057,6 +3110,8 @@ function ajouterLieuxGoogle(fiches, catDefaut){
       places:null, qr:false, par:"Google Maps",
       lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert,
       prixN:f.prixN, cuisine:f.cuisine, service, horaires:f.horaires,
+      // un lieu ramené par une recherche de réseau d'aide l'est par construction
+      solidaire: f.solidaire === true || estSolidaire(f.nom, false),
       tel:f.tel, pmr:f.pmr
     });
     ajoutes++;
@@ -3295,16 +3350,30 @@ const RESEAUX_AIDE = [
   { q:"CCAS action sociale",        cat:"emploi" },
   { q:"accueil de jour sans-abri",  cat:"hebergement" },
   { q:"hébergement d'urgence",      cat:"hebergement" },
+  // accès aux droits et insertion : trois guichets distincts qu'OSM range
+  // sous le même tag, et qui ne reçoivent pas les mêmes personnes
+  { q:"Mission locale",             cat:"emploi" },
+  { q:"France Travail",             cat:"emploi" },
+  { q:"France Services accès aux droits", cat:"emploi" },
+  { q:"vestiaire solidaire vêtements", cat:"friperie" },
+  { q:"bains-douches municipaux",   cat:"toilettes" },
 ];
 
 /* Ces adresses ne bougent quasiment jamais : on les garde une semaine plutôt
    que de relancer dix recherches facturées à chaque ouverture de l'app. */
 const cleAide = (lat,lng)=>"autour:aide:"+lat.toFixed(2)+","+lng.toFixed(2);
 let aideChargee = false;
+let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
 
 async function chargerAide(lat,lng){
   if(aideChargee) return;
   aideChargee = true;
+  aideEnCours = true;
+  try{ await chargerAideVraiment(lat,lng); }
+  finally{ aideEnCours = false; }
+}
+
+async function chargerAideVraiment(lat,lng){
 
   try{
     const brut = localStorage.getItem(cleAide(lat,lng));
@@ -3324,6 +3393,7 @@ async function chargerAide(lat,lng){
     res.forEach(f=>{
       // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
       if(distanceM(lat,lng,f.lat,f.lng) > 15000) return;
+      f.solidaire = true;              // trouvé en cherchant un réseau d'aide
       garder.push({f, cat:r.cat});
       ajouterLieuxGoogle([f], r.cat);
     });
@@ -3456,7 +3526,7 @@ const SUGGESTIONS_MOMENT = {
     {t:"Ouvert maintenant",f:"ouvert"},
     {t:"Pharmacie",        cats:["sante"]},
     {t:"Rentrer",          cats:["metro","bus","velo"]},
-    {t:"Un abri",          cats:["hebergement","asso"], aide:true},
+    {t:"Un abri",          modeAide:true, sous:"dormir"},
   ],
 };
 
@@ -3468,6 +3538,14 @@ function appliquerSuggestion(s){
   const z = $("#suggestions"); if(z) z.hidden = true;
   const r = $("#rech"); if(r) r.blur();
   if(s.hasard){ surprendre(); return; }
+  // « Un abri » à deux heures du matin : on entre dans le mode Aide, direct
+  // sur le bon besoin, sans passer par un écran de plus
+  if(s.modeAide){
+    if(!modeAide) basculerAide();
+    sousAide = s.sous || null;
+    majFiltres(); rendre(); majAccueil(); majTeteAide();
+    return;
+  }
   if(s.f){
     filtresHumains.add(s.f);
     toutAfficher(); majFiltres();
@@ -3628,7 +3706,126 @@ function demandeExplicite(l, ctx){
    règle, à la demande, et le bandeau le dit. */
 let montrerFermes = false;
 
+/* ================================================================== */
+/*  Mode Aide                                                          */
+/* ================================================================== */
+
+/* Chercher où manger ce soir et chercher où dormir cette nuit ne sont pas
+   la même recherche. Le mode Aide ne filtre pas la carte : il change ce que
+   « pertinent » veut dire. Une note Google ne compte plus, une porte ouverte
+   compte énormément, et l'urgence du besoin passe devant la découverte. */
+let modeAide = false;
+
+const CATS_AIDE = ["alimentaire","hebergement","asso","emploi","sante","toilettes","collecte"];
+const SET_AIDE  = new Set(CATS_AIDE);
+
+/* Six besoins, pas trente-deux catégories. « Démarches » ouvre la porte aux
+   administrations : c'est le seul endroit de l'app où elles sont la réponse,
+   et il faut l'avoir demandé. */
+const SOUS_AIDE = [
+  { id:"manger",    emoji:"🍽", label:"Manger",    cats:["alimentaire","collecte","food"] },
+  { id:"dormir",    emoji:"🛏", label:"Dormir",    cats:["hebergement"] },
+  { id:"emploi",    emoji:"💼", label:"Emploi",    cats:["emploi","asso"] },
+  { id:"sante",     emoji:"🏥", label:"Santé",     cats:["sante"] },
+  { id:"demarches", emoji:"📋", label:"Démarches", cats:["emploi","asso","mairie"] },
+  { id:"vetements", emoji:"👕", label:"Vêtements", cats:["friperie","asso"], solidaireSeul:true },
+];
+let sousAide = null;          // id du sous-filtre actif, ou null
+
+/* Ce qu'on risque à ne pas trouver. Dormir dehors ou renoncer à des soins ne
+   se compare pas à récupérer un vêtement : à distance égale, l'urgent passe. */
+const URGENCE = {
+  hebergement:5, sante:5, alimentaire:4, collecte:4,
+  asso:3, emploi:3, friperie:2, toilettes:2, mairie:2, food:3,
+};
+const URGENT_AU_NOM = /urgence|\b115\b|samu\s*social|sans[- ]abri|maraude|accueil\s*de\s*jour|halte\s*de\s*nuit|nuit[ée]e/i;
+
+const POIDS_AIDE = {
+  ouvert:        130,   // 1. une porte ouverte maintenant prime sur tout
+  aujourdhui:     60,   // 2. sinon : ouvre encore aujourd'hui
+  proximite:      90,   // 3. proximité, décroissance douce
+  DECROISSANCE: 1600,   // on marche plus loin pour manger que pour un café
+  urgence:        13,   // 4. multiplié par le niveau d'urgence (1 à 5)
+  solidaire:      25,
+  verifie:        18,
+  ferme:        -140,
+  inconnu:       -20,   // horaires inconnus : utile, mais après ce qui est sûr
+};
+
+/* « Disponible aujourd'hui » : vrai, faux, ou null quand on ne sait pas.
+   Inventer une réponse ici ferait se déplacer quelqu'un pour rien. */
+function disponibleAujourdhui(l){
+  if((CATS[l.cat]||{}).eph){
+    if(!l.debutLe) return true;
+    const d = new Date(l.debutLe), n = new Date();
+    return d.toDateString() === n.toDateString() || (l.finLe && l.finLe > n.getTime());
+  }
+  const h = horaireDuJour(l);
+  if(h) return !/ferm/i.test(h);
+  if(l.ouvert === true) return true;
+  return null;
+}
+
+function niveauUrgence(l){
+  let u = URGENCE[l.cat] || 1;
+  if(URGENT_AU_NOM.test(l.titre+" "+(l.service||""))) u += 2;
+  return Math.min(7, u);
+}
+
+/* Score du mode Aide : l'ordre demandé, dans l'ordre. */
+function scoreAide(l, ctx){
+  const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
+  const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
+  let s = 0, raisons = [];
+
+  if(l.ouvert === true){ s += POIDS_AIDE.ouvert; raisons.push([POIDS_AIDE.ouvert,"Ouvert maintenant"]); }
+  else if(l.ouvert === false) s += POIDS_AIDE.ferme;
+
+  const dispo = disponibleAujourdhui(l);
+  if(dispo === true && l.ouvert !== true){
+    s += POIDS_AIDE.aujourdhui;
+    raisons.push([POIDS_AIDE.aujourdhui,"Ouvre encore aujourd’hui"]);
+  }else if(dispo === null) s += POIDS_AIDE.inconnu;
+
+  const p = POIDS_AIDE.proximite * Math.exp(-Math.min(dMoi,dVue) / POIDS_AIDE.DECROISSANCE);
+  s += p;
+  if(dMoi < 700) raisons.push([p,"À quelques minutes"]);
+
+  const u = niveauUrgence(l);
+  s += u * POIDS_AIDE.urgence;
+  if(u >= 5) raisons.push([u*POIDS_AIDE.urgence,"Service d’urgence"]);
+
+  if(l.solidaire){ s += POIDS_AIDE.solidaire; raisons.push([POIDS_AIDE.solidaire,"Structure solidaire"]); }
+  // le service n'ajoute pas de points — il n'y a pas de raison de mieux
+  // classer une Mission locale qu'un CCAS — mais il passe devant la distance
+  // dans ce qu'on affiche : savoir à qui s'adresse le guichet évite le trajet
+  // de trop, et la distance est déjà écrite à côté
+  if(l.service) raisons.push([POIDS_AIDE.ouvert - 1, l.service]);
+  if(l.verifie) s += POIDS_AIDE.verifie;
+  // ni note ni nombre d'avis : on ne classe pas une distribution alimentaire
+  // par étoiles, et les mieux notées ne sont pas les plus utiles
+
+  raisons.sort((a,b)=>b[0]-a[0]);
+  return { score:s, raison: raisons.length ? raisons[0][1] : "Point d’aide" };
+}
+
+/* Le sous-filtre actif, ou le mode Aide entier s'il n'y en a pas. */
+function catsAideActives(){
+  const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+  return s ? new Set(s.cats) : SET_AIDE;
+}
+
 function proposableAuto(l, ctx){
+  if(modeAide){
+    // même ici, ce qu'on cherche par son nom ou qu'on choisit dans Explorer
+    // reste trouvable : le mode change les priorités, il n'enferme personne
+    if(demandeExplicite(l, ctx)) return true;
+    // pour le reste, la ville s'efface : on ne propose que ce qui aide
+    if(!catsAideActives().has(l.cat)) return false;
+    const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+    if(s && s.solidaireSeul && !l.solidaire) return false;
+    return true;   // le tri fermé/ouvert se fait plus loin, par catégorie
+  }
   if(demandeExplicite(l, ctx)) return true;
   if(JAMAIS_AUTO.has(l.cat)) return false;
   // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
@@ -3637,9 +3834,20 @@ function proposableAuto(l, ctx){
   return true;
 }
 
+/* « Les structures fermées ne doivent pas être proposées si une alternative
+   ouverte existe. » La comparaison se fait catégorie par catégorie : cinq
+   distributions ouvertes ne remplacent pas l'hébergement d'urgence fermé,
+   et masquer celui-ci parce qu'un autre service est ouvert serait faux. */
+function ecarterFermesSiAlternative(liste){
+  const ouvertes = new Set();
+  liste.forEach(x=>{ if(x.l.ouvert === true) ouvertes.add(x.l.cat); });
+  return liste.filter(x=> x.l.ouvert !== false || !ouvertes.has(x.l.cat));
+}
+
 /* Score explicable : chaque terme est nommé, et la raison affichée à
    l'utilisateur est simplement le terme qui a le plus pesé. */
 function scoreLieu(l, ctx){
+  if(modeAide) return scoreAide(l, ctx);
   let s = 0, raisons = [];
   const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
   const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
@@ -3688,6 +3896,9 @@ function scoreLieu(l, ctx){
 /* Trois niveaux. A : incontournables, toujours là. B : pertinents dans le
    contexte. C : le reste, masqué mais retrouvé par recherche ou catégorie. */
 function niveauLieu(l, ctx, sc){
+  // en mode Aide, rien n'est « secondaire » : tout ce qui a passé le filtre
+  // mérite d'être vu, c'est le classement qui fait le tri
+  if(modeAide) return "A";
   const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
   const eph = !!(CATS[l.cat]||{}).eph;
   if(l.mien) return "A";
@@ -3708,7 +3919,9 @@ const INTENTIONS = [
   { emoji:"🍽️", label:"Manger",             cats:["resto","fastfood","cafe","food","marche"] },
   { emoji:"🎉", label:"Sortir aujourd’hui",  cats:["concert","spectacle","bar","cinema","event","popup"] },
   { emoji:"🛍️", label:"Pop-up & fripes",    cats:["popup","friperie","marche","commerce"] },
-  { emoji:"🆘", label:"Trouver de l’aide",   cats:["alimentaire","hebergement","sante","asso","emploi","collecte"], aide:true },
+  // une seule porte vers l'aide : l'intention allume le mode, plutôt que
+  // d'offrir une version au rabais du même besoin
+  { emoji:"🆘", label:"Trouver de l’aide",   cats:null, modeAide:true },
   { emoji:"⚽", label:"Faire du sport",      cats:["terrain","sport"] },
   { emoji:"🤝", label:"Rencontrer du monde", cats:["asso","event","concert","bar","terrain","studio"] },
   // ni lycée ni fac : on cherche un endroit où s'asseoir et travailler,
@@ -3729,6 +3942,7 @@ function appliquerIntention(i){
   const it = INTENTIONS[i];
   $("#intentions").hidden = true;
   if(it.hasard){ surprendre(); return; }
+  if(it.modeAide){ if(!modeAide) basculerAide(); else majAccueil(); return; }
   catsActives = it.cats ? new Set(it.cats) : null;
   filtreActif = "tout";
   selectionAccueil = false;
@@ -3782,17 +3996,26 @@ function ouvrirIntentions(){
   $("#intentions").hidden = false;
 }
 
-/* Barre de filtres humains, visible seulement quand on explore. */
+/* Barre de filtres humains, visible seulement quand on explore. En mode
+   Aide, la même barre porte les six besoins : un seul rail de boutons à
+   lire, jamais deux superposés. */
 function majFiltres(){
   const b = $("#btnMaintenant");
   if(b) b.classList.toggle("actif", filtreMaintenant);
   const z = $("#filtresHumains");
   if(!z) return;
+
+  // en mode Aide, les six besoins tiennent lieu de filtres, et ils sont
+  // affichés en haut par majTeteAide() : ce rail-là reste vide
+  if(modeAide){ z.hidden = true; z.innerHTML = ""; return; }
+
   // la barre doit aussi apparaître quand seul un filtre humain est posé,
   // sinon « Pas cher » s'active sans laisser de quoi le retirer
   const montrer = !!catsActives || filtreActif !== "tout" || filtreMaintenant || filtresHumains.size > 0;
   z.hidden = !montrer;
-  if(!montrer) return;
+  // vidée et pas seulement masquée : en sortant du mode Aide, les six besoins
+  // restaient dans le document, prêts à réapparaître au prochain affichage
+  if(!montrer){ z.innerHTML = ""; return; }
   z.innerHTML = FILTRES_HUMAINS.map(f=>
     '<button class="fh'+(filtresHumains.has(f.id)?' actif':'')+'" data-fh="'+f.id+'">'+
       f.label+'</button>').join("");
@@ -3801,6 +4024,71 @@ function majFiltres(){
     if(filtresHumains.has(id)) filtresHumains.delete(id); else filtresHumains.add(id);
     majFiltres(); rendre();
   });
+}
+
+/* Bandeau du mode : ce qu'on regarde, et combien c'est ouvert. Le compte
+   d'ouverts est la seule information qui compte quand on cherche à manger
+   ou à dormir maintenant. */
+function majTeteAide(){
+  const t = $("#aideTete");
+  if(!t) return;
+  if(!modeAide || modeNav || modePose){
+    t.hidden = true; $("#aideBesoins").innerHTML = ""; return;
+  }
+  const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+  const vus = derniereSelection.map(x=>x.l);
+  const ouverts = vus.filter(l=>l.ouvert === true).length;
+  $("#aideTxt").innerHTML = '<b>❤️ Mode aide'+(s ? ' · '+esc(s.label) : '')+'</b> — '+
+    (vus.length
+      ? vus.length+' structure'+(vus.length>1?'s':'')+' autour de toi, '+
+        (ouverts ? '<b>'+ouverts+' ouverte'+(ouverts>1?'s':'')+' maintenant</b>'
+                 : 'aucune ouverte à cette heure')
+      : aideEnCours ? 'recherche des points d’aide…'
+                    : 'rien trouvé dans cette zone — élargis la carte');
+
+  const z = $("#aideBesoins");
+  z.innerHTML = SOUS_AIDE.map(x=>
+    '<button class="bs'+(sousAide===x.id?' actif':'')+'" data-sa="'+x.id+'">'+
+      x.emoji+' '+x.label+'</button>').join("");
+  z.querySelectorAll("[data-sa]").forEach(b=>b.onclick=()=>{
+    // retoucher le même besoin le retire : on revient à toute l'aide
+    sousAide = (sousAide === b.dataset.sa) ? null : b.dataset.sa;
+    selectionAccueil = null;
+    rendre(); majAccueil(); majTeteAide();
+  });
+  t.hidden = false;
+}
+
+/* Un clic pour entrer, un clic pour sortir. Rien n'est chargé tant que le
+   mode n'est pas demandé : l'ouverture de l'app ne paie pas ce mode. */
+function basculerAide(){
+  modeAide = !modeAide;
+  sousAide = null;
+  $("#btnAide").classList.toggle("actif", modeAide);
+  document.body.classList.toggle("aide", modeAide);
+
+  // on sort de toute sélection en cours : le mode Aide repart d'une page nette
+  catsActives = null;
+  filtreActif = "tout";
+  filtresHumains.clear();
+  filtreMaintenant = false;
+  recherche = ""; if($("#rech")) $("#rech").value = "";
+  selectionAccueil = null;
+  montrerFermes = false;
+  $("#intentions").hidden = true;
+  $("#suggestions").hidden = true;
+
+  dessinerFiltres(); majFiltres();
+  rendre(); majAccueil(); majTeteAide();
+
+  if(modeAide){
+    toast("❤️ Mode aide activé");
+    // les réseaux d'aide arrivent après coup, la carte est déjà utilisable
+    if(positionMoi) chargerAide(positionMoi[0], positionMoi[1])
+      .then(()=>{ rendre(); majAccueil(); majTeteAide(); });
+  }else{
+    toast("Mode aide désactivé");
+  }
 }
 
 function basculerMaintenant(){
@@ -3992,30 +4280,52 @@ function majAccueil(){
   const ctx = contexteActuel();
   const [lat,lng] = positionMoi;
 
-  const notes = lieux
+  // en mode Aide on accepte d'aller plus loin : cinq kilomètres pour un
+  // hébergement d'urgence, ce n'est pas la même chose que pour un café
+  const rayon = modeAide ? 6000 : 2500;
+  let notes = lieux
     .filter(l=>proposableAuto(l, ctx))
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
-    .filter(l=>l.dist < 2500)
+    .filter(l=>l.dist < rayon)
     .map(l=>{ const r = scoreLieu(l, ctx); return Object.assign(l, {score:r.score, raison:r.raison}); })
-    .filter(l=>l.score >= ACCUEIL_SEUIL)
     .sort((a,b)=>b.score - a.score);
+  if(modeAide && !montrerFermes)
+    notes = ecarterFermesSiAlternative(notes.map(l=>({l}))).map(x=>x.l);
 
-  // on réserve une place à un événement s'il en existe un : sans ça, les
-  // commerces bien notés rafleraient toutes les lignes et l'app perdrait
-  // exactement ce qui la distingue
   const choisis = [];
-  const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
-  if(ev) choisis.push(ev);
-  notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  if(modeAide){
+    // couvrir les besoins plutôt que trôner cinq banques alimentaires : un
+    // seul lieu par catégorie, le meilleur. Et pas de seuil — si le seul
+    // hébergement du secteur est fermé, il doit quand même s'afficher, sinon
+    // quelqu'un qui cherche où dormir ne voit rien du tout.
+    const vues = new Set();
+    notes.forEach(l=>{
+      if(choisis.length >= ACCUEIL_MAX || vues.has(l.cat)) return;
+      vues.add(l.cat); choisis.push(l);
+    });
+    notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  }else{
+    notes = notes.filter(l=>l.score >= ACCUEIL_SEUIL);
+    // on réserve une place à un événement s'il en existe un : sans ça, les
+    // commerces bien notés rafleraient toutes les lignes et l'app perdrait
+    // exactement ce qui la distingue
+    const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
+    if(ev) choisis.push(ev);
+    notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  }
 
   selectionAccueil = choisis.map(l=>l.id);
 
   const heure = new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
-  $("#acTitre").textContent = "Autour de toi · "+heure;
+  $("#acTitre").textContent = (modeAide ? "Aide autour de toi · " : "Autour de toi · ")+heure;
 
-  // les raccourcis de l'heure, posés avant la liste : on peut agir sans lire
+  // les raccourcis de l'heure, posés avant la liste : on peut agir sans lire.
+  // En mode Aide, les six besoins tiennent déjà ce rôle juste au-dessus.
   const zs = $("#acSug");
-  if(zs){ zs.innerHTML = rangeeSuggestions(); brancherSuggestions(zs); }
+  if(zs){
+    zs.hidden = modeAide;
+    if(!modeAide){ zs.innerHTML = rangeeSuggestions(); brancherSuggestions(zs); }
+  }
   $("#acListe").innerHTML = choisis.map(l=>{
     const c = CATS[l.cat] || {emoji:"📍"};
     const bouts = [];
@@ -4023,8 +4333,10 @@ function majAccueil(){
     if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
     if(l.note) bouts.push("★ "+l.note.toFixed(1));
     if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(l.quand)) bouts.push(esc(l.quand));
+    // « Ouvert · Ouvert maintenant » : la pastille dit déjà la raison
     const r = l.raison || raisonDe(l.id);
-    if(r) bouts.push('<span class="raison">'+esc(r)+'</span>');
+    if(r && !(l.ouvert === true && /^Ouvert/.test(r)))
+      bouts.push('<span class="raison">'+esc(r)+'</span>');
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+c.emoji+'</span>'+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
@@ -4166,11 +4478,13 @@ demarrer(positionMemorisee()).then(()=>{
   performance.measure("interface prête", "autour:script", "autour:carte");
   suivreMaPosition();
 });
-$("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
+$("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#btnAide").hidden=true;
+  $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
-  $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
+  $("#barreRech").hidden=true; $("#btnLoupe").hidden=false; $("#btnAide").hidden=false;
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true; rendre();
 };
+$("#btnAide").onclick=basculerAide;
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
    chargés : aucune requête, donc aucun effet sur le temps de chargement. */
 function suggerer(q){
