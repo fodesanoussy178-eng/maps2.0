@@ -2352,7 +2352,7 @@ async function afficherTrajet(l){
     }
     const zone2 = $("#trajetInfos");
     if(zone2) zone2.innerHTML = html ||
-      '<p class="trajet-vide">Aucun vélo ni arrêt de transport détecté près de toi.</p>';
+      '<p class="trajet-vide">Aucun vélo en libre-service ni arrêt trouvé dans un rayon d’un kilomètre.</p>';
   });
 }
 
@@ -2492,6 +2492,41 @@ node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
   }catch(e){ return null; }
 }
 
+/* Overpass reste injoignable sur certains réseaux, et sans lui la carte
+   annonçait « aucun arrêt de transport » au milieu d'une métropole qui en est
+   couverte. Google connaît ces arrêts : on lui demande quand OSM se tait. */
+const TYPES_ARRET = ["bus_station","transit_station","subway_station",
+                     "light_rail_station","train_station"];
+const ARRET_GOOGLE = {
+  subway_station:"metro", train_station:"metro", light_rail_station:"tram",
+  bus_station:"bus", bus_stop:"bus", transit_station:"bus"
+};
+
+async function arretsGoogle(lat,lng){
+  if(!CLE_GOOGLE) return null;
+  try{
+    const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "X-Goog-Api-Key":CLE_GOOGLE,
+                "X-Goog-FieldMask":"places.displayName,places.location,places.primaryType" },
+      body:JSON.stringify({ maxResultCount:20, includedTypes:TYPES_ARRET,
+        locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1200}} })
+    });
+    if(!r.ok){ console.error("Arrêts Google : HTTP", r.status); return null; }
+    const j = await r.json();
+    const vus = new Set();
+    return (j.places||[]).map(p=>{
+      const nom = (p.displayName&&p.displayName.text) || "Arrêt";
+      const type = ARRET_GOOGLE[p.primaryType] || "bus";
+      return { type, nom, lat:p.location.latitude, lng:p.location.longitude,
+               dist: distanceM(lat,lng,p.location.latitude,p.location.longitude) };
+    }).filter(a=>{
+      const c = a.type+"|"+a.nom;
+      if(vus.has(c)) return false; vus.add(c); return true;
+    }).sort((a,b)=>a.dist-b.dist);
+  }catch(e){ console.error("Arrêts Google :", e); return null; }
+}
+
 /* la position de l'utilisateur ne change pas pendant la session : on évite
    de refaire les mêmes requêtes réseau à chaque clic sur "Y aller" */
 /* on ne met en cache qu'un résultat utile : si Overpass a échoué ou n'a rien
@@ -2503,7 +2538,14 @@ async function stationsVeloProchesCache(lat,lng){
   return CACHE_VELO;
 }
 async function arretsProchesCache(lat,lng){
-  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length) CACHE_TRANSPORT = await arretsProches(lat,lng);
+  if(CACHE_TRANSPORT && CACHE_TRANSPORT.length) return CACHE_TRANSPORT;
+  CACHE_TRANSPORT = await arretsProches(lat,lng);
+  // OSM muet : on interroge Google plutôt que d'annoncer qu'il n'y a rien
+  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length){
+    CACHE_TRANSPORT = await arretsGoogle(lat,lng);
+    if(CACHE_TRANSPORT && CACHE_TRANSPORT.length)
+      console.info("Transports : "+CACHE_TRANSPORT.length+" arrêt(s) via Google (OSM muet)");
+  }
   return CACHE_TRANSPORT;
 }
 
