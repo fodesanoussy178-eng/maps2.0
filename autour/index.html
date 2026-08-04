@@ -79,7 +79,6 @@ input{font-family:inherit;font-size:16px}
 .a-titre{font-size:12px;font-weight:600;line-height:1.25}
 .a-lieu{font-size:10px;line-height:1.2;opacity:.72}
 .a-places{opacity:.72;font-weight:500}
-.a-qr{position:absolute;top:4px;right:5px;font-size:9px;opacity:.5}
 .gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
 .payant{background:#fff;color:var(--ink)}
 .payant .a-haut{color:var(--ink2)}
@@ -158,9 +157,6 @@ input{font-family:inherit;font-size:16px}
 .pastille{display:flex;align-items:center;gap:5px;padding:5px 9px 5px 6px;width:max-content;
   max-width:150px;border:1px solid var(--bord);border-radius:99px;
   background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(20,30,25,.14);animation:surgit .2s ease-out}
-.pastille .pl-mot{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes surgit{from{opacity:0}to{opacity:1}}
 
 .loin .affiche,.loin .pastille{width:13px;height:13px;max-width:none;padding:0;gap:0;
@@ -183,25 +179,15 @@ input{font-family:inherit;font-size:16px}
 .loin .moi-in b{width:22px;height:22px;font-size:11px;border-width:2.5px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
-#porte{position:absolute;inset:0;z-index:1000;background:var(--paper);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  text-align:center;padding:var(--safe-t) 34px var(--safe-b)}
-#porte h1{font-family:'Anton',sans-serif;font-size:clamp(32px,10vw,42px);
-  line-height:1;text-transform:uppercase;margin:30px 0 12px}
-#porte p{margin:0 0 30px;font-size:15px;line-height:1.55;color:var(--ink2);max-width:290px}
-.onde{position:relative;width:104px;height:104px;display:grid;place-items:center}
-.onde span{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--signal);
-  opacity:0;animation:pulse 2.6s ease-out infinite}
-.onde span:nth-child(2){animation-delay:.85s}
-.onde span:nth-child(3){animation-delay:1.7s}
-.onde i{width:15px;height:15px;border-radius:50%;background:var(--signal);
-  border:2px solid #fff;box-shadow:0 0 0 1.5px var(--signal)}
-@keyframes pulse{0%{transform:scale(.28);opacity:.85}100%{transform:scale(1);opacity:0}}
-.plus-tard{margin-top:14px;padding:10px;border:0;background:none;font-size:13.5px;
-  color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
-#porteEtat{margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:10px;
-  font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);min-height:14px}
 
+#bandeauGeo{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
+  display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
+  box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
+#bandeauTxt{flex:1;min-width:0}
+#bandeauOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+  color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
 #charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
@@ -298,6 +284,7 @@ input{font-family:inherit;font-size:16px}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ac-sous{display:block;margin-top:2px;font-size:11.5px;color:var(--ink2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.raison{color:var(--signal);font-weight:600}
 .ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2)}
 
@@ -372,6 +359,14 @@ body.nav .leaflet-control-zoom{display:none}
 .ajouter span{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase}
 .ajouter:active{transform:translateY(1px)}
+.de{position:absolute;right:14px;bottom:calc(var(--safe-b) + 140px);z-index:601;
+  width:50px;height:50px;border-radius:50%;border:1px solid var(--bord);background:#fff;
+  font-size:22px;line-height:1;display:grid;place-items:center;
+  box-shadow:0 3px 14px rgba(20,30,25,.2);transition:transform .18s}
+.de:active{transform:scale(.9) rotate(20deg)}
+.sp-tete{margin-bottom:2px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
+.sp-raison{margin:-6px 0 15px;font-size:13.5px;font-weight:600;color:var(--signal)}
 
 .mini{position:absolute;top:calc(var(--safe-t) + 72px);left:14px;z-index:600;
   display:flex;align-items:center;gap:6px;padding:9px 13px;border:1px solid var(--bord);
@@ -430,10 +425,6 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .act:active{transform:scale(.95)}
 .act-1{background:var(--signal);border-color:var(--signal);color:#fff}
 .act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
-.y-aller{align-self:flex-start;margin-top:12px;padding:10px 16px;text-decoration:none;
-  border:1px solid var(--bord);border-radius:99px;background:var(--signal);color:#fff;
-  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;display:inline-block}
 
 .trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
 .trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
@@ -558,16 +549,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <div id="map"></div>
 
-<div id="porte">
-  <div class="onde"><span></span><span></span><span></span><i></i></div>
-  <h1>Autour</h1>
-  <p>Découvre ce qu’il y a autour de toi, maintenant.</p>
-  <button class="valider" style="max-width:290px" id="btnGeo">Voir autour de moi</button>
-  <button class="plus-tard" id="btnSansGeo">Plus tard</button>
-  <div id="porteEtat"></div>
-</div>
-
 <div id="charge" hidden>Recherche autour de toi…</div>
+
+<div id="bandeauGeo" hidden>
+  <span id="bandeauTxt">Autorise ta position pour voir ton quartier.</span>
+  <button id="bandeauOk">Activer</button>
+</div>
 
 <div class="haut" id="haut" hidden>
   <button class="rond" id="btnLoupe" aria-label="Chercher">
@@ -614,6 +601,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 </div>
 <div id="navEtapes" hidden></div>
 <button class="ajouter" id="btnAjouter" hidden>+ <span>Publier</span></button>
+<button class="de" id="btnDe" hidden aria-label="Surprends-moi">🎲</button>
 
 <div id="viseur" hidden>
   <svg width="34" height="42" viewBox="0 0 34 42" fill="none">
@@ -1047,7 +1035,7 @@ const Store = {
 
 let lieux=[], publies=[], marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
-let map, coucheVille, coucheRues, moi, positionMoi=null, commune="ton quartier";
+let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
 let routes=[]; // {couche, base}
 let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
@@ -1059,7 +1047,14 @@ const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function alea(seed){let h=hash(String(seed))||1;return()=>{h=(h*1103515245+12345)&0x7fffffff;return (h>>8)%10000/10000;}}
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(el._t);el._t=setTimeout(()=>el.hidden=true,2400)}
-function etat(t){$("#porteEtat").textContent=t}
+/* Les messages d'état s'écrivaient dans l'écran d'accueil, qui ne s'affiche
+   plus depuis que la carte démarre seule : ils étaient donc invisibles. */
+function etat(t, montrer){
+  const b = $("#bandeauGeo"), z = $("#bandeauTxt");
+  if(!b || !z) return;
+  z.textContent = t;
+  if(montrer !== undefined) b.hidden = !montrer;
+}
 function charge(t){const c=$("#charge"); if(t){c.textContent=t;c.hidden=false}else c.hidden=true}
 
 /* ================================================================== */
@@ -1546,8 +1541,7 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  $("#porte").hidden = true;
-  ["#haut","#btnExplorer","#btnAjouter","#btnPartager","#btnMaintenant"].forEach(s=>$(s).hidden=false);
+  ["#haut","#btnExplorer","#btnAjouter","#btnPartager","#btnMaintenant","#btnDe"].forEach(s=>$(s).hidden=false);
 
   map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
         .setView(centre, partage ? 17 : 16);
@@ -1801,6 +1795,42 @@ function majIndexEvenements(){
   });
 }
 
+/* Classement puis plafonnement : la carte ne porte que les mieux notés.
+   Montrer trois cents épingles revient à n'en montrer aucune. */
+let derniereSelection = [];
+
+function selectionner(){
+  const t0 = performance.now();
+  const ctx = contexteActuel();
+  const brut = visibles();
+  const cible = ctx.large ? POIDS.PLAFOND_LARGE : POIDS.PLAFOND_SERRE;
+
+  const notes = brut.map(l=>{
+    const r = scoreLieu(l, ctx);
+    return {l, score:r.score, raison:r.raison, niveau:niveauLieu(l, ctx, r.score)};
+  });
+
+  // un filtre ou une recherche explicite lève le masquage du niveau C :
+  // ce que l'utilisateur demande ne doit jamais lui être caché
+  const explicite = !!(ctx.q || catsActives || filtreActif !== "tout" || filtresHumains.size);
+  const retenus = (explicite ? notes : notes.filter(x=>x.niveau !== "C"))
+    .sort((a,b)=>b.score - a.score)
+    .slice(0, cible);
+
+  derniereSelection = retenus;
+  if(window.__autourDebug)
+    console.info("[Autour] reçus", brut.length, "· retenus", retenus.length,
+      "· niveau A", notes.filter(x=>x.niveau==="A").length,
+      "· classement", (performance.now()-t0).toFixed(1)+" ms",
+      "· meilleur", retenus[0] ? retenus[0].l.titre+" ("+Math.round(retenus[0].score)+", "+retenus[0].raison+")" : "—");
+  return retenus.map(x=>x.l);
+}
+
+function raisonDe(id){
+  const x = derniereSelection.find(y=>y.l.id === id);
+  return x ? x.raison : "";
+}
+
 function rendre(){
   if(!map) return;
   majIndexEvenements();
@@ -1811,7 +1841,7 @@ function rendre(){
     return;
   }
   const garder = new Set();
-  grouper(visibles()).forEach(item=>{
+  grouper(selectionner()).forEach(item=>{
     if(item.seul){
       const l = item.seul;
       garder.add(l.id);
@@ -1821,7 +1851,8 @@ function rendre(){
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
-      m.on("click", ()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); });
+      m.on("click", ()=>{ mettreAJourProfil("clic", l.cat);
+        pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); });
       marqueurs.set(l.id,m);
       return;
     }
@@ -2036,7 +2067,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions"]
+  ["#btnExplorer","#btnAjouter","#haut","#btnPartager","#btnRevenir","#accueil","#btnMaintenant","#filtresHumains","#intentions","#btnDe"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
@@ -2321,7 +2352,7 @@ async function afficherTrajet(l){
     }
     const zone2 = $("#trajetInfos");
     if(zone2) zone2.innerHTML = html ||
-      '<p class="trajet-vide">Aucun vélo ni arrêt de transport détecté près de toi.</p>';
+      '<p class="trajet-vide">Aucun vélo en libre-service ni arrêt trouvé dans un rayon d’un kilomètre.</p>';
   });
 }
 
@@ -2461,6 +2492,41 @@ node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
   }catch(e){ return null; }
 }
 
+/* Overpass reste injoignable sur certains réseaux, et sans lui la carte
+   annonçait « aucun arrêt de transport » au milieu d'une métropole qui en est
+   couverte. Google connaît ces arrêts : on lui demande quand OSM se tait. */
+const TYPES_ARRET = ["bus_station","transit_station","subway_station",
+                     "light_rail_station","train_station"];
+const ARRET_GOOGLE = {
+  subway_station:"metro", train_station:"metro", light_rail_station:"tram",
+  bus_station:"bus", bus_stop:"bus", transit_station:"bus"
+};
+
+async function arretsGoogle(lat,lng){
+  if(!CLE_GOOGLE) return null;
+  try{
+    const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "X-Goog-Api-Key":CLE_GOOGLE,
+                "X-Goog-FieldMask":"places.displayName,places.location,places.primaryType" },
+      body:JSON.stringify({ maxResultCount:20, includedTypes:TYPES_ARRET,
+        locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1200}} })
+    });
+    if(!r.ok){ console.error("Arrêts Google : HTTP", r.status); return null; }
+    const j = await r.json();
+    const vus = new Set();
+    return (j.places||[]).map(p=>{
+      const nom = (p.displayName&&p.displayName.text) || "Arrêt";
+      const type = ARRET_GOOGLE[p.primaryType] || "bus";
+      return { type, nom, lat:p.location.latitude, lng:p.location.longitude,
+               dist: distanceM(lat,lng,p.location.latitude,p.location.longitude) };
+    }).filter(a=>{
+      const c = a.type+"|"+a.nom;
+      if(vus.has(c)) return false; vus.add(c); return true;
+    }).sort((a,b)=>a.dist-b.dist);
+  }catch(e){ console.error("Arrêts Google :", e); return null; }
+}
+
 /* la position de l'utilisateur ne change pas pendant la session : on évite
    de refaire les mêmes requêtes réseau à chaque clic sur "Y aller" */
 /* on ne met en cache qu'un résultat utile : si Overpass a échoué ou n'a rien
@@ -2472,7 +2538,14 @@ async function stationsVeloProchesCache(lat,lng){
   return CACHE_VELO;
 }
 async function arretsProchesCache(lat,lng){
-  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length) CACHE_TRANSPORT = await arretsProches(lat,lng);
+  if(CACHE_TRANSPORT && CACHE_TRANSPORT.length) return CACHE_TRANSPORT;
+  CACHE_TRANSPORT = await arretsProches(lat,lng);
+  // OSM muet : on interroge Google plutôt que d'annoncer qu'il n'y a rien
+  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length){
+    CACHE_TRANSPORT = await arretsGoogle(lat,lng);
+    if(CACHE_TRANSPORT && CACHE_TRANSPORT.length)
+      console.info("Transports : "+CACHE_TRANSPORT.length+" arrêt(s) via Google (OSM muet)");
+  }
   return CACHE_TRANSPORT;
 }
 
@@ -3010,6 +3083,7 @@ function classer(cat){
 
 function ouvrirListe(cat){
   const c = CATS[cat]; if(!c) return;
+  mettreAJourProfil("categorie", cat);
   // l'aide n'est cherchée que si quelqu'un la demande : dix recherches
   // facturées à chaque ouverture de l'app seraient absurdes
   if(SANS_CLASSEMENT.has(cat) && positionMoi)
@@ -3193,6 +3267,57 @@ async function chargerAide(lat,lng){
   majAccueil();
 }
 
+/* « restaurant à Lille » depuis Roubaix : on détecte la ville visée, on s'y
+   déplace et on classe les résultats de là-bas. Sans ça, la recherche restait
+   collée à la position courante. */
+function villeRecherchee(q){
+  // \b ne marche pas devant « à » : le caractère accentué n'est pas un mot ASCII
+  const m = /(?:^|\s)(?:a|à|sur|vers|dans)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ'’-]{2,}(?:[ -][A-Za-zÀ-ÿ][\wÀ-ÿ'’-]+){0,3})\s*$/.exec(q.trim());
+  return m ? m[1].trim() : null;
+}
+
+async function geocoderVille(nom){
+  try{
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+
+      encodeURIComponent(nom));
+    if(!r.ok) return null;
+    const j = await r.json();
+    if(!j.length) return null;
+    return [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+  }catch(e){ return null; }
+}
+
+/* Recherche dans une autre ville : on affiche les résultats de Google
+   directement, au lieu de les filtrer sur les lieux déjà chargés ici. */
+async function rechercherAilleurs(phrase, ville){
+  charge("Recherche à "+ville+"…");
+  const pos = await geocoderVille(ville);
+  const depuis = pos || positionMoi;
+  const res = await chercherGoogle(phrase, depuis[0], depuis[1]);
+  charge(null);
+  if(!res.length){ toast("Rien trouvé à "+ville); return; }
+
+  if(pos && map){ map.flyTo(pos, 13, {duration:.8}); dernierChargement = pos; }
+  ajouterLieuxGoogle(res, "commerce");
+
+  // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
+  const ids = new Set(res.map(f=>"g"+hash(f.nom+f.lat)));
+  const trouves = lieux.filter(l=>ids.has(l.id));
+  if(!trouves.length){ toast("Rien trouvé à "+ville); return; }
+
+  // le classement se fait depuis la ville visée, pas depuis ta position
+  const vrai = positionMoi;
+  positionMoi = depuis;
+  const classes = classerLieux(trouves, false);
+  positionMoi = vrai;
+
+  selectionAccueil = false;
+  $("#accueil").hidden = true; $("#intentions").hidden = true;
+  pileEcrans = [];
+  pousserEcran(()=>afficherListe("📍", esc(ville), classes, false,
+    ()=>rechercherAilleurs(phrase, ville)));
+}
+
 /* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
 function completerParGoogle(q, catDefaut, redessiner){
   if(!positionMoi) return;
@@ -3228,8 +3353,159 @@ function momentActuel(){
   return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
 }
 
-/* Le score décide de ce qu'on voit en arrivant. Chaque terme correspond à un
-   ressort documenté du comportement réel, pas à une intuition. */
+/* ================================================================== */
+/*  Moteur de pertinence                                              */
+/* ================================================================== */
+
+/* Tous les poids au même endroit : les régler doit être une modification de
+   configuration, pas une chasse dans le code. */
+const POIDS = {
+  motCle:            40,   // la recherche prime sur tout le reste
+  ouvert:            25,
+  tresProche:        20,   // moins de RAYON_PROCHE mètres
+  evenementImminent: 20,   // commence dans les deux heures
+  categorieRecente:  40,   // tu es revenu plusieurs fois dessus : le signal doit peser
+  populaire:         10,
+  recent:            10,   // publié aujourd'hui
+  moment:            14,   // pertinence horaire de la catégorie
+  mien:              40,
+  ferme:            -70,
+  eloigne:          -15,
+  ignore:           -10,
+  DECROISSANCE:     800,   // mètres : au-delà l'envie de se déplacer chute
+  RAYON_PROCHE:     400,
+  PLAFOND_SERRE:     30,   // marqueurs max en vue rapprochée
+  PLAFOND_LARGE:     15,
+  SEUIL_NIVEAU_B:    45,   // en dessous, le lieu passe en niveau C (masqué)
+};
+
+/* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé ---- */
+const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
+                      ignores:{}, transport:"pied", vu:0 };
+let PROFIL = (()=>{
+  try{ return Object.assign({}, PROFIL_VIDE,
+       JSON.parse(localStorage.getItem("autour:profil")||"{}")); }
+  catch(e){ return Object.assign({}, PROFIL_VIDE); }
+})();
+let personnalisation = localStorage.getItem("autour:perso") !== "non";
+
+function enregistrerProfil(){
+  try{ localStorage.setItem("autour:profil", JSON.stringify(PROFIL)); }catch(e){}
+}
+
+function mettreAJourProfil(action, valeur){
+  if(!personnalisation) return;
+  const h = new Date().getHours();
+  PROFIL.heures[h] = (PROFIL.heures[h]||0) + 1;
+  if(action === "categorie" && valeur)
+    PROFIL.categories[valeur] = (PROFIL.categories[valeur]||0) + 1;
+  if(action === "clic" && valeur){
+    PROFIL.categories[valeur] = (PROFIL.categories[valeur]||0) + 2;  // un clic vaut plus qu'un survol
+    PROFIL.vu++;
+  }
+  if(action === "recherche" && valeur){
+    PROFIL.recherches.unshift(String(valeur).slice(0,40));
+    PROFIL.recherches = PROFIL.recherches.slice(0,12);
+  }
+  if(action === "ignore" && valeur)
+    PROFIL.ignores[valeur] = (PROFIL.ignores[valeur]||0) + 1;
+  if(action === "transport" && valeur) PROFIL.transport = valeur;
+  enregistrerProfil();
+}
+
+/* Catégories sur lesquelles tu reviens : au moins deux fois, et au-dessus
+   de la moyenne, sinon un clic isolé suffirait à orienter toute la carte. */
+function obtenirInteretsProbables(){
+  const e = Object.entries(PROFIL.categories);
+  if(!e.length) return [];
+  const moyenne = e.reduce((s,[,n])=>s+n,0) / e.length;
+  return e.filter(([,n])=>n >= 2 && n >= moyenne)
+          .sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c])=>c);
+}
+
+function reinitialiserProfil(){
+  PROFIL = Object.assign({}, PROFIL_VIDE, {categories:{}, ignores:{}, heures:{}, recherches:[]});
+  enregistrerProfil();
+  toast("Préférences effacées");
+  rendre(); majAccueil();
+}
+
+/* ---- Contexte : tout ce que le score doit savoir, calculé une seule fois ---- */
+function contexteActuel(){
+  const d = instantCreneau();
+  const c = map ? map.getCenter() : null;
+  return {
+    t: d.getTime(), heure: d.getHours(), jour: d.getDay(),
+    moment: momentActuel(),
+    centre: c ? [c.lat, c.lng] : positionMoi,
+    moi: positionMoi || [0,0],
+    q: sansAccents(recherche.trim()),
+    interets: personnalisation ? obtenirInteretsProbables() : [],
+    large: map ? map.getZoom() < 15 : false
+  };
+}
+
+/* Score explicable : chaque terme est nommé, et la raison affichée à
+   l'utilisateur est simplement le terme qui a le plus pesé. */
+function scoreLieu(l, ctx){
+  let s = 0, raisons = [];
+  const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
+  const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
+  const eph = !!(CATS[l.cat]||{}).eph;
+
+  // proximité au centre regardé, pas seulement à toi : explorer une autre
+  // zone doit y faire remonter les lieux
+  s += 120 * Math.exp(-Math.min(dMoi, dVue) / POIDS.DECROISSANCE);
+  if(dMoi < POIDS.RAYON_PROCHE){ s += POIDS.tresProche; raisons.push([POIDS.tresProche,"Près de toi"]); }
+  if(dMoi > 2500) s += POIDS.eloigne;
+
+  if(ctx.q && sansAccents(l.titre+" "+(l.cuisine||"")).includes(ctx.q)){
+    s += POIDS.motCle; raisons.push([POIDS.motCle,"Correspond à ta recherche"]);
+  }
+  if(l.ouvert === true){ s += POIDS.ouvert; raisons.push([POIDS.ouvert,"Ouvert maintenant"]); }
+  if(l.ouvert === false) s += POIDS.ferme;
+
+  if(eph){
+    s += 55;
+    if(l.debutLe && l.debutLe > ctx.t && l.debutLe < ctx.t + 2*3600e3){
+      s += POIDS.evenementImminent; raisons.push([POIDS.evenementImminent+55,"Commence bientôt"]);
+    }else raisons.push([55,"Ça se passe maintenant"]);
+  }
+
+  const pm = (ctx.moment.poids[l.cat]||0);
+  if(pm){ s += pm*POIDS.moment; raisons.push([pm*POIDS.moment,"Sélectionné pour "+ctx.moment.nom]); }
+
+  if(ctx.interets.includes(l.cat)){
+    s += POIDS.categorieRecente;
+    raisons.push([POIDS.categorieRecente,"Tu regardes souvent "+((CATS[l.cat]||{}).label||"ça").toLowerCase()]);
+  }
+  if(PROFIL.ignores[l.cat]) s += POIDS.ignore * Math.min(3, PROFIL.ignores[l.cat]);
+
+  if(l.avis){
+    const p = Math.min(POIDS.populaire, Math.log10(l.avis+1)*5);
+    s += p; if(p > 6) raisons.push([p,"Apprécié dans le quartier"]);
+  }
+  if(l.note) s += (l.note - 3.5) * 8;
+  if(l.mien) s += POIDS.mien;
+  if(l.verifie) s += 12;
+
+  raisons.sort((a,b)=>b[0]-a[0]);
+  return { score:s, raison: raisons.length ? raisons[0][1] : "Autour de toi" };
+}
+
+/* Trois niveaux. A : incontournables, toujours là. B : pertinents dans le
+   contexte. C : le reste, masqué mais retrouvé par recherche ou catégorie. */
+function niveauLieu(l, ctx, sc){
+  const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
+  const eph = !!(CATS[l.cat]||{}).eph;
+  if(l.mien) return "A";
+  if(dMoi < 250) return "A";
+  if(eph && (!l.debutLe || l.debutLe < ctx.t + 6*3600e3)) return "A";
+  if(["sante","hebergement","alimentaire"].includes(l.cat) && ctx.heure >= 21) return "A";
+  return sc >= POIDS.SEUIL_NIVEAU_B ? "B" : "C";
+}
+
+/* Ancienne signature conservée : plusieurs appels s'appuient dessus. */
 function pertinence(l, poids){
   let s = 0;
   // Décroissance de la distance : on ne « découvre » pas à deux kilomètres.
@@ -3372,23 +3648,90 @@ function vitalite(){
   return {p:"🔴", t:"Quartier calme", n:ouverts, e:evs};
 }
 
-/* Découverte : un lieu au hasard, mais tiré parmi les pertinents du moment
-   plutôt que dans toute la liste — sinon on tombe sur un arrêt de bus. */
+/* ---- Surprise contrôlée ----------------------------------------------
+   Un tirage uniforme proposait aussi bien une pharmacie qu'un concert, et
+   pouvait resservir le même lieu trois fois de suite. On compose désormais
+   70 % de pertinence, 20 % de découverte — ce que tu ne regardes jamais —
+   et 10 % de hasard, en excluant ce qui ne peut pas convenir.            */
+const MEMOIRE_SURPRISES = 12;
+let surprisesVues = (()=>{
+  try{ return JSON.parse(localStorage.getItem("autour:surprises")||"[]"); }
+  catch(e){ return []; }
+})();
+function memoriserSurprise(id){
+  surprisesVues.unshift(id);
+  surprisesVues = surprisesVues.slice(0, MEMOIRE_SURPRISES);
+  try{ localStorage.setItem("autour:surprises", JSON.stringify(surprisesVues)); }catch(e){}
+}
+
+const CATS_SANS_INTERET = ["metro","bus","toilettes","recharge","velo","commerce"];
+
+function choisirSurprise(liste, ctx, profil){
+  const depuis = ctx.moi && ctx.moi[0] ? ctx.moi : ctx.centre;   // géoloc refusée : le centre de la carte suffit
+  const possibles = liste.filter(l=>{
+    if(l.ouvert === false) return false;                       // fermé : inutile
+    if(!l.titre || l.titre.length < 3) return false;           // fiche sans information
+    if(CATS_SANS_INTERET.includes(l.cat)) return false;
+    if(surprisesVues.includes(l.id)) return false;             // déjà proposé récemment
+    if((profil.ignores[l.cat]||0) >= 3) return false;          // tu l'écartes systématiquement
+    return distanceM(depuis[0], depuis[1], l.lat, l.lng) <= 2500;
+  });
+  if(!possibles.length) return null;
+
+  const notes = possibles.map(l=>{
+    const r = scoreLieu(l, ctx);
+    // découverte : plus tu as consulté une catégorie, moins elle surprend
+    const vues = (profil.categories[l.cat]||0);
+    const decouverte = 100 / (1 + vues);
+    return { l, raison:r.raison,
+             total: 0.7*r.score + 0.2*decouverte + 0.1*(Math.random()*100) };
+  }).sort((a,b)=>b.total - a.total);
+
+  // on tire dans le haut du panier : toujours le premier ne surprendrait plus
+  const haut = notes.slice(0, Math.min(5, notes.length));
+  return haut[Math.floor(Math.random()*haut.length)];
+}
+
 function surprendre(){
-  if(!positionMoi) return;
-  const m = momentActuel();
-  const [lat,lng] = positionMoi;
-  const candidats = lieux
-    .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
-    .filter(l=>l.dist < 2000 && !["metro","bus","toilettes","recharge","velo"].includes(l.cat))
-    .map(l=>Object.assign(l, {score:pertinence(l, m.poids)}))
-    .sort((a,b)=>b.score-a.score)
-    .slice(0, 15);
-  if(!candidats.length){ toast("Rien à proposer pour l’instant"); return; }
-  const l = candidats[Math.floor(Math.random()*candidats.length)];
-  map.flyTo([l.lat,l.lng], 17, {duration:.7});
+  if(!map) return;
+  const ctx = contexteActuel();
+  const choix = choisirSurprise(lieux, ctx, PROFIL);
+  if(!choix){
+    toast(surprisesVues.length ? "Plus rien de neuf dans le coin" : "Rien à proposer pour l’instant");
+    return;
+  }
+  const l = choix.l;
+  memoriserSurprise(l.id);
+  const depuis = (ctx.moi && ctx.moi[0]) ? ctx.moi : ctx.centre;
+  const d = distanceM(depuis[0], depuis[1], l.lat, l.lng);
+  const c = CATS[l.cat] || {emoji:"📍", label:""};
+
+  map.flyTo([l.lat, l.lng], 17, {duration:.7});
   pileEcrans = [];
-  pousserEcran(()=>ouvrirDetail(l.id));
+  pousserEcran(()=>{
+    ouvrirFeuille(
+      '<p class="sp-tete">🎲 Surprise</p>'+
+      '<h2 class="titre">'+esc(l.titre)+'</h2>'+
+      '<p class="resume">'+
+        '<span>'+c.emoji+' '+esc(c.label)+'</span>'+
+        '<span>'+formatDist(d)+'</span>'+
+        '<span>'+tempsTrajetMinutes(d, VITESSES_KMH.pied)+' min à pied</span>'+
+        (l.ouvert === true  ? '<span class="ouvert">Ouvert</span>' :
+         l.ouvert === false ? '<span class="ferme">Fermé</span>' : '')+
+        (l.note ? '<span>★ '+l.note.toFixed(1)+'</span>' : '')+
+      '</p>'+
+      '<p class="sp-raison">'+esc(choix.raison)+'</p>'+
+      '<div class="actions">'+
+        '<button class="act act-1" id="spAller">Y aller</button>'+
+        '<button class="act" id="spEncore">Une autre surprise</button>'+
+        '<button class="act" id="spFiche">Voir la fiche</button>'+
+      '</div>'+
+      '<div class="trajet" id="trajet" hidden></div>'
+    );
+    $("#spAller").onclick  = ()=>afficherTrajet(l);
+    $("#spEncore").onclick = ()=>{ mettreAJourProfil("ignore", l.cat); surprendre(); };
+    $("#spFiche").onclick  = ()=>pousserEcran(()=>ouvrirDetail(l.id));
+  });
 }
 
 /* « Autour IA » : aucune génération, aucun résultat inventé. La phrase est
@@ -3425,6 +3768,9 @@ function interpreter(phrase){
 }
 
 function appliquerPhrase(phrase){
+  mettreAJourProfil("recherche", phrase);
+  const ville = villeRecherchee(phrase);
+  if(ville){ rechercherAilleurs(phrase, ville); return; }
   const a = interpreter(phrase);
   if(!a.dit.length){
     ouvrirResultats(phrase);            // rien de compris : recherche classique
@@ -3488,6 +3834,8 @@ function majAccueil(){
     if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
     if(l.note) bouts.push("★ "+l.note.toFixed(1));
     if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(l.quand)) bouts.push(esc(l.quand));
+    const r = raisonDe(l.id);
+    if(r) bouts.push('<span class="raison">'+esc(r)+'</span>');
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+c.emoji+'</span>'+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
@@ -3546,6 +3894,9 @@ function ouvrirExplorer(){
   ouvrirFeuille('<h2 class="pub">Explorer</h2>'+
     '<div class="ex-actions">'+
       '<button class="ex-tout'+(filtreActif==="tout"?' actif':'')+'" data-ex="tout">Tout afficher</button>'+
+      '<button class="ex-tout" id="exPerso">'+
+        (personnalisation ? "Personnalisation activée · désactiver" : "Personnalisation désactivée · activer")+'</button>'+
+      '<button class="ex-tout" id="exOubli">Oublier mes préférences</button>'+
       '<button class="ex-tout" id="exBascule">'+
         (toutMasque ? "Réafficher les couches masquées" : "Masquer toutes les couches")+'</button>'+
     '</div>'+
@@ -3570,6 +3921,12 @@ function ouvrirExplorer(){
     ouvrirExplorer();                    // même écran, état à jour
   });
 
+  $("#exPerso").onclick = ()=>{
+    personnalisation = !personnalisation;
+    try{ localStorage.setItem("autour:perso", personnalisation ? "oui" : "non"); }catch(e){}
+    rendre(); majAccueil(); ouvrirExplorer();
+  };
+  $("#exOubli").onclick = ()=>{ reinitialiserProfil(); ouvrirExplorer(); };
   $("#exBascule").onclick = ()=>{
     if(catsMasquees.size) catsMasquees.clear();
     else Object.keys(CATS).forEach(id=>catsMasquees.add(id));
@@ -3583,8 +3940,8 @@ function ouvrirExplorer(){
    vers l'utilisateur dès que la géolocalisation répond. Un refus ou un échec
    laisse une application parfaitement utilisable. */
 function suivreMaPosition(){
-  if(!navigator.geolocation){ etat("Géolocalisation absente"); return; }
-  etat("Recherche de ta position…");
+  if(!navigator.geolocation){ etat("Géolocalisation absente sur cet appareil.", true); return; }
+  etat("Recherche de ta position…", true);
   navigator.geolocation.getCurrentPosition(
     p=>{
       const c = [p.coords.latitude, p.coords.longitude];
@@ -3598,15 +3955,14 @@ function suivreMaPosition(){
         nomCommune(c[0],c[1]).then(n=>{ commune = n; });
         majAccueil();
       }
-      $("#porte").hidden = true;
+      $("#bandeauGeo").hidden = true;
     },
-    ()=>{ etat("Position indisponible — on reste sur ce quartier"); },
+    ()=>{ etat("Position refusée. Tu peux quand même explorer la carte.", true); },
     {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
 }
 
-$("#btnGeo").onclick=()=>{ $("#porte").hidden = true; suivreMaPosition(); };
-$("#btnSansGeo").onclick=()=>{ $("#porte").hidden = true; };
+$("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
 
 /* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
 performance.mark("autour:script");
@@ -3614,8 +3970,6 @@ demarrer(positionMemorisee()).then(()=>{
   performance.mark("autour:carte");
   performance.measure("interface prête", "autour:script", "autour:carte");
   suivreMaPosition();
-  // l'écran d'accueil ne masque la carte qu'un instant
-  setTimeout(()=>{ if($("#porte")) $("#porte").hidden = true; }, 1400);
 });
 $("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
@@ -3703,6 +4057,7 @@ $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>map.flyTo(positionMoi,16,{duration:.8});
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
+$("#btnDe").onclick=surprendre;
 $("#acPlus").onclick=()=>{ toutAfficher(); ouvrirIntentions(); };
 $("#btnMaintenant").onclick=()=>{ basculerMaintenant(); ouvrirIntentions(); };
 $("#intFermer").onclick=()=>{ $("#intentions").hidden = true; };
