@@ -180,12 +180,12 @@ input{font-family:inherit;font-size:16px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
 
-#bandeauGeo{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
+#bandeauGeo,#bandeauVide{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
-#bandeauTxt{flex:1;min-width:0}
-#bandeauOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+#bandeauTxt,#videTxt{flex:1;min-width:0}
+#bandeauOk,#videOk{flex-shrink:0;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
   color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
 #charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
@@ -273,6 +273,8 @@ input{font-family:inherit;font-size:16px}
   letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
 .ac-plus{border:0;background:none;padding:2px 0;font-size:12px;font-weight:700;
   color:var(--signal);text-decoration:underline;text-underline-offset:3px}
+#acSug .sg-rapides{padding:2px 0 8px;margin:0 -2px}
+.ac-rien{padding:10px 0 2px;font-size:13px;line-height:1.4;color:var(--ink2)}
 .ac-item{display:flex;align-items:center;gap:11px;width:100%;padding:10px 0;border:0;
   border-top:1px solid rgba(20,30,25,.1);background:none;text-align:left}
 .ac-item:first-child{border-top:0}
@@ -556,6 +558,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="bandeauOk">Activer</button>
 </div>
 
+<div id="bandeauVide" hidden>
+  <span id="videTxt">Rien d’ouvert autour de toi en ce moment.</span>
+  <button id="videOk">Tout voir</button>
+</div>
+
 <div class="haut" id="haut" hidden>
   <button class="rond" id="btnLoupe" aria-label="Chercher">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
@@ -589,6 +596,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     <span class="ac-titre" id="acTitre">Autour de toi</span>
     <button class="ac-plus" id="acPlus">Voir plus</button>
   </div>
+  <div id="acSug"></div>
   <div id="acListe"></div>
 </div>
 
@@ -662,6 +670,7 @@ const CATS = {
   emploi:     {label:"Emploi & droits",  emoji:"📋", eph:false},
 
   biblio:   {label:"Bibliothèques", emoji:"📚", eph:false},
+  coworking:{label:"Espaces de travail", emoji:"💻", eph:false},
   musee:    {label:"Musées",        emoji:"🏛", eph:false},
   parc:     {label:"Parcs",         emoji:"🌳", eph:false},
   terrain:  {label:"Terrains",      emoji:"🏀", eph:false},
@@ -716,6 +725,15 @@ function preciserService(nom){
    sens : ces lieux sont toujours triés par distance, sans note ni palmarès. */
 const SANS_CLASSEMENT = new Set(["alimentaire","asso","hebergement","emploi","sante","mairie"]);
 
+/* ---- Ce qu'on ne propose jamais de soi-même ----------------------------
+   Un collège, une préfecture ou un bureau de poste sont sur la carte parce
+   qu'ils existent et qu'on doit pouvoir les retrouver par leur nom. Mais
+   personne n'ouvre Autour pour qu'on lui suggère un lycée : ces lieux ne
+   sont pas ouverts au public, on n'y entre pas parce qu'on passait devant.
+   Ils restent donc silencieux tant qu'ils n'ont pas été demandés — par une
+   recherche nommée, une catégorie choisie ou une intention qui les inclut. */
+const JAMAIS_AUTO = new Set(["ecole","mairie"]);
+
 /* Ce que les gens tapent réellement dans la recherche, par catégorie. */
 const SYNONYMES = {
   resto:["restaurant","resto","manger","brasserie","diner","dejeuner"],
@@ -733,7 +751,8 @@ const SYNONYMES = {
   hebergement:["hebergement","dormir","abri","foyer","urgence","115","logement"],
   sante:["sante","hopital","pharmacie","medecin","docteur","clinique","urgences"],
   emploi:["emploi","mission locale","france travail","pole emploi","travail","insertion","cv"],
-  biblio:["bibliotheque","mediatheque","livre","lecture","etudier"],
+  biblio:["bibliotheque","mediatheque","livre","lecture","etudier","salle d etude","reviser"],
+  coworking:["coworking","espace de travail","bureau partage","tiers lieu","travailler"],
   musee:["musee","galerie","expo","exposition"],
   parc:["parc","jardin","square","vert","promenade"],
   terrain:["terrain","sport","foot","basket","piscine","skate","gym","muscu"],
@@ -864,7 +883,7 @@ const GROUPES = [
   { label:"Acheter",emoji:"🛍", cats:["friperie","commerce","marche","popup"] },
   { label:"Sortir", emoji:"🎉", cats:["spectacle","concert","bar","cinema","food","event","popup","studio","sport"] },
   { label:"Aide",   emoji:"❤️", cats:["alimentaire","asso","hebergement","sante","emploi","collecte"] },
-  { label:"Ville",  emoji:"🏛", cats:["biblio","musee","parc","terrain","ecole","mairie",
+  { label:"Ville",  emoji:"🏛", cats:["biblio","coworking","musee","parc","terrain","ecole","mairie",
                                       "velo","metro","bus","recharge","toilettes"] },
 ];
 
@@ -911,7 +930,10 @@ const REQUETES = [
   ["amenity","nightclub","concert"], ["amenity","music_venue","concert"],
 
   // -- ville
-  ["amenity","library","biblio"],
+  ["amenity","library","biblio"], ["amenity","public_bookcase","biblio"],
+  // là où on peut réellement s'installer pour travailler : c'est ce que
+  // demande « Étudier », pas un lycée dont les portes sont fermées au public
+  ["amenity","coworking_space","coworking"], ["office","coworking","coworking"],
   ["tourism","museum","musee"], ["tourism","gallery","musee"],
   ["leisure","park","parc"], ["leisure","garden","parc"],
   ["leisure","pitch","terrain"], ["leisure","skatepark","terrain"],
@@ -1673,7 +1695,7 @@ const FILTRES_HUMAINS = [
   { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
   { id:"famille", label:"En famille",      cats:["parc","terrain","musee","biblio","marche","cinema"] },
-  { id:"etudier", label:"Étudier",         cats:["biblio","cafe","ecole"] },
+  { id:"etudier", label:"Étudier",         cats:["biblio","coworking","cafe"] },
   { id:"monde",   label:"Rencontrer",      cats:["event","concert","bar","asso","terrain","popup","studio","sport"] },
   { id:"libre",   label:"Sans réservation",cats:["parc","biblio","marche","fastfood","cafe","commerce",
                                                  "friperie","toilettes","terrain","musee","velo"] },
@@ -1798,6 +1820,7 @@ function majIndexEvenements(){
 /* Classement puis plafonnement : la carte ne porte que les mieux notés.
    Montrer trois cents épingles revient à n'en montrer aucune. */
 let derniereSelection = [];
+let ecartesAuto = 0;          // combien de lieux la règle a écartés au dernier rendu
 
 function selectionner(){
   const t0 = performance.now();
@@ -1805,7 +1828,13 @@ function selectionner(){
   const brut = visibles();
   const cible = ctx.large ? POIDS.PLAFOND_LARGE : POIDS.PLAFOND_SERRE;
 
-  const notes = brut.map(l=>{
+  // avant de noter quoi que ce soit : écarter ce qui n'a rien à faire sur la
+  // carte tant qu'on ne l'a pas demandé — écoles, administrations, et tout ce
+  // qui est fermé à l'instant regardé
+  const admis = brut.filter(l=>proposableAuto(l, ctx));
+  ecartesAuto = brut.length - admis.length;
+
+  const notes = admis.map(l=>{
     const r = scoreLieu(l, ctx);
     return {l, score:r.score, raison:r.raison, niveau:niveauLieu(l, ctx, r.score)};
   });
@@ -1819,7 +1848,8 @@ function selectionner(){
 
   derniereSelection = retenus;
   if(window.__autourDebug)
-    console.info("[Autour] reçus", brut.length, "· retenus", retenus.length,
+    console.info("[Autour] reçus", brut.length, "· écartés d'office", ecartesAuto,
+      "· retenus", retenus.length,
       "· niveau A", notes.filter(x=>x.niveau==="A").length,
       "· classement", (performance.now()-t0).toFixed(1)+" ms",
       "· meilleur", retenus[0] ? retenus[0].l.titre+" ("+Math.round(retenus[0].score)+", "+retenus[0].raison+")" : "—");
@@ -1829,6 +1859,22 @@ function selectionner(){
 function raisonDe(id){
   const x = derniereSelection.find(y=>y.l.id === id);
   return x ? x.raison : "";
+}
+
+/* La carte se vide surtout la nuit ou le dimanche : dire pourquoi vaut mieux
+   qu'un écran blanc, et l'échappatoire reste à un doigt. */
+function majBandeauVide(retenus){
+  const b = $("#bandeauVide");
+  if(!b) return;
+  // un seul bandeau à la fois : celui de la géolocalisation passe avant
+  const montrer = retenus === 0 && lieux.length > 0 && !montrerFermes && !modeNav
+    && $("#bandeauGeo").hidden;
+  b.hidden = !montrer;
+  if(!montrer) return;
+  $("#videTxt").textContent = ecartesAuto
+    ? "Rien d’ouvert autour de toi en ce moment."
+    : "Rien à afficher dans cette zone.";
+  $("#videOk").hidden = !ecartesAuto;
 }
 
 function rendre(){
@@ -1841,7 +1887,9 @@ function rendre(){
     return;
   }
   const garder = new Set();
-  grouper(selectionner()).forEach(item=>{
+  const choisis = selectionner();
+  majBandeauVide(choisis.length);
+  grouper(choisis).forEach(item=>{
     if(item.seul){
       const l = item.seul;
       garder.add(l.id);
@@ -1948,6 +1996,14 @@ function basculerGarde(id){
   return gardes.has(id);
 }
 
+function noteVacances(l){
+  if(l.cat !== "ecole") return "";
+  const v = vacancesScolaires(new Date());
+  if(!v) return "";
+  return '<p class="non-verifie">Nous sommes '+(v.sur ? "en " : "probablement en ")+v.nom+
+    ' : l’établissement est sans doute fermé.</p>';
+}
+
 function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
   const c = CATS[l.cat]||CATS.event;
@@ -1974,6 +2030,9 @@ function ouvrirDetail(id){
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Enregistré':'Enregistrer')+'</button>'+
     '</div>'+
     (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
+    // un établissement scolaire trouvé par son nom en pleines vacances : le
+    // dire évite un déplacement pour rien devant une grille fermée
+    noteVacances(l)+
     // une fausse distribution fait se déplacer quelqu'un qui n'a pas de quoi manger
     ((CATS[l.cat]||{}).eph && !l.verifie && /alimentaire|collecte|hebergement/.test(l.cat)
       ? '<p class="non-verifie">Annonce publiée par un habitant, non vérifiée. '+
@@ -2872,6 +2931,7 @@ const CAT_GOOGLE = {
   bar:"bar", pub:"bar", night_club:"concert",
   movie_theater:"cinema", performing_arts_theater:"spectacle",
   library:"biblio", museum:"musee", art_gallery:"musee", park:"parc",
+  coworking_space:"coworking",
   hospital:"sante", pharmacy:"sante", doctor:"sante", drugstore:"sante",
   local_government_office:"mairie", city_hall:"mairie", post_office:"mairie",
   government_office:"emploi", employment_agency:"emploi",
@@ -3345,12 +3405,14 @@ function completerParGoogle(q, catDefaut, redessiner){
 /* Ce qui compte change avec l'heure. À une heure du matin, une pharmacie ou
    un hébergement d'urgence valent mieux qu'un musée fermé depuis longtemps. */
 const MOMENTS = [
+  // la mairie a disparu d'ici : elle était favorisée tous les matins alors
+  // que personne n'ouvre l'app pour qu'on lui propose un guichet
   { de:6,  a:11, nom:"ce matin",
-    poids:{cafe:3, marche:3, mairie:2, emploi:2, sante:2, alimentaire:2} },
+    poids:{cafe:3, marche:3, emploi:2, sante:2, alimentaire:2, coworking:2} },
   { de:11, a:14, nom:"ce midi",
     poids:{resto:3, alimentaire:3, fastfood:2, cafe:2, marche:2} },
   { de:14, a:18, nom:"cet après-midi",
-    poids:{biblio:2, musee:2, parc:2, asso:2, emploi:2, terrain:2, friperie:2, commerce:2} },
+    poids:{biblio:2, coworking:2, musee:2, parc:2, asso:2, emploi:2, terrain:2, friperie:2, commerce:2} },
   { de:18, a:23, nom:"ce soir",
     poids:{concert:4, spectacle:4, bar:3, resto:3, cinema:3, fastfood:2} },
   { de:23, a:6,  nom:"cette nuit",
@@ -3360,6 +3422,80 @@ const MOMENTS = [
 function momentActuel(){
   const h = instantCreneau().getHours();
   return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
+}
+
+/* Propositions posées avant la moindre frappe : à 8 h on ne cherche pas la
+   même chose qu'à 23 h, et écrire sa demande est déjà un effort. Quatre
+   raccourcis suffisent — au-delà on ne choisit plus, on lit une liste. */
+const SUGGESTIONS_MOMENT = {
+  "ce matin": [
+    {t:"Petit-déjeuner",   cats:["cafe"]},
+    {t:"Bosser au calme",  cats:["biblio","coworking","cafe"]},
+    {t:"Marché",           cats:["marche"]},
+    {t:"Prendre l’air",    cats:["parc"]},
+  ],
+  "ce midi": [
+    {t:"Manger",           cats:["resto","fastfood","food"]},
+    {t:"Pas cher",         f:"budget"},
+    {t:"Près de moi",      f:"proche"},
+    {t:"Ouvert maintenant",f:"ouvert"},
+  ],
+  "cet après-midi": [
+    {t:"Étudier",          cats:["biblio","coworking","cafe"]},
+    {t:"Prendre l’air",    cats:["parc"]},
+    {t:"Fripes & pop-up",  cats:["friperie","popup","marche"]},
+    {t:"Bouger",           cats:["terrain","sport"]},
+  ],
+  "ce soir": [
+    {t:"Restaurant",       cats:["resto"]},
+    {t:"Sortir",           cats:["concert","spectacle","bar","event"]},
+    {t:"Cinéma",           cats:["cinema"]},
+    {t:"Surprends-moi",    hasard:true},
+  ],
+  "cette nuit": [
+    {t:"Ouvert maintenant",f:"ouvert"},
+    {t:"Pharmacie",        cats:["sante"]},
+    {t:"Rentrer",          cats:["metro","bus","velo"]},
+    {t:"Un abri",          cats:["hebergement","asso"], aide:true},
+  ],
+};
+
+function suggestionsDuMoment(){
+  return SUGGESTIONS_MOMENT[momentActuel().nom] || SUGGESTIONS_MOMENT["cet après-midi"];
+}
+
+function appliquerSuggestion(s){
+  const z = $("#suggestions"); if(z) z.hidden = true;
+  const r = $("#rech"); if(r) r.blur();
+  if(s.hasard){ surprendre(); return; }
+  if(s.f){
+    filtresHumains.add(s.f);
+    toutAfficher(); majFiltres();
+    toast(s.t);
+    return;
+  }
+  catsActives = new Set(s.cats);
+  filtreActif = "tout";
+  selectionAccueil = false;
+  const a = $("#accueil"); if(a) a.hidden = true;
+  $("#intentions").hidden = true;
+  if(s.aide && positionMoi) chargerAide(positionMoi[0], positionMoi[1]);
+  mettreAJourProfil("categorie", s.cats[0]);
+  dessinerFiltres(); majFiltres(); rendre();
+  toast(s.t);
+}
+
+/* Une même rangée de raccourcis, rendue au même endroit dans deux contextes :
+   sous la barre de recherche et dans la carte d'accueil. */
+function rangeeSuggestions(){
+  return '<div class="sg-rapides">'+suggestionsDuMoment().map((s,i)=>
+    '<button class="sg-rapide" data-sug="'+i+'">'+esc(s.t)+'</button>').join("")+'</div>';
+}
+
+function brancherSuggestions(zone){
+  const liste = suggestionsDuMoment();
+  zone.querySelectorAll("[data-sug]").forEach(b=>
+    b.onclick=()=>appliquerSuggestion(liste[Number(b.dataset.sug)]));
 }
 
 /* ================================================================== */
@@ -3454,6 +3590,53 @@ function contexteActuel(){
   };
 }
 
+/* ---- Vacances scolaires -----------------------------------------------
+   Sert uniquement à ne pas laisser croire qu'un établissement scolaire est
+   ouvert. Les dates de la Toussaint, de Noël et de l'été sont nationales ;
+   celles de février et d'avril dépendent de la zone (A, B ou C) et on ne
+   sait pas dans laquelle se trouve la personne : on les signale alors comme
+   probables plutôt que de les affirmer. */
+function vacancesScolaires(d){
+  const m = d.getMonth() + 1, j = d.getDate();
+  if(m === 7 || m === 8) return {nom:"vacances d’été", sur:true};
+  if(m === 9 && j <= 1)  return {nom:"vacances d’été", sur:true};
+  if(m === 10 && j >= 18) return {nom:"vacances de la Toussaint", sur:true};
+  if(m === 11 && j <= 2)  return {nom:"vacances de la Toussaint", sur:true};
+  if(m === 12 && j >= 20) return {nom:"vacances de Noël", sur:true};
+  if(m === 1 && j <= 5)   return {nom:"vacances de Noël", sur:true};
+  if(m === 2 || (m === 3 && j <= 9))  return {nom:"vacances d’hiver", sur:false};
+  if((m === 4 && j >= 8) || (m === 5 && j <= 10)) return {nom:"vacances de printemps", sur:false};
+  return null;
+}
+
+/* Une catégorie « silencieuse » redevient visible dès qu'on la demande :
+   en tapant son nom, en la choisissant dans Explorer, ou par une intention
+   qui l'inclut explicitement (« Je viens d'arriver » a besoin de la mairie).  */
+function demandeExplicite(l, ctx){
+  if(catsActives && catsActives.has(l.cat)) return true;
+  if(filtreActif === l.cat) return true;
+  if(!ctx.q || ctx.q.length < 3) return false;
+  if(sansAccents(l.titre).includes(ctx.q)) return true;   // « lycée Baggio »
+  return categorieRecherchee(ctx.q) === l.cat;            // « collège », « mairie »
+}
+
+/* Le filtre unique qui décide de ce qui a le droit de s'inviter sur la
+   carte sans qu'on l'ait demandé. Mieux vaut cinq propositions justes que
+   trente approximatives : ce qui est fermé ou fermé au public dégage. */
+/* Quand il n'y a vraiment plus rien d'ouvert — une nuit, un dimanche — la
+   carte vide est honnête mais inutilisable. On propose alors de lever la
+   règle, à la demande, et le bandeau le dit. */
+let montrerFermes = false;
+
+function proposableAuto(l, ctx){
+  if(demandeExplicite(l, ctx)) return true;
+  if(JAMAIS_AUTO.has(l.cat)) return false;
+  // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
+  // demain, l'information de Google ne dit plus rien du moment regardé
+  if(l.ouvert === false && creneau === "maintenant" && !montrerFermes) return false;
+  return true;
+}
+
 /* Score explicable : chaque terme est nommé, et la raison affichée à
    l'utilisateur est simplement le terme qui a le plus pesé. */
 function scoreLieu(l, ctx){
@@ -3514,27 +3697,6 @@ function niveauLieu(l, ctx, sc){
   return sc >= POIDS.SEUIL_NIVEAU_B ? "B" : "C";
 }
 
-/* Ancienne signature conservée : plusieurs appels s'appuient dessus. */
-function pertinence(l, poids){
-  let s = 0;
-  // Décroissance de la distance : on ne « découvre » pas à deux kilomètres.
-  // Exponentielle et non linéaire, parce que l'envie de se déplacer chute
-  // brutalement passé quelques centaines de mètres.
-  s += 120 * Math.exp(-l.dist / 800);
-  // Ce qui se passe l'emporte sur ce qui existe : c'est la promesse de l'app,
-  // et c'est la seule chose que Google Maps ne dit pas.
-  if((CATS[l.cat]||{}).eph) s += 55;
-  // Un lieu fermé maintenant ne sert à rien, même excellent.
-  if(l.ouvert === true)  s += 30;
-  if(l.ouvert === false) s -= 70;
-  s += (poids[l.cat] || 0) * 14;
-  // Preuve sociale : le nombre d'avis rassure plus que la note seule. En
-  // logarithme, car passer de 10 à 100 avis compte bien plus que de 900 à 1000.
-  if(l.avis) s += Math.min(22, Math.log10(l.avis+1) * 11);
-  if(l.note) s += (l.note - 3.5) * 8;
-  if(l.mien) s += 40;          // tes propres publications d'abord
-  return s;
-}
 
 /* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
    false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
@@ -3549,7 +3711,9 @@ const INTENTIONS = [
   { emoji:"🆘", label:"Trouver de l’aide",   cats:["alimentaire","hebergement","sante","asso","emploi","collecte"], aide:true },
   { emoji:"⚽", label:"Faire du sport",      cats:["terrain","sport"] },
   { emoji:"🤝", label:"Rencontrer du monde", cats:["asso","event","concert","bar","terrain","studio"] },
-  { emoji:"📚", label:"Étudier",             cats:["biblio","cafe","ecole"] },
+  // ni lycée ni fac : on cherche un endroit où s'asseoir et travailler,
+  // pas un établissement dont on n'est pas élève
+  { emoji:"📚", label:"Étudier",             cats:["biblio","coworking","cafe"] },
   { emoji:"🚲", label:"Déplacements",        cats:["velo","metro","bus","recharge"] },
   { emoji:"🧳", label:"Je viens d’arriver",  cats:["resto","biblio","musee","marche","asso","emploi","sante",
                                                   "metro","bus","terrain","parc","mairie"], aide:true },
@@ -3624,7 +3788,9 @@ function majFiltres(){
   if(b) b.classList.toggle("actif", filtreMaintenant);
   const z = $("#filtresHumains");
   if(!z) return;
-  const montrer = !!catsActives || filtreActif !== "tout" || filtreMaintenant;
+  // la barre doit aussi apparaître quand seul un filtre humain est posé,
+  // sinon « Pas cher » s'active sans laisser de quoi le retirer
+  const montrer = !!catsActives || filtreActif !== "tout" || filtreMaintenant || filtresHumains.size > 0;
   z.hidden = !montrer;
   if(!montrer) return;
   z.innerHTML = FILTRES_HUMAINS.map(f=>
@@ -3681,6 +3847,7 @@ function choisirSurprise(liste, ctx, profil){
   const depuis = ctx.moi && ctx.moi[0] ? ctx.moi : ctx.centre;   // géoloc refusée : le centre de la carte suffit
   const possibles = liste.filter(l=>{
     if(l.ouvert === false) return false;                       // fermé : inutile
+    if(JAMAIS_AUTO.has(l.cat)) return false;                   // une surprise n'est jamais une administration
     if(!l.titre || l.titre.length < 3) return false;           // fiche sans information
     if(CATS_SANS_INTERET.includes(l.cat)) return false;
     if(surprisesVues.includes(l.id)) return false;             // déjà proposé récemment
@@ -3813,31 +3980,42 @@ function toutAfficher(){
   rendre();
 }
 
+/* Ce que l'accueil garde. Cinq lignes au maximum, mais surtout : aucune
+   ligne de remplissage. Une proposition qui ne passe pas la barre est une
+   proposition en moins, pas une proposition médiocre de plus. */
+const ACCUEIL_MAX = 5;
+const ACCUEIL_SEUIL = 55;
+
 function majAccueil(){
   if(!map || !positionMoi || modeNav) return;
   if(selectionAccueil === false) return;
-  const m = momentActuel();
+  const ctx = contexteActuel();
   const [lat,lng] = positionMoi;
 
   const notes = lieux
+    .filter(l=>proposableAuto(l, ctx))
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
     .filter(l=>l.dist < 2500)
-    .map(l=>Object.assign(l, {score:pertinence(l, m.poids)}))
+    .map(l=>{ const r = scoreLieu(l, ctx); return Object.assign(l, {score:r.score, raison:r.raison}); })
+    .filter(l=>l.score >= ACCUEIL_SEUIL)
     .sort((a,b)=>b.score - a.score);
-  if(!notes.length) return;
 
   // on réserve une place à un événement s'il en existe un : sans ça, les
-  // commerces bien notés rafleraient les trois lignes et l'app perdrait
+  // commerces bien notés rafleraient toutes les lignes et l'app perdrait
   // exactement ce qui la distingue
   const choisis = [];
   const ev = notes.find(l=>(CATS[l.cat]||{}).eph);
   if(ev) choisis.push(ev);
-  notes.forEach(l=>{ if(choisis.length < 3 && !choisis.includes(l)) choisis.push(l); });
+  notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
 
   selectionAccueil = choisis.map(l=>l.id);
 
   const heure = new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
   $("#acTitre").textContent = "Autour de toi · "+heure;
+
+  // les raccourcis de l'heure, posés avant la liste : on peut agir sans lire
+  const zs = $("#acSug");
+  if(zs){ zs.innerHTML = rangeeSuggestions(); brancherSuggestions(zs); }
   $("#acListe").innerHTML = choisis.map(l=>{
     const c = CATS[l.cat] || {emoji:"📍"};
     const bouts = [];
@@ -3845,14 +4023,17 @@ function majAccueil(){
     if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
     if(l.note) bouts.push("★ "+l.note.toFixed(1));
     if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(l.quand)) bouts.push(esc(l.quand));
-    const r = raisonDe(l.id);
+    const r = l.raison || raisonDe(l.id);
     if(r) bouts.push('<span class="raison">'+esc(r)+'</span>');
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+c.emoji+'</span>'+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
       '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
       '<span class="ac-dist">'+formatDist(l.dist)+'</span></button>';
-  }).join("");
+  }).join("") ||
+    // aucune proposition ne passe la barre : on le dit, plutôt que de meubler
+    '<p class="ac-rien">Rien de marquant '+momentActuel().nom+
+    ' à moins de 25 minutes. Essaie « Explorer » ou le 🎲.</p>';
 
   $("#acListe").querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
@@ -3975,6 +4156,8 @@ function suivreMaPosition(){
 }
 
 $("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
+$("#videOk").onclick=()=>{ montrerFermes = true; $("#bandeauVide").hidden = true;
+  toast("Les lieux fermés sont affichés"); rendre(); };
 
 /* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
 performance.mark("autour:script");
@@ -3988,12 +4171,6 @@ $("#btnFermerRech").onclick=()=>{
   $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true; rendre();
 };
-const RECHERCHES_RAPIDES = [
-  {t:"Maintenant", f:"maintenant"}, {t:"Gratuit", f:"gratuit"},
-  {t:"Près de moi", f:"proche"},    {t:"Ouvert", f:"ouvert"},
-  {t:"Ce soir", f:"soir"}
-];
-
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
    chargés : aucune requête, donc aucun effet sur le temps de chargement. */
 function suggerer(q){
@@ -4001,16 +4178,10 @@ function suggerer(q){
   if(!z) return;
   const t = sansAccents(q).trim();
 
+  // rien de tapé : on propose ce qui correspond à l'heure qu'il est
   if(!t){
-    z.innerHTML = '<div class="sg-rapides">'+RECHERCHES_RAPIDES.map(r=>
-      '<button class="sg-rapide" data-rap="'+r.f+'">'+r.t+'</button>').join("")+'</div>';
-    z.querySelectorAll("[data-rap]").forEach(b=>b.onclick=()=>{
-      const f = b.dataset.rap;
-      z.hidden = true; $("#rech").blur();
-      if(f === "maintenant"){ basculerMaintenant(); return; }
-      if(f === "soir"){ creneau = "soir"; filtreMaintenant = true; majFiltres(); rendre(); return; }
-      filtresHumains.add(f); toutAfficher(); majFiltres(); rendre();
-    });
+    z.innerHTML = rangeeSuggestions();
+    brancherSuggestions(z);
     z.hidden = false;
     return;
   }
