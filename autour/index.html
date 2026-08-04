@@ -26,7 +26,12 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<!-- les polices ne doivent pas retarder le premier affichage : chargées en
+     média « print » puis basculées, le texte s'affiche aussitôt en système -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" />
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+<link rel="preconnect" href="https://basemaps.cartocdn.com" />
 
 <style>
 :root{
@@ -611,7 +616,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="panne" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -934,11 +938,24 @@ const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
 let sb = null, moiId = null;
 
+/* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
+   chemin critique du premier affichage. */
+let pSupabase = null;
+function chargerSupabase(){
+  if(window.supabase) return Promise.resolve(true);
+  if(pSupabase) return pSupabase;
+  pSupabase = new Promise(ok=>{
+    const el = document.createElement("script");
+    el.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
+    el.onload = ()=>ok(true);
+    el.onerror = ()=>{ console.warn("Supabase indisponible."); ok(false); };
+    document.head.appendChild(el);
+  });
+  return pSupabase;
+}
+
 async function connecter(){
-  if(typeof window.supabase === "undefined"){
-    console.warn("Supabase indisponible : les publications restent locales.");
-    return null;
-  }
+  if(!(await chargerSupabase())) return null;
   try{
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
     let { data:{ session } } = await sb.auth.getSession();
@@ -1345,16 +1362,24 @@ function essayerFond(f){
     };
     couche.on("tileload", ()=>{ ok = true; termine(true); });
     couche.on("tileerror", ()=>{ ko++; if(ko >= 4 && !ok) termine(false); });
-    setTimeout(()=>termine(ok), 5000);
+    setTimeout(()=>termine(ok), 2200);
   });
 }
 
+/* Les trois fournisseurs sont sondés en même temps et le premier qui rend une
+   tuile gagne : en file, un fournisseur muet coûtait 5 s avant d'essayer le
+   suivant, soit 15 s dans le pire cas avant le moindre fond de carte. */
 async function poserFond(){
-  for(const f of FONDS){
-    const couche = await essayerFond(f);
-    if(couche) return f.nom;
-  }
-  return null;
+  const essais = FONDS.map(f=>essayerFond(f).then(c=>c ? {f,c} : null));
+  const gagnant = await Promise.race([
+    ...essais.map(p=>p.then(r=>r || new Promise(()=>{}))),   // les échecs n'arbitrent pas
+    Promise.allSettled(essais).then(()=>null)                // tous muets
+  ]);
+  // on retire les fonds arrivés après coup pour ne pas empiler les tuiles
+  essais.forEach(p=>p.then(r=>{
+    if(r && gagnant && r.c !== gagnant.c) map.removeLayer(r.c);
+  }));
+  return gagnant ? gagnant.f.nom : null;
 }
 
 function majEpaisseurs(){
@@ -1389,6 +1414,11 @@ function fusionner(nouveaux){
   const connus = new Set(lieux.map(l=>l.id));
   nouveaux.forEach(l=>{ if(!connus.has(l.id) && !estPasse(l)) lieux.push(l); });
   indexPerime = true;
+  if(!window.__premiereDonnee){
+    window.__premiereDonnee = true;
+    performance.mark("autour:donnees");
+    performance.measure("première donnée visible", "autour:script", "autour:donnees");
+  }
   rendre();
   dessinerFiltres();
   majAccueil();             // la sélection se reclasse à chaque nouvelle source
@@ -1421,26 +1451,52 @@ function ecrireCacheLieux(lat,lng,l){
 let dernierChargement = null;
 let chargementEnCours = false;
 
+let abandonZone = null;
+
 function chargerZone(lat, lng){
-  if(chargementEnCours || !map || map.getZoom() < 13) return;
+  if(!map || map.getZoom() < 13) return;
   if(dernierChargement &&
      distanceM(dernierChargement[0], dernierChargement[1], lat, lng) < 800) return;
+  // une zone demandée en remplace une autre : inutile d'attendre la précédente
+  if(abandonZone) abandonZone.abort();
+  abandonZone = new AbortController();
+  const signal = abandonZone.signal;
   dernierChargement = [lat,lng];
   chargementEnCours = true;
+  performance.mark("zone:debut");
 
   const enCache = lireCacheLieux(lat,lng);
   if(enCache && enCache.length) fusionner(enCache);
 
-  Promise.all([
+  // allSettled : une source lente ou en panne ne retient pas les autres
+  Promise.allSettled([
     vraisLieux(lat,lng).then(r=>{
+      if(signal.aborted) return;
       if(r && r.length){ fusionner(r); ecrireCacheLieux(lat,lng,r); }
+      performance.mark("zone:osm");
+      performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
     }),
     notesGoogle(lat,lng).then(f=>{
-      if(!f) return;
+      if(signal.aborted || !f) return;
       greffeNotes(lieux, f);
       ajouterLieuxGoogle(f);
+      performance.mark("zone:google");
+      performance.measure("lieux Google", "zone:debut", "zone:google");
     })
   ]).finally(()=>{ chargementEnCours = false; });
+}
+
+/* Dernière position connue : évite de démarrer à Paris quelqu'un qui vit à
+   Tourcoing, et permet d'afficher une carte utile avant toute géolocalisation. */
+function positionMemorisee(){
+  try{
+    const v = JSON.parse(localStorage.getItem("autour:position")||"null");
+    if(v && Math.abs(v[0])<=90 && Math.abs(v[1])<=180) return v;
+  }catch(e){}
+  return null;
+}
+function memoriserPosition(c){
+  try{ localStorage.setItem("autour:position", JSON.stringify(c)); }catch(e){}
 }
 
 async function demarrer(coords){
@@ -3472,16 +3528,45 @@ function ouvrirExplorer(){
   };
 }
 
-$("#btnGeo").onclick=()=>{
-  if(!navigator.geolocation){ etat("Géolocalisation absente"); demarrer(null); return; }
+/* On ne demande plus la permission avant de construire quoi que ce soit :
+   la carte s'affiche tout de suite à la dernière position connue, et glisse
+   vers l'utilisateur dès que la géolocalisation répond. Un refus ou un échec
+   laisse une application parfaitement utilisable. */
+function suivreMaPosition(){
+  if(!navigator.geolocation){ etat("Géolocalisation absente"); return; }
   etat("Recherche de ta position…");
   navigator.geolocation.getCurrentPosition(
-    p=>demarrer([p.coords.latitude,p.coords.longitude]),
-    ()=>{ etat("Position refusée — Paris par défaut"); setTimeout(()=>demarrer(null),600); },
-    {enableHighAccuracy:true, timeout:9000}
+    p=>{
+      const c = [p.coords.latitude, p.coords.longitude];
+      memoriserPosition(c);
+      const bouge = !positionMoi || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
+      positionMoi = c;
+      if(moi) moi.setLatLng(c);
+      if(bouge && map){
+        map.flyTo(c, 16, {duration:.9});
+        chargerZone(c[0], c[1]);
+        nomCommune(c[0],c[1]).then(n=>{ commune = n; });
+        majAccueil();
+      }
+      $("#porte").hidden = true;
+    },
+    ()=>{ etat("Position indisponible — on reste sur ce quartier"); },
+    {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
-};
-$("#btnSansGeo").onclick=()=>demarrer(null);
+}
+
+$("#btnGeo").onclick=()=>{ $("#porte").hidden = true; suivreMaPosition(); };
+$("#btnSansGeo").onclick=()=>{ $("#porte").hidden = true; };
+
+/* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
+performance.mark("autour:script");
+demarrer(positionMemorisee()).then(()=>{
+  performance.mark("autour:carte");
+  performance.measure("interface prête", "autour:script", "autour:carte");
+  suivreMaPosition();
+  // l'écran d'accueil ne masque la carte qu'un instant
+  setTimeout(()=>{ if($("#porte")) $("#porte").hidden = true; }, 1400);
+});
 $("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
   $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
