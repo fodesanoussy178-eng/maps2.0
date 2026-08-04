@@ -3267,6 +3267,57 @@ async function chargerAide(lat,lng){
   majAccueil();
 }
 
+/* « restaurant à Lille » depuis Roubaix : on détecte la ville visée, on s'y
+   déplace et on classe les résultats de là-bas. Sans ça, la recherche restait
+   collée à la position courante. */
+function villeRecherchee(q){
+  // \b ne marche pas devant « à » : le caractère accentué n'est pas un mot ASCII
+  const m = /(?:^|\s)(?:a|à|sur|vers|dans)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ'’-]{2,}(?:[ -][A-Za-zÀ-ÿ][\wÀ-ÿ'’-]+){0,3})\s*$/.exec(q.trim());
+  return m ? m[1].trim() : null;
+}
+
+async function geocoderVille(nom){
+  try{
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+
+      encodeURIComponent(nom));
+    if(!r.ok) return null;
+    const j = await r.json();
+    if(!j.length) return null;
+    return [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+  }catch(e){ return null; }
+}
+
+/* Recherche dans une autre ville : on affiche les résultats de Google
+   directement, au lieu de les filtrer sur les lieux déjà chargés ici. */
+async function rechercherAilleurs(phrase, ville){
+  charge("Recherche à "+ville+"…");
+  const pos = await geocoderVille(ville);
+  const depuis = pos || positionMoi;
+  const res = await chercherGoogle(phrase, depuis[0], depuis[1]);
+  charge(null);
+  if(!res.length){ toast("Rien trouvé à "+ville); return; }
+
+  if(pos && map){ map.flyTo(pos, 13, {duration:.8}); dernierChargement = pos; }
+  ajouterLieuxGoogle(res, "commerce");
+
+  // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
+  const ids = new Set(res.map(f=>"g"+hash(f.nom+f.lat)));
+  const trouves = lieux.filter(l=>ids.has(l.id));
+  if(!trouves.length){ toast("Rien trouvé à "+ville); return; }
+
+  // le classement se fait depuis la ville visée, pas depuis ta position
+  const vrai = positionMoi;
+  positionMoi = depuis;
+  const classes = classerLieux(trouves, false);
+  positionMoi = vrai;
+
+  selectionAccueil = false;
+  $("#accueil").hidden = true; $("#intentions").hidden = true;
+  pileEcrans = [];
+  pousserEcran(()=>afficherListe("📍", esc(ville), classes, false,
+    ()=>rechercherAilleurs(phrase, ville)));
+}
+
 /* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
 function completerParGoogle(q, catDefaut, redessiner){
   if(!positionMoi) return;
@@ -3718,6 +3769,8 @@ function interpreter(phrase){
 
 function appliquerPhrase(phrase){
   mettreAJourProfil("recherche", phrase);
+  const ville = villeRecherchee(phrase);
+  if(ville){ rechercherAilleurs(phrase, ville); return; }
   const a = interpreter(phrase);
   if(!a.dit.length){
     ouvrirResultats(phrase);            // rien de compris : recherche classique
