@@ -10,6 +10,7 @@ const {
   isAvailableNow,
   matchesCategory,
   normalizeText,
+  rankResults,
   toCommonItem,
 } = globalThis.AutourCore;
 
@@ -103,4 +104,39 @@ test("maintenant garde l'inconnu et le bientôt, retire le terminé", () => {
   assert.equal(isAvailableNow({isTemporary:false,ouvert:undefined},now),true);
   assert.equal(isAvailableNow({isTemporary:true,startsAt:now+2*3600e3,endsAt:now+4*3600e3},now),true);
   assert.equal(isAvailableNow({isTemporary:true,startsAt:now-4*3600e3,endsAt:now-1},now),false);
+});
+
+test("le classement retire les événements terminés et les doublons", () => {
+  const now = Date.now();
+  const base = {cat:"event",categories:["event","outing"],lat:50.72,lng:3.16,latitude:50.72,longitude:3.16,isTemporary:true};
+  const ranked = rankResults([
+    {...base,id:"1",title:"Concert du quartier",titre:"Concert du quartier",startsAt:now-1000,endsAt:now+3600e3},
+    {...base,id:"2",title:"Concert du quartier",titre:"Concert du quartier",lat:50.7201,lng:3.1601,latitude:50.7201,longitude:3.1601,startsAt:now-1000,endsAt:now+3600e3},
+    {...base,id:"3",title:"Concert terminé",titre:"Concert terminé",startsAt:now-7200e3,endsAt:now-1000},
+  ], {intent:"sortir",position:[50.72,3.16],now,distanceBetween:distance});
+  assert.equal(ranked.length,1);
+  assert.match(ranked[0].rankReason,/En cours/);
+});
+
+test("le classement Maintenant privilégie l'ouvert et conserve les horaires inconnus", () => {
+  const commun = {cat:"resto",categories:["restaurant","eat"],latitude:50.72,longitude:3.16,lat:50.72,lng:3.16};
+  const ranked = rankResults([
+    {...commun,id:"open",title:"Ouvert",titre:"Ouvert",ouvert:true},
+    {...commun,id:"unknown",title:"Inconnu",titre:"Inconnu",latitude:50.7202,lat:50.7202},
+    {...commun,id:"closed",title:"Fermé",titre:"Fermé",ouvert:false},
+  ], {intent:"manger",position:[50.72,3.16],nowOnly:true,distanceBetween:distance});
+  assert.deepEqual(ranked.map(x=>x.id),["open","unknown"]);
+  assert.match(ranked[1].rankReason,/Horaires inconnus/);
+});
+
+test("chaque intention applique son propre périmètre éditorial", () => {
+  const items = [
+    toCommonItem({id:"cinema",cat:"cinema",title:"Cinéma",lat:50.72,lng:3.16,ouvert:true},{source:"osm"}),
+    toCommonItem({id:"food",cat:"resto",title:"Restaurant",lat:50.7201,lng:3.16,ouvert:true},{source:"osm"}),
+    toCommonItem({id:"help",cat:"alimentaire",title:"Aide alimentaire",lat:50.7202,lng:3.16,ouvert:true},{source:"osm"}),
+  ];
+  const context = {position:[50.72,3.16],distanceBetween:distance};
+  assert.deepEqual(rankResults(items,{...context,intent:"famille"}).map(x=>x.id),["cinema"]);
+  assert.deepEqual(rankResults(items,{...context,intent:"manger"}).map(x=>x.id),["food"]);
+  assert.deepEqual(rankResults(items,{...context,intent:"aide"}).map(x=>x.id),["help"]);
 });
