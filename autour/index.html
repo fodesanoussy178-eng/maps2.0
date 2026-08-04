@@ -388,7 +388,7 @@ body.nav .leaflet-control-zoom{display:none}
 
 #voile{position:absolute;inset:0;z-index:900;background:rgba(20,30,25,.38);animation:fondu .2s}
 @keyframes fondu{from{opacity:0}to{opacity:1}}
-#feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:90%;overflow-y:auto;
+#feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:72%;overflow-y:auto;
   padding:10px 20px calc(var(--safe-b) + 26px);background:var(--paper);
   border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
   animation:monte .28s cubic-bezier(.2,.9,.3,1)}
@@ -1576,7 +1576,7 @@ async function demarrer(coords){
 
   dessinerFiltres();
   ouvrirIntentions();          // on demande l'intention avant tout le reste
-  map.on("click", ()=>{ $("#intentions").hidden = true; });
+  map.on("click", ()=>{ if(!$("#intentions").hidden){ $("#intentions").hidden = true; majAccueil(); } });
 
   const [lat,lng] = positionMoi;
 
@@ -2267,7 +2267,7 @@ async function afficherTrajet(l){
   Promise.all([
     stationsVeloProchesCache(depart[0], depart[1]),
     arretsProchesCache(depart[0], depart[1]),
-    arretsProches(dest[0], dest[1])        // pour savoir à quel arrêt descendre
+    arretsAvecRepli(dest[0], dest[1])      // pour savoir à quel arrêt descendre
   ]).then(async ([stations, arrets, arretsArrivee])=>{
     const zone = $("#trajetInfos");
     if(!zone) return;
@@ -2537,6 +2537,15 @@ async function stationsVeloProchesCache(lat,lng){
   if(!CACHE_VELO || !CACHE_VELO.length) CACHE_VELO = await stationsVeloProches(lat,lng);
   return CACHE_VELO;
 }
+/* Le repli Google n'était branché que sur les arrêts de départ : ceux de
+   l'arrivée restaient tributaires d'Overpass, donc aucune option métro ou bus
+   n'était jamais proposée quand il ne répond pas. */
+async function arretsAvecRepli(lat,lng){
+  let a = await arretsProches(lat,lng);
+  if(!a || !a.length) a = await arretsGoogle(lat,lng);
+  return a;
+}
+
 async function arretsProchesCache(lat,lng){
   if(CACHE_TRANSPORT && CACHE_TRANSPORT.length) return CACHE_TRANSPORT;
   CACHE_TRANSPORT = await arretsProches(lat,lng);
@@ -3587,6 +3596,8 @@ function majVitalite(){
 }
 
 function ouvrirIntentions(){
+  // les deux panneaux occupent le bas de l'écran : l'un chasse l'autre
+  const a = $("#accueil"); if(a) a.hidden = true;
   majCreneaux(); majVitalite();
   const g = $("#intentionsGrille");
   const montres = toutesIntentions
@@ -3852,7 +3863,8 @@ function majAccueil(){
   });
 
   majVitalite();
-  $("#accueil").hidden = false;
+  // on ne réaffiche l'accueil que si la feuille d'intention est refermée
+  if($("#intentions").hidden) $("#accueil").hidden = false;
   $("#btnMaintenant").hidden = false;
   rendre();
 }
@@ -4060,7 +4072,7 @@ $("#navFermer").onclick=quitterNav;
 $("#btnDe").onclick=surprendre;
 $("#acPlus").onclick=()=>{ toutAfficher(); ouvrirIntentions(); };
 $("#btnMaintenant").onclick=()=>{ basculerMaintenant(); ouvrirIntentions(); };
-$("#intFermer").onclick=()=>{ $("#intentions").hidden = true; };
+$("#intFermer").onclick=()=>{ $("#intentions").hidden = true; majAccueil(); };
 $("#iaTexte").onkeydown=e=>{
   if(e.key !== "Enter") return;
   const v = e.target.value.trim();
