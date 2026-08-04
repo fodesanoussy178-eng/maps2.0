@@ -216,6 +216,20 @@ input{font-family:inherit;font-size:16px}
 .barre input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink)}
 .barre input::placeholder{color:#A3ADA6}
 .icone-btn{border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
+#suggestions{position:absolute;left:54px;right:0;top:52px;z-index:610;max-height:46vh;overflow-y:auto;
+  border:1px solid var(--bord);border-radius:14px;background:#fff;
+  box-shadow:0 4px 20px rgba(20,30,25,.2);animation:monteT .18s}
+.sg{display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;border:0;
+  border-top:1px solid rgba(20,30,25,.08);background:none;text-align:left;font-size:14px;
+  color:var(--ink)}
+.sg:first-child{border-top:0}
+.sg:active{background:var(--paper)}
+.sg-emo{width:22px;text-align:center;font-size:15px}
+.sg-sous{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink2)}
+.sg-rapides{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;scrollbar-width:none}
+.sg-rapides::-webkit-scrollbar{display:none}
+.sg-rapide{flex:0 0 auto;padding:7px 12px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
 
 /* ---- écran d'intention : on demande ce que la personne veut faire ---- */
 #intentions{position:absolute;left:0;right:0;bottom:0;z-index:640;max-height:74%;overflow-y:auto;
@@ -566,6 +580,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
+  <div id="suggestions" hidden></div>
 </div>
 
 <button class="mini" id="btnRevenir" hidden>◎ Revenir</button>
@@ -987,13 +1002,17 @@ function versLieu(p){
   };
 }
 
+/* Passe par une fonction en base plutôt que par un select * : seules les
+   colonnes affichées reviennent, la zone est filtrée côté serveur et les
+   événements terminés sont écartés avant d'être transmis. */
 async function chargerPublications(lat,lng){
   if(!sb) return [];
-  const d = 0.06;                       // ~6 km, la zone qu'on explore à pied
-  const { data, error } = await sb.from("publications").select("*")
-    .gte("lat", lat-d).lte("lat", lat+d)
-    .gte("lng", lng-d).lte("lng", lng+d)
-    .order("cree_le", {ascending:false}).limit(200);
+  const b = bornesVisibles() ||
+    { s:lat-0.06, n:lat+0.06, o:lng-0.06, e:lng+0.06 };
+  const { data, error } = await sb.rpc("publications_proches", {
+    p_sud:Number(b.s), p_ouest:Number(b.o),
+    p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+  });
   if(error){ console.error("Lecture des publications :", error.message); return []; }
   return (data||[]).map(versLieu);
 }
@@ -1095,14 +1114,19 @@ out geom;`;
 }
 
 /* ---------- lieux remarquables ---------- */
-async function vraisLieux(lat,lng){
+async function vraisLieux(lat,lng,bornes){
   // Une sous-requête par CLÉ (avec regex sur les valeurs) au lieu d'une par
   // couple clé/valeur : ~5 lignes au lieu de 40. Les serveurs publics saturaient
   // sur l'ancienne version, d'où les "lieux d'exemple" affichés à la place.
   const parCle = {};
   REQUETES.forEach(([k,v])=>{ (parCle[k] = parCle[k] || []).push(v); });
+  // On interroge la zone effectivement affichée plutôt qu'un rayon fixe :
+  // en vue serrée on ramène beaucoup moins, en vue large on couvre vraiment
+  // ce que la personne regarde. Bornée pour ne pas demander une ville entière.
+  const zone = bornes ? `(${bornes.s},${bornes.o},${bornes.n},${bornes.e})`
+                      : `(around:1500,${lat},${lng})`;
   const bloc = Object.entries(parCle).map(([k,vs])=>
-    `nwr(around:1500,${lat},${lng})["${k}"~"^(${vs.join("|")})$"];`).join("");
+    `nwr${zone}["${k}"~"^(${vs.join("|")})$"];`).join("");
   // 25 s : mieux vaut attendre que retomber sur des lieux inventés
   const els = await overpass(`[out:json][timeout:25];(${bloc});out center 400;`, 25000);
   if(!els) return [];
@@ -1455,6 +1479,17 @@ let chargementEnCours = false;
 
 let abandonZone = null;
 
+/* Bornes de la vue, ramenées à 5 km de côté au maximum : au-delà, la requête
+   pèserait autant qu'une ville entière pour un écran qu'on ne lit plus. */
+function bornesVisibles(){
+  if(!map) return null;
+  const b = map.getBounds(), c = b.getCenter();
+  const dLat = Math.min(b.getNorth()-c.lat, 0.023);
+  const dLng = Math.min(b.getEast()-c.lng, 0.023/Math.max(0.2,Math.cos(c.lat*Math.PI/180)));
+  return { s:(c.lat-dLat).toFixed(5), n:(c.lat+dLat).toFixed(5),
+           o:(c.lng-dLng).toFixed(5), e:(c.lng+dLng).toFixed(5) };
+}
+
 function chargerZone(lat, lng){
   if(!map || map.getZoom() < 13) return;
   if(dernierChargement &&
@@ -1472,7 +1507,7 @@ function chargerZone(lat, lng){
 
   // allSettled : une source lente ou en panne ne retient pas les autres
   Promise.allSettled([
-    vraisLieux(lat,lng).then(r=>{
+    vraisLieux(lat,lng,bornesVisibles()).then(r=>{
       if(signal.aborted) return;
       if(r && r.length){ fusionner(r); ecrireCacheLieux(lat,lng,r); }
       performance.mark("zone:osm");
@@ -3585,9 +3620,76 @@ demarrer(positionMemorisee()).then(()=>{
 $("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#barreRech").hidden=false; $("#rech").focus(); };
 $("#btnFermerRech").onclick=()=>{
   $("#barreRech").hidden=true; $("#btnLoupe").hidden=false;
-  $("#rech").value=""; recherche=""; rendre();
+  $("#rech").value=""; recherche=""; $("#suggestions").hidden=true; rendre();
 };
-$("#rech").oninput=e=>{ recherche=e.target.value; if(recherche) toutAfficher(); rendre(); };
+const RECHERCHES_RAPIDES = [
+  {t:"Maintenant", f:"maintenant"}, {t:"Gratuit", f:"gratuit"},
+  {t:"Près de moi", f:"proche"},    {t:"Ouvert", f:"ouvert"},
+  {t:"Ce soir", f:"soir"}
+];
+
+/* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
+   chargés : aucune requête, donc aucun effet sur le temps de chargement. */
+function suggerer(q){
+  const z = $("#suggestions");
+  if(!z) return;
+  const t = sansAccents(q).trim();
+
+  if(!t){
+    z.innerHTML = '<div class="sg-rapides">'+RECHERCHES_RAPIDES.map(r=>
+      '<button class="sg-rapide" data-rap="'+r.f+'">'+r.t+'</button>').join("")+'</div>';
+    z.querySelectorAll("[data-rap]").forEach(b=>b.onclick=()=>{
+      const f = b.dataset.rap;
+      z.hidden = true; $("#rech").blur();
+      if(f === "maintenant"){ basculerMaintenant(); return; }
+      if(f === "soir"){ creneau = "soir"; filtreMaintenant = true; majFiltres(); rendre(); return; }
+      filtresHumains.add(f); toutAfficher(); majFiltres(); rendre();
+    });
+    z.hidden = false;
+    return;
+  }
+
+  const vus = new Set(), sug = [];
+  for(const [mot,cible] of INDEX_MOTS){
+    if(sug.length >= 6) break;
+    if(!mot.startsWith(t) && !mot.includes(t)) continue;
+    const cat = cible.cat, emo = cat ? (CATS[cat]||{}).emoji : "🍽";
+    const lab = cat ? (CATS[cat]||{}).label : mot;
+    if(vus.has(lab)) continue;
+    vus.add(lab);
+    sug.push({emo, lab, sous: cat ? "catégorie" : "cuisine", q: mot});
+  }
+  lieux.forEach(l=>{
+    if(sug.length >= 10) return;
+    if(!sansAccents(l.titre).includes(t) || vus.has(l.titre)) return;
+    vus.add(l.titre);
+    sug.push({emo:(CATS[l.cat]||{}).emoji||"📍", lab:l.titre, sous:"lieu", id:l.id});
+  });
+
+  if(!sug.length){ z.hidden = true; return; }
+  z.innerHTML = sug.map((x,i)=>
+    '<button class="sg" data-sg="'+i+'"><span class="sg-emo">'+x.emo+'</span>'+
+    '<span>'+esc(x.lab)+'</span><span class="sg-sous">'+x.sous+'</span></button>').join("");
+  z.querySelectorAll("[data-sg]").forEach(b=>b.onclick=()=>{
+    const x = sug[Number(b.dataset.sg)];
+    z.hidden = true; $("#rech").blur();
+    if(x.id){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(x.id)); }
+    else appliquerPhrase(x.q);
+  });
+  z.hidden = false;
+}
+
+let minuteurSug;
+$("#rech").onfocus=()=>suggerer($("#rech").value);
+$("#rech").oninput=e=>{
+  recherche = e.target.value;
+  if(recherche) toutAfficher();
+  rendre();
+  // on attend une pause de frappe : suggérer à chaque lettre ferait
+  // reconstruire la liste dix fois pour un mot de dix caractères
+  clearTimeout(minuteurSug);
+  minuteurSug = setTimeout(()=>suggerer(recherche), 130);
+};
 // Entrée : on bascule du filtrage des pastilles vers un vrai classement
 $("#rech").onkeydown=e=>{
   if(e.key !== "Enter") return;
