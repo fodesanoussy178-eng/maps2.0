@@ -284,6 +284,7 @@ input{font-family:inherit;font-size:16px}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ac-sous{display:block;margin-top:2px;font-size:11.5px;color:var(--ink2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.raison{color:var(--signal);font-weight:600}
 .ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2)}
 
@@ -1785,6 +1786,42 @@ function majIndexEvenements(){
   });
 }
 
+/* Classement puis plafonnement : la carte ne porte que les mieux notés.
+   Montrer trois cents épingles revient à n'en montrer aucune. */
+let derniereSelection = [];
+
+function selectionner(){
+  const t0 = performance.now();
+  const ctx = contexteActuel();
+  const brut = visibles();
+  const cible = ctx.large ? POIDS.PLAFOND_LARGE : POIDS.PLAFOND_SERRE;
+
+  const notes = brut.map(l=>{
+    const r = scoreLieu(l, ctx);
+    return {l, score:r.score, raison:r.raison, niveau:niveauLieu(l, ctx, r.score)};
+  });
+
+  // un filtre ou une recherche explicite lève le masquage du niveau C :
+  // ce que l'utilisateur demande ne doit jamais lui être caché
+  const explicite = !!(ctx.q || catsActives || filtreActif !== "tout" || filtresHumains.size);
+  const retenus = (explicite ? notes : notes.filter(x=>x.niveau !== "C"))
+    .sort((a,b)=>b.score - a.score)
+    .slice(0, cible);
+
+  derniereSelection = retenus;
+  if(window.__autourDebug)
+    console.info("[Autour] reçus", brut.length, "· retenus", retenus.length,
+      "· niveau A", notes.filter(x=>x.niveau==="A").length,
+      "· classement", (performance.now()-t0).toFixed(1)+" ms",
+      "· meilleur", retenus[0] ? retenus[0].l.titre+" ("+Math.round(retenus[0].score)+", "+retenus[0].raison+")" : "—");
+  return retenus.map(x=>x.l);
+}
+
+function raisonDe(id){
+  const x = derniereSelection.find(y=>y.l.id === id);
+  return x ? x.raison : "";
+}
+
 function rendre(){
   if(!map) return;
   majIndexEvenements();
@@ -1795,7 +1832,7 @@ function rendre(){
     return;
   }
   const garder = new Set();
-  grouper(visibles()).forEach(item=>{
+  grouper(selectionner()).forEach(item=>{
     if(item.seul){
       const l = item.seul;
       garder.add(l.id);
@@ -1805,7 +1842,8 @@ function rendre(){
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
-      m.on("click", ()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); });
+      m.on("click", ()=>{ mettreAJourProfil("clic", l.cat);
+        pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); });
       marqueurs.set(l.id,m);
       return;
     }
@@ -2994,6 +3032,7 @@ function classer(cat){
 
 function ouvrirListe(cat){
   const c = CATS[cat]; if(!c) return;
+  mettreAJourProfil("categorie", cat);
   // l'aide n'est cherchée que si quelqu'un la demande : dix recherches
   // facturées à chaque ouverture de l'app seraient absurdes
   if(SANS_CLASSEMENT.has(cat) && positionMoi)
@@ -3212,8 +3251,159 @@ function momentActuel(){
   return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
 }
 
-/* Le score décide de ce qu'on voit en arrivant. Chaque terme correspond à un
-   ressort documenté du comportement réel, pas à une intuition. */
+/* ================================================================== */
+/*  Moteur de pertinence                                              */
+/* ================================================================== */
+
+/* Tous les poids au même endroit : les régler doit être une modification de
+   configuration, pas une chasse dans le code. */
+const POIDS = {
+  motCle:            40,   // la recherche prime sur tout le reste
+  ouvert:            25,
+  tresProche:        20,   // moins de RAYON_PROCHE mètres
+  evenementImminent: 20,   // commence dans les deux heures
+  categorieRecente:  40,   // tu es revenu plusieurs fois dessus : le signal doit peser
+  populaire:         10,
+  recent:            10,   // publié aujourd'hui
+  moment:            14,   // pertinence horaire de la catégorie
+  mien:              40,
+  ferme:            -70,
+  eloigne:          -15,
+  ignore:           -10,
+  DECROISSANCE:     800,   // mètres : au-delà l'envie de se déplacer chute
+  RAYON_PROCHE:     400,
+  PLAFOND_SERRE:     30,   // marqueurs max en vue rapprochée
+  PLAFOND_LARGE:     15,
+  SEUIL_NIVEAU_B:    45,   // en dessous, le lieu passe en niveau C (masqué)
+};
+
+/* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé ---- */
+const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
+                      ignores:{}, transport:"pied", vu:0 };
+let PROFIL = (()=>{
+  try{ return Object.assign({}, PROFIL_VIDE,
+       JSON.parse(localStorage.getItem("autour:profil")||"{}")); }
+  catch(e){ return Object.assign({}, PROFIL_VIDE); }
+})();
+let personnalisation = localStorage.getItem("autour:perso") !== "non";
+
+function enregistrerProfil(){
+  try{ localStorage.setItem("autour:profil", JSON.stringify(PROFIL)); }catch(e){}
+}
+
+function mettreAJourProfil(action, valeur){
+  if(!personnalisation) return;
+  const h = new Date().getHours();
+  PROFIL.heures[h] = (PROFIL.heures[h]||0) + 1;
+  if(action === "categorie" && valeur)
+    PROFIL.categories[valeur] = (PROFIL.categories[valeur]||0) + 1;
+  if(action === "clic" && valeur){
+    PROFIL.categories[valeur] = (PROFIL.categories[valeur]||0) + 2;  // un clic vaut plus qu'un survol
+    PROFIL.vu++;
+  }
+  if(action === "recherche" && valeur){
+    PROFIL.recherches.unshift(String(valeur).slice(0,40));
+    PROFIL.recherches = PROFIL.recherches.slice(0,12);
+  }
+  if(action === "ignore" && valeur)
+    PROFIL.ignores[valeur] = (PROFIL.ignores[valeur]||0) + 1;
+  if(action === "transport" && valeur) PROFIL.transport = valeur;
+  enregistrerProfil();
+}
+
+/* Catégories sur lesquelles tu reviens : au moins deux fois, et au-dessus
+   de la moyenne, sinon un clic isolé suffirait à orienter toute la carte. */
+function obtenirInteretsProbables(){
+  const e = Object.entries(PROFIL.categories);
+  if(!e.length) return [];
+  const moyenne = e.reduce((s,[,n])=>s+n,0) / e.length;
+  return e.filter(([,n])=>n >= 2 && n >= moyenne)
+          .sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c])=>c);
+}
+
+function reinitialiserProfil(){
+  PROFIL = Object.assign({}, PROFIL_VIDE, {categories:{}, ignores:{}, heures:{}, recherches:[]});
+  enregistrerProfil();
+  toast("Préférences effacées");
+  rendre(); majAccueil();
+}
+
+/* ---- Contexte : tout ce que le score doit savoir, calculé une seule fois ---- */
+function contexteActuel(){
+  const d = instantCreneau();
+  const c = map ? map.getCenter() : null;
+  return {
+    t: d.getTime(), heure: d.getHours(), jour: d.getDay(),
+    moment: momentActuel(),
+    centre: c ? [c.lat, c.lng] : positionMoi,
+    moi: positionMoi || [0,0],
+    q: sansAccents(recherche.trim()),
+    interets: personnalisation ? obtenirInteretsProbables() : [],
+    large: map ? map.getZoom() < 15 : false
+  };
+}
+
+/* Score explicable : chaque terme est nommé, et la raison affichée à
+   l'utilisateur est simplement le terme qui a le plus pesé. */
+function scoreLieu(l, ctx){
+  let s = 0, raisons = [];
+  const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
+  const dVue = ctx.centre ? distanceM(ctx.centre[0], ctx.centre[1], l.lat, l.lng) : dMoi;
+  const eph = !!(CATS[l.cat]||{}).eph;
+
+  // proximité au centre regardé, pas seulement à toi : explorer une autre
+  // zone doit y faire remonter les lieux
+  s += 120 * Math.exp(-Math.min(dMoi, dVue) / POIDS.DECROISSANCE);
+  if(dMoi < POIDS.RAYON_PROCHE){ s += POIDS.tresProche; raisons.push([POIDS.tresProche,"Près de toi"]); }
+  if(dMoi > 2500) s += POIDS.eloigne;
+
+  if(ctx.q && sansAccents(l.titre+" "+(l.cuisine||"")).includes(ctx.q)){
+    s += POIDS.motCle; raisons.push([POIDS.motCle,"Correspond à ta recherche"]);
+  }
+  if(l.ouvert === true){ s += POIDS.ouvert; raisons.push([POIDS.ouvert,"Ouvert maintenant"]); }
+  if(l.ouvert === false) s += POIDS.ferme;
+
+  if(eph){
+    s += 55;
+    if(l.debutLe && l.debutLe > ctx.t && l.debutLe < ctx.t + 2*3600e3){
+      s += POIDS.evenementImminent; raisons.push([POIDS.evenementImminent+55,"Commence bientôt"]);
+    }else raisons.push([55,"Ça se passe maintenant"]);
+  }
+
+  const pm = (ctx.moment.poids[l.cat]||0);
+  if(pm){ s += pm*POIDS.moment; raisons.push([pm*POIDS.moment,"Sélectionné pour "+ctx.moment.nom]); }
+
+  if(ctx.interets.includes(l.cat)){
+    s += POIDS.categorieRecente;
+    raisons.push([POIDS.categorieRecente,"Tu regardes souvent "+((CATS[l.cat]||{}).label||"ça").toLowerCase()]);
+  }
+  if(PROFIL.ignores[l.cat]) s += POIDS.ignore * Math.min(3, PROFIL.ignores[l.cat]);
+
+  if(l.avis){
+    const p = Math.min(POIDS.populaire, Math.log10(l.avis+1)*5);
+    s += p; if(p > 6) raisons.push([p,"Apprécié dans le quartier"]);
+  }
+  if(l.note) s += (l.note - 3.5) * 8;
+  if(l.mien) s += POIDS.mien;
+  if(l.verifie) s += 12;
+
+  raisons.sort((a,b)=>b[0]-a[0]);
+  return { score:s, raison: raisons.length ? raisons[0][1] : "Autour de toi" };
+}
+
+/* Trois niveaux. A : incontournables, toujours là. B : pertinents dans le
+   contexte. C : le reste, masqué mais retrouvé par recherche ou catégorie. */
+function niveauLieu(l, ctx, sc){
+  const dMoi = distanceM(ctx.moi[0], ctx.moi[1], l.lat, l.lng);
+  const eph = !!(CATS[l.cat]||{}).eph;
+  if(l.mien) return "A";
+  if(dMoi < 250) return "A";
+  if(eph && (!l.debutLe || l.debutLe < ctx.t + 6*3600e3)) return "A";
+  if(["sante","hebergement","alimentaire"].includes(l.cat) && ctx.heure >= 21) return "A";
+  return sc >= POIDS.SEUIL_NIVEAU_B ? "B" : "C";
+}
+
+/* Ancienne signature conservée : plusieurs appels s'appuient dessus. */
 function pertinence(l, poids){
   let s = 0;
   // Décroissance de la distance : on ne « découvre » pas à deux kilomètres.
@@ -3409,6 +3599,7 @@ function interpreter(phrase){
 }
 
 function appliquerPhrase(phrase){
+  mettreAJourProfil("recherche", phrase);
   const a = interpreter(phrase);
   if(!a.dit.length){
     ouvrirResultats(phrase);            // rien de compris : recherche classique
@@ -3472,6 +3663,8 @@ function majAccueil(){
     if(l.ouvert === false) bouts.push('<span class="ferme">Fermé</span>');
     if(l.note) bouts.push("★ "+l.note.toFixed(1));
     if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/.test(l.quand)) bouts.push(esc(l.quand));
+    const r = raisonDe(l.id);
+    if(r) bouts.push('<span class="raison">'+esc(r)+'</span>');
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+c.emoji+'</span>'+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
@@ -3530,6 +3723,9 @@ function ouvrirExplorer(){
   ouvrirFeuille('<h2 class="pub">Explorer</h2>'+
     '<div class="ex-actions">'+
       '<button class="ex-tout'+(filtreActif==="tout"?' actif':'')+'" data-ex="tout">Tout afficher</button>'+
+      '<button class="ex-tout" id="exPerso">'+
+        (personnalisation ? "Personnalisation activée · désactiver" : "Personnalisation désactivée · activer")+'</button>'+
+      '<button class="ex-tout" id="exOubli">Oublier mes préférences</button>'+
       '<button class="ex-tout" id="exBascule">'+
         (toutMasque ? "Réafficher les couches masquées" : "Masquer toutes les couches")+'</button>'+
     '</div>'+
@@ -3554,6 +3750,12 @@ function ouvrirExplorer(){
     ouvrirExplorer();                    // même écran, état à jour
   });
 
+  $("#exPerso").onclick = ()=>{
+    personnalisation = !personnalisation;
+    try{ localStorage.setItem("autour:perso", personnalisation ? "oui" : "non"); }catch(e){}
+    rendre(); majAccueil(); ouvrirExplorer();
+  };
+  $("#exOubli").onclick = ()=>{ reinitialiserProfil(); ouvrirExplorer(); };
   $("#exBascule").onclick = ()=>{
     if(catsMasquees.size) catsMasquees.clear();
     else Object.keys(CATS).forEach(id=>catsMasquees.add(id));
