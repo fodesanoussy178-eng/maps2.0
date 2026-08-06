@@ -65,7 +65,13 @@
     studio: ["event", "culture"],
     sport: ["event", "sport"],
     food: ["event", "eat", "outing"],
+    rencontre: ["event", "outing"],
+    autre: ["event"],
   });
+
+  const TEMPORARY_CATEGORIES = Object.freeze([
+    "event", "popup", "rencontre", "sport", "collecte", "studio", "food", "autre",
+  ]);
 
   function normalizeText(value) {
     return String(value || "")
@@ -150,7 +156,7 @@
     }
     if (amenity === "social centre" || amenity === "community centre") categories.add("family");
 
-    const isTemporary = p.isTemporary === true || p.temporaire === true || ["event", "popup", "collecte", "studio", "sport", "food"].includes(primary);
+    const isTemporary = p.isTemporary === true || p.temporaire === true || TEMPORARY_CATEGORIES.includes(primary);
     if (isTemporary) categories.add("event");
     if (CINEMA_EVENT_WORDS.test(text)) ["cinema", "event", "outing", "culture"].forEach((category) => categories.add(category));
     if (isTemporary && /\b(atelier|workshop)\b/.test(text)) ["workshop", "event", "family"].forEach((category) => categories.add(category));
@@ -192,7 +198,7 @@
     const openingHours = raw.openingHours != null ? raw.openingHours : (raw.horaires || raw.quand || null);
     const isTemporary = raw.isTemporary != null
       ? !!raw.isTemporary
-      : ["event", "popup", "collecte", "studio", "sport", "food"].includes(raw.cat);
+      : TEMPORARY_CATEGORIES.includes(raw.cat);
     const categories = classifyPlace(Object.assign({}, raw, { title, source, isTemporary }));
 
     return Object.assign({}, raw, {
@@ -351,7 +357,7 @@
     return deduped.map((item) => {
       const startsAt = parseTime(item.startsAt != null ? item.startsAt : item.debutLe);
       const endsAt = parseTime(item.endsAt != null ? item.endsAt : item.finLe);
-      const temporary = item.isTemporary === true || ["event", "popup", "collecte", "studio", "sport", "food"].includes(item.cat);
+      const temporary = item.isTemporary === true || TEMPORARY_CATEGORIES.includes(item.cat);
       if (temporary && endsAt != null && endsAt < now) return null;
       if (ctx.nowOnly && !isAvailableNow(Object.assign({}, item, {startsAt, endsAt, isTemporary:temporary}), now)) return null;
       if (!hasAnyCategory(item, categories)) return null;
