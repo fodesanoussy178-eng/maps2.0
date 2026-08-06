@@ -250,7 +250,7 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   font-size:14px;font-weight:700;box-shadow:0 2px 10px rgba(20,30,25,.14)}
 #btnMaintenant span{font-size:13px}
 #btnMaintenant.actif{background:var(--signal);border-color:var(--signal);color:#fff}
-#filtresHumains{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 150px);z-index:600;
+#filtresHumains{position:absolute;left:0;right:0;bottom:calc(var(--map-control-bottom) + 112px);z-index:600;
   display:flex;gap:7px;padding:4px 14px;overflow-x:auto;scrollbar-width:none;
   width:100%;max-width:520px;margin:0 auto}
 #filtresHumains::-webkit-scrollbar{display:none}
@@ -259,17 +259,31 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   box-shadow:0 1px 6px rgba(20,30,25,.10)}
 .fh.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
-/* ---- boutons flottants : se repérer, et publier — dans cet ordre ---- */
+/* ---- boutons flottants : créer en premier, se repérer juste au-dessus ---- */
 .rond-flottant{position:absolute;right:14px;z-index:601;min-width:46px;height:46px;
   border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
   font-size:20px;line-height:1;display:grid;place-items:center;
   box-shadow:0 2px 10px rgba(20,30,25,.14)}
-#btnRevenir{bottom:var(--map-control-bottom);width:auto;padding:0 15px;border-radius:99px;
+#btnRevenir{bottom:calc(var(--map-control-bottom) + 56px);width:auto;padding:0 15px;border-radius:99px;
   display:flex;gap:7px;font-size:13px;font-weight:700}
-#btnAjouter{bottom:calc(var(--map-control-bottom) + 54px);color:var(--ink2);font-size:24px;
-  box-shadow:0 1px 6px rgba(20,30,25,.10)}
 .rond-flottant{transition:bottom .22s ease,transform .15s ease}
 .rond-flottant:active{transform:scale(.94)}
+
+/* « + Créer » : l'ajout est nommé en toutes lettres. Le libellé ne disparaît
+   sur aucune largeur — un « + » seul n'apprend rien à qui arrive. */
+#btnAjouter{position:absolute;right:14px;bottom:var(--map-control-bottom);z-index:602;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  height:48px;padding:0 18px;border:0;border-radius:99px;
+  background:var(--trait);color:#fff;
+  font-size:15px;font-weight:700;line-height:1;white-space:nowrap;
+  box-shadow:0 3px 14px rgba(20,30,25,.28);
+  transition:bottom .22s ease,transform .15s ease}
+#btnAjouter svg{flex-shrink:0}
+#btnAjouter .creer-txt{white-space:nowrap}
+#btnAjouter:active{transform:scale(.96)}
+@media (max-width:359px){
+  #btnAjouter{height:46px;padding:0 14px;gap:5px;font-size:14px}
+}
 
 /* ---- bottom sheet : fermée · compacte · dépliée ---- */
 #feuilleBesoins{position:absolute;left:8px;right:8px;bottom:0;z-index:640;
@@ -358,6 +372,8 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   .fb-poignee{display:none}
   .fb-tete{padding-top:8px;border-radius:22px 22px 0 0}
   body.sheet-open .leaflet-control-zoom{margin-right:14px!important}
+  /* le panneau latéral occupe la colonne de droite : les flottants se rangent à côté */
+  body.sheet-open #btnAjouter,body.sheet-open #btnRevenir{right:454px}
 }
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
@@ -641,7 +657,10 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 </div>
 
 <button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">◎ <span>Ma position</span></button>
-<button class="rond-flottant discret" id="btnAjouter" hidden aria-label="Publier">+</button>
+<button id="btnAjouter" hidden aria-label="Créer un événement ou une activité">
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  <span class="creer-txt">Créer</span>
+</button>
 
 <!-- Bottom sheet : fermée, compacte, ou dépliée à la demande. -->
 <div id="feuilleBesoins" role="dialog" aria-labelledby="fbTitre" hidden>
@@ -836,12 +855,14 @@ function estTemporaire(item){
 
 const CATS = {
   /* ---- couche événements : ce qui se passe, publié par les gens ---- */
-  popup:   {label:"Pop-up",     emoji:"🧢", eph:true},
-  event:   {label:"Événement",  emoji:"🔊", eph:true},
-  collecte:{label:"Collecte",   emoji:"📦", eph:true},
-  studio:  {label:"Studio",     emoji:"🎧", eph:true},
-  sport:   {label:"Sport",      emoji:"⚽", eph:true},
-  food:    {label:"Street food",emoji:"🍜", eph:true},
+  event:    {label:"Événement",  emoji:"🔊", eph:true},
+  popup:    {label:"Pop-up",     emoji:"🧢", eph:true},
+  rencontre:{label:"Rencontre",  emoji:"👋", eph:true},
+  sport:    {label:"Sport",      emoji:"⚽", eph:true},
+  collecte: {label:"Distribution & aide", emoji:"📦", eph:true},
+  studio:   {label:"Studio",     emoji:"🎧", eph:true},
+  food:     {label:"Street food",emoji:"🍜", eph:true},
+  autre:    {label:"Autre",      emoji:"✨", eph:true},
 
   /* ---- couche permanente : la ville telle qu'elle existe ---- */
   resto:    {label:"Restaurants", emoji:"🍔", eph:false},
@@ -968,7 +989,8 @@ const SYNONYMES = {
   food:["street food","food truck","cantine"],
   event:["evenement","event","soiree","anime"],
   popup:["popup","pop up","vide grenier"],
-  collecte:["collecte","don","donner","recolte"],
+  collecte:["collecte","don","donner","recolte","distribution","maraude"],
+  rencontre:["rencontre","apero","cafe rencontre","discussion","entraide voisins"],
 };
 
 /* Le type de cuisine vit dans le tag OSM `cuisine` (valeurs anglaises) et dans
@@ -2186,7 +2208,7 @@ const FILTRES_HUMAINS = [
   { id:"famille", label:"En famille",      test:l=>
       correspondCategorie(l,"family") || FAMILY_CATEGORIES.some(c=>correspondCategorie(l,c)) },
   { id:"etudier", label:"Étudier",         cats:["biblio","coworking","cafe"] },
-  { id:"monde",   label:"Rencontrer",      cats:["event","concert","bar","asso","terrain","popup","studio","sport"] },
+  { id:"monde",   label:"Rencontrer",      cats:["event","concert","bar","asso","terrain","popup","studio","sport","rencontre"] },
   { id:"libre",   label:"Sans réservation",cats:["parc","biblio","marche","fastfood","cafe","commerce",
                                                  "friperie","toilettes","terrain","musee","velo"] },
   { id:"pmr",     label:"Accessible PMR",  test:l=>l.pmr === true },

@@ -40,6 +40,24 @@ test("les couches et actions tactiles essentielles ont un contrat central",()=>{
   assert.match(html,/pointerup/);
 });
 
+test("le bouton d’ajout est nommé « Créer » et jamais réduit à une icône",()=>{
+  assert.match(html,/<button id="btnAjouter" hidden aria-label="Créer un événement ou une activité">/);
+  assert.match(html,/<span class="creer-txt">Créer<\/span>/);
+  assert.doesNotMatch(html,/id="btnAjouter"[^>]*aria-label="Publier"/);
+  assert.match(html,/#btnAjouter\{[^}]*bottom:var\(--map-control-bottom\)/s);
+  assert.match(html,/--safe-b:env\(safe-area-inset-bottom,0px\)/);
+  // sur les écrans les plus étroits, seul l'espacement se resserre
+  const etroit = html.match(/@media \(max-width:359px\)\{\s*#btnAjouter\{[^}]*\}/s);
+  assert.ok(etroit,"règle très petits écrans");
+  assert.doesNotMatch(etroit[0],/display:none|font-size:0|width:4[0-9]px/);
+});
+
+test("le parcours de publication couvre les six familles annoncées",()=>{
+  for(const label of ["Événement","Pop-up","Rencontre","Sport","Distribution & aide","Autre"])
+    assert.match(html,new RegExp('label:"'+label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+'"'));
+  assert.match(html,/const eph=Object\.entries\(CATS\)\.filter\(\(\[,c\]\)=>c\.eph\)/);
+});
+
 test("l’entrée dans Aide laisse peindre la feuille et fusionne le cache en lot",()=>{
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
   assert.match(html,/const fiches = o\.l\.map\(x=>Object\.assign\(\{\},x\.f,\{autourCat:x\.cat\}\)\)/);
