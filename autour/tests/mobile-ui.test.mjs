@@ -65,3 +65,37 @@ test("l’entrée dans Aide laisse peindre la feuille et fusionne le cache en lo
   assert.match(html,/CAT_GOOGLE\[f\.type\] \|\| f\.autourCat \|\| catDefaut/);
   assert.doesNotMatch(html,/o\.l\.forEach\(x=>ajouterLieuxGoogle\(\[x\.f\], x\.cat\)\)/);
 });
+
+test("quatre besoins permanents, le reste derrière « Plus »",()=>{
+  assert.match(html,/const BESOINS_PRINCIPAUX\s+= BESOINS\.filter\(b=>!b\.secondaire\)/);
+  assert.match(html,/const BESOINS_SECONDAIRES = BESOINS\.filter\(b=>b\.secondaire\)/);
+  // les quatre accès principaux ne passent jamais derrière « Plus »
+  for(const id of ["manger","sortir","famille","aide"]){
+    const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+220);
+    assert.doesNotMatch(bloc,/secondaire:true/, id+" doit rester principal");
+  }
+  for(const id of ["etudier","culture","sport","services"]){
+    const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+220);
+    assert.match(bloc,/secondaire:true/, id+" doit être secondaire");
+  }
+});
+
+test("« Plus » est atteignable depuis la feuille et depuis le rail du bas",()=>{
+  assert.match(html,/data-bn="plus"/);
+  assert.match(html,/data-rc="plus"/);
+  assert.match(html,/feuilleNiveau === "plus"/);
+  // le retour depuis un besoin secondaire revient à « Plus », pas à la racine
+  assert.match(html,/ouvrirFeuille2\(venaitDePlus \? "plus" : "racine"\)/);
+});
+
+test("le classement consomme un ETA réel et n'attend jamais le réseau",()=>{
+  assert.match(html,/etaFor:l=>etaConnu\(l, centre\)/);
+  assert.match(html,/prechargerEta\(classement, centre/);
+  // un échec d'itinéraire est mémorisé, sinon le reclassement boucle
+  assert.match(html,/etaParLieu\.set\(cleEta\(l, centre\), null\)/);
+});
+
+test("aucun horaire n'est inventé faute de clé transport",()=>{
+  assert.match(html,/const CLE_TRANSPORT = ""/);
+  assert.match(html,/navitia: CLE_TRANSPORT \? \{token:CLE_TRANSPORT\} : null/);
+});

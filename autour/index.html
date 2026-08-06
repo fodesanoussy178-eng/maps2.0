@@ -706,6 +706,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="core.js"></script>
+<script src="transit.js"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -724,6 +725,52 @@ const {
   isAvailableNow,
   rankResults,
 } = window.AutourCore;
+
+/* ---- Transport : de « c'est à 800 m » à « vous y êtes dans 22 min » ------
+   Le classement est synchrone, le calcul d'itinéraire ne l'est pas. On
+   garde donc un cache d'ETA lu instantanément par le classement, et on le
+   remplit en tâche de fond pour les seuls résultats visibles — puis on
+   reclasse. Tant qu'un ETA n'est pas connu, core.js retombe sur la marche :
+   l'écran n'attend jamais le réseau. */
+const TRANSIT = window.AutourTransit;
+const etaParLieu = new Map();
+let etaEnVol = null;
+
+/* La clé inclut le quart d'heure : un ETA calculé il y a 40 min ne décrit
+   plus le prochain passage. */
+function cleEta(l, centre){
+  return [l.id, Math.round(centre[0]*2000), Math.round(centre[1]*2000),
+    Math.floor(Date.now()/900000)].join(",");
+}
+
+function etaConnu(l, centre){
+  return etaParLieu.get(cleEta(l, centre)) || null;
+}
+
+/* Ne demande d'itinéraire que pour le haut de liste : c'est le seul endroit
+   où l'ordre se joue, et chaque appel coûte une requête réseau. */
+function prechargerEta(classement, centre, auRetour){
+  if(!TRANSIT || !positionMoi) return;
+  const cibles = classement.slice(0,12).filter(l=>!etaParLieu.has(cleEta(l, centre)));
+  if(!cibles.length) return;
+  if(etaEnVol) etaEnVol.abort();
+  const ctrl = new AbortController();
+  etaEnVol = ctrl;
+  Promise.all(cibles.map(l=>
+    TRANSIT.planTrip({
+      from:centre, to:[Number(l.latitude ?? l.lat), Number(l.longitude ?? l.lng)],
+      departAt:Date.now(), signal:ctrl.signal,
+    }).then(eta=>{ etaParLieu.set(cleEta(l, centre), eta || null); })
+      // un réseau muet dégrade la précision, pas l'écran. On mémorise
+      // l'échec : sans cette trace, le reclassement redemanderait les mêmes
+      // itinéraires et rappellerait majFeuille2 en boucle.
+      .catch(()=>{ if(!ctrl.signal.aborted) etaParLieu.set(cleEta(l, centre), null); })
+  )).then(()=>{
+    if(ctrl.signal.aborted) return;
+    etaEnVol = null;
+    if(typeof auRetour === "function") auRetour();
+  });
+}
 
 /* Le responsive décrit uniquement la présentation. Les requêtes et le
    classement ne dépendent jamais d'un userAgent ni d'un modèle d'appareil. */
@@ -1132,7 +1179,26 @@ const BESOINS = [
   // l'aide n'est pas une liste de cases : c'est un mode entier, avec ses
   // propres priorités et ses besoins écrits en français, pas en tags
   { id:"aide", emoji:"❤️", label:"Trouver de l’aide", aide:true },
-  { id:"services", emoji:"🏙️", label:"Services autour de moi", sous:[
+  // ---- Derrière « Plus » : les besoins réels mais moins fréquents. Ils ne
+  // méritent pas une place permanente à l'écran, ils méritent d'exister.
+  { id:"etudier", emoji:"📚", label:"Étudier", secondaire:true, sous:[
+      { label:"Bibliothèques",          cats:["biblio","library"] },
+      { label:"Espaces de travail",     cats:["coworking"] },
+      { label:"Cafés où s’installer",   cats:["cafe"] },
+  ]},
+  { id:"culture", emoji:"🎭", label:"Culture", secondaire:true, sous:[
+      { label:"Musées",                 cats:["musee","museum"] },
+      { label:"Cinéma",                 cats:["cinema"] },
+      { label:"Concerts et spectacles", cats:["concert","spectacle"] },
+      { label:"Expositions et ateliers",cats:["studio","workshop"] },
+  ]},
+  { id:"sport", emoji:"🏃", label:"Sport", secondaire:true, sous:[
+      { label:"Terrains et équipements",cats:["terrain","sport"] },
+      { label:"Piscines",               cats:["swimming_pool"] },
+      { label:"Parcs et plein air",     cats:["parc","park"] },
+      { label:"Vélo",                   cats:["velo"] },
+  ]},
+  { id:"services", emoji:"🏙️", label:"Services autour de moi", secondaire:true, sous:[
       { label:"Transports",             cats:["metro","bus","velo"] },
       { label:"Bibliothèques et musées",cats:["biblio","coworking","musee"] },
       { label:"Parcs et équipements",   cats:["parc"] },
@@ -1141,6 +1207,10 @@ const BESOINS = [
       { label:"Toilettes et recharge",  cats:["toilettes","recharge"] },
   ]},
 ];
+/* Quatre accès permanents, le reste derrière « Plus » : l'écran de départ
+   doit tenir dans un regard, sans amputer l'application de ses besoins. */
+const BESOINS_PRINCIPAUX  = BESOINS.filter(b=>!b.secondaire);
+const BESOINS_SECONDAIRES = BESOINS.filter(b=>b.secondaire);
 const BESOIN_DE = id => BESOINS.find(b=>b.id === id);
 
 /* [clé OSM, valeur, catégorie] — l'ordre compte : la première règle qui
@@ -1221,6 +1291,16 @@ const REQUETES = [
    premier les personnes que l'aide alimentaire concerne. */
 const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
 const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
+
+/* Clé transport (api.navitia.io) : elle agrège les GTFS déclarés sur
+   transport.data.gouv.fr et le temps réel des réseaux qui le publient, donc
+   elle vaut pour tout le territoire et pas pour une ville. Tant qu'elle est
+   vide, aucun provider transport ne s'enregistre et les temps affichés sont
+   des temps de marche — jamais un horaire inventé. */
+const CLE_TRANSPORT = "";
+if(window.AutourTransit) window.AutourTransit.configure({
+  navitia: CLE_TRANSPORT ? {token:CLE_TRANSPORT} : null,
+});
 
 let sb = null, moiId = null;
 
@@ -4696,14 +4776,14 @@ function categoriesClassementFeuille(){
 }
 
 function classementFeuille(){
-  if(feuilleNiveau === null || feuilleNiveau === "racine") return [];
+  if(feuilleNiveau === null || feuilleNiveau === "racine" || feuilleNiveau === "plus") return [];
   const centre = positionMoi || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
   let candidats = lieux.filter(nomExploitable);
   if(feuilleNiveau === "aide"){
     const choix = sousAide && SOUS_AIDE.find(x=>x.id===sousAide);
     if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
   }
-  return rankResults(candidats,{
+  const classement = rankResults(candidats,{
     intent:feuilleNiveau,
     categories:categoriesClassementFeuille(),
     position:centre,
@@ -4711,7 +4791,14 @@ function classementFeuille(){
     nowOnly:filtreMaintenant && !montrerFermes,
     radius:feuilleNiveau === "aide" ? Math.max(rayonRecherche,6000) : rayonRecherche,
     distanceBetween:distanceM,
+    // l'ETA réel pilote l'ordre ET l'exclusion : un lieu fermé à l'arrivée
+    // n'est pas un résultat, même s'il est le plus proche
+    etaFor:l=>etaConnu(l, centre),
   });
+  // les itinéraires manquants arrivent après coup : on redessine la feuille
+  // une fois, avec le vrai ordre
+  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau !== null) majFeuille2(); });
+  return classement;
 }
 
 function reinitialiserScrollFeuille(){
@@ -4797,9 +4884,17 @@ function majFeuille2(){
   if(feuilleNiveau === "racine"){
     $("#fbTitre").textContent = "Que faire autour de moi ?";
     retour.hidden = true;
-    corps.innerHTML = BESOINS.map(b=>
+    corps.innerHTML = BESOINS_PRINCIPAUX.map(b=>
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
-    ).join("") + blocResultats() + piedFeuille();
+    ).join("") +
+      '<button class="bn" data-bn="plus"><em>➕</em><b>Plus</b></button>' +
+      blocResultats() + piedFeuille();
+  }else if(feuilleNiveau === "plus"){
+    $("#fbTitre").textContent = "Plus de catégories";
+    retour.hidden = false;
+    corps.innerHTML = BESOINS_SECONDAIRES.map(b=>
+      '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
+    ).join("");
   }else if(feuilleNiveau === "aide"){
     $("#fbTitre").textContent = "❤️ Trouver de l’aide";
     retour.hidden = false;
@@ -4989,14 +5084,24 @@ function brancherFeuille2(){
 function majRaccourcis(){
   const z = $("#raccourcis");
   if(!z) return;
-  z.innerHTML = BESOINS.map(b=>{
+  // quatre raccourcis permanents + « Plus » : le rail reste lisible d'un
+  // coup d'œil au pouce, les besoins secondaires sont à un tap de là
+  const plusActif = feuilleNiveau === "plus" ||
+    !!(BESOIN_DE(feuilleNiveau) || {}).secondaire;
+  z.innerHTML = BESOINS_PRINCIPAUX.map(b=>{
     const actif = b.id === "aide" ? modeAide : (feuilleNiveau === b.id && catsActives);
     return '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
       '<em>'+b.emoji+'</em>'+esc(b.label.replace("Trouver de l’aide","Aide").replace(" autour de moi",""))+
       '</button>';
-  }).join("");
+  }).join("") +
+    '<button class="rc'+(plusActif?" actif":"")+'" data-rc="plus"><em>➕</em>Plus</button>';
   z.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.rc;
+    if(id === "plus"){
+      if(modeAide) basculerAide();
+      if(feuilleNiveau === "plus"){ fermerFeuille2(); return; }
+      ouvrirFeuille2("plus"); return;
+    }
     if(id === "aide"){
       if(modeAide){ basculerAide(); fermerFeuille2(); return; }
       basculerAide(); ouvrirFeuille2("aide"); return;
@@ -5456,8 +5561,11 @@ $("#fbFermer").onclick = fermerFeuille2;
 $("#fbRetour").onclick = ()=>{
   // revenir aux quatre besoins : on relâche la sélection en cours
   if(modeAide) basculerAide();
+  const venaitDePlus = (BESOIN_DE(feuilleNiveau) || {}).secondaire;
   catsActives = null; sousChoisi = null;
-  rendre(); majAccueil(); ouvrirFeuille2("racine"); majRaccourcis();
+  // un besoin atteint via « Plus » y retourne : le retour défait le dernier
+  // pas, il ne renvoie pas à la case départ
+  rendre(); majAccueil(); ouvrirFeuille2(venaitDePlus ? "plus" : "racine"); majRaccourcis();
 };
 /* Poignée : compacte ⇄ dépliée. Un balayage vers le bas réduit d'abord la
    feuille, puis la ferme ; vers le haut il la développe. */
