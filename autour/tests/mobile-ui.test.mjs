@@ -314,11 +314,11 @@ test("les événements créés peuvent porter une image stockée dans Supabase",
 
 test("le formulaire propose une photo sans l'imposer",()=>{
   assert.match(html,/id="fPhoto"/);
-  assert.match(html,/accept="image\/jpeg,image\/png,image\/webp"/);
   assert.match(html,/\(facultatif\)/);
   // rien n'est téléversé tant que l'événement n'est pas publié
-  assert.match(html,/n'est envoyée\s*\n?\s*qu'à la publication|qu'à la publication/);
-  assert.match(html,/Image trop lourde \(3 Mo maximum\)/);
+  assert.match(html,/qu'à la publication/);
+  // le refus ne tombe qu'après tentative de réduction
+  assert.match(html,/Image trop lourde, même après réduction/);
 });
 
 test("aucun gros emoji ne sert d'image finale",()=>{
@@ -388,4 +388,17 @@ test("créer demande QUOI avant OÙ",()=>{
   assert.doesNotMatch(html,/\$\("#btnAjouter"\)\.onclick=\(\)=>\{ retourFormulaire=false; ouvrirModePose\(\); \};/);
   // le type choisi préremplit le brouillon au lieu d'être redemandé
   assert.match(html,/cat:typeAvantPose \|\| "popup"/);
+});
+
+test("l'envoi d'image accepte ce que produit réellement un téléphone",()=>{
+  // accept restreint à jpeg/png/webp excluait le HEIC des iPhone : envoyer une
+  // photo depuis un téléphone était de fait impossible
+  assert.match(html,/id="fPhoto" accept="image\/\*"/);
+  assert.doesNotMatch(html,/accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.match(html,/function preparerImage/);
+  assert.match(html,/imageOrientation:"from-image"/);      // EXIF respecté
+  assert.match(html,/const IMAGE_COTE_MAX = 1600;/);
+  assert.match(html,/toBlob\(r, "image\/jpeg", \.82\)/);
+  // un format illisible ne bloque pas la publication
+  assert.match(html,/return null;   \/\/ format illisible/);
 });
