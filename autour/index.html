@@ -40,12 +40,20 @@
   --sol:#F2F1EC; --bati:#E7E4DE; --vert:#C9E6C4; --eau:#A5CDEA;
   --voie:#FFFFFF; --liseré:#DFDCD5; --vite:#F8D28D; --vite-bord:#E9B96A;
   --label:#5F6863;
+  /* couleurs d'application : l'orange marque le moment présent, le violet
+     marque l'action de contribuer */
+  --orange:#FF6B2C; --violet:#7C3AED; --violet-doux:#F1ECFE;
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
   --sheet-visible-height:0px;
-  --map-control-bottom:max(calc(var(--safe-b) + 150px),calc(var(--sheet-visible-height) + 12px));
+  /* hauteurs mesurées au lieu d'être devinées : l'en-tête et la barre basse
+     changent de taille selon l'appareil et la présence des safe areas */
+  --header-height:150px; --nav-height:calc(var(--safe-b) + 58px);
+  --map-control-bottom:max(calc(var(--nav-height) + 14px),calc(var(--sheet-visible-height) + 12px));
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overscroll-behavior:none}
+/* 100dvh : sur Safari iOS, 100vh inclut la barre d'URL et pousse le bas de
+   l'application hors de l'écran. dvh suit la hauteur réellement visible. */
+html,body{height:100%;height:100dvh;overscroll-behavior:none}
 body{font-family:'Inter Tight',system-ui,-apple-system,sans-serif;color:var(--ink);
   background:var(--paper);-webkit-font-smoothing:antialiased;position:fixed;inset:0;width:100%}
 body.ui-modal-open{overflow:hidden;touch-action:none}
@@ -54,13 +62,13 @@ input{font-family:inherit;font-size:16px}
 
 #map{position:absolute;inset:0;background:var(--sol)}
 .leaflet-container{font-family:inherit;background:var(--sol)}
-.leaflet-control-attribution{font-size:9px;background:rgba(255,255,255,.7)}
-.leaflet-bottom.leaflet-right{margin-bottom:calc(var(--safe-b) + var(--sheet-visible-height) + 2px);
-  transition:margin-bottom .22s ease}
-.leaflet-control-zoom{border:1px solid var(--bord)!important;border-radius:4px!important;
-  box-shadow:0 2px 10px rgba(20,30,25,.14)!important;margin-right:14px!important}
-body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
-.leaflet-control-zoom a{color:var(--ink)!important;font-weight:700}
+/* La carte est un décor : ni boutons +/-, ni bandeau d'attribution posé
+   dessus. Le zoom se fait au pinch, et l'attribution — légalement due —
+   vit derrière le « ⓘ » en bas à gauche (#btnCredits / #credits). */
+.leaflet-control-zoom,.leaflet-control-attribution{display:none!important}
+/* La carte descend sous l'en-tête arrondi et sous la barre basse : le fond
+   continue derrière eux, ce qui donne la profondeur d'une app native. */
+#map{top:0;bottom:0}
 
 /* étiquettes de rue */
 .rue{background:none;border:0;width:0!important;height:0!important}
@@ -96,6 +104,33 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   color:#37423D;letter-spacing:-.005em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 .poi-rond{position:relative}
+
+/* ---- Marqueurs de lieu façon application de découverte ------------------
+   Pastille ronde colorée par catégorie + étiquette blanche à deux lignes :
+   le nom, puis ce qui décide vraiment (heure de séance, heure de fermeture,
+   temps de trajet). La carte montre des lieux, pas des points. */
+.poi{flex-direction:row;align-items:center;gap:0}
+.poi-rond{width:28px;height:28px;font-size:14px;border:0;color:#fff;
+  box-shadow:0 2px 7px rgba(20,30,25,.30);z-index:2}
+.poi-eti{display:flex;flex-direction:column;margin-left:-8px;padding:4px 10px 4px 14px;
+  border-radius:0 9px 9px 0;background:rgba(255,255,255,.95);
+  box-shadow:0 1px 6px rgba(20,30,25,.20);max-width:158px}
+.poi-eti b{font-size:11.5px;font-weight:700;line-height:1.2;letter-spacing:-.01em;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poi-eti span{font-size:10.5px;line-height:1.25;color:var(--ink2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.poi-eti span.ouvre{color:#1B7F3B}
+.loin .poi-eti{display:none}
+.poi-ferme .poi-eti{background:rgba(255,255,255,.82)}
+/* Fermé : atténué et badgé. Jamais le même style qu'un lieu ouvert, jamais
+   masqué non plus — hors mode « Maintenant » il reste utile pour plus tard. */
+.poi-ferme{opacity:.55;filter:grayscale(1)}
+.poi-ferme .poi-rond{border-style:dashed;box-shadow:none}
+.poi-ferme .poi-nom{color:#6B756F;font-weight:500}
+.poi-ferme-badge{position:absolute;top:-7px;left:50%;transform:translateX(-50%);
+  padding:0 3px;border-radius:2px;background:#8A3B3B;color:#fff;
+  font-size:7.5px;font-weight:700;line-height:1.5;letter-spacing:.02em;font-style:normal}
+.inconnu{font-weight:600;color:var(--ink2)}
 .poi-pastille{position:absolute;top:-5px;right:-6px;min-width:15px;height:15px;padding:0 3px;
   border-radius:99px;background:var(--signal);color:#fff;border:1.5px solid #fff;
   font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;font-style:normal;
@@ -178,16 +213,20 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
 .mk-user .moi-in{left:23px;top:23px}
 .moi-in i{position:absolute;width:46px;height:46px;border-radius:50%;
   background:rgba(39,112,255,.18);animation:respire 2.4s ease-in-out infinite}
-/* Un simple point rouge se confond avec les lieux : la personne doit se
-   reconnaître au premier coup d'œil, d'où la pastille et la silhouette. */
-.moi-in b{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;
-  background:#fff;border:3px solid #2673E8;font-size:17px;line-height:1;
-  box-shadow:0 2px 8px rgba(19,72,157,.34)}
-.loin .moi-in b{width:22px;height:22px;font-size:11px;border-width:2.5px}
+/* Point bleu et halo, comme toute application de carte : la convention est
+   assez forte pour être reconnue sans être expliquée. Un emoji faisait
+   ressembler la position de l'utilisateur à un lieu de plus. */
+.moi-in b{display:block;width:17px;height:17px;border-radius:50%;
+  background:#1A73E8;border:2.5px solid #fff;
+  box-shadow:0 1px 5px rgba(19,72,157,.45)}
+.loin .moi-in b{width:13px;height:13px;border-width:2px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
 
-#bandeauGeo,#bandeauVide{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 72px);z-index:650;
+/* Les bandeaux se posent SOUS l'en-tête : sa hauteur est mesurée, donc ils
+   ne recouvrent plus la recherche quel que soit l'appareil. */
+#bandeauGeo,#bandeauVide{position:absolute;left:14px;right:14px;
+  top:calc(var(--header-height) + 10px);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
@@ -195,23 +234,110 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
 #bandeauOk,#videOk{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
   color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
-#charge{position:absolute;top:calc(var(--safe-t) + 14px);left:50%;transform:translateX(-50%);
+#charge{position:absolute;top:calc(var(--header-height) + 10px);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
 
-.haut{position:absolute;top:calc(var(--safe-t) + 14px);left:14px;right:14px;z-index:600;display:flex;gap:8px}
-.rond{width:46px;height:46px;flex-shrink:0;border-radius:50%;border:1px solid var(--bord);
-  background:#fff;color:var(--ink);display:grid;place-items:center;box-shadow:0 2px 10px rgba(20,30,25,.14)}
-.barre{flex:1;display:flex;align-items:center;gap:9px;padding:0 13px;height:46px;
+/* ---- En-tête fixe -------------------------------------------------------
+   Blanc, posé au-dessus de la carte, il porte le contexte et l'intention.
+   Sa hauteur réelle est mesurée et publiée dans --header-height : la carte
+   et les boutons flottants s'y accrochent au lieu de deviner. */
+#appHeader{position:absolute;top:0;left:0;right:0;z-index:600;
+  padding:calc(var(--safe-t) + 10px) 14px 10px;
+  background:#fff;border-radius:0 0 22px 22px;
+  box-shadow:0 4px 18px rgba(20,30,25,.10)}
+.hd-ligne{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.hd-lieu{flex:1;min-width:0;text-align:center;line-height:1.15}
+.hd-lieu b{display:block;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.hd-lieu span{display:block;font-size:13px;color:var(--ink2)}
+.hd-icone{position:relative;flex-shrink:0;width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--bord);background:#fff;color:var(--ink);
+  display:grid;place-items:center;box-shadow:0 1px 5px rgba(20,30,25,.10)}
+.hd-icone i{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;
+  background:var(--signal);border:1.5px solid #fff}
+
+/* « Maintenant » : l'état du moment, en orange, toujours visible. */
+#btnMaintenant{flex-shrink:0;display:flex;align-items:center;gap:6px;height:44px;padding:0 16px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink2);
+  font-size:14.5px;font-weight:700;box-shadow:0 1px 5px rgba(20,30,25,.10);
+  transition:background .16s ease,color .16s ease}
+#btnMaintenant.actif{background:var(--orange);border-color:var(--orange);color:#fff;
+  box-shadow:0 3px 12px rgba(255,107,44,.36)}
+
+.hd-rech{display:flex;align-items:center;gap:10px}
+.hd-rech > svg{position:absolute;margin-left:15px;color:var(--ink2);pointer-events:none}
+.hd-rech input{flex:1;min-width:0;height:50px;padding:0 14px 0 43px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;
-  box-shadow:0 2px 10px rgba(20,30,25,.14);color:var(--ink2)}
-.barre input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink)}
-.barre input::placeholder{color:#A3ADA6}
-.icone-btn{width:44px;height:44px;border:0;background:none;color:var(--ink2);display:grid;place-items:center;padding:4px}
-#suggestions{position:absolute;left:54px;right:0;top:52px;z-index:610;max-height:46vh;overflow-y:auto;
-  border:1px solid var(--bord);border-radius:14px;background:#fff;
-  box-shadow:0 4px 20px rgba(20,30,25,.2);animation:monteT .18s}
+  color:var(--ink);font-size:15px;outline:0}
+.hd-rech input::placeholder{color:#9AA49D}
+.hd-rech input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+.icone-btn{position:absolute;right:76px;width:40px;height:40px;border:0;background:none;
+  color:var(--ink2);display:grid;place-items:center;padding:4px}
+.hd-filtres{flex-shrink:0;width:50px;height:50px;border-radius:50%;
+  border:1px solid var(--bord);background:#fff;color:var(--ink);
+  display:grid;place-items:center;box-shadow:0 1px 5px rgba(20,30,25,.10)}
+
+/* ---- Pills de catégories ------------------------------------------------
+   Petites, horizontales, scrollables. La sélection est pleine et colorée :
+   elle doit se lire d'un coup d'œil, sans comparer les bordures. */
+.pills{display:flex;gap:8px;margin-top:11px;padding:2px 0 1px;
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.pills::-webkit-scrollbar{display:none}
+.rc{flex:0 0 auto;display:flex;align-items:center;gap:6px;height:37px;padding:0 13px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:13.5px;font-weight:650;white-space:nowrap;
+  box-shadow:0 1px 4px rgba(20,30,25,.07);transition:background .16s ease,color .16s ease}
+.rc em{font-size:14.5px;font-style:normal;line-height:1}
+.rc:active{transform:scale(.97)}
+.rc.actif{background:var(--violet);border-color:var(--violet);color:#fff;
+  box-shadow:0 3px 12px rgba(124,58,237,.34)}
+.rc.aide.actif{background:var(--aide);border-color:var(--aide)}
+
+/* ---- Carousel « Pour toi, maintenant » ---------------------------------- */
+.rc-tete{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:2px 2px 12px}
+.rc-tete strong{font-size:20px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+.rc-tout{flex-shrink:0;white-space:nowrap;border:0;background:none;
+  color:var(--violet);font-size:14.5px;font-weight:700}
+.rc-piste{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;
+  padding:0 2px 4px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.rc-piste::-webkit-scrollbar{display:none}
+.rc-carte{flex:0 0 178px;scroll-snap-align:start;display:flex;flex-direction:column;
+  border:1px solid var(--bord);border-radius:16px;background:#fff;overflow:hidden;
+  text-align:left;box-shadow:0 2px 10px rgba(20,30,25,.09)}
+.rc-carte:active{transform:scale(.985)}
+.rc-photo{display:block;height:88px;background:var(--paper) center/cover no-repeat}
+.rc-photo-vide{display:grid;place-items:center;font-size:32px}
+.rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 12px 12px}
+.rc-cats{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  letter-spacing:.06em;color:var(--violet)}
+.rc-nom{font-size:15px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
+  min-height:36px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rc-ligne{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+.rc-note{font-size:13px;font-weight:650}
+.rc-note i{font-style:normal;font-weight:500;color:var(--ink2)}
+.rc-min{font-size:13px;font-weight:750;color:var(--violet)}
+.rc-trajet{font-size:12.5px;color:var(--ink2);margin-top:3px}
+.rc-arrivee{font-size:12px;color:var(--ink2)}
+
+/* ---- Prochains départs -------------------------------------------------- */
+.tr-bloc{display:flex;align-items:center;gap:11px;margin:14px 2px 4px;padding:12px 13px;
+  border-radius:14px;background:var(--violet-doux)}
+.tr-icone{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#fff;
+  display:grid;place-items:center;font-size:18px}
+.tr-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tr-titre{font-size:14.5px;font-weight:700;color:var(--violet)}
+.tr-lignes{font-size:13px;color:var(--ink)}
+.tr-lignes b{font-weight:750}
+.tr-vide{color:var(--ink2);font-size:12.5px}
+.tr-tout{flex-shrink:0;padding:8px 13px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13px;font-weight:650}
+
+#suggestions{position:absolute;left:14px;right:14px;top:calc(100% - 6px);z-index:610;
+  max-height:46vh;overflow-y:auto;
+  border:1px solid var(--bord);border-radius:16px;background:#fff;
+  box-shadow:0 6px 24px rgba(20,30,25,.22);animation:monteT .18s}
 .sg{display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;border:0;
   border-top:1px solid rgba(20,30,25,.08);background:none;text-align:left;font-size:14px;
   color:var(--ink)}
@@ -224,32 +350,22 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
 .sg-rapide{flex:0 0 auto;padding:7px 12px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
 
-/* ---- bas d'écran : quatre raccourcis, une seule action principale ---- */
-#barreBas{position:absolute;left:0;right:0;bottom:0;z-index:601;
-  display:flex;flex-direction:column;gap:8px;
-  padding:0 14px calc(var(--safe-b) + 14px);
-  width:100%;max-width:520px;margin:0 auto;pointer-events:none}
-#barreBas > *{pointer-events:auto}
-#raccourcis{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:4px 0}
-#raccourcis::-webkit-scrollbar{display:none}
-.rc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:9px 4px;border:1px solid var(--bord);border-radius:14px;background:#fff;
-  color:var(--ink);font-size:11.5px;font-weight:600;line-height:1.15;text-align:center;
-  box-shadow:0 1px 6px rgba(20,30,25,.10)}
-.rc em{font-size:19px;font-style:normal;line-height:1}
-.rc:active{background:var(--paper)}
-.rc.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
-.rc.aide.actif{background:var(--aide);border-color:var(--aide)}
-#btnQuoi{width:100%;padding:16px;border:0;border-radius:16px;background:var(--trait);color:#fff;
-  font-size:16px;font-weight:700;box-shadow:0 3px 12px rgba(20,30,25,.24)}
-#btnQuoi:active{transform:translateY(1px)}
+/* ---- Barre de navigation basse -----------------------------------------
+   Cinq onglets, comme une application native. Deux d'entre eux (Favoris,
+   Messages) n'ont pas encore de fonctionnalité : ils sont explicitement
+   désactivés plutôt que muets, pour ne pas promettre un écran inexistant. */
+#navBas{position:absolute;left:0;right:0;bottom:0;z-index:660;
+  display:flex;align-items:stretch;
+  padding:6px 4px calc(var(--safe-b) + 6px);
+  background:#fff;border-top:1px solid rgba(20,30,25,.09)}
+.nb{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:6px 2px;border:0;background:none;color:var(--ink2);
+  font-size:11px;font-weight:600;line-height:1.1}
+.nb svg{opacity:.85}
+.nb.actif{color:var(--violet)}
+.nb.actif svg{opacity:1}
+.nb[aria-disabled="true"]{opacity:.38}
 
-/* ---- « Maintenant » : ce qui est utilisable à cet instant ---- */
-#btnMaintenant{flex-shrink:0;display:flex;align-items:center;gap:5px;height:46px;padding:0 15px;
-  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink2);
-  font-size:14px;font-weight:700;box-shadow:0 2px 10px rgba(20,30,25,.14)}
-#btnMaintenant span{font-size:13px}
-#btnMaintenant.actif{background:var(--signal);border-color:var(--signal);color:#fff}
 #filtresHumains{position:absolute;left:0;right:0;bottom:calc(var(--map-control-bottom) + 112px);z-index:600;
   display:flex;gap:7px;padding:4px 14px;overflow-x:auto;scrollbar-width:none;
   width:100%;max-width:520px;margin:0 auto}
@@ -259,30 +375,44 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   box-shadow:0 1px 6px rgba(20,30,25,.10)}
 .fh.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
-/* ---- boutons flottants : créer en premier, se repérer juste au-dessus ---- */
-.rond-flottant{position:absolute;right:14px;z-index:601;min-width:46px;height:46px;
+/* ---- Boutons flottants sur la carte -------------------------------------
+   Petites icônes rondes à droite : se recentrer, voir les transports. Elles
+   ne portent plus de libellé — l'icône suffit et rend la carte au décor. */
+.rond-flottant{position:absolute;right:14px;z-index:601;width:44px;height:44px;
   border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
-  font-size:20px;line-height:1;display:grid;place-items:center;
-  box-shadow:0 2px 10px rgba(20,30,25,.14)}
-#btnRevenir{bottom:calc(var(--map-control-bottom) + 56px);width:auto;padding:0 15px;border-radius:99px;
-  display:flex;gap:7px;font-size:13px;font-weight:700}
-.rond-flottant{transition:bottom .22s ease,transform .15s ease}
+  font-size:18px;line-height:1;display:grid;place-items:center;
+  box-shadow:0 2px 10px rgba(20,30,25,.16);
+  transition:bottom .22s ease,transform .15s ease}
+#btnRevenir{bottom:calc(var(--map-control-bottom) + 108px)}
+#btnTransports{bottom:calc(var(--map-control-bottom) + 56px)}
 .rond-flottant:active{transform:scale(.94)}
 
-/* « + Créer » : l'ajout est nommé en toutes lettres. Le libellé ne disparaît
-   sur aucune largeur — un « + » seul n'apprend rien à qui arrive. */
+/* Attribution : obligatoire, donc conservée — mais repliée derrière un « ⓘ »
+   au lieu d'occuper le bas de la carte en permanence. */
+#btnCredits{position:absolute;left:12px;bottom:calc(var(--map-control-bottom) + 4px);z-index:601;
+  width:26px;height:26px;border-radius:50%;border:1px solid var(--bord);
+  background:rgba(255,255,255,.9);color:var(--ink2);font-size:13px;line-height:1;
+  display:grid;place-items:center;transition:bottom .22s ease}
+#credits{position:absolute;left:12px;right:12px;bottom:calc(var(--map-control-bottom) + 36px);
+  z-index:601;padding:8px 11px;border:1px solid var(--bord);border-radius:10px;
+  background:rgba(255,255,255,.96);font-size:11px;line-height:1.4;color:var(--ink2);
+  box-shadow:0 2px 10px rgba(20,30,25,.16)}
+#credits a{color:var(--ink2)}
+
+/* « + Créer » : violet, plein, nommé en toutes lettres. Le libellé ne
+   disparaît sur aucune largeur — un « + » seul n'apprend rien à qui arrive. */
 #btnAjouter{position:absolute;right:14px;bottom:var(--map-control-bottom);z-index:602;
-  display:flex;align-items:center;justify-content:center;gap:7px;
-  height:48px;padding:0 18px;border:0;border-radius:99px;
-  background:var(--trait);color:#fff;
-  font-size:15px;font-weight:700;line-height:1;white-space:nowrap;
-  box-shadow:0 3px 14px rgba(20,30,25,.28);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  height:52px;padding:0 22px;border:0;border-radius:99px;
+  background:var(--violet);color:#fff;
+  font-size:16.5px;font-weight:700;line-height:1;white-space:nowrap;
+  box-shadow:0 6px 20px rgba(124,58,237,.42);
   transition:bottom .22s ease,transform .15s ease}
 #btnAjouter svg{flex-shrink:0}
 #btnAjouter .creer-txt{white-space:nowrap}
 #btnAjouter:active{transform:scale(.96)}
 @media (max-width:359px){
-  #btnAjouter{height:46px;padding:0 14px;gap:5px;font-size:14px}
+  #btnAjouter{height:48px;padding:0 16px;gap:6px;font-size:15px}
 }
 
 /* ---- bottom sheet : fermée · compacte · dépliée ---- */
@@ -290,9 +420,13 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   display:flex;flex-direction:column;
   width:auto;max-width:none;margin:0;
   height:52dvh;max-height:52dvh;
-  background:var(--paper);border:1px solid var(--bord);border-bottom:0;border-radius:22px 22px 0 0;
+  background:#fff;border:1px solid var(--bord);border-bottom:0;border-radius:22px 22px 0 0;
   box-shadow:0 -3px 18px rgba(20,30,25,.13);
   transition:height .22s ease,max-height .22s ease}
+/* À l'accueil la feuille est l'écran lui-même : elle occupe toute la largeur
+   et se passe de barre de titre, le titre étant dans le corps. */
+#feuilleBesoins.accueil{left:0;right:0;border-left:0;border-right:0}
+#feuilleBesoins.accueil .fb-tete{display:none}
 #feuilleBesoins.deplie{height:90dvh;max-height:90dvh}
 .fb-poignee{position:relative;flex-shrink:0;display:block;width:64px;height:44px;margin:0 auto;border:0;
   background:transparent;padding:0;touch-action:none}
@@ -632,31 +766,53 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="videOk">Tout voir</button>
 </div>
 
-<div class="haut" id="haut" hidden>
-  <button class="rond" id="btnLoupe" aria-label="Chercher">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
-  </button>
-  <div class="barre" id="barreRech" hidden>
-    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
-    <input id="rech" placeholder="Chercher un truc, un lieu…" />
-    <button class="icone-btn" id="btnFermerRech" aria-label="Fermer">
-      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+<!-- En-tête fixe : le contexte d'abord (où je suis, quand), puis l'intention
+     (que veux-tu faire), puis le raccourci (catégories). La carte est un
+     décor derrière ça, pas l'interface elle-même. -->
+<header id="appHeader" hidden>
+  <div class="hd-ligne">
+    <button id="btnMaintenant" aria-pressed="true" title="Ce qui est utilisable maintenant">⚡ <span>Maintenant</span></button>
+    <div class="hd-lieu">
+      <b id="hdVille">Autour de toi</b>
+      <span id="hdSous" hidden>Autour de toi</span>
+    </div>
+    <button class="hd-icone" id="btnNotifs" aria-label="Notifications">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <i id="notifPastille" hidden></i>
     </button>
   </div>
-  <button id="btnMaintenant" title="Ce qui est utilisable maintenant">⚡ <span>Maintenant</span></button>
+
+  <div class="hd-rech">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+    <input id="rech" placeholder="Que veux-tu faire maintenant&nbsp;?" />
+    <button class="icone-btn" id="btnFermerRech" hidden aria-label="Effacer la recherche">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <button class="hd-filtres" id="btnFiltres" aria-label="Filtres" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+    </button>
+  </div>
+
+  <!-- Pills : quatre besoins + Plus. Rempli par majRaccourcis(). -->
+  <div id="raccourcis" class="pills"></div>
   <div id="suggestions" hidden></div>
-</div>
+</header>
 
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
 
-<!-- Bas d'écran : quatre raccourcis et une seule action principale. Rien
-     d'autre ne s'ouvre tout seul. -->
-<div id="barreBas" hidden>
-  <div id="raccourcis"></div>
-  <button id="btnQuoi">Que faire autour de moi&nbsp;?</button>
-</div>
+<button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">
+  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.6v3.2M12 18.2v3.2M21.4 12h-3.2M5.8 12H2.6"/></svg>
+</button>
+<button class="rond-flottant" id="btnTransports" hidden aria-label="Prochains départs à proximité">
+  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
+</button>
 
-<button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">◎ <span>Ma position</span></button>
+<!-- Attribution : légalement due, mais elle n'a pas à occuper la carte. -->
+<button id="btnCredits" hidden aria-label="Sources et attributions" aria-expanded="false">ⓘ</button>
+<div id="credits" hidden>
+  © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
+  © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>
+</div>
 <button id="btnAjouter" hidden aria-label="Créer un événement ou une activité">
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
   <span class="creer-txt">Créer</span>
@@ -672,6 +828,32 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   </div>
   <div class="fb-corps" id="fbCorps"></div>
 </div>
+
+<!-- Navigation basse. « Messages » ne sert qu'à prévenir les participants
+     d'un événement qu'on a créé (annulation, changement d'horaire, limite
+     de places) : il ne s'active donc que si on a publié quelque chose. -->
+<nav id="navBas" hidden>
+  <button class="nb actif" data-nb="explorer">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+    Explorer
+  </button>
+  <button class="nb" data-nb="evenements">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+    Événements
+  </button>
+  <button class="nb" data-nb="favoris" aria-disabled="true">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 5.6a5 5 0 0 0-7.1 0L12 6.9l-1.3-1.3a5 5 0 1 0-7.1 7.1L12 21l8.4-8.3a5 5 0 0 0 0-7.1z"/></svg>
+    Favoris
+  </button>
+  <button class="nb" data-nb="messages" aria-disabled="true">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.1 9.1 0 0 1-3.3-.7L3 21l1.9-5.2A8.2 8.2 0 0 1 4 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8 8.4z"/></svg>
+    Messages
+  </button>
+  <button class="nb" data-nb="profil">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
+    Profil
+  </button>
+</nav>
 
 <div id="navBarre" hidden>
   <span class="nav-mode" id="navMode"></span>
@@ -705,7 +887,9 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="panne" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="availability.js"></script>
 <script src="core.js"></script>
+<script src="transit.js"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -724,6 +908,83 @@ const {
   isAvailableNow,
   rankResults,
 } = window.AutourCore;
+
+/* Ville détectée : déclarée ici car demarrer() l'utilise bien avant le bloc
+   qui définit detecterVille(). */
+let villeDetectee = null;
+
+/* ---- Ouvert / fermé : une seule source de vérité ------------------------
+   Toute la question « est-ce que c'est ouvert » passe par availability.js.
+   Aucun écran ne relit un opening_hours de son côté, sinon la carte et la
+   fiche finissent par se contredire. */
+function dispoDe(l, arrivee){
+  const module = window.AutourAvailability;
+  if(!module) return null;
+  return module.getPlaceAvailability(l, instantCreneau().getTime(), arrivee);
+}
+
+/* Le libellé exact demandé par cas : « Ouvert • ferme à 23:30 », « Fermé •
+   ouvre à 14:00 », « Fermé aujourd'hui », « Horaires non renseignés »… */
+function badgeDispo(l){
+  const d = dispoDe(l);
+  if(!d) return "";
+  const classe = d.status === "open" ? "ouvert"
+    : d.status === "unknown" ? "inconnu" : "ferme";
+  return '<span class="'+classe+'">'+esc(d.label)+'</span>';
+}
+
+/* Un lieu fermé reste sur la carte — il peut servir plus tard — mais il ne
+   doit jamais se lire comme un lieu ouvert. */
+function estFerme(l){
+  const d = dispoDe(l);
+  return !!d && (d.status === "closed" || d.status === "permanently_closed");
+}
+
+/* ---- Transport : de « c'est à 800 m » à « vous y êtes dans 22 min » ------
+   Le classement est synchrone, le calcul d'itinéraire ne l'est pas. On
+   garde donc un cache d'ETA lu instantanément par le classement, et on le
+   remplit en tâche de fond pour les seuls résultats visibles — puis on
+   reclasse. Tant qu'un ETA n'est pas connu, core.js retombe sur la marche :
+   l'écran n'attend jamais le réseau. */
+const TRANSIT = window.AutourTransit;
+const etaParLieu = new Map();
+let etaEnVol = null;
+
+/* La clé inclut le quart d'heure : un ETA calculé il y a 40 min ne décrit
+   plus le prochain passage. */
+function cleEta(l, centre){
+  return [l.id, Math.round(centre[0]*2000), Math.round(centre[1]*2000),
+    Math.floor(Date.now()/900000)].join(",");
+}
+
+function etaConnu(l, centre){
+  return etaParLieu.get(cleEta(l, centre)) || null;
+}
+
+/* Ne demande d'itinéraire que pour le haut de liste : c'est le seul endroit
+   où l'ordre se joue, et chaque appel coûte une requête réseau. */
+function prechargerEta(classement, centre, auRetour){
+  if(!TRANSIT || !positionMoi) return;
+  const cibles = classement.slice(0,12).filter(l=>!etaParLieu.has(cleEta(l, centre)));
+  if(!cibles.length) return;
+  if(etaEnVol) etaEnVol.abort();
+  const ctrl = new AbortController();
+  etaEnVol = ctrl;
+  Promise.all(cibles.map(l=>
+    TRANSIT.planTrip({
+      from:centre, to:[Number(l.latitude ?? l.lat), Number(l.longitude ?? l.lng)],
+      departAt:Date.now(), signal:ctrl.signal,
+    }).then(eta=>{ etaParLieu.set(cleEta(l, centre), eta || null); })
+      // un réseau muet dégrade la précision, pas l'écran. On mémorise
+      // l'échec : sans cette trace, le reclassement redemanderait les mêmes
+      // itinéraires et rappellerait majFeuille2 en boucle.
+      .catch(()=>{ if(!ctrl.signal.aborted) etaParLieu.set(cleEta(l, centre), null); })
+  )).then(()=>{
+    if(ctrl.signal.aborted) return;
+    etaEnVol = null;
+    if(typeof auRetour === "function") auRetour();
+  });
+}
 
 /* Le responsive décrit uniquement la présentation. Les requêtes et le
    classement ne dépendent jamais d'un userAgent ni d'un modèle d'appareil. */
@@ -852,6 +1113,21 @@ function estTemporaire(item){
 /* ================================================================== */
 /*  Catégories                                                        */
 /* ================================================================== */
+
+/* Couleur de pastille par famille de catégories. Différencier visuellement
+   les marqueurs est ce qui permet de lire la carte sans lire les étiquettes.
+   Une catégorie absente retombe sur le gris neutre. */
+const COULEURS_CAT = {
+  resto:"#F5741F", fastfood:"#F5741F", cafe:"#B4713C", marche:"#E0952A", food:"#F5741F",
+  bar:"#D2337A", event:"#E23A8C", concert:"#E23A8C", spectacle:"#E23A8C", studio:"#E23A8C",
+  cinema:"#7C3AED", musee:"#0FA3A3", biblio:"#0FA3A3", popup:"#B14FE0",
+  parc:"#2E9E4F", terrain:"#2E9E4F", sport:"#2E9E4F", velo:"#2E9E4F",
+  alimentaire:"#B82A3A", hebergement:"#B82A3A", sante:"#B82A3A", asso:"#B82A3A",
+  emploi:"#B82A3A", collecte:"#B82A3A",
+  metro:"#2673E8", bus:"#2673E8", mairie:"#5D6B63", ecole:"#5D6B63",
+  toilettes:"#5D6B63", recharge:"#5D6B63", friperie:"#B14FE0", commerce:"#B14FE0",
+  rencontre:"#E0952A", autre:"#5D6B63",
+};
 
 const CATS = {
   /* ---- couche événements : ce qui se passe, publié par les gens ---- */
@@ -1132,7 +1408,26 @@ const BESOINS = [
   // l'aide n'est pas une liste de cases : c'est un mode entier, avec ses
   // propres priorités et ses besoins écrits en français, pas en tags
   { id:"aide", emoji:"❤️", label:"Trouver de l’aide", aide:true },
-  { id:"services", emoji:"🏙️", label:"Services autour de moi", sous:[
+  // ---- Derrière « Plus » : les besoins réels mais moins fréquents. Ils ne
+  // méritent pas une place permanente à l'écran, ils méritent d'exister.
+  { id:"etudier", emoji:"📚", label:"Étudier", secondaire:true, sous:[
+      { label:"Bibliothèques",          cats:["biblio","library"] },
+      { label:"Espaces de travail",     cats:["coworking"] },
+      { label:"Cafés où s’installer",   cats:["cafe"] },
+  ]},
+  { id:"culture", emoji:"🎭", label:"Culture", secondaire:true, sous:[
+      { label:"Musées",                 cats:["musee","museum"] },
+      { label:"Cinéma",                 cats:["cinema"] },
+      { label:"Concerts et spectacles", cats:["concert","spectacle"] },
+      { label:"Expositions et ateliers",cats:["studio","workshop"] },
+  ]},
+  { id:"sport", emoji:"🏃", label:"Sport", secondaire:true, sous:[
+      { label:"Terrains et équipements",cats:["terrain","sport"] },
+      { label:"Piscines",               cats:["swimming_pool"] },
+      { label:"Parcs et plein air",     cats:["parc","park"] },
+      { label:"Vélo",                   cats:["velo"] },
+  ]},
+  { id:"services", emoji:"🏙️", label:"Services autour de moi", secondaire:true, sous:[
       { label:"Transports",             cats:["metro","bus","velo"] },
       { label:"Bibliothèques et musées",cats:["biblio","coworking","musee"] },
       { label:"Parcs et équipements",   cats:["parc"] },
@@ -1141,6 +1436,24 @@ const BESOINS = [
       { label:"Toilettes et recharge",  cats:["toilettes","recharge"] },
   ]},
 ];
+/* Quatre accès permanents, le reste derrière « Plus » : l'écran de départ
+   doit tenir dans un regard, sans amputer l'application de ses besoins. */
+/* Étiquettes lisibles des catégories internes, pour les cartes du carousel.
+   Un lieu en porte souvent plusieurs : c'est le but de la classification
+   pondérée, et la carte doit le montrer (« SORTIR • FAMILLE »). */
+const ETIQUETTES_CAT = {
+  eat:"MANGER", restaurant:"MANGER", cafe:"MANGER", market:"MANGER",
+  outing:"SORTIR", bar:"SORTIR", concert:"SORTIR", show:"SORTIR", event:"SORTIR",
+  family:"FAMILLE", kids_event:"FAMILLE", playground:"FAMILLE", family_event:"FAMILLE",
+  culture:"CULTURE", museum:"CULTURE", cinema:"CULTURE",
+  sport:"SPORT", park:"PLEIN AIR",
+  study:"ÉTUDIER", library:"ÉTUDIER",
+  help:"AIDE", food_aid:"AIDE", shelter:"AIDE", health:"AIDE",
+  services:"SERVICES", transport:"TRANSPORT", buy:"BOUTIQUES",
+};
+
+const BESOINS_PRINCIPAUX  = BESOINS.filter(b=>!b.secondaire);
+const BESOINS_SECONDAIRES = BESOINS.filter(b=>b.secondaire);
 const BESOIN_DE = id => BESOINS.find(b=>b.id === id);
 
 /* [clé OSM, valeur, catégorie] — l'ordre compte : la première règle qui
@@ -1221,6 +1534,16 @@ const REQUETES = [
    premier les personnes que l'aide alimentaire concerne. */
 const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
 const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
+
+/* Clé transport (api.navitia.io) : elle agrège les GTFS déclarés sur
+   transport.data.gouv.fr et le temps réel des réseaux qui le publient, donc
+   elle vaut pour tout le territoire et pas pour une ville. Tant qu'elle est
+   vide, aucun provider transport ne s'enregistre et les temps affichés sont
+   des temps de marche — jamais un horaire inventé. */
+const CLE_TRANSPORT = "";
+if(window.AutourTransit) window.AutourTransit.configure({
+  navitia: CLE_TRANSPORT ? {token:CLE_TRANSPORT} : null,
+});
 
 let sb = null, moiId = null;
 
@@ -2065,21 +2388,26 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#haut","#barreBas","#btnAjouter","#btnRevenir"].forEach(s=>$(s).hidden=false);
+  ["#appHeader","#navBas","#btnAjouter","#btnRevenir","#btnTransports","#btnCredits"]
+    .forEach(s=>$(s).hidden=false);
+  mesurerHeader();
+  // le contexte d'abord : la ville s'affiche sans attendre les lieux
+  detecterVille(positionMoi[0], positionMoi[1]);
 
-  map = L.map("map",{zoomControl:false, attributionControl:true, tap:false, preferCanvas:true})
+  // ni contrôle de zoom, ni bandeau d'attribution : la carte doit se lire
+  // comme un fond d'application, pas comme une démo Leaflet. L'attribution
+  // reste due et vit derrière le « ⓘ » (#btnCredits).
+  map = L.map("map",{zoomControl:false, attributionControl:false, tap:false, preferCanvas:true})
         .setView(centre, partage ? 17 : 16);
   map.createPane("villePane"); map.getPane("villePane").style.zIndex = 200;
   map.createPane("ruesPane");  map.getPane("ruesPane").style.zIndex = 350;
   map.getPane("ruesPane").style.pointerEvents = "none";
-  L.control.zoom({position:"bottomright"}).addTo(map);
-  map.attributionControl.addAttribution('données © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
 
   coucheVille = L.layerGroup().addTo(map);
 
   moi = L.marker(positionMoi,{
     icon:L.divIcon({className:"mk mk-user",
-      html:'<span class="moi-in"><i></i><b>🙂</b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
+      html:'<span class="moi-in"><i></i><b></b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
     interactive:true, keyboard:true, title:"Vous êtes ici", zIndexOffset:400
   }).addTo(map);
   moi.on("click", ()=>toast("Vous êtes ici"));
@@ -2150,6 +2478,11 @@ async function demarrer(coords){
       definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
     else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
     majAccueil();
+    majNavBas();
+    // Contexte → suggestions → carte → lieux → action : dès que les lieux
+    // sont là, l'accueil propose au lieu d'attendre une question. La carte
+    // n'est jamais vide devant quelqu'un qui vient d'arriver.
+    if(feuilleNiveau === null && !modeNav && !modePose && lieux.length) ouvrirAccueilFeuille();
   });
 
   /* Couche éphémère, chargée à part et après les lieux : un événement de ce
@@ -2201,7 +2534,10 @@ let filtresHumains = new Set();  // gratuit · ouvert · proche · pmr
    familles », mais un parc, une piscine ou un musée le sont par nature.
    C'est une heuristique assumée, pas une donnée inventée. */
 const FILTRES_HUMAINS = [
-  { id:"ouvert",  label:"Ouvert",          test:l=>l.ouvert === true },
+  { id:"ouvert",  label:"Ouvert",          test:l=>{
+      const d = dispoDe(l);
+      return d ? d.isOpenNow : l.ouvert === true;
+    } },
   { id:"proche",  label:"< 15 min à pied", test:(l,d)=>d < 1200 },
   { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
@@ -2245,7 +2581,8 @@ function estVivant(l){
   // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
   // la plupart des lieux OpenStreetMap n'ont aucune donnée d'ouverture, et
   // les exiger vidait la carte à l'ouverture de l'application
-  return creneau === "maintenant" ? l.ouvert !== false : true;
+  // (un lieu dont on sait lire l'horaire est jugé dessus, les autres restent)
+  return creneau === "maintenant" ? !estFerme(l) : true;
 }
 
 function visibles(){
@@ -2275,6 +2612,34 @@ function visibles(){
   });
 }
 
+/* Toutes les heures affichées passent par ici : un « Arrivée 19:10 » calculé
+   dans le fuseau du navigateur est faux dès que celui-ci diffère de celui du
+   lieu — ce qui est le cas de tout serveur en UTC. */
+function heureLocale(ts, l){
+  const tz = (l && (l.timezone || l.timeZone)) ||
+    (window.AutourAvailability && window.AutourAvailability.DEFAULT_TIMEZONE) || undefined;
+  return new Date(ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit",timeZone:tz});
+}
+
+/* La deuxième ligne d'une étiquette doit trancher : l'heure qui décide
+   (début de séance), sinon la fermeture, sinon le temps de trajet. */
+function sousTitreMarqueur(l){
+  const heure = (t)=>heureLocale(t, l);
+  const centre = positionMoi;
+  const eta = centre ? etaConnu(l, centre) : null;
+  const trajet = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
+
+  if(l.startsAt && l.startsAt > Date.now())
+    return '<span>'+heure(l.startsAt)+(trajet ? " · "+trajet : "")+'</span>';
+
+  const d = dispoDe(l);
+  if(d && d.status === "open" && d.closesAtTime)
+    return '<span class="ouvre">Ouvert jusqu’à '+d.closesAtTime+'</span>';
+  if(d && (d.status === "closed" || d.status === "opening_soon") && d.opensAtTime)
+    return '<span>Ouvre à '+d.opensAtTime+'</span>';
+  return trajet ? '<span>'+trajet+'</span>' : '';
+}
+
 function htmlMarqueur(l){
   const c = CATS[l.cat]||CATS.event;
   if(estTemporaire(l)){
@@ -2289,10 +2654,15 @@ function htmlMarqueur(l){
   // le lieu reste, l'événement se pose dessus : une pastille signale qu'il s'y
   // passe quelque chose aujourd'hui sans remplacer le commerce lui-même
   const evs = indexEvenements.get(l.titre) || 0;
-  return '<span class="mk-in"><div class="poi">'+
-    '<span class="poi-rond">'+c.emoji+
-      (evs ? '<i class="poi-pastille">'+evs+'</i>' : '')+'</span>'+
-    '<span class="poi-nom">'+esc(l.titre)+'</span></div></span>';
+  // un lieu fermé garde sa place sur la carte mais ne doit pas se lire comme
+  // un lieu ouvert : marqueur atténué et badge explicite
+  const ferme = estFerme(l);
+  return '<span class="mk-in"><div class="poi'+(ferme?' poi-ferme':'')+'">'+
+    '<span class="poi-rond" style="background:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+c.emoji+
+      (evs ? '<i class="poi-pastille">'+evs+'</i>' : '')+
+      (ferme ? '<i class="poi-ferme-badge">Fermé</i>' : '')+'</span>'+
+    '<span class="poi-eti"><b>'+esc(l.titre)+'</b>'+sousTitreMarqueur(l)+'</span>'+
+    '</div></span>';
 }
 
 /* Regroupement : au-delà d'un certain éloignement, des dizaines de pastilles
@@ -2626,7 +2996,7 @@ document.addEventListener("keydown", e=>{
     if(modeNav){ e.preventDefault(); quitterNav(); return; }
     if(feuilleNiveau !== null){ e.preventDefault(); fermerFeuille2(); return; }
     if(modePose){ e.preventDefault(); fermerModePose(); return; }
-    if(!$("#barreRech").hidden){ e.preventDefault(); $("#btnFermerRech").click(); }
+    if($("#rech") && $("#rech").value){ e.preventDefault(); $("#btnFermerRech").click(); }
     return;
   }
   if(e.key !== "Tab" || (!abandonOuvert && !feuilleOuverte)) return;
@@ -2707,8 +3077,7 @@ function ouvrirDetail(id){
       '<span>'+formatDist(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng))+'</span>'+
       '<span>'+tempsTrajetMinutes(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng),
               VITESSES_KMH.pied)+' min à pied</span>'+
-      (l.ouvert === true  ? '<span class="ouvert">Ouvert</span>' :
-       l.ouvert === false ? '<span class="ferme">Fermé</span>'   : '')+
+      badgeDispo(l)+
       (l.note ? '<span>★ '+l.note.toFixed(1)+(l.avis?' ('+l.avis+')':'')+'</span>' : '')+
       (l.pmr === true ? '<span title="Accessible en fauteuil">♿</span>' : '')+
     '</p>'+
@@ -2814,7 +3183,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#barreBas","#btnAjouter","#haut","#btnPartager","#btnRevenir","#filtresHumains","#feuilleBesoins","#bandeauVide"]
+  ["#navBas","#btnAjouter","#appHeader","#btnPartager","#btnRevenir","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   feuilleNiveau = null;
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
@@ -2844,7 +3213,7 @@ function quitterNav(){
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
   $("#navEtapes").hidden = true;
-  ["#barreBas","#btnAjouter","#haut","#btnPartager"]
+  ["#navBas","#btnAjouter","#appHeader","#btnPartager","#btnTransports","#btnCredits"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   majFiltres(); majRaccourcis();
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
@@ -3379,7 +3748,7 @@ function libelleQuand(b){
 function ouvrirModePose(){
   modePose=true;
   $("#viseur").hidden=false; $("#poseBarre").hidden=false;
-  $("#barreBas").hidden=true; $("#btnAjouter").hidden=true;
+  $("#navBas").hidden=true; $("#btnAjouter").hidden=true; $("#btnTransports").hidden=true;
   $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
   $("#feuilleBesoins").hidden=true;
   $("#poseBarre .txt").textContent = retourFormulaire
@@ -3389,7 +3758,7 @@ function ouvrirModePose(){
 function fermerModePose(){
   modePose=false;
   $("#viseur").hidden=true; $("#poseBarre").hidden=true;
-  $("#barreBas").hidden=false; $("#btnAjouter").hidden=false;
+  $("#navBas").hidden=false; $("#btnAjouter").hidden=false; $("#btnTransports").hidden=false;
   $("#btnPartager").hidden=false; majBoutons();
   majRaccourcis(); majFeuille2();
 }
@@ -3931,8 +4300,8 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
     const sous = [];
     if(x.note && !sansPalmares) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
-    if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
-    if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
+    const badge = badgeDispo(x);
+    if(badge) sous.push(badge);
     if(x.cuisine) sous.push(esc(x.cuisine.replace(/[_;]/g," ")));
     if(x.prixN != null) sous.push('<span class="prix-n">'+SYMBOLE_PRIX[x.prixN]+'</span>');
     if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
@@ -4536,7 +4905,7 @@ function proposableAuto(l, ctx){
   if(JAMAIS_AUTO.has(l.cat)) return false;
   // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
   // demain, l'information de Google ne dit plus rien du moment regardé
-  if(l.ouvert === false && creneau === "maintenant" && !montrerFermes) return false;
+  if(creneau === "maintenant" && !montrerFermes && estFerme(l)) return false;
   return true;
 }
 
@@ -4696,14 +5065,14 @@ function categoriesClassementFeuille(){
 }
 
 function classementFeuille(){
-  if(feuilleNiveau === null || feuilleNiveau === "racine") return [];
+  if(feuilleNiveau === null || feuilleNiveau === "racine" || feuilleNiveau === "plus") return [];
   const centre = positionMoi || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
   let candidats = lieux.filter(nomExploitable);
   if(feuilleNiveau === "aide"){
     const choix = sousAide && SOUS_AIDE.find(x=>x.id===sousAide);
     if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
   }
-  return rankResults(candidats,{
+  const classement = rankResults(candidats,{
     intent:feuilleNiveau,
     categories:categoriesClassementFeuille(),
     position:centre,
@@ -4711,7 +5080,14 @@ function classementFeuille(){
     nowOnly:filtreMaintenant && !montrerFermes,
     radius:feuilleNiveau === "aide" ? Math.max(rayonRecherche,6000) : rayonRecherche,
     distanceBetween:distanceM,
+    // l'ETA réel pilote l'ordre ET l'exclusion : un lieu fermé à l'arrivée
+    // n'est pas un résultat, même s'il est le plus proche
+    etaFor:l=>etaConnu(l, centre),
   });
+  // les itinéraires manquants arrivent après coup : on redessine la feuille
+  // une fois, avec le vrai ordre
+  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau !== null) majFeuille2(); });
+  return classement;
 }
 
 function reinitialiserScrollFeuille(){
@@ -4776,7 +5152,7 @@ function fermerFeuille2(options){
   const focus = dernierFocusMainSheet;
   dernierFocusMainSheet = null;
   requestAnimationFrame(()=>{
-    const cible = focus && document.contains(focus) ? focus : $("#btnQuoi");
+    const cible = focus && document.contains(focus) ? focus : $("#rech");
     if(cible && !cible.hidden) cible.focus({preventScroll:true});
   });
 }
@@ -4793,13 +5169,31 @@ function majFeuille2(){
 
   const corps = $("#fbCorps");
   const retour = $("#fbRetour");
+  f.classList.remove("accueil");
 
   if(feuilleNiveau === "racine"){
-    $("#fbTitre").textContent = "Que faire autour de moi ?";
+    // L'accueil ne pose plus de question : il propose. Les besoins sont dans
+    // les pills de l'en-tête, la feuille sert à montrer des lieux.
+    $("#fbTitre").textContent = "Pour toi, maintenant";
     retour.hidden = true;
-    corps.innerHTML = BESOINS.map(b=>
+    // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
+    f.classList.add("accueil");
+    const reco = recommandationsAccueil(12);
+    corps.innerHTML =
+      (reco.length
+        ? '<div class="rc-tete"><strong>Pour toi, maintenant</strong>'+
+            '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
+          '<div class="rc-piste" data-testid="primary-results">'+
+            reco.map(carteRecommandation).join("")+'</div>'
+        : statutRechercheHTML(0))+
+      blocTransports()+
+      piedFeuille();
+  }else if(feuilleNiveau === "plus"){
+    $("#fbTitre").textContent = "Plus de catégories";
+    retour.hidden = false;
+    corps.innerHTML = BESOINS_SECONDAIRES.map(b=>
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
-    ).join("") + blocResultats() + piedFeuille();
+    ).join("");
   }else if(feuilleNiveau === "aide"){
     $("#fbTitre").textContent = "❤️ Trouver de l’aide";
     retour.hidden = false;
@@ -4890,8 +5284,105 @@ function blocResultats(){
     ? '<span class="fb-plus">Fais défiler pour préciser · '+(classement.length-5)+' autres résultats</span>' : "");
 }
 
+/* ---- « Pour toi, maintenant » -------------------------------------------
+   L'écran d'accueil ne demande plus « que veux-tu faire ? » avant de montrer
+   quoi que ce soit : il propose. Le classement est le même que celui des
+   besoins, sans filtre de catégorie — donc soumis aux mêmes règles
+   d'ouverture, d'ETA et de faisabilité. */
+function recommandationsAccueil(limite){
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!centre) return [];
+  const classement = rankResults(lieux.filter(nomExploitable),{
+    intent:"sortir",
+    // toutes les catégories des besoins principaux : l'accueil ne présélectionne
+    // pas une intention, il montre ce qui est réellement faisable
+    categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))],
+    position:centre,
+    now:instantCreneau().getTime(),
+    nowOnly:filtreMaintenant && !montrerFermes,
+    radius:rayonRecherche,
+    distanceBetween:distanceM,
+    etaFor:l=>etaConnu(l, centre),
+  });
+  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
+  return classement.slice(0, limite || 12);
+}
+
+/* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
+function carteRecommandation(l){
+  const c = CATS[l.cat] || {emoji:"📍"};
+  const eta = l.rankEta;
+  const dispo = l.rankAvailability;
+  const cats = (l.categories||[]).filter(x=>ETIQUETTES_CAT[x]).slice(0,2)
+    .map(x=>ETIQUETTES_CAT[x]).join(" • ") || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
+
+  const visuel = l.image
+    ? '<span class="rc-photo" style="background-image:url('+encodeURI(l.image).replace(/[()]/g,"")+')"></span>'
+    : '<span class="rc-photo rc-photo-vide">'+c.emoji+'</span>';
+
+  const minutes = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
+  const detail = [];
+  if(eta && eta.walkMinutes) detail.push('🚶 '+eta.walkMinutes+' min');
+  if(eta && eta.lines && eta.lines.length) detail.push('🚇 '+esc(eta.lines[0]));
+  const arrivee = l.rankArrival
+    ? "Arrivée "+heureLocale(l.rankArrival, l)
+    : (dispo && dispo.closesAtTime ? "Ferme à "+dispo.closesAtTime : "");
+
+  return '<button class="rc-carte" data-ac="'+esc(l.id)+'">'+
+    visuel+
+    '<span class="rc-corps">'+
+      '<span class="rc-cats">'+esc(cats)+'</span>'+
+      '<span class="rc-nom">'+esc(l.titre)+'</span>'+
+      '<span class="rc-ligne">'+
+        (l.note ? '<span class="rc-note">★ '+l.note.toFixed(1).replace(".",",")+
+          (l.avis?' <i>('+l.avis+')</i>':'')+'</span>' : '<span class="rc-note"></span>')+
+        (minutes ? '<span class="rc-min">'+minutes+'</span>' : '')+
+      '</span>'+
+      (detail.length ? '<span class="rc-trajet">'+detail.join(" ")+'</span>' : '')+
+      (arrivee ? '<span class="rc-arrivee">'+esc(arrivee)+'</span>' : '')+
+    '</span></button>';
+}
+
+/* ---- Prochains départs --------------------------------------------------
+   Tant qu'aucune source transport n'est branchée, on n'affiche pas de faux
+   horaires : le bandeau dit ce qu'il en est, et rien de plus. */
+function blocTransports(){
+  const passages = prochainsPassages();
+  const corps = passages.length
+    ? '<span class="tr-lignes">'+passages.map(p=>
+        '<b>'+esc(p.ligne)+'</b> : '+p.minutes+' min').join(" • ")+'</span>'
+    : '<span class="tr-lignes tr-vide">Aucune donnée temps réel disponible ici</span>';
+  return '<div class="tr-bloc">'+
+    '<span class="tr-icone" aria-hidden="true">🚌</span>'+
+    '<span class="tr-txt"><span class="tr-titre">Prochains départs à proximité</span>'+corps+'</span>'+
+    (passages.length ? '<button class="tr-tout" data-tr="tout">Voir tous</button>' : '')+
+    '</div>';
+}
+
+/* Passages fournis par la couche transport quand un provider temps réel est
+   enregistré. Aucun provider ⇒ liste vide, jamais un horaire inventé. */
+function prochainsPassages(){
+  const T = window.AutourTransit;
+  if(!T || !positionMoi || typeof T.nextDepartures !== "function") return [];
+  try{ return T.nextDepartures(positionMoi) || []; }catch(e){ return []; }
+}
+
 function brancherFeuille2(){
   const corps = $("#fbCorps");
+
+  // « Voir tout » : la liste complète des recommandations de l'accueil
+  corps.querySelectorAll("[data-rc-tout]").forEach(b=>b.onclick=()=>{
+    const tout = recommandationsAccueil(60);
+    pileEcrans = [];
+    pousserEcran(()=>afficherListe("✨","Pour toi, maintenant", tout, false,
+      ()=>b.click()));
+  });
+
+  corps.querySelectorAll("[data-tr]").forEach(b=>b.onclick=()=>{
+    // pas d'écran transport dédié tant qu'aucune source n'est branchée :
+    // on déplie la feuille plutôt que d'ouvrir une page vide
+    reglerFeuilleDeplie(true);
+  });
 
   corps.querySelectorAll("[data-bn]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.bn;
@@ -4989,14 +5480,24 @@ function brancherFeuille2(){
 function majRaccourcis(){
   const z = $("#raccourcis");
   if(!z) return;
-  z.innerHTML = BESOINS.map(b=>{
+  // quatre raccourcis permanents + « Plus » : le rail reste lisible d'un
+  // coup d'œil au pouce, les besoins secondaires sont à un tap de là
+  const plusActif = feuilleNiveau === "plus" ||
+    !!(BESOIN_DE(feuilleNiveau) || {}).secondaire;
+  z.innerHTML = BESOINS_PRINCIPAUX.map(b=>{
     const actif = b.id === "aide" ? modeAide : (feuilleNiveau === b.id && catsActives);
     return '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
       '<em>'+b.emoji+'</em>'+esc(b.label.replace("Trouver de l’aide","Aide").replace(" autour de moi",""))+
       '</button>';
-  }).join("");
+  }).join("") +
+    '<button class="rc'+(plusActif?" actif":"")+'" data-rc="plus"><em>•••</em>Plus</button>';
   z.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.rc;
+    if(id === "plus"){
+      if(modeAide) basculerAide();
+      if(feuilleNiveau === "plus"){ fermerFeuille2(); return; }
+      ouvrirFeuille2("plus"); return;
+    }
     if(id === "aide"){
       if(modeAide){ basculerAide(); fermerFeuille2(); return; }
       basculerAide(); ouvrirFeuille2("aide"); return;
@@ -5023,20 +5524,31 @@ function majFiltres(){
   // « Maintenant » étant actif par défaut, il ne suffit plus à faire
   // apparaître ce rail : l'écran de départ doit rester nu. Il ne sort que
   // si l'utilisateur a réellement restreint quelque chose.
-  const montrer = !!catsActives || filtreActif !== "tout" || filtresHumains.size > 0;
+  // montrerFermes en fait partie : sans ça, activer « voir aussi les lieux
+  // fermés » masquerait le rail et rendrait le filtre impossible à défaire
+  const montrer = !!catsActives || filtreActif !== "tout" || filtresHumains.size > 0 || montrerFermes;
   z.hidden = !montrer;
   // vidée et pas seulement masquée : en sortant du mode Aide, les six besoins
   // restaient dans le document, prêts à réapparaître au prochain affichage
   if(!montrer){ z.innerHTML = ""; return; }
   z.innerHTML = FILTRES_HUMAINS.map(f=>
     '<button class="fh'+(filtresHumains.has(f.id)?' actif':'')+'" data-fh="'+f.id+'">'+
-      f.label+'</button>').join("");
+      f.label+'</button>').join("") +
+    // les lieux fermés ne reviennent que sur demande explicite : c'est un
+    // choix de l'utilisateur, jamais un défaut
+    '<button class="fh'+(montrerFermes?' actif':'')+'" data-fermes="1" '+
+      'aria-pressed="'+(montrerFermes?'true':'false')+'">Voir aussi les lieux fermés</button>';
   z.querySelectorAll("[data-fh]").forEach(x=>x.onclick=()=>{
     const id = x.dataset.fh;
     if(filtresHumains.has(id)) filtresHumains.delete(id); else filtresHumains.add(id);
     if(id === "famille" && filtresHumains.has(id)) chargerEditorial("family");
     majFiltres(); rendre();
   });
+  const bascule = z.querySelector("[data-fermes]");
+  if(bascule) bascule.onclick=()=>{
+    montrerFermes = !montrerFermes;
+    majFiltres(); rendre(); majFeuille2();
+  };
 }
 
 /* Un clic pour entrer, un clic pour sortir. Rien n'est chargé tant que le
@@ -5361,14 +5873,44 @@ demarrer(positionTest || positionMemorisee()).then(()=>{
   performance.measure("interface prête", "autour:script", "autour:carte");
   if(!positionTest) suivreMaPosition();
 });
-// la loupe prend toute la barre : chercher, c'est une seule chose à la fois
-$("#btnLoupe").onclick=()=>{ $("#btnLoupe").hidden=true; $("#btnMaintenant").hidden=true;
-  $("#barreRech").hidden=false; $("#rech").focus(); };
+/* La recherche est désormais toujours visible : elle porte l'intention
+   («&nbsp;que veux-tu faire&nbsp;?»), elle ne se déplie plus. La croix
+   n'apparaît que s'il y a quelque chose à effacer. */
 $("#btnFermerRech").onclick=()=>{
-  $("#barreRech").hidden=true; $("#btnLoupe").hidden=false; $("#btnMaintenant").hidden=false;
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
+  $("#btnFermerRech").hidden=true;
   layerManager.deactivate(NOMS_COUCHES.searchOverlay); rendre(); majAccueil();
 };
+$("#rech").addEventListener("input",()=>{
+  $("#btnFermerRech").hidden = !$("#rech").value;
+});
+
+/* Les filtres humains vivaient dans un rail flottant que rien n'annonçait :
+   ils ont maintenant un bouton dédié dans l'en-tête. */
+$("#btnFiltres").onclick=()=>{
+  const z = $("#filtresHumains");
+  const ouvert = !z.hidden && z.dataset.force === "1";
+  z.dataset.force = ouvert ? "" : "1";
+  $("#btnFiltres").setAttribute("aria-expanded", ouvert ? "false" : "true");
+  majFiltres();
+};
+
+/* Attribution repliée : obligatoire mais discrète. */
+$("#btnCredits").onclick=()=>{
+  const c = $("#credits");
+  c.hidden = !c.hidden;
+  $("#btnCredits").setAttribute("aria-expanded", String(!c.hidden));
+};
+
+/* Mesure réelle de l'en-tête : sa hauteur dépend de la safe area, de la
+   taille de police système et du retour à la ligne des pills. */
+function mesurerHeader(){
+  const h = $("#appHeader");
+  if(!h || h.hidden) return;
+  document.documentElement.style.setProperty("--header-height", h.offsetHeight+"px");
+}
+addEventListener("resize", mesurerHeader);
+if(window.ResizeObserver && $("#appHeader")) new ResizeObserver(mesurerHeader).observe($("#appHeader"));
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
    chargés : aucune requête, donc aucun effet sur le temps de chargement. */
 function suggerer(q){
@@ -5444,20 +5986,92 @@ $("#btnRevenir").onclick=()=>{
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
 
-/* L'action principale : une seule, et elle ouvre la feuille sur les besoins. */
-$("#btnQuoi").onclick=()=>{
-  if(feuilleNiveau !== null){ fermerFeuille2(); return; }
+/* Le bouton transport ouvre la feuille sur l'accueil, où vit le bandeau des
+   prochains départs : une seule surface, pas un écran de plus. */
+$("#btnTransports").onclick=()=>{
+  if(feuilleNiveau === null) ouvrirAccueilFeuille();
+  reglerFeuilleDeplie(true);
+};
+
+/* ---- Navigation basse ---------------------------------------------------
+   « Messages » ne sert qu'à prévenir les participants d'un événement qu'on a
+   publié : il ne s'active donc que si on a publié quelque chose. « Favoris »
+   n'existe pas encore et le dit, plutôt que d'ouvrir un écran vide. */
+function aPublie(){
+  return lieux.some(l=>l.dbId && (!moiId || l.auteur === moiId));
+}
+function majNavBas(){
+  const nav = $("#navBas");
+  if(!nav) return;
+  const messages = nav.querySelector('[data-nb="messages"]');
+  if(messages) messages.setAttribute("aria-disabled", aPublie() ? "false" : "true");
+}
+$("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
+  const id = b.dataset.nb;
+  if(b.getAttribute("aria-disabled") === "true"){
+    toast(id === "messages"
+      ? "Les messages servent à prévenir les participants d’un événement que tu as créé."
+      : "Les favoris arrivent bientôt.");
+    return;
+  }
+  $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
+  if(id === "explorer"){ fermerFeuille2(); ouvrirAccueilFeuille(); return; }
+  if(id === "evenements"){ if(modeAide) basculerAide(); ouvrirFeuille2("sortir"); return; }
+  if(id === "messages"){ ouvrirMesPublications(); return; }
+  if(id === "profil"){ ouvrirFeuille2("racine"); reglerFeuilleDeplie(true); return; }
+});
+
+/* Les publications de l'utilisateur : c'est de là qu'il prévient ses
+   participants. On réutilise la liste existante plutôt que d'inventer un écran. */
+function ouvrirMesPublications(){
+  const miennes = lieux.filter(l=>l.dbId && (!moiId || l.auteur === moiId));
+  pileEcrans = [];
+  pousserEcran(()=>afficherListe("📣","Mes publications", miennes, true, ouvrirMesPublications));
+}
+
+/* ---- Ville détectée -----------------------------------------------------
+   Reverse-geocoding Nominatim, une seule fois par position. En cas d'échec,
+   l'en-tête garde « Autour de toi » : on n'affiche pas une ville devinée. */
+async function detecterVille(lat,lng){
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(villeDetectee === cle) return;
+  villeDetectee = cle;
+  try{
+    const stop = new AbortController();
+    const t = setTimeout(()=>stop.abort(), 6000);
+    const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat="+
+      lat+"&lon="+lng, {signal:stop.signal, headers:{"Accept-Language":"fr"}});
+    clearTimeout(t);
+    if(!r.ok) return;
+    const j = await r.json();
+    const a = j.address || {};
+    const nom = a.city || a.town || a.village || a.municipality || a.county;
+    if(nom){
+      $("#hdVille").textContent = nom;
+      $("#hdSous").hidden = false;
+      mesurerHeader();
+    }
+  }catch(e){ /* silencieux : l'en-tête reste neutre plutôt que faux */ }
+}
+
+/* L'ancien gros bouton noir « Que faire autour de moi ? » a disparu : la
+   feuille s'ouvre d'elle-même au démarrage sur « Pour toi, maintenant », et
+   les pills de l'en-tête donnent l'accès direct aux besoins. */
+function ouvrirAccueilFeuille(){
   if(modeAide) basculerAide();
   catsActives = null; sousChoisi = null; filtreActif = "tout";
   rendre(); majAccueil();
   ouvrirFeuille2("racine");
-};
+}
 $("#fbFermer").onclick = fermerFeuille2;
 $("#fbRetour").onclick = ()=>{
   // revenir aux quatre besoins : on relâche la sélection en cours
   if(modeAide) basculerAide();
+  const venaitDePlus = (BESOIN_DE(feuilleNiveau) || {}).secondaire;
   catsActives = null; sousChoisi = null;
-  rendre(); majAccueil(); ouvrirFeuille2("racine"); majRaccourcis();
+  // un besoin atteint via « Plus » y retourne : le retour défait le dernier
+  // pas, il ne renvoie pas à la case départ
+  rendre(); majAccueil(); ouvrirFeuille2(venaitDePlus ? "plus" : "racine"); majRaccourcis();
 };
 /* Poignée : compacte ⇄ dépliée. Un balayage vers le bas réduit d'abord la
    feuille, puis la ferme ; vers le haut il la développe. */

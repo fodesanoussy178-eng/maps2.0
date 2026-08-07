@@ -140,3 +140,141 @@ test("chaque intention applique son propre périmètre éditorial", () => {
   assert.deepEqual(rankResults(items,{...context,intent:"manger"}).map(x=>x.id),["food"]);
   assert.deepEqual(rankResults(items,{...context,intent:"aide"}).map(x=>x.id),["help"]);
 });
+
+/* ---- Classification multi-catégories pondérée --------------------------- */
+
+const {
+  classifyPlaceWeighted, categoryWeight, bestCategoryWeight, arrivalOutlook, INTENT_PROFILES,
+} = globalThis.AutourCore;
+
+test("un lieu appartient à plusieurs catégories, avec des poids distincts", () => {
+  const poids = classifyPlaceWeighted({cat:"cinema", title:"Le Fresnoy", tags:{amenity:"cinema"}});
+  // le cinéma EST un cinéma, et il est aussi une sortie, de la culture et
+  // une destination famille — mais pas au même degré
+  assert.equal(poids.cinema, 1);
+  for(const categorie of ["outing","culture","family"]) assert.ok(poids[categorie] > 0, categorie);
+  assert.ok(poids.outing > poids.family, "la sortie prime sur la famille");
+  assert.ok(poids.cinema > poids.culture);
+});
+
+test("les exemples produit se retrouvent tels quels dans la classification", () => {
+  const parc = classifyPlaceWeighted({cat:"parc", tags:{leisure:"park"}});
+  for(const categorie of ["family","outing","sport"]) assert.ok(parc[categorie] > 0, "parc/"+categorie);
+
+  const mediatheque = classifyPlaceWeighted({cat:"biblio", title:"Médiathèque centrale"});
+  for(const categorie of ["study","culture","family","services"])
+    assert.ok(mediatheque[categorie] > 0, "médiathèque/"+categorie);
+});
+
+test("la liste de catégories reste ordonnée du plus pertinent au moins", () => {
+  const categories = classifyPlace({cat:"cinema", tags:{amenity:"cinema"}});
+  assert.equal(categories[0], "cinema");
+  assert.ok(categories.indexOf("outing") < categories.indexOf("family"));
+});
+
+test("un tag OSM ne fixe pas à lui seul la catégorie affichée", () => {
+  // OSM ne connaît que amenity=library ; l'UX doit en tirer quatre usages
+  const poids = classifyPlaceWeighted({tags:{amenity:"library"}, title:"Bibliothèque"});
+  assert.ok(Object.keys(poids).length >= 4);
+  assert.equal(poids.library, 1);
+});
+
+test("un même lieu remonte dans plusieurs besoins", () => {
+  const cinema = toCommonItem({id:"1", cat:"cinema", titre:"Cinéma", lat:50.63, lng:3.06, tags:{amenity:"cinema"}}, {source:"osm"});
+  assert.ok(bestCategoryWeight(cinema, INTENT_PROFILES.sortir.categories) > 0, "Sortir");
+  assert.ok(bestCategoryWeight(cinema, INTENT_PROFILES.famille.categories) > 0, "Famille");
+  assert.ok(bestCategoryWeight(cinema, INTENT_PROFILES.culture.categories) > 0, "Culture");
+  assert.equal(bestCategoryWeight(cinema, INTENT_PROFILES.manger.categories), 0, "pas Manger");
+});
+
+test("categoryWeight retombe sur les catégories déclarées hors toCommonItem", () => {
+  assert.equal(categoryWeight({cat:"resto"}, "resto"), 1);
+  assert.ok(categoryWeight({categories:["eat"]}, "eat") > 0);
+  assert.equal(categoryWeight({categories:["eat"]}, "sport"), 0);
+});
+
+/* ---- ETA réel et faisabilité ------------------------------------------- */
+
+const LIEU = (extra) => Object.assign({
+  id:"x", titre:"Lieu", cat:"resto", lat:50.640, lng:3.070, ouvert:true,
+}, extra);
+
+test("le classement utilise l'ETA fourni plutôt que la distance à vol d'oiseau", () => {
+  const proche = LIEU({id:"proche", lat:50.6305, lng:3.0605});
+  const loin   = LIEU({id:"loin",   lat:50.6500, lng:3.0900});
+  const classement = rankResults([proche, loin], {
+    intent:"manger", position:[50.63,3.06], now:Date.now(), distanceBetween:distance,
+    // le lieu le plus proche est de l'autre côté d'une coupure urbaine
+    etaFor:l=>l.id === "proche" ? {minutes:35, mode:"transit"} : {minutes:9, mode:"transit"},
+  });
+  assert.equal(classement[0].id, "loin");
+  assert.equal(classement[0].rankBreakdown.etaMinutes, 9);
+});
+
+test("un lieu fermé à l'arrivée est écarté en mode maintenant", () => {
+  const now = Date.now();
+  const ferme = LIEU({id:"ferme", closesAt: now + 10*60000});
+  const ouvert = LIEU({id:"ouvert", lat:50.641, closesAt: now + 4*3600000});
+  const contexte = {
+    intent:"manger", position:[50.63,3.06], now, distanceBetween:distance,
+    etaFor:()=>({minutes:25, mode:"transit"}),
+  };
+  const strict = rankResults([ferme, ouvert], Object.assign({nowOnly:true}, contexte));
+  assert.deepEqual(strict.map(l=>l.id), ["ouvert"]);
+
+  // hors mode maintenant il reste visible, mais relégué et annoncé comme tel
+  const large = rankResults([ferme, ouvert], contexte);
+  assert.equal(large[large.length-1].id, "ferme");
+  assert.match(large[large.length-1].rankReason, /Fermé à votre arrivée/);
+});
+
+test("un événement qu'on ne peut plus attraper est fortement déclassé", () => {
+  const now = Date.now();
+  const contexte = {
+    intent:"sortir", position:[50.63,3.06], now, distanceBetween:distance,
+    etaFor:()=>({minutes:40, mode:"transit"}),
+  };
+  const rate = {id:"rate", titre:"Concert", cat:"concert", lat:50.640, lng:3.070,
+    isTemporary:true, startsAt: now + 5*60000, endsAt: now + 3*3600000};
+  const atteignable = {id:"ok", titre:"Autre concert", cat:"concert", lat:50.641, lng:3.071,
+    isTemporary:true, startsAt: now + 90*60000, endsAt: now + 4*3600000};
+
+  const classement = rankResults([rate, atteignable], contexte);
+  assert.equal(classement[0].id, "ok");
+  assert.match(classement[0].rankReason, /avant le début/);
+  assert.match(classement.find(l=>l.id==="rate").rankReason, /Déjà commencé/);
+});
+
+test("arriver dans la fenêtre acceptable reste proposé", () => {
+  const now = Date.now();
+  const debut = now + 10*60000;
+  const vu = arrivalOutlook({}, now + 18*60000, true, debut, now + 3*3600000, now);
+  assert.equal(vu.state, "late");
+  assert.ok(vu.score > 0, "une arrivée à 8 min du début reste utile");
+});
+
+test("un événement déjà en cours n'est pas traité comme une arrivée en retard", () => {
+  const now = Date.now();
+  const vu = arrivalOutlook({}, now + 20*60000, true, now - 2*3600000, now + 2*3600000, now);
+  assert.equal(vu.state, "open");
+  assert.equal(vu.score, 0);
+});
+
+test("l'ETA temps réel est annoncé comme tel dans la raison affichée", () => {
+  const classement = rankResults([LIEU({})], {
+    intent:"manger", position:[50.63,3.06], now:Date.now(), distanceBetween:distance,
+    etaFor:()=>({minutes:12, mode:"transit", realtime:true, transfers:1}),
+  });
+  assert.match(classement[0].rankReason, /12 min/);
+  assert.match(classement[0].rankReason, /temps réel/);
+  assert.match(classement[0].rankReason, /corresp/);
+});
+
+test("sans couche transport, le classement retombe sur un temps de marche", () => {
+  const classement = rankResults([LIEU({})], {
+    intent:"manger", position:[50.63,3.06], now:Date.now(), distanceBetween:distance,
+  });
+  assert.equal(classement[0].rankEta.mode, "walk");
+  assert.equal(classement[0].rankEta.confidence, "estimated");
+  assert.match(classement[0].rankReason, /à pied/);
+});
