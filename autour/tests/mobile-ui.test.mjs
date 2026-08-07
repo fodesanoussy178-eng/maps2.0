@@ -292,3 +292,30 @@ test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
   assert.match(html,/\.rond-flottant\{position:absolute;right:16px/);
   assert.match(html,/#btnAjouter\{position:absolute;right:16px/);
 });
+
+test("les événements créés peuvent porter une image stockée dans Supabase",()=>{
+  assert.match(html,/async televerserImage\(fichier\)/);
+  // chemin préfixé par l'uid : c'est ce que la RLS du stockage vérifie
+  assert.match(html,/const chemin = moiId\+"\/"\+Date\.now\(\)/);
+  assert.match(html,/sb\.storage\.from\("evenements"\)/);
+  assert.match(html,/image_url:l\.image \|\| null/);
+  assert.match(html,/image:p\.image_url \|\| p\.image \|\| ""/);
+  // l'image part avant la fiche, sinon la publication se ferait sans URL
+  assert.match(html,/if\(b\.imageFichier\) l\.image = await Store\.televerserImage/);
+});
+
+test("le formulaire propose une photo sans l'imposer",()=>{
+  assert.match(html,/id="fPhoto"/);
+  assert.match(html,/accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.match(html,/\(facultatif\)/);
+  // rien n'est téléversé tant que l'événement n'est pas publié
+  assert.match(html,/n'est envoyée\s*\n?\s*qu'à la publication|qu'à la publication/);
+  assert.match(html,/Image trop lourde \(3 Mo maximum\)/);
+});
+
+test("aucun gros emoji ne sert d'image finale",()=>{
+  // le repli est une tuile teintée par la catégorie, pas un emoji géant
+  assert.match(html,/\.rc-photo-vide\{position:relative;display:grid;place-items:center;/);
+  assert.match(html,/\.rc-photo-vide i\{[^}]*font-size:20px/);
+  assert.doesNotMatch(html,/\.rc-photo-vide\{display:grid;place-items:center;font-size:32px\}/);
+});
