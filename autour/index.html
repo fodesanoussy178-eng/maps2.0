@@ -309,7 +309,26 @@ input{font-family:inherit;font-size:16px}
   text-align:left;box-shadow:0 2px 10px rgba(20,30,25,.09)}
 .rc-carte:active{transform:scale(.985)}
 .rc-photo{display:block;height:74px;background:var(--paper) center/cover no-repeat}
-.rc-photo-vide{display:grid;place-items:center;font-size:32px}
+/* Tuile de repli : teintée par la catégorie, avec une petite icône. Elle
+   doit ressembler à une composition, pas à une image qui n'a pas chargé. */
+/* Champ photo du formulaire de publication */
+.photo-champ{position:relative;display:block;margin-top:8px;height:104px;
+  border:1px dashed var(--bord);border-radius:12px;background:var(--paper);
+  overflow:hidden;cursor:pointer}
+.photo-champ.rempli{border-style:solid}
+.photo-champ img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-champ input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photo-vide{position:absolute;inset:0;display:grid;place-items:center;
+  font-size:13.5px;font-weight:600;color:var(--ink2)}
+.photo-retirer{margin-top:8px;padding:7px 12px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;font-size:12.5px;font-weight:600}
+.champ span i{font-style:normal;font-weight:500;color:var(--ink2)}
+
+.rc-photo-vide{position:relative;display:grid;place-items:center;
+  background:var(--teinte,#5D6B63)}
+.rc-photo-vide::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
+.rc-photo-vide i{position:relative;z-index:1;font-size:20px;font-style:normal;opacity:.9}
 .rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 11px 12px}
 .rc-cats{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
   letter-spacing:.06em;color:var(--violet)}
@@ -1679,7 +1698,7 @@ function versLieu(p){
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
     finLe: p.fin_le ? new Date(p.fin_le).getTime() : null,
-    isTemporary:true, url:p.url || "", image:p.image || ""
+    isTemporary:true, url:p.url || "", image:p.image_url || p.image || ""
   }, "autour");
 }
 
@@ -1700,12 +1719,28 @@ async function chargerPublications(lat,lng){
 
 const Store = {
   get dispo(){ return !!sb; },
+  /* Dépose l'affiche dans le bucket « evenements », sous le dossier de son
+     auteur — c'est ce chemin que la RLS du stockage vérifie. Un échec d'envoi
+     ne doit jamais empêcher la publication : l'événement compte plus que
+     son image. */
+  async televerserImage(fichier){
+    if(!sb || !fichier || !moiId) return "";
+    const extension = (fichier.type.split("/")[1] || "jpg").replace("jpeg","jpg");
+    const chemin = moiId+"/"+Date.now()+"."+extension;
+    const { error } = await sb.storage.from("evenements")
+      .upload(chemin, fichier, {cacheControl:"3600", upsert:false});
+    if(error){ console.error("Image refusée :", error.message); return ""; }
+    const { data } = sb.storage.from("evenements").getPublicUrl(chemin);
+    return (data && data.publicUrl) || "";
+  },
+
   async publier(l){
     if(!sb) return null;
     const { data, error } = await sb.from("publications").insert({
       cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
       gratuit:l.gratuit, prix:l.prix, places:l.places,
       lat:l.lat, lng:l.lng,
+      image_url:l.image || null,
       debut_le:l.debutLe ? new Date(l.debutLe).toISOString() : null,
       fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
     }).select().single();
@@ -4056,7 +4091,8 @@ function nouveauBrouillon(){
   const c=map.getCenter();
   return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:"popup",
           date:isoDate(aujourdHui()), heure:prochaineHeure(), fin:"",
-          gratuit:true, prix:5, limite:false, places:20, qr:false};
+          gratuit:true, prix:5, limite:false, places:20, qr:false,
+          imageFichier:null, imageApercu:""};
 }
 function validerPose(){
   const c = map.getCenter();
@@ -4167,6 +4203,17 @@ function dessinerFormulaire(){
 
     '<label class="champ"><span>Le truc</span><input type="text" id="fTitre" maxlength="44" placeholder="Pop-up, cypher, collecte…" value="'+esc(b.titre)+'"></label>'+
 
+    // une affiche donne envie de venir bien plus qu'un titre
+    '<div class="champ"><span>Une photo ou une affiche <i>(facultatif)</i></span>'+
+      '<label class="photo-champ'+(b.imageApercu?' rempli':'')+'">'+
+        (b.imageApercu
+          ? '<img src="'+esc(b.imageApercu)+'" alt="Aperçu de ton affiche">'
+          : '<span class="photo-vide">Choisir une image</span>')+
+        '<input type="file" id="fPhoto" accept="image/jpeg,image/png,image/webp">'+
+      '</label>'+
+      (b.imageApercu ? '<button class="photo-retirer" id="fPhotoX">Retirer</button>' : '')+
+    '</div>'+
+
     '<div class="champ"><span>Où exactement</span>'+
       '<div class="ou"><span class="ou-txt">'+
         '<span class="ou-nom">'+esc(b.adresse||"Point posé sur la carte")+'</span>'+
@@ -4222,6 +4269,29 @@ function dessinerFormulaire(){
     if($("#fPlaces")) b.places=clamp(Number($("#fPlaces").value)||1,1,999);
     if(JSON.stringify(b) !== avant) publicationModifiee = true;
   };
+  /* La photo est gardée en mémoire (fichier + aperçu local) et n'est envoyée
+     qu'à la publication : personne ne doit téléverser une image pour un
+     événement qu'il abandonne ensuite. */
+  const champPhoto = $("#fPhoto");
+  if(champPhoto) champPhoto.onchange = ()=>{
+    const fichier = champPhoto.files && champPhoto.files[0];
+    if(!fichier) return;
+    if(fichier.size > 3 * 1024 * 1024){ toast("Image trop lourde (3 Mo maximum)"); return; }
+    memo();
+    if(b.imageApercu) URL.revokeObjectURL(b.imageApercu);
+    b.imageFichier = fichier;
+    b.imageApercu = URL.createObjectURL(fichier);
+    publicationModifiee = true;
+    dessinerFormulaire();
+  };
+  if($("#fPhotoX")) $("#fPhotoX").onclick = ()=>{
+    memo();
+    if(b.imageApercu) URL.revokeObjectURL(b.imageApercu);
+    b.imageFichier = null; b.imageApercu = "";
+    publicationModifiee = true;
+    dessinerFormulaire();
+  };
+
   const lier=(sel,fn)=>f.querySelectorAll(sel).forEach(x=>x.onclick=()=>{
     memo(); fn(x); publicationModifiee=true; dessinerFormulaire();
   });
@@ -4266,6 +4336,8 @@ async function publier(){
     debutLe:Number.isFinite(debut.getTime()) ? debut.getTime() : null,
     finLe:fin && Number.isFinite(fin.getTime()) ? fin.getTime() : null,
     isTemporary:true }, "autour");
+  // l'affiche part avant la fiche : sans URL, la publication se ferait sans image
+  if(b.imageFichier) l.image = await Store.televerserImage(b.imageFichier);
   const enligne = await Store.publier(l);
   if(!enligne) return;                       // message déjà affiché, brouillon conservé
   fusionner([enligne], "user");
@@ -5625,9 +5697,13 @@ function carteRecommandation(l){
   const cats = (l.categories||[]).filter(x=>ETIQUETTES_CAT[x]).slice(0,2)
     .map(x=>ETIQUETTES_CAT[x]).join(" • ") || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
 
+  // Une vraie photo si on en a une ; sinon une tuile teintée par la catégorie.
+  // Jamais un gros emoji en guise d'image : ça se lit comme une image manquante.
+  const teinte = COULEURS_CAT[l.cat] || "#5D6B63";
   const visuel = l.image
     ? '<span class="rc-photo" style="background-image:url('+encodeURI(l.image).replace(/[()]/g,"")+')"></span>'
-    : '<span class="rc-photo rc-photo-vide">'+c.emoji+'</span>';
+    : '<span class="rc-photo rc-photo-vide" style="--teinte:'+teinte+'">'+
+        '<i>'+c.emoji+'</i></span>';
 
   const minutes = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
   const detail = [];
