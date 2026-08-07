@@ -321,6 +321,24 @@ input{font-family:inherit;font-size:16px}
 .rc-trajet{font-size:12.5px;color:var(--ink2);margin-top:3px}
 .rc-arrivee{font-size:12px;color:var(--ink2)}
 
+/* ---- Annonces d'un événement ------------------------------------------- */
+.an-msg{display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:10px 12px;
+  border-left:3px solid var(--bord);border-radius:0 10px 10px 0;background:var(--paper)}
+.an-msg.systeme{border-left-color:var(--violet);background:var(--violet-doux)}
+.an-msg.urgent{border-left-color:var(--aide);background:#FBEDEE}
+.an-tag{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--ink2)}
+.an-msg.urgent .an-tag{color:var(--aide)}
+.an-corps{font-size:14px;line-height:1.35}
+.an-actions{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 12px}
+.an-act{padding:10px 13px;border:1px solid var(--bord);border-radius:99px;background:#fff;
+  font-size:13.5px;font-weight:650}
+.an-act.danger{color:var(--aide);border-color:var(--aide)}
+.an-suivre{width:100%;margin:6px 0 12px;padding:13px;border:1px solid var(--violet);
+  border-radius:12px;background:var(--violet-doux);color:var(--violet);
+  font-size:14.5px;font-weight:700}
+.lien-fort{font-weight:700;color:var(--violet)}
+
 /* ---- Prochains départs -------------------------------------------------- */
 .tr-bloc{display:flex;align-items:center;gap:11px;margin:14px 2px 4px;padding:12px 13px;
   border-radius:14px;background:var(--violet-doux)}
@@ -845,7 +863,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 5.6a5 5 0 0 0-7.1 0L12 6.9l-1.3-1.3a5 5 0 1 0-7.1 7.1L12 21l8.4-8.3a5 5 0 0 0 0-7.1z"/></svg>
     Favoris
   </button>
-  <button class="nb" data-nb="messages" aria-disabled="true">
+  <button class="nb" data-nb="messages" hidden>
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.1 9.1 0 0 1-3.3-.7L3 21l1.9-5.2A8.2 8.2 0 0 1 4 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8 8.4z"/></svg>
     Messages
   </button>
@@ -888,6 +906,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="availability.js"></script>
+<script src="events.js"></script>
 <script src="core.js"></script>
 <script src="transit.js"></script>
 <script>
@@ -1645,7 +1664,73 @@ const Store = {
     const { error } = await sb.from("publications").delete().eq("id", dbId);
     if(error){ console.error("Suppression refusée :", error.message); return false; }
     return true;
-  }
+  },
+
+  /* ---- Canaux d'événement ------------------------------------------------
+     Coordination locale, pas messagerie. Il n'existe aucun canal sans
+     événement, donc aucune boîte de réception pour qui n'en a pas. */
+
+  // Les canaux où j'ai une raison d'être : créé, inscrit, ou suivi.
+  async mesCanaux(){
+    if(!sb) return [];
+    const { data, error } = await sb.rpc("mes_canaux");
+    if(error){ console.error("Canaux indisponibles :", error.message); return []; }
+    return data || [];
+  },
+
+  async canalDe(dbId){
+    if(!sb || !dbId) return null;
+    const { data } = await sb.from("event_channels")
+      .select("id,admin,ferme").eq("publication_id", dbId).maybeSingle();
+    return data || null;
+  },
+
+  async messages(channelId){
+    if(!sb || !channelId) return [];
+    const { data } = await sb.from("event_messages")
+      .select("id,genre,changement,corps,details,cree_le")
+      .eq("channel_id", channelId).order("cree_le",{ascending:false}).limit(30);
+    return data || [];
+  },
+
+  /* Les messages système ne s'écrivent pas d'ici : ils naissent du
+     déclencheur qui observe la modification. On ne modifie donc que
+     l'événement, et l'annonce suit toute seule. */
+  async modifierEvenement(dbId, champs){
+    if(!sb || !dbId) return false;
+    const { error } = await sb.from("publications").update(champs).eq("id", dbId);
+    if(error){ console.error("Modification refusée :", error.message); return false; }
+    return true;
+  },
+
+  // Annonce libre et courte, réservée à l'administrateur par la RLS.
+  async annoncer(channelId, corps){
+    if(!sb || !channelId) return false;
+    const texte = String(corps || "").trim();
+    if(!texte || texte.length > 500) return false;
+    const { error } = await sb.from("event_messages")
+      .insert({channel_id:channelId, auteur:moiId, genre:"annonce", corps:texte});
+    if(error){ console.error("Annonce refusée :", error.message); return false; }
+    return true;
+  },
+
+  async rejoindre(channelId, role){
+    if(!sb || !channelId) return false;
+    const { error } = await sb.from("event_participants")
+      .insert({channel_id:channelId, membre:moiId, role:role || "participant"});
+    // déjà inscrit : ce n'est pas une erreur pour l'utilisateur
+    if(error && !/duplicate|conflict/i.test(error.message)){
+      console.error("Inscription refusée :", error.message); return false;
+    }
+    return true;
+  },
+
+  async quitter(channelId){
+    if(!sb || !channelId) return false;
+    const { error } = await sb.from("event_participants")
+      .delete().eq("channel_id", channelId).eq("membre", moiId);
+    return !error;
+  },
 };
 
 /* ================================================================== */
@@ -2478,7 +2563,8 @@ async function demarrer(coords){
       definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
     else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
     majAccueil();
-    majNavBas();
+    // les canaux décident de l'existence de la section Messages
+    rafraichirCanaux();
     // Contexte → suggestions → carte → lieux → action : dès que les lieux
     // sont là, l'accueil propose au lieu d'attendre une question. La carte
     // n'est jamais vide devant quelqu'un qui vient d'arriver.
@@ -3111,13 +3197,19 @@ function ouvrirDetail(id){
     (l.gratuit ? '' :
       '<div class="sans-billet">Le paiement se fait sur place, entre vous. '+
       'L’app n’encaisse rien.</div>')+
+    // annonces du canal : d'abord ce qui a changé, car c'est ce qui décide
+    // si on se déplace encore
+    '<div id="canalBloc"></div>'+
     '<div class="liens">'+
+    '<button id="btnInviter" class="lien-fort">Partager / Inviter</button>'+
     (l.mien
       ? '<button id="btnSupprimer" class="lien-danger">Supprimer</button>'
       : '<button id="btnSignal">Signaler</button>')+
     '</div>'
   );
   if($("#btnSignal")) $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
+  if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
+  if(l.dbId) chargerCanal(l);
 
   /* Suppression en deux temps : un appui demande confirmation, le second
      supprime. Rien d'irréversible sur un simple effleurement. */
@@ -3702,6 +3794,110 @@ function ouvrirLieuPartage(){
   setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
 }
 
+/* ---- Canal d'un événement ------------------------------------------------
+   Annonces visibles par tous ceux qui regardent l'événement, actions
+   réservées à son créateur. Rien ici ne ressemble à une conversation. */
+async function chargerCanal(l){
+  const bloc = $("#canalBloc");
+  if(!bloc || !window.AutourEvents) return;
+  const canal = await Store.canalDe(l.dbId);
+  if(!canal || !document.contains(bloc)) return;
+  const messages = await Store.messages(canal.id);
+  if(!document.contains(bloc)) return;
+
+  const E = window.AutourEvents;
+  const decrits = messages.map(E.decrireMessage);
+  const actions = E.actionsPour(canal, moiId);
+
+  bloc.innerHTML =
+    (decrits.length
+      ? '<p class="fb-section">Mises à jour</p>'+
+        decrits.map(m=>'<div class="an-msg'+(m.urgent?' urgent':'')+(m.systeme?' systeme':'')+'">'+
+          '<span class="an-tag">'+esc(m.etiquette)+'</span>'+
+          '<span class="an-corps">'+esc(m.corps)+'</span></div>').join("")
+      : "")+
+    (actions.length
+      ? '<p class="fb-section">Prévenir les participants</p><div class="an-actions">'+
+        actions.map(a=>'<button class="an-act'+(a.danger?' danger':'')+'" data-act="'+a.id+'">'+
+          esc(a.label)+'</button>').join("")+'</div>'
+      : (canal.admin !== moiId
+        ? '<button class="an-suivre" data-suivre="1">Être prévenu des changements</button>' : ""));
+
+  bloc.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>actionCreateur(b.dataset.act, l, canal));
+  const suivre = bloc.querySelector("[data-suivre]");
+  if(suivre) suivre.onclick=async()=>{
+    if(await Store.rejoindre(canal.id, "suiveur")){
+      toast("Tu seras prévenu des changements");
+      await rafraichirCanaux();
+      chargerCanal(l);
+    }
+  };
+}
+
+/* Les six actions. Aucune n'écrit de message système : elles modifient
+   l'événement, et la base produit l'annonce — un changement ne peut donc
+   pas passer silencieusement. */
+async function actionCreateur(id, l, canal){
+  const E = window.AutourEvents;
+  if(id === "annonce" || id === "retard"){
+    const texte = id === "retard"
+      ? E.texteRetard(prompt("Retard estimé, en minutes ?"))
+      : (prompt("Annonce courte à envoyer aux participants :") || "").trim();
+    if(!texte){ if(id === "retard") toast("Retard non compris"); return; }
+    toast(await Store.annoncer(canal.id, texte) ? "Annonce envoyée" : "Envoi impossible");
+    return chargerCanal(l);
+  }
+  if(id === "horaire"){
+    const saisie = prompt("Nouvel horaire (JJ/MM/AAAA HH:MM) :");
+    const quand = saisie && saisie.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+    if(!quand){ if(saisie) toast("Format attendu : 12/09/2026 20:30"); return; }
+    const iso = new Date(+quand[3], +quand[2]-1, +quand[1], +quand[4], +quand[5]).toISOString();
+    toast(await Store.modifierEvenement(l.dbId,{debut_le:iso}) ? "Horaire mis à jour" : "Modification impossible");
+    return chargerCanal(l);
+  }
+  if(id === "lieu"){
+    const adresse = (prompt("Nouveau lieu :", l.adresse || "") || "").trim();
+    if(!adresse) return;
+    toast(await Store.modifierEvenement(l.dbId,{adresse}) ? "Lieu mis à jour" : "Modification impossible");
+    return chargerCanal(l);
+  }
+  if(id === "places"){
+    const places = parseInt(prompt("Places restantes :"), 10);
+    if(!Number.isFinite(places) || places < 0) return;
+    toast(await Store.modifierEvenement(l.dbId,{places}) ? "Places mises à jour" : "Modification impossible");
+    return chargerCanal(l);
+  }
+  if(id === "annulation"){
+    // un événement annulé reste affiché : le masquer ferait venir les gens
+    if(!confirm("Annuler l’événement ? Les participants seront prévenus.")) return;
+    toast(await Store.modifierEvenement(l.dbId,{annule:true}) ? "Événement annulé" : "Annulation impossible");
+    return chargerCanal(l);
+  }
+}
+
+/* Partager / Inviter : le partage natif quand il existe, sinon des cibles
+   explicites — aucune ne demande de compte. */
+async function partagerInviter(l){
+  const E = window.AutourEvents;
+  const url = lienVers(l);
+  const texte = E.texteInvitation(l);
+  if(navigator.share){
+    try{ await navigator.share({title:l.titre, text:texte, url}); return; }catch(e){ /* replié ci-dessous */ }
+  }
+  const cibles = E.ciblesPartage(url, texte);
+  ouvrirFeuille(
+    '<div class="liste-tete"><h2>↗ Partager / Inviter</h2></div>'+
+    '<p class="liste-tri">'+esc(texte)+'</p>'+
+    '<div class="an-actions">'+cibles.map(c=>
+      '<button class="an-act" data-partage="'+c.id+'">'+esc(c.label)+'</button>').join("")+'</div>');
+  $("#feuille").querySelectorAll("[data-partage]").forEach(b=>b.onclick=async()=>{
+    const cible = cibles.find(c=>c.id === b.dataset.partage);
+    if(!cible) return;
+    if(cible.href){ open(cible.href, "_blank", "noopener"); return; }
+    try{ await navigator.clipboard.writeText(cible.valeur); toast("Lien copié"); }catch(e){}
+  });
+}
+
 async function partagerLieu(l){
   const url = lienVers(l);
   const txt = l.titre+" — "+l.adresse+", "+l.cp+" · "+l.quand;
@@ -3979,6 +4175,8 @@ async function publier(){
   const enligne = await Store.publier(l);
   if(!enligne) return;                       // message déjà affiché, brouillon conservé
   fusionner([enligne], "user");
+  // publier crée le canal côté base : la section Messages apparaît aussitôt
+  rafraichirCanaux();
   fermerFeuille();
   filtreActif="tout"; dessinerFiltres(); rendre();
   map.flyTo([enligne.lat,enligne.lng], Math.max(map.getZoom(),17), {duration:.7});
@@ -5997,14 +6195,23 @@ $("#btnTransports").onclick=()=>{
    « Messages » ne sert qu'à prévenir les participants d'un événement qu'on a
    publié : il ne s'active donc que si on a publié quelque chose. « Favoris »
    n'existe pas encore et le dit, plutôt que d'ouvrir un écran vide. */
-function aPublie(){
-  return lieux.some(l=>l.dbId && (!moiId || l.auteur === moiId));
+/* Mes canaux : créés, rejoints ou suivis. C'est la seule chose qui fait
+   exister la section Messages — il n'y a pas de boîte de réception générale. */
+let canauxAMoi = [];
+async function rafraichirCanaux(){
+  canauxAMoi = await Store.mesCanaux();
+  majNavBas();
 }
 function majNavBas(){
   const nav = $("#navBas");
   if(!nav) return;
-  const messages = nav.querySelector('[data-nb="messages"]');
-  if(messages) messages.setAttribute("aria-disabled", aPublie() ? "false" : "true");
+  const E = window.AutourEvents;
+  const onglet = nav.querySelector('[data-nb="messages"]');
+  if(!onglet || !E) return;
+  // masqué, pas grisé : un onglet sans contenu possible n'a pas à exister
+  onglet.hidden = !E.sectionMessagesVisible(canauxAMoi);
+  const attente = E.nonLus(canauxAMoi);
+  onglet.dataset.nonLus = attente > 0 ? String(attente) : "";
 }
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;
@@ -6017,16 +6224,36 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
   if(id === "explorer"){ fermerFeuille2(); ouvrirAccueilFeuille(); return; }
   if(id === "evenements"){ if(modeAide) basculerAide(); ouvrirFeuille2("sortir"); return; }
-  if(id === "messages"){ ouvrirMesPublications(); return; }
+  if(id === "messages"){ ouvrirCanaux(); return; }
   if(id === "profil"){ ouvrirFeuille2("racine"); reglerFeuilleDeplie(true); return; }
 });
 
-/* Les publications de l'utilisateur : c'est de là qu'il prévient ses
-   participants. On réutilise la liste existante plutôt que d'inventer un écran. */
-function ouvrirMesPublications(){
-  const miennes = lieux.filter(l=>l.dbId && (!moiId || l.auteur === moiId));
-  pileEcrans = [];
-  pousserEcran(()=>afficherListe("📣","Mes publications", miennes, true, ouvrirMesPublications));
+/* La liste des canaux : un par événement qui me concerne, et rien d'autre. */
+function ouvrirCanaux(){
+  const E = window.AutourEvents;
+  const actifs = E ? E.canauxActifs(canauxAMoi) : [];
+  const corps = actifs.length
+    ? actifs.map(c=>{
+        const attente = Number(c.non_lus) || 0;
+        return '<button class="ac-item" data-canal="'+esc(c.publication_id)+'">'+
+          '<span class="ac-emoji">'+(c.role === "admin" ? "📣" : "👥")+'</span>'+
+          '<span class="ac-txt"><span class="ac-nom">'+esc(c.titre)+
+            (c.annule ? ' <i class="ferme">annulé</i>' : '')+'</span>'+
+          '<span class="ac-sous">'+esc(c.dernier_message || "Aucune annonce")+'</span></span>'+
+          (attente ? '<span class="ac-dist">'+attente+'</span>' : '')+'</button>';
+      }).join("")
+    : '<p class="liste-vide">Aucun événement en cours.</p>';
+  ouvrirFeuille(
+    '<div class="liste-tete"><h2>📣 Mes événements</h2>'+
+    '<span class="liste-compte">'+actifs.length+'</span></div>'+
+    '<p class="liste-tri">Les événements que tu as créés, rejoints ou enregistrés. '+
+      'Autour n\u2019a pas de messagerie : seulement ces canaux-là.</p>'+corps);
+
+  $("#feuille").querySelectorAll("[data-canal]").forEach(b=>b.onclick=()=>{
+    const l = lieux.find(x=>x.dbId === b.dataset.canal);
+    if(l){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); }
+    else toast("Cet événement n\u2019est plus chargé sur la carte");
+  });
 }
 
 /* ---- Ville détectée -----------------------------------------------------

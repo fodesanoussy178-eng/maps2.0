@@ -204,3 +204,42 @@ test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>
   // les bandeaux se posent sous l'en-tête mesuré, plus sous une hauteur devinée
   assert.match(html,/top:calc\(var\(--header-height\) \+ 10px\)/);
 });
+
+/* ---- Coordination d'événement, pas messagerie -------------------------- */
+
+test("la section Messages n'existe que s'il y a un événement",()=>{
+  assert.match(html,/<script src="events\.js"><\/script>/);
+  assert.match(html,/onglet\.hidden = !E\.sectionMessagesVisible\(canauxAMoi\)/);
+  // masqué et non grisé : pas de boîte de réception générale
+  assert.doesNotMatch(html,/data-nb="messages" aria-disabled="true"/);
+  assert.match(html,/function rafraichirCanaux/);
+  assert.match(html,/Autour n\\u2019a pas de messagerie/);
+});
+
+test("le créateur dispose des six actions sur son événement",()=>{
+  assert.match(html,/function actionCreateur/);
+  for(const a of ["horaire","lieu","retard","places","annonce","annulation"])
+    assert.match(html,new RegExp('id === "'+a+'"|"'+a+'"'), a);
+  // les actions modifient l'événement : le message système vient de la base
+  assert.match(html,/Store\.modifierEvenement\(l\.dbId,\{annule:true\}\)/);
+  assert.match(html,/Store\.modifierEvenement\(l\.dbId,\{debut_le:iso\}\)/);
+});
+
+test("un événement annulé reste affiché",()=>{
+  assert.match(html,/un événement annulé reste affiché/);
+  assert.match(html,/annulé/);
+});
+
+test("le partage couvre le natif et des cibles explicites",()=>{
+  assert.match(html,/function partagerInviter/);
+  assert.match(html,/Partager \/ Inviter/);
+  assert.match(html,/navigator\.share/);
+  assert.match(html,/E\.ciblesPartage\(url, texte\)/);
+});
+
+test("publier crée le canal et fait apparaître la section",()=>{
+  assert.match(html,/publier crée le canal côté base/);
+  const i = html.indexOf('fusionner([enligne], "user")');
+  assert.ok(i > 0);
+  assert.match(html.slice(i, i+220),/rafraichirCanaux\(\)/);
+});
