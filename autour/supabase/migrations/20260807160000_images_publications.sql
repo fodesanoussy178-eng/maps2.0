@@ -25,7 +25,9 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values (
   'evenements', 'evenements', true,
   3 * 1024 * 1024,                                  -- 3 Mo : une affiche, pas un RAW
-  array['image/jpeg','image/png','image/webp']
+  -- le client réencode en JPEG, mais on accepte aussi les formats bruts des
+  -- téléphones : refuser HEIC revenait à interdire l'envoi depuis un iPhone
+  array['image/jpeg','image/png','image/webp','image/heic','image/heif']
 )
 on conflict (id) do update
   set public = excluded.public,
