@@ -243,3 +243,27 @@ test("publier crée le canal et fait apparaître la section",()=>{
   assert.ok(i > 0);
   assert.match(html.slice(i, i+220),/rafraichirCanaux\(\)/);
 });
+
+test("le nouveau design s'applique à toutes les tailles, sans seconde application",()=>{
+  // aucun composant de la refonte n'est enfermé dans un breakpoint mobile
+  const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
+                             html.indexOf("@media (min-width:1100px)")+2400);
+  for(const sel of ["#navBas","#appHeader","#feuilleBesoins",".rc-piste","#btnAjouter"])
+    assert.ok(desktop.includes(sel), sel+" doit être adapté au desktop");
+  // le desktop réutilise les mêmes éléments : il ne les masque pas
+  assert.doesNotMatch(desktop,/#appHeader\{[^}]*display:none/);
+  assert.doesNotMatch(desktop,/#navBas\{[^}]*display:none/);
+  assert.doesNotMatch(desktop,/#btnAjouter\{[^}]*display:none/);
+});
+
+test("sur desktop la barre d'onglets devient un rail et la feuille une colonne",()=>{
+  assert.match(html,/--rail:88px/);
+  assert.match(html,/--panneau:400px/);
+  // la règle .accueil est reprise explicitement, sinon sa spécificité
+  // l'emportait et la colonne redevenait une feuille mobile étirée
+  assert.match(html,/#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie\{/);
+  assert.match(html,/#appHeader\{left:var\(--rail\)/);
+  assert.match(html,/#map\{left:var\(--rail\)\}/);
+  // le carousel horizontal devient une liste verticale
+  assert.match(html,/\.rc-piste\{flex-direction:column/);
+});

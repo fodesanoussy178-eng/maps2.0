@@ -511,21 +511,79 @@ input{font-family:inherit;font-size:16px}
 .ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;color:var(--ink2)}
 
+/* ---- Tablette : mêmes composants, feuille centrée et plus large --------- */
 @media (min-width:768px) and (max-width:1099px){
-  #feuilleBesoins{left:50%;right:auto;bottom:12px;width:min(720px,calc(100% - 32px));
-    height:58dvh;max-height:58dvh;transform:translateX(-50%);border-bottom:1px solid var(--bord);
-    border-radius:22px}
-  #feuilleBesoins.deplie{height:86dvh;max-height:86dvh}
+  #appHeader{padding-left:24px;padding-right:24px}
+  .hd-rech input{height:52px}
+  #feuilleBesoins,#feuilleBesoins.accueil{left:50%;right:auto;bottom:calc(var(--nav-height) + 12px);
+    width:min(720px,calc(100% - 32px));
+    height:52dvh;max-height:52dvh;transform:translateX(-50%);
+    border:1px solid var(--bord);border-radius:22px}
+  #feuilleBesoins.deplie{height:82dvh;max-height:82dvh}
+  .rc-carte{flex:0 0 210px}
 }
 
+/* ---- Desktop : la même application, dans une disposition de grand écran --
+   Rien n'est dupliqué. Les mêmes éléments changent de place :
+     · la barre d'onglets devient un rail vertical à gauche ;
+     · l'en-tête s'aligne à droite de ce rail ;
+     · « Pour toi, maintenant » devient une colonne, et son carousel une
+       liste verticale de cartes horizontales ;
+     · la carte occupe tout le reste, avec ses marqueurs et son point bleu.
+   Priorité mobile conservée : ces règles ne s'ajoutent qu'au-delà de 1100px. */
 @media (min-width:1100px){
-  #feuilleBesoins,#feuilleBesoins.deplie{left:auto;right:20px;top:calc(var(--safe-t) + 76px);
-    bottom:20px;width:420px;height:auto;max-height:none;border:1px solid var(--bord);border-radius:22px}
+  :root{
+    --rail:88px;            /* largeur du rail de navigation */
+    --panneau:400px;        /* colonne des recommandations */
+    --nav-height:16px;      /* plus de barre basse : rien à réserver en bas */
+  }
+
+  /* La barre d'onglets se redresse en rail vertical. */
+  #navBas{top:0;bottom:0;right:auto;width:var(--rail);
+    flex-direction:column;justify-content:flex-start;gap:2px;
+    padding:calc(var(--safe-t) + 16px) 8px 16px;
+    border-top:0;border-right:1px solid rgba(20,30,25,.09)}
+  .nb{flex:0 0 auto;gap:5px;padding:11px 4px;border-radius:14px;font-size:11.5px}
+  .nb.actif{background:var(--violet-doux)}
+
+  /* L'en-tête et la carte commencent après le rail. */
+  #appHeader{left:var(--rail);padding:calc(var(--safe-t) + 14px) 24px 12px}
+  #map{left:var(--rail)}
+  .hd-ligne{max-width:none}
+  .hd-lieu{flex:0 0 auto;text-align:left;margin-right:auto;padding-left:14px}
+  .hd-rech{max-width:640px}
+  .hd-rech input{height:52px}
+  .pills{margin-top:12px}
+
+  /* Les recommandations deviennent une colonne, pas une feuille. */
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie{
+    left:auto;right:20px;top:calc(var(--header-height) + 14px);bottom:20px;
+    width:var(--panneau);height:auto;max-height:none;transform:none;
+    border:1px solid var(--bord);border-radius:22px}
+  #feuilleBesoins.accueil{border-left:1px solid var(--bord);border-right:1px solid var(--bord)}
   .fb-poignee{display:none}
   .fb-tete{padding-top:8px;border-radius:22px 22px 0 0}
-  body.sheet-open .leaflet-control-zoom{margin-right:14px!important}
-  /* le panneau latéral occupe la colonne de droite : les flottants se rangent à côté */
-  body.sheet-open #btnAjouter,body.sheet-open #btnRevenir{right:454px}
+
+  /* Le carousel horizontal devient une liste verticale : sur grand écran on
+     fait défiler vers le bas, pas latéralement. */
+  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none}
+  .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
+  .rc-photo{width:96px;height:auto;min-height:96px;flex-shrink:0}
+  .rc-corps{flex:1;min-width:0}
+  .rc-nom{min-height:0}
+
+  /* Les flottants se rangent à gauche de la colonne. */
+  #btnAjouter,#btnRevenir,#btnTransports{right:calc(var(--panneau) + 40px)}
+  #btnRevenir{bottom:calc(var(--nav-height) + 124px)}
+  #btnTransports{bottom:calc(var(--nav-height) + 72px)}
+  #btnAjouter{bottom:calc(var(--nav-height) + 16px)}
+  #btnCredits,#credits{left:calc(var(--rail) + 12px)}
+
+  /* Les bandeaux suivent la colonne de la carte. */
+  #bandeauGeo,#bandeauVide{left:calc(var(--rail) + 20px);
+    right:calc(var(--panneau) + 40px)}
+  #charge{left:calc(var(--rail) + (100vw - var(--rail) - var(--panneau)) / 2)}
+  #filtresHumains{left:var(--rail);right:calc(var(--panneau) + 24px);width:auto;max-width:none}
 }
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
