@@ -1187,7 +1187,11 @@ function estFerme(l){
    Chaque étape est marquée pour être mesurable au lieu d'être ressentie.
    `AutourPerf.rapport()` rend le tableau des durées depuis l'ouverture. */
 const PERF = {
+  vus: new Set(),
   jalon(nom){
+    // un jalon décrit un premier instant : le remarquer cent fois le noierait
+    if(this.vus.has(nom)) return;
+    this.vus.add(nom);
     try{ performance.mark("autour:"+nom); }catch(e){}
   },
   rapport(){
@@ -1239,6 +1243,7 @@ function prechargerEta(classement, centre, auRetour){
   )).then(()=>{
     if(ctrl.signal.aborted) return;
     etaEnVol = null;
+    PERF.jalon("transport_ready");
     if(typeof auRetour === "function") auRetour();
   });
 }
@@ -2576,6 +2581,24 @@ function reconstruireLieux(){
   indexPerime = true;
 }
 
+/* ---- Index mémoire par catégorie -----------------------------------------
+   Savoir en O(1) ce qu'on possède déjà : c'est ce qui permet à un changement
+   de catégorie de ne déclencher aucune requête quand les lieux sont là. */
+const indexCategories = new Map();
+function reindexerCategories(){
+  indexCategories.clear();
+  lieux.forEach(l=>{
+    // un lieu appartient à plusieurs catégories : il compte pour chacune
+    new Set([l.cat, ...(l.categories||[])]).forEach(c=>{
+      if(!c) return;
+      if(!indexCategories.has(c)) indexCategories.set(c, []);
+      indexCategories.get(c).push(l);
+    });
+  });
+}
+function lieuxDeCategorie(cat){ return indexCategories.get(cat) || []; }
+function categorieEnMemoire(cat){ return lieuxDeCategorie(cat).length > 0; }
+
 function fusionner(nouveaux, flux){
   if(!nouveaux || !nouveaux.length) return;
   const type = flux || "permanent";
@@ -2596,6 +2619,8 @@ function fusionner(nouveaux, flux){
     performance.mark("autour:donnees");
     performance.measure("première donnée visible", "autour:script", "autour:donnees");
   }
+  // l'index doit précéder le rendu : le classement et les filtres le lisent
+  reindexerCategories();
   rendre();
   dessinerFiltres();
   majAccueil();             // la sélection se reclasse à chaque nouvelle source
@@ -2615,6 +2640,60 @@ function lireCacheLieux(lat,lng){
     if(Date.now() - o.t > CACHE_HEURES*3600*1000) return null;
     return o.l;
   }catch(e){ return null; }         // navigation privée, quota plein…
+}
+
+/* La clé de cache est arrondie à ~110 m : ouvrir l'application vingt mètres
+   plus loin ratait le cache et laissait l'écran vide en attendant Overpass.
+   On accepte donc la zone connue la plus proche dans un rayon raisonnable. */
+const CACHE_RAYON_M = 1200;
+function lireCacheProche(lat,lng){
+  const exact = lireCacheLieux(lat,lng);
+  if(exact && exact.length) return exact;
+  let meilleur = null, meilleureDistance = Infinity;
+  try{
+    for(let i = 0; i < localStorage.length; i += 1){
+      const cle = localStorage.key(i);
+      if(!cle || cle.indexOf("autour:lieux:v4:") !== 0) continue;
+      const [cLat,cLng] = cle.slice(16).split(",").map(Number);
+      if(!Number.isFinite(cLat) || !Number.isFinite(cLng)) continue;
+      const d = distanceM(lat,lng,cLat,cLng);
+      if(d > CACHE_RAYON_M || d >= meilleureDistance) continue;
+      const o = JSON.parse(localStorage.getItem(cle) || "null");
+      if(!o || Date.now() - o.t > CACHE_HEURES*3600*1000) continue;
+      meilleur = o.l; meilleureDistance = d;
+    }
+  }catch(e){ return null; }
+  return meilleur;
+}
+
+/* ---- Échantillon immédiat ------------------------------------------------
+   Trois à cinq lieux réels, variés, affichés avant toute requête. Ils
+   viennent du cache et des favoris — jamais d'un jeu inventé. La diversité
+   est cherchée par famille : manger, sortir, culture, plein air, événement. */
+const FAMILLES_ECHANTILLON = [
+  ["resto","fastfood","marche","food"],
+  ["cafe","bar"],
+  ["cinema","musee","spectacle","concert"],
+  ["parc","park","terrain","swimming_pool"],
+  ["event","popup","rencontre","collecte","studio","sport","autre"],
+];
+const ECHANTILLON_MAX = 5;
+
+function echantillonImmediat(candidats){
+  const retenus = [];
+  const vus = new Set();
+  const prendre = (l)=>{
+    if(!l || vus.has(l.id) || retenus.length >= ECHANTILLON_MAX) return;
+    vus.add(l.id); retenus.push(l);
+  };
+  // les favoris d'abord : ce sont les lieux dont on sait qu'ils comptent
+  candidats.filter(l=>estFavori(l)).forEach(prendre);
+  // puis une entrée par famille, pour ne pas afficher cinq restaurants
+  FAMILLES_ECHANTILLON.forEach(famille=>{
+    if(retenus.length >= ECHANTILLON_MAX) return;
+    prendre(candidats.find(l=>famille.includes(l.cat) && !vus.has(l.id)));
+  });
+  return retenus;
 }
 
 function ecrireCacheLieux(lat,lng,l){
@@ -2671,15 +2750,20 @@ function chargerZone(lat, lng, opts){
   rechercheEtat.overpass = SEARCH_STATES.IDLE;
   performance.mark("zone:debut");
 
-  const enCache = lireCacheLieux(lat,lng);
-  if(enCache && enCache.length) fusionner(enCache);
+  const enCache = lireCacheProche(lat,lng);
+  if(enCache && enCache.length){
+    // stale-while-revalidate : ce qu'on a s'affiche tout de suite, la mise à
+    // jour arrive derrière et remplace sans vider l'écran
+    fusionner(enCache);
+    PERF.jalon("cached_pois_visible");
+  }
 
   // allSettled : une source lente ou en panne ne retient pas les autres
   const travaux = [
     vraisLieux(lat,lng,bornesVisibles(),{signal, cats:o.cats}).then(r=>{
       if(signal.aborted) return;
-      if(r && r.length){ fusionner(r); if(!o.cats) ecrireCacheLieux(lat,lng,r); PERF.jalon("premiers-lieux"); }
-      PERF.jalon("overpass-fin");
+      if(r && r.length){ fusionner(r); if(!o.cats) ecrireCacheLieux(lat,lng,r); PERF.jalon("fresh_pois_ready"); }
+      PERF.jalon("overpass_done");
       performance.mark("zone:osm");
       performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
     })
@@ -2710,12 +2794,35 @@ function chargerZone(lat, lng, opts){
 }
 
 /* Un besoin ouvert va chercher ce qui lui manque, et seulement ça. */
+/* ---- Préchargement --------------------------------------------------------
+   Pendant qu'on regarde l'écran d'accueil, on va chercher ce qu'on ouvrira
+   probablement ensuite. L'ordre vient du profil d'usage réel quand il existe,
+   sinon des besoins principaux. Jamais bloquant, jamais prioritaire sur le
+   premier affichage. */
+function categoriesProbables(){
+  const comptees = (personnalisation && PROFIL && PROFIL.categories) || {};
+  const parUsage = Object.keys(comptees).sort((a,b)=>comptees[b]-comptees[a]);
+  const parDefaut = BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []);
+  // les favoris disent aussi ce qui compte pour cette personne
+  const parFavoris = [...favorisEnMemoire.values()].map(l=>l && l.cat).filter(Boolean);
+  return [...new Set([...parFavoris, ...parUsage, ...parDefaut])];
+}
+
+let prechargementFait = false;
+function prechargerCategories(){
+  if(prechargementFait || !map) return;
+  prechargementFait = true;
+  const manquantes = categoriesProbables().filter(c=>!categorieEnMemoire(c)).slice(0,12);
+  if(!manquantes.length) return;
+  const differer = window.requestIdleCallback || (f=>setTimeout(f, 1200));
+  differer(()=>{ chargerPourCats(manquantes).then(()=>PERF.jalon("fresh_pois_ready")); });
+}
+
 function chargerPourCats(cats){
   if(!map || !cats || !cats.length) return Promise.resolve([]);
   // Changer de catégorie ne doit rien redemander si les lieux sont déjà là :
   // c'est la différence entre un onglet instantané et deux secondes d'attente.
-  const enMemoire = new Set(lieux.map(l=>l.cat));
-  const manquantes = cats.filter(c=>!enMemoire.has(c));
+  const manquantes = cats.filter(c=>!categorieEnMemoire(c));
   if(!manquantes.length) return Promise.resolve([]);
   const c = map.getCenter();
   return chargerZone(c.lat, c.lng, {cats:manquantes});
@@ -2816,7 +2923,7 @@ async function demarrer(coords){
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
   ["#appHeader","#navBas","#btnRevenir","#btnTransports","#btnCredits"]
     .forEach(s=>$(s).hidden=false);
-  PERF.jalon("interface");        // l'écran est lisible et interactif
+  PERF.jalon("ui_ready");         // l'écran est lisible et interactif
   mesurerHeader();
   // le contexte d'abord : la ville s'affiche sans attendre les lieux
   detecterVille(positionMoi[0], positionMoi[1]);
@@ -2830,7 +2937,7 @@ async function demarrer(coords){
   map.createPane("ruesPane");  map.getPane("ruesPane").style.zIndex = 350;
   map.getPane("ruesPane").style.pointerEvents = "none";
 
-  PERF.jalon("carte");
+  PERF.jalon("map_ready");
   coucheVille = L.layerGroup().addTo(map);
 
   moi = L.marker(positionMoi,{
@@ -2880,8 +2987,13 @@ async function demarrer(coords){
 
   // 1. quartier déjà visité : affichage immédiat depuis le cache local
   dernierChargement = [lat,lng];
-  const enCache = lireCacheLieux(lat,lng);
-  if(enCache && enCache.length){ fusionner(enCache); charge(null); }
+  const enCache = lireCacheProche(lat,lng);
+  if(enCache && enCache.length){
+    fusionner(enCache);
+    charge(null);
+    // stale-while-revalidate : on montre ce qu'on a, on rafraîchit derrière
+    PERF.jalon("cached_pois_visible");
+  }
 
   // 2. Google répond en ~1 s
   pGoogle.then(fiches=>{
@@ -2913,6 +3025,8 @@ async function demarrer(coords){
     // sont là, l'accueil propose au lieu d'attendre une question. La carte
     // n'est jamais vide devant quelqu'un qui vient d'arriver.
     if(feuilleNiveau === null && !modeNav && !modePose && lieux.length) ouvrirAccueilFeuille();
+    // ce qu'on ouvrira ensuite se charge pendant qu'on regarde l'accueil
+    prechargerCategories();
   });
 
   /* Couche éphémère, chargée à part et après les lieux : un événement de ce
@@ -3287,7 +3401,7 @@ function limiterMarqueurs(liste){
 function rendre(){
   if(!map) return;
   majIndexEvenements();
-  if(!rendre.mesure){ rendre.mesure = true; PERF.jalon("marqueurs"); }
+  if(!rendre.mesure){ rendre.mesure = true; PERF.jalon("markers_ready"); }
   // en navigation, la carte n'appartient qu'à l'itinéraire
   if(modeNav){
     marqueurs.forEach(m=>map.removeLayer(m));
@@ -5894,7 +6008,11 @@ function majFeuille2(){
     retour.hidden = true;
     // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
-    const reco = recommandationsAccueil(12);
+    let reco = recommandationsAccueil(12);
+  // le classement peut ne rien rendre au tout début (aucun ETA, aucun horaire) :
+  // on montre alors l'échantillon varié du cache plutôt qu'un écran vide
+  if(!reco.length) reco = echantillonImmediat(lieux.filter(nomExploitable));
+  if(reco.length) PERF.jalon("cached_pois_visible");
     corps.innerHTML =
       (reco.length
         ? '<div class="rc-tete"><strong>Pour toi, maintenant</strong>'+
@@ -6008,6 +6126,10 @@ function blocResultats(){
 function recommandationsAccueil(limite){
   const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre) return [];
+  // Rien de classé encore ? On montre tout de suite un échantillon réel et
+  // varié tiré du cache et des favoris, plutôt qu'un écran vide. Il sera
+  // remplacé silencieusement dès que le classement complet arrive.
+  if(!lieux.length) return [];
   const classement = rankResults(lieux.filter(nomExploitable),{
     intent:"sortir",
     // toutes les catégories des besoins principaux : l'accueil ne présélectionne
@@ -6045,7 +6167,7 @@ function carteRecommandation(l){
       '<i>'+c.emoji+'</i>'+
       (l.image
         ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image)+'" '+
-          'onload="this.classList.add(\'vue\')">'
+          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')">'
         : '')+
     '</span>';
 
@@ -6577,7 +6699,7 @@ function suivreMaPosition(){
   navigator.geolocation.getCurrentPosition(
     p=>{
       const c = [p.coords.latitude, p.coords.longitude];
-      PERF.jalon("geolocalisation");
+      PERF.jalon("geolocation_ready");
       memoriserPosition(c);
       const bouge = !positionMoi || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
       positionMoi = c;

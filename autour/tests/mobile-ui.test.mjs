@@ -361,14 +361,23 @@ test("les images du carousel sont paresseuses et n'attendent rien",()=>{
 
 test("les étapes de démarrage sont mesurables",()=>{
   assert.match(html,/window\.AutourPerf = PERF;/);
-  for(const jalon of ["interface","carte","geolocalisation","premiers-lieux","overpass-fin","marqueurs"])
-    assert.match(html,new RegExp('PERF\\.jalon\\("'+jalon+'"\\)'), jalon);
+  for(const jalon of ["ui_ready","map_ready","geolocation_ready","cached_pois_visible",
+                      "fresh_pois_ready","transport_ready","images_ready","markers_ready"])
+    // le guillemet est parfois échappé dans une chaîne : on cherche le nom
+    assert.match(html,new RegExp("jalon\\(.{0,2}"+jalon), jalon);
   assert.match(html,/first-contentful-paint/);
+  // un jalon décrit un premier instant : il ne se remarque qu'une fois
+  assert.match(html,/if\(this\.vus\.has\(nom\)\) return;/);
 });
 
 test("changer de catégorie ne relance pas Overpass si les lieux sont en mémoire",()=>{
-  assert.match(html,/const enMemoire = new Set\(lieux\.map\(l=>l\.cat\)\);/);
+  // index O(1) plutôt qu'un balayage de la liste à chaque changement
+  assert.match(html,/const indexCategories = new Map\(\);/);
+  assert.match(html,/function categorieEnMemoire/);
+  assert.match(html,/const manquantes = cats\.filter\(c=>!categorieEnMemoire\(c\)\);/);
   assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
+  // l'index précède le rendu, sinon le classement lirait un état périmé
+  assert.match(html,/l'index doit précéder le rendu/);
 });
 
 test("créer demande QUOI avant OÙ",()=>{
@@ -429,4 +438,31 @@ test("la fiche compacte propose Partager et, au créateur, Prévenir",()=>{
   assert.match(html,/const mien = !!\(l\.dbId && moiId && l\.auteur === moiId\);/);
   assert.match(html,/l\.dbId \? '<button class="fc-part">Partager<\/button>' : ''/);
   assert.match(html,/mien \? '<button class="fc-prevenir">Prévenir<\/button>' : ''/);
+});
+
+/* ---- Démarrage perçu ---------------------------------------------------- */
+
+test("le cache est retrouvé même si on ouvre l'app un peu plus loin",()=>{
+  // la clé est arrondie à ~110 m : sans tolérance, un pas de côté ratait le cache
+  assert.match(html,/const CACHE_RAYON_M = 1200;/);
+  assert.match(html,/function lireCacheProche/);
+  assert.match(html,/const enCache = lireCacheProche\(lat,lng\);/);
+});
+
+test("l'échantillon immédiat est réel et varié, jamais inventé",()=>{
+  assert.match(html,/const ECHANTILLON_MAX = 5;/);
+  assert.match(html,/function echantillonImmediat/);
+  // les favoris d'abord, puis une entrée par famille
+  assert.match(html,/candidats\.filter\(l=>estFavori\(l\)\)\.forEach\(prendre\)/);
+  assert.match(html,/FAMILLES_ECHANTILLON\.forEach/);
+  // il sort des lieux déjà chargés, pas d'un jeu fabriqué
+  assert.match(html,/echantillonImmediat\(lieux\.filter\(nomExploitable\)\)/);
+});
+
+test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
+  assert.match(html,/function categoriesProbables/);
+  assert.match(html,/PROFIL\.categories/);
+  assert.match(html,/const parFavoris = \[\.\.\.favorisEnMemoire\.values\(\)\]/);
+  assert.match(html,/window\.requestIdleCallback \|\| \(f=>setTimeout\(f, 1200\)\)/);
+  assert.match(html,/prechargerCategories\(\);/);
 });
