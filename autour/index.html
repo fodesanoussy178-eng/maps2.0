@@ -330,6 +330,19 @@ input{font-family:inherit;font-size:16px}
   border-radius:99px;background:#fff;font-size:12.5px;font-weight:600}
 .champ span i{font-style:normal;font-weight:500;color:var(--ink2)}
 
+/* Choix du type de publication, avant toute question de localisation */
+.creer-choix{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px}
+.creer-type{display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  padding:14px 14px 15px;border:1px solid var(--bord);border-radius:16px;background:#fff;
+  text-align:left}
+.creer-type em{font-size:24px;font-style:normal;line-height:1}
+.creer-type b{font-size:14.5px;font-weight:700}
+.creer-type:active{background:var(--paper)}
+.nb-creer{color:var(--violet)}
+.nb.avec-pastille{position:relative}
+.nb.avec-pastille::after{content:"";position:absolute;top:4px;right:50%;
+  transform:translateX(16px);width:7px;height:7px;border-radius:50%;background:var(--signal)}
+
 .rc-photo-vide{position:relative;display:grid;place-items:center;
   background:var(--teinte,#5D6B63)}
 .rc-photo-vide::after{content:"";position:absolute;inset:0;
@@ -952,17 +965,17 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
     Explorer
   </button>
-  <button class="nb" data-nb="evenements">
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-    Événements
+  <button class="nb" data-nb="maintenant">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>
+    Maintenant
+  </button>
+  <button class="nb nb-creer" data-nb="creer">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    Créer
   </button>
   <button class="nb" data-nb="favoris" aria-disabled="true">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 5.6a5 5 0 0 0-7.1 0L12 6.9l-1.3-1.3a5 5 0 1 0-7.1 7.1L12 21l8.4-8.3a5 5 0 0 0 0-7.1z"/></svg>
     Favoris
-  </button>
-  <button class="nb" data-nb="messages" hidden>
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.1 9.1 0 0 1-3.3-.7L3 21l1.9-5.2A8.2 8.2 0 0 1 4 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8 8.4z"/></svg>
-    Messages
   </button>
   <button class="nb" data-nb="profil">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
@@ -1534,7 +1547,19 @@ const BESOINS = [
       { label:"Sport",                  cats:["sport","terrain"] },
       { label:"Boutiques et fripes",    cats:["friperie","commerce","popup"] },
   ]},
-  { id:"famille", emoji:"👨‍👩‍👧", label:"Famille", sous:[
+  { id:"chiller", emoji:"☕", label:"Chiller", sous:[
+      { label:"Cafés",                  cats:["cafe"] },
+      { label:"Parcs et terrasses",     cats:["parc","park"] },
+      { label:"Bibliothèques",          cats:["biblio","library"] },
+      { label:"Bars tranquilles",       cats:["bar"] },
+  ]},
+  { id:"bouger", emoji:"⚽", label:"Bouger", sous:[
+      { label:"Terrains et équipements",cats:["terrain","sport"] },
+      { label:"Piscines",               cats:["swimming_pool"] },
+      { label:"Plein air",              cats:["parc","park"] },
+      { label:"Vélo",                   cats:["velo"] },
+  ]},
+  { id:"famille", emoji:"👨‍👩‍👧", label:"Famille", secondaire:true, sous:[
       { label:"Cinéma",                 cats:["cinema"] },
       { label:"Parcs et aires de jeux", cats:["parc","park","playground"] },
       { label:"Bibliothèques et musées",cats:["biblio","musee","library","museum"] },
@@ -1556,12 +1581,6 @@ const BESOINS = [
       { label:"Cinéma",                 cats:["cinema"] },
       { label:"Concerts et spectacles", cats:["concert","spectacle"] },
       { label:"Expositions et ateliers",cats:["studio","workshop"] },
-  ]},
-  { id:"sport", emoji:"🏃", label:"Sport", secondaire:true, sous:[
-      { label:"Terrains et équipements",cats:["terrain","sport"] },
-      { label:"Piscines",               cats:["swimming_pool"] },
-      { label:"Parcs et plein air",     cats:["parc","park"] },
-      { label:"Vélo",                   cats:["velo"] },
   ]},
   { id:"services", emoji:"🏙️", label:"Services autour de moi", secondaire:true, sous:[
       { label:"Transports",             cats:["metro","bus","velo"] },
@@ -4156,7 +4175,8 @@ function fermerModePose(){
 }
 function nouveauBrouillon(){
   const c=map.getCenter();
-  return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:"popup",
+  // le type a déjà été choisi à l'étape précédente : on ne le redemande pas
+  return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:typeAvantPose || "popup",
           date:isoDate(aujourdHui()), heure:prochaineHeure(), fin:"",
           gratuit:true, prix:5, limite:false, places:20, qr:false,
           imageFichier:null, imageApercu:""};
@@ -5958,13 +5978,28 @@ function majRaccourcis(){
   // coup d'œil au pouce, les besoins secondaires sont à un tap de là
   const plusActif = feuilleNiveau === "plus" ||
     !!(BESOIN_DE(feuilleNiveau) || {}).secondaire;
-  z.innerHTML = BESOINS_PRINCIPAUX.map(b=>{
+  // Gratuit se place avant Aide, comme dans l'ordre d'usage : on cherche une
+  // sortie gratuite bien plus souvent qu'on ne cherche de l'aide.
+  const ordre = [...BESOINS_PRINCIPAUX.filter(b=>b.id !== "aide"),
+                 ...BESOINS_PRINCIPAUX.filter(b=>b.id === "aide")];
+  // « Gratuit » n'est pas une catégorie de lieu : c'est un filtre qui existe
+  // déjà. On l'expose au même niveau parce que c'est une intention courante.
+  const pillGratuit = '<button class="rc'+(filtresHumains.has("gratuit")?" actif":"")+
+    '" data-filtre="gratuit"><em>🆓</em>Gratuit</button>';
+  z.innerHTML = ordre.map(b=>{
     const actif = b.id === "aide" ? modeAide : (feuilleNiveau === b.id && catsActives);
-    return '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
+    const pill = '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
       '<em>'+b.emoji+'</em>'+esc(b.label.replace("Trouver de l’aide","Aide").replace(" autour de moi",""))+
       '</button>';
+    return b.id === "aide" ? pillGratuit + pill : pill;
   }).join("") +
     '<button class="rc'+(plusActif?" actif":"")+'" data-rc="plus"><em>•••</em>Plus</button>';
+  z.querySelectorAll("[data-filtre]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.filtre;
+    if(filtresHumains.has(id)) filtresHumains.delete(id); else filtresHumains.add(id);
+    majRaccourcis(); majFiltres(); rendre(); majAccueil();
+    if(feuilleNiveau !== null) majFeuille2();
+  });
   z.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.rc;
     if(id === "plus"){
@@ -6459,7 +6494,24 @@ $("#rech").onkeydown=e=>{
   e.target.blur();
   appliquerPhrase(q);        // même compréhension que la barre « Autour IA »
 };
-$("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirModePose(); };
+/* On pense d'abord à ce qu'on crée, ensuite à l'endroit. Demander « déplace
+   la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
+   inversait l'ordre naturel. */
+function ouvrirCreation(){
+  const eph = Object.entries(CATS).filter(([,c])=>c.eph);
+  ouvrirFeuille(
+    '<div class="liste-tete"><h2>Que veux-tu ajouter&nbsp;?</h2></div>'+
+    '<div class="creer-choix">'+eph.map(([id,c])=>
+      '<button class="creer-type" data-type="'+id+'">'+
+        '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>');
+  $("#feuille").querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{
+    typeAvantPose = b.dataset.type;
+    fermerFeuille();
+    ouvrirModePose();
+  });
+}
+let typeAvantPose = null;
+$("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirCreation(); };
 $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>{
   if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
@@ -6486,16 +6538,17 @@ async function rafraichirCanaux(){
   canauxAMoi = await Store.mesCanaux();
   majNavBas();
 }
+/* Prévenir les participants n'est pas une messagerie : ça vit sur l'événement
+   qu'on a créé, pas dans un onglet permanent. La pastille sur « Profil »
+   signale simplement qu'un de mes événements attend quelque chose. */
 function majNavBas(){
   const nav = $("#navBas");
   if(!nav) return;
   const E = window.AutourEvents;
-  const onglet = nav.querySelector('[data-nb="messages"]');
+  const onglet = nav.querySelector('[data-nb="profil"]');
   if(!onglet || !E) return;
-  // masqué, pas grisé : un onglet sans contenu possible n'a pas à exister
-  onglet.hidden = !E.sectionMessagesVisible(canauxAMoi);
   const attente = E.nonLus(canauxAMoi);
-  onglet.dataset.nonLus = attente > 0 ? String(attente) : "";
+  onglet.classList.toggle("avec-pastille", attente > 0);
 }
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;
@@ -6507,9 +6560,15 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   }
   $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
   if(id === "explorer"){ fermerFeuille2(); ouvrirAccueilFeuille(); return; }
-  if(id === "evenements"){ if(modeAide) basculerAide(); ouvrirFeuille2("sortir"); return; }
-  if(id === "messages"){ ouvrirCanaux(); return; }
-  if(id === "profil"){ ouvrirFeuille2("racine"); reglerFeuilleDeplie(true); return; }
+  if(id === "maintenant"){
+    // « Maintenant » n'est pas un écran de plus : c'est l'accueil, déplié sur
+    // ce qui est réellement faisable à cet instant
+    if(modeAide) basculerAide();
+    if(!filtreMaintenant) basculerMaintenant();
+    ouvrirAccueilFeuille(); reglerEtatFeuille("deplie"); return;
+  }
+  if(id === "creer"){ retourFormulaire=false; ouvrirCreation(); return; }
+  if(id === "profil"){ ouvrirCanaux(); return; }
 });
 
 /* La liste des canaux : un par événement qui me concerne, et rien d'autre. */
