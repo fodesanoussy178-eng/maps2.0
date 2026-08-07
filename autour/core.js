@@ -356,6 +356,12 @@
       if (item.startsAt != null && item.startsAt > now + 12 * 3600 * 1000) return false;
       return true;
     }
+    // hors événement, l'horaire fait foi dès qu'on sait le lire ; le booléen
+    // « ouvert » d'une source tierce ne sert plus que de repli
+    const module = root.AutourAvailability;
+    const dispo = module ? module.getPlaceAvailability(item, now) : null;
+    if (dispo && dispo.status === "permanently_closed") return false;
+    if (dispo && dispo.status !== "unknown") return dispo.isOpenNow;
     return item.ouvert !== false;
   }
 
@@ -499,15 +505,47 @@
       return {state: "tooLate", score: -260, reason: "Déjà commencé depuis " + late + " min"};
     }
 
+    // ---- lieux permanents : la disponibilité fait autorité ----------------
+    // Une seule source de vérité pour les horaires (voir availability.js) ;
+    // le classement ne relit jamais un opening_hours de son côté.
+    const module = root.AutourAvailability;
+    const dispo = module ? module.getPlaceAvailability(item, now, arrival) : null;
+
+    if (dispo && dispo.status === "permanently_closed") {
+      // définitivement fermé : jamais recommandé, quel que soit le mode
+      return {state: "permanentlyClosed", score: -100000, reason: dispo.label, dispo};
+    }
+
+    if (dispo && dispo.status !== "unknown") {
+      if (dispo.isOpenAtArrival === false) {
+        return {state: "closedOnArrival", score: -1000, reason: "Fermé à votre arrivée", dispo};
+      }
+      if (!dispo.isOpenNow) {
+        // fermé maintenant mais atteignable plus tard : utile hors mode
+        // « Maintenant », écarté dedans
+        return {state: "closedNow", score: -400, reason: dispo.label, dispo};
+      }
+      if (dispo.meetsMargin === false) {
+        // ouvert à l'arrivée, mais trop peu de temps pour que ça vaille le
+        // déplacement — c'est le musée à 17:57
+        return {state: "closingSoon", score: -220, reason: dispo.reason || dispo.label, dispo};
+      }
+      if (dispo.status === "closing_soon") {
+        return {state: "closingSoon", score: -120, reason: dispo.reason || dispo.label, dispo};
+      }
+      return {state: "open", score: 0, reason: dispo.label, dispo};
+    }
+
+    // ---- repli : horaires illisibles, mais une heure de fermeture connue --
     const closes = closingTime(item);
     if (closes != null && closes <= arrival) {
-      return {state: "closedOnArrival", score: -1000, reason: "Fermé à votre arrivée"};
+      return {state: "closedOnArrival", score: -1000, reason: "Fermé à votre arrivée", dispo};
     }
     if (closes != null && closes - arrival <= 30 * 60000) {
       const left = Math.round((closes - arrival) / 60000);
-      return {state: "closingSoon", score: -60, reason: "Ferme " + left + " min après votre arrivée"};
+      return {state: "closingSoon", score: -60, reason: "Ferme " + left + " min après votre arrivée", dispo};
     }
-    return {state: "open", score: 0, reason: ""};
+    return {state: "open", score: 0, reason: "", dispo};
   }
 
   function etaLabel(eta) {
@@ -615,17 +653,29 @@
       // le tri regarde la disponibilité en premier et le score en dernier, donc
       // une pénalité de points ne suffirait pas à faire descendre un lieu
       // inatteignable de la première place
-      if (outlook.state === "missed" || outlook.state === "closedOnArrival") {
+      // un lieu définitivement fermé n'est pas un résultat, jamais, quel que
+      // soit le mode : ce n'est pas une question de disponibilité mais de
+      // qualité de donnée
+      if (outlook.state === "permanentlyClosed") return null;
+
+      if (outlook.state === "missed" || outlook.state === "closedOnArrival" ||
+          outlook.state === "closedNow") {
         // hors résultats en mode « maintenant », sinon relégué en fin de liste
-        // plutôt que masqué en silence
+        // plutôt que masqué en silence : un lieu fermé reste utile pour plus tard
         if (ctx.nowOnly) return null;
         availability = 0;
       } else if (outlook.state === "tooLate") {
         availability = Math.min(availability, 1);
       } else if (outlook.state === "closingSoon") {
-        availability = Math.min(availability, 3);
+        // ouvert à l'arrivée mais pour trop peu de temps : doit passer
+        // derrière tout ce qui est réellement faisable, donc sous la valeur
+        // par défaut d'un lieu dont on ignore l'horaire
+        availability = Math.min(availability, 1);
       } else if (outlook.state === "onTime" || outlook.state === "late") {
         availability = Math.max(availability, 5);
+      } else if (outlook.state === "open" && outlook.dispo) {
+        // ouverture confirmée par l'horaire, pas seulement supposée
+        availability = Math.max(availability, 4);
       }
       if (eta && eta.realtime) score += 10;
 
@@ -645,6 +695,7 @@
         rankEta: eta,
         rankArrival: arrival,
         rankOutlook: outlook.state,
+        rankAvailability: outlook.dispo || null,
         rankBreakdown: {availability, intentMatch, distance, startsAt, quality, categoryFit, etaMinutes: minutes},
       });
     }).filter(Boolean).sort((a, b) =>

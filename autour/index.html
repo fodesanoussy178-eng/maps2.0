@@ -96,6 +96,15 @@ body.sheet-open .leaflet-control-zoom{margin-right:145px!important}
   color:#37423D;letter-spacing:-.005em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 .poi-rond{position:relative}
+/* Fermé : atténué et badgé. Jamais le même style qu'un lieu ouvert, jamais
+   masqué non plus — hors mode « Maintenant » il reste utile pour plus tard. */
+.poi-ferme{opacity:.55;filter:grayscale(1)}
+.poi-ferme .poi-rond{border-style:dashed;box-shadow:none}
+.poi-ferme .poi-nom{color:#6B756F;font-weight:500}
+.poi-ferme-badge{position:absolute;top:-7px;left:50%;transform:translateX(-50%);
+  padding:0 3px;border-radius:2px;background:#8A3B3B;color:#fff;
+  font-size:7.5px;font-weight:700;line-height:1.5;letter-spacing:.02em;font-style:normal}
+.inconnu{font-weight:600;color:var(--ink2)}
 .poi-pastille{position:absolute;top:-5px;right:-6px;min-width:15px;height:15px;padding:0 3px;
   border-radius:99px;background:var(--signal);color:#fff;border:1.5px solid #fff;
   font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;font-style:normal;
@@ -705,6 +714,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="panne" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="availability.js"></script>
 <script src="core.js"></script>
 <script src="transit.js"></script>
 <script>
@@ -725,6 +735,33 @@ const {
   isAvailableNow,
   rankResults,
 } = window.AutourCore;
+
+/* ---- Ouvert / fermé : une seule source de vérité ------------------------
+   Toute la question « est-ce que c'est ouvert » passe par availability.js.
+   Aucun écran ne relit un opening_hours de son côté, sinon la carte et la
+   fiche finissent par se contredire. */
+function dispoDe(l, arrivee){
+  const module = window.AutourAvailability;
+  if(!module) return null;
+  return module.getPlaceAvailability(l, instantCreneau().getTime(), arrivee);
+}
+
+/* Le libellé exact demandé par cas : « Ouvert • ferme à 23:30 », « Fermé •
+   ouvre à 14:00 », « Fermé aujourd'hui », « Horaires non renseignés »… */
+function badgeDispo(l){
+  const d = dispoDe(l);
+  if(!d) return "";
+  const classe = d.status === "open" ? "ouvert"
+    : d.status === "unknown" ? "inconnu" : "ferme";
+  return '<span class="'+classe+'">'+esc(d.label)+'</span>';
+}
+
+/* Un lieu fermé reste sur la carte — il peut servir plus tard — mais il ne
+   doit jamais se lire comme un lieu ouvert. */
+function estFerme(l){
+  const d = dispoDe(l);
+  return !!d && (d.status === "closed" || d.status === "permanently_closed");
+}
 
 /* ---- Transport : de « c'est à 800 m » à « vous y êtes dans 22 min » ------
    Le classement est synchrone, le calcul d'itinéraire ne l'est pas. On
@@ -2281,7 +2318,10 @@ let filtresHumains = new Set();  // gratuit · ouvert · proche · pmr
    familles », mais un parc, une piscine ou un musée le sont par nature.
    C'est une heuristique assumée, pas une donnée inventée. */
 const FILTRES_HUMAINS = [
-  { id:"ouvert",  label:"Ouvert",          test:l=>l.ouvert === true },
+  { id:"ouvert",  label:"Ouvert",          test:l=>{
+      const d = dispoDe(l);
+      return d ? d.isOpenNow : l.ouvert === true;
+    } },
   { id:"proche",  label:"< 15 min à pied", test:(l,d)=>d < 1200 },
   { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
@@ -2325,7 +2365,8 @@ function estVivant(l){
   // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
   // la plupart des lieux OpenStreetMap n'ont aucune donnée d'ouverture, et
   // les exiger vidait la carte à l'ouverture de l'application
-  return creneau === "maintenant" ? l.ouvert !== false : true;
+  // (un lieu dont on sait lire l'horaire est jugé dessus, les autres restent)
+  return creneau === "maintenant" ? !estFerme(l) : true;
 }
 
 function visibles(){
@@ -2369,9 +2410,13 @@ function htmlMarqueur(l){
   // le lieu reste, l'événement se pose dessus : une pastille signale qu'il s'y
   // passe quelque chose aujourd'hui sans remplacer le commerce lui-même
   const evs = indexEvenements.get(l.titre) || 0;
-  return '<span class="mk-in"><div class="poi">'+
+  // un lieu fermé garde sa place sur la carte mais ne doit pas se lire comme
+  // un lieu ouvert : marqueur atténué et badge explicite
+  const ferme = estFerme(l);
+  return '<span class="mk-in"><div class="poi'+(ferme?' poi-ferme':'')+'">'+
     '<span class="poi-rond">'+c.emoji+
-      (evs ? '<i class="poi-pastille">'+evs+'</i>' : '')+'</span>'+
+      (evs ? '<i class="poi-pastille">'+evs+'</i>' : '')+
+      (ferme ? '<i class="poi-ferme-badge">Fermé</i>' : '')+'</span>'+
     '<span class="poi-nom">'+esc(l.titre)+'</span></div></span>';
 }
 
@@ -2787,8 +2832,7 @@ function ouvrirDetail(id){
       '<span>'+formatDist(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng))+'</span>'+
       '<span>'+tempsTrajetMinutes(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng),
               VITESSES_KMH.pied)+' min à pied</span>'+
-      (l.ouvert === true  ? '<span class="ouvert">Ouvert</span>' :
-       l.ouvert === false ? '<span class="ferme">Fermé</span>'   : '')+
+      badgeDispo(l)+
       (l.note ? '<span>★ '+l.note.toFixed(1)+(l.avis?' ('+l.avis+')':'')+'</span>' : '')+
       (l.pmr === true ? '<span title="Accessible en fauteuil">♿</span>' : '')+
     '</p>'+
@@ -4011,8 +4055,8 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
     const sous = [];
     if(x.note && !sansPalmares) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
-    if(x.ouvert === true)  sous.push('<span class="ouvert">Ouvert</span>');
-    if(x.ouvert === false) sous.push('<span class="ferme">Fermé</span>');
+    const badge = badgeDispo(x);
+    if(badge) sous.push(badge);
     if(x.cuisine) sous.push(esc(x.cuisine.replace(/[_;]/g," ")));
     if(x.prixN != null) sous.push('<span class="prix-n">'+SYMBOLE_PRIX[x.prixN]+'</span>');
     if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
@@ -4616,7 +4660,7 @@ function proposableAuto(l, ctx){
   if(JAMAIS_AUTO.has(l.cat)) return false;
   // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
   // demain, l'information de Google ne dit plus rien du moment regardé
-  if(l.ouvert === false && creneau === "maintenant" && !montrerFermes) return false;
+  if(creneau === "maintenant" && !montrerFermes && estFerme(l)) return false;
   return true;
 }
 
@@ -5128,20 +5172,31 @@ function majFiltres(){
   // « Maintenant » étant actif par défaut, il ne suffit plus à faire
   // apparaître ce rail : l'écran de départ doit rester nu. Il ne sort que
   // si l'utilisateur a réellement restreint quelque chose.
-  const montrer = !!catsActives || filtreActif !== "tout" || filtresHumains.size > 0;
+  // montrerFermes en fait partie : sans ça, activer « voir aussi les lieux
+  // fermés » masquerait le rail et rendrait le filtre impossible à défaire
+  const montrer = !!catsActives || filtreActif !== "tout" || filtresHumains.size > 0 || montrerFermes;
   z.hidden = !montrer;
   // vidée et pas seulement masquée : en sortant du mode Aide, les six besoins
   // restaient dans le document, prêts à réapparaître au prochain affichage
   if(!montrer){ z.innerHTML = ""; return; }
   z.innerHTML = FILTRES_HUMAINS.map(f=>
     '<button class="fh'+(filtresHumains.has(f.id)?' actif':'')+'" data-fh="'+f.id+'">'+
-      f.label+'</button>').join("");
+      f.label+'</button>').join("") +
+    // les lieux fermés ne reviennent que sur demande explicite : c'est un
+    // choix de l'utilisateur, jamais un défaut
+    '<button class="fh'+(montrerFermes?' actif':'')+'" data-fermes="1" '+
+      'aria-pressed="'+(montrerFermes?'true':'false')+'">Voir aussi les lieux fermés</button>';
   z.querySelectorAll("[data-fh]").forEach(x=>x.onclick=()=>{
     const id = x.dataset.fh;
     if(filtresHumains.has(id)) filtresHumains.delete(id); else filtresHumains.add(id);
     if(id === "famille" && filtresHumains.has(id)) chargerEditorial("family");
     majFiltres(); rendre();
   });
+  const bascule = z.querySelector("[data-fermes]");
+  if(bascule) bascule.onclick=()=>{
+    montrerFermes = !montrerFermes;
+    majFiltres(); rendre(); majFeuille2();
+  };
 }
 
 /* Un clic pour entrer, un clic pour sortir. Rien n'est chargé tant que le

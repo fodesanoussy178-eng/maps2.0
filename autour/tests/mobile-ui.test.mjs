@@ -99,3 +99,27 @@ test("aucun horaire n'est inventé faute de clé transport",()=>{
   assert.match(html,/const CLE_TRANSPORT = ""/);
   assert.match(html,/navitia: CLE_TRANSPORT \? \{token:CLE_TRANSPORT\} : null/);
 });
+
+test("l'état ouvert/fermé a une seule source de vérité",()=>{
+  assert.match(html,/<script src="availability\.js"><\/script>/);
+  // les écrans passent tous par le même helper, aucun ne relit un horaire
+  assert.match(html,/function dispoDe\(l, arrivee\)/);
+  assert.match(html,/function badgeDispo\(l\)/);
+  assert.doesNotMatch(html,/x\.ouvert === true\)\s+sous\.push/);
+  assert.doesNotMatch(html,/l\.ouvert === false && creneau === "maintenant"/);
+});
+
+test("un lieu fermé est atténué et badgé sur la carte, jamais masqué",()=>{
+  assert.match(html,/poi-ferme-badge">Fermé/);
+  assert.match(html,/\.poi-ferme\{opacity:\.55;filter:grayscale\(1\)\}/);
+  // style distinct de celui d'un lieu ouvert
+  assert.match(html,/\.poi-ferme \.poi-rond\{border-style:dashed/);
+});
+
+test("les lieux fermés ne reviennent que sur demande explicite",()=>{
+  assert.match(html,/data-fermes="1"/);
+  assert.match(html,/Voir aussi les lieux fermés/);
+  assert.match(html,/aria-pressed="'\+\(montrerFermes\?'true':'false'\)\+'"/);
+  // le rail reste visible tant que le filtre est actif, sinon on ne peut plus le défaire
+  assert.match(html,/filtresHumains\.size > 0 \|\| montrerFermes/);
+});
