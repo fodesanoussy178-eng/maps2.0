@@ -398,10 +398,24 @@
       exact: ["musee", "museum", "cinema", "spectacle", "concert", "culture"],
       open: 115, event: 170, distance: 80, distanceScale: 2400, rating: 8,
     }),
+    // « Bouger » remplace l'ancien besoin « Sport » : même intention, un mot
+    // qu'on emploie vraiment. L'ancien identifiant reste accepté.
+    bouger: Object.freeze({
+      categories: ["sport", "terrain", "swimming_pool", "velo", "park", "parc"],
+      exact: ["sport", "terrain", "swimming_pool"],
+      open: 140, event: 130, distance: 100, distanceScale: 2000, rating: 5,
+    }),
     sport: Object.freeze({
       categories: ["sport", "terrain", "swimming_pool", "velo", "park", "parc"],
       exact: ["sport", "terrain", "swimming_pool"],
       open: 140, event: 130, distance: 100, distanceScale: 2000, rating: 5,
+    }),
+    // « Chiller » : s'asseoir quelque part sans but précis. L'ouverture compte
+    // plus que la note, et la proximité plus que tout.
+    chiller: Object.freeze({
+      categories: ["cafe", "bar", "parc", "park", "biblio", "library", "outing"],
+      exact: ["cafe", "parc", "park", "biblio", "library"],
+      open: 175, event: 45, distance: 135, distanceScale: 1400, rating: 6,
     }),
     services: Object.freeze({
       categories: ["services", "metro", "bus", "velo", "biblio", "coworking", "musee", "parc", "mairie", "ecole", "toilettes", "recharge", "transport", "library", "museum", "park", "education"],

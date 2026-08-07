@@ -68,18 +68,20 @@ test("l’entrée dans Aide laisse peindre la feuille et fusionne le cache en lo
   assert.doesNotMatch(html,/o\.l\.forEach\(x=>ajouterLieuxGoogle\(\[x\.f\], x\.cat\)\)/);
 });
 
-test("quatre besoins permanents, le reste derrière « Plus »",()=>{
+test("les accès principaux suivent l'intention, pas la nomenclature",()=>{
   assert.match(html,/const BESOINS_PRINCIPAUX\s+= BESOINS\.filter\(b=>!b\.secondaire\)/);
   assert.match(html,/const BESOINS_SECONDAIRES = BESOINS\.filter\(b=>b\.secondaire\)/);
-  // les quatre accès principaux ne passent jamais derrière « Plus »
-  for(const id of ["manger","sortir","famille","aide"]){
-    const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+220);
+  for(const id of ["manger","sortir","chiller","bouger","aide"]){
+    const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+240);
     assert.doesNotMatch(bloc,/secondaire:true/, id+" doit rester principal");
   }
-  for(const id of ["etudier","culture","sport","services"]){
-    const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+220);
+  // Famille, Culture, Étudier et Services restent accessibles derrière « Plus »
+  for(const id of ["famille","culture","etudier","services"]){
+    const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+240);
     assert.match(bloc,/secondaire:true/, id+" doit être secondaire");
   }
+  // « Gratuit » est un filtre réel exposé comme pill, pas une fausse catégorie
+  assert.match(html,/data-filtre="gratuit"/);
 });
 
 test("« Plus » est atteignable depuis les pills de l’en-tête",()=>{
@@ -193,12 +195,14 @@ test("les heures affichées suivent le fuseau du lieu",()=>{
   assert.doesNotMatch(html,/rankArrival\)\.toLocaleTimeString\("fr-FR",\{hour:"2-digit",minute:"2-digit"\}\)/);
 });
 
-test("la navigation basse existe et n'ouvre pas d'écran inexistant",()=>{
+test("la navigation basse suit le produit",()=>{
   assert.match(html,/<nav id="navBas"/);
-  for(const t of ["explorer","evenements","favoris","messages","profil"])
+  for(const t of ["explorer","maintenant","creer","favoris","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
+  // Messages n'est plus un onglet permanent : prévenir les participants vit
+  // sur l'événement qu'on a créé
+  assert.doesNotMatch(html,/data-nb="messages"/);
   assert.match(html,/data-nb="favoris" aria-disabled="true"/);
-  assert.match(html,/prévenir les participants/);
 });
 
 test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>{
@@ -211,12 +215,12 @@ test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>
 
 /* ---- Coordination d'événement, pas messagerie -------------------------- */
 
-test("la section Messages n'existe que s'il y a un événement",()=>{
+test("prévenir les participants vit sur l'événement, pas dans une boîte",()=>{
   assert.match(html,/<script src="events\.js"><\/script>/);
-  assert.match(html,/onglet\.hidden = !E\.sectionMessagesVisible\(canauxAMoi\)/);
-  // masqué et non grisé : pas de boîte de réception générale
-  assert.doesNotMatch(html,/data-nb="messages" aria-disabled="true"/);
   assert.match(html,/function rafraichirCanaux/);
+  // aucune boîte de réception générale
+  assert.doesNotMatch(html,/data-nb="messages"/);
+  assert.match(html,/onglet\.classList\.toggle\("avec-pastille", attente > 0\)/);
   assert.match(html,/Autour n\\u2019a pas de messagerie/);
 });
 
@@ -374,4 +378,14 @@ test("les étapes de démarrage sont mesurables",()=>{
 test("changer de catégorie ne relance pas Overpass si les lieux sont en mémoire",()=>{
   assert.match(html,/const enMemoire = new Set\(lieux\.map\(l=>l\.cat\)\);/);
   assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
+});
+
+test("créer demande QUOI avant OÙ",()=>{
+  assert.match(html,/function ouvrirCreation/);
+  assert.match(html,/Que veux-tu ajouter/);
+  assert.match(html,/creer-type" data-type="/);
+  // le bouton n'ouvre plus directement le mode pose
+  assert.doesNotMatch(html,/\$\("#btnAjouter"\)\.onclick=\(\)=>\{ retourFormulaire=false; ouvrirModePose\(\); \};/);
+  // le type choisi préremplit le brouillon au lieu d'être redemandé
+  assert.match(html,/cat:typeAvantPose \|\| "popup"/);
 });
