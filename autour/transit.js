@@ -336,7 +336,25 @@
     return listProviders();
   }
 
+  /* Prochains départs autour d'un point. Un provider ne l'implémente que
+     s'il expose réellement des passages ; sans provider capable, la liste
+     est vide — l'interface dit « donnée indisponible » plutôt que
+     d'inventer un horaire. */
+  function nextDepartures(position, options) {
+    for (const provider of providersFor(position)) {
+      if (typeof provider.departures !== "function") continue;
+      try {
+        const departures = provider.departures(position, options);
+        if (Array.isArray(departures) && departures.length) return departures;
+      } catch (error) {
+        // provider muet : on descend d'un cran, sans bruit
+      }
+    }
+    return [];
+  }
+
   root.AutourTransit = Object.freeze({
+    nextDepartures,
     WALK_SPEED_M_PER_MIN,
     BOARDING_BUFFER_MIN,
     LEG_MODES,

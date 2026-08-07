@@ -80,9 +80,11 @@ test("quatre besoins permanents, le reste derrière « Plus »",()=>{
   }
 });
 
-test("« Plus » est atteignable depuis la feuille et depuis le rail du bas",()=>{
-  assert.match(html,/data-bn="plus"/);
+test("« Plus » est atteignable depuis les pills de l’en-tête",()=>{
+  // depuis la refonte, les besoins vivent dans les pills et non plus dans la
+  // feuille : celle-ci sert à montrer des lieux, pas à poser une question
   assert.match(html,/data-rc="plus"/);
+  assert.match(html,/id="raccourcis" class="pills"/);
   assert.match(html,/feuilleNiveau === "plus"/);
   // le retour depuis un besoin secondaire revient à « Plus », pas à la racine
   assert.match(html,/ouvrirFeuille2\(venaitDePlus \? "plus" : "racine"\)/);
@@ -122,4 +124,83 @@ test("les lieux fermés ne reviennent que sur demande explicite",()=>{
   assert.match(html,/aria-pressed="'\+\(montrerFermes\?'true':'false'\)\+'"/);
   // le rail reste visible tant que le filtre est actif, sinon on ne peut plus le défaire
   assert.match(html,/filtresHumains\.size > 0 \|\| montrerFermes/);
+});
+
+/* ---- Refonte de l'interface mobile ------------------------------------- */
+
+test("l'en-tête fixe porte le contexte, l'intention et les catégories",()=>{
+  assert.match(html,/<header id="appHeader"/);
+  assert.match(html,/id="btnMaintenant"/);
+  assert.match(html,/id="hdVille"/);
+  assert.match(html,/placeholder="Que veux-tu faire maintenant/);
+  assert.match(html,/id="btnNotifs"/);
+  assert.match(html,/id="btnFiltres"/);
+  // l'ancien gros bouton noir et la barre basse ont disparu
+  assert.doesNotMatch(html,/id="btnQuoi"/);
+  assert.doesNotMatch(html,/id="barreBas"/);
+});
+
+test("la carte est un décor : ni zoom Leaflet, ni attribution posée dessus",()=>{
+  assert.match(html,/attributionControl:false/);
+  assert.match(html,/zoomControl:false/);
+  assert.match(html,/\.leaflet-control-zoom,\.leaflet-control-attribution\{display:none!important\}/);
+  // …mais l'attribution reste due, repliée derrière un « ⓘ »
+  assert.match(html,/id="btnCredits"/);
+  assert.match(html,/openstreetmap\.org\/copyright/);
+  assert.match(html,/carto\.com\/attributions/);
+});
+
+test("le marqueur utilisateur est un point bleu, pas un emoji",()=>{
+  assert.match(html,/<span class="moi-in"><i><\/i><b><\/b><\/span>/);
+  assert.match(html,/\.moi-in b\{display:block;width:17px;height:17px;border-radius:50%;\s*\n\s*background:#1A73E8/);
+});
+
+test("le recentrage est une petite icône, plus un gros bouton libellé",()=>{
+  assert.match(html,/id="btnRevenir" hidden aria-label="Revenir à ma position"/);
+  assert.doesNotMatch(html,/id="btnRevenir"[^>]*>◎ <span>Ma position/);
+  assert.match(html,/\.rond-flottant\{[^}]*width:44px;height:44px/);
+});
+
+test("« Créer » est violet, nommé, et accessible depuis la carte",()=>{
+  assert.match(html,/#btnAjouter\{[^}]*background:var\(--violet\)/);
+  assert.match(html,/aria-label="Créer un événement ou une activité"/);
+  assert.match(html,/class="creer-txt">Créer/);
+});
+
+test("le bottom sheet propose au lieu de poser une question",()=>{
+  assert.match(html,/Pour toi, maintenant/);
+  assert.match(html,/function recommandationsAccueil/);
+  assert.match(html,/class="rc-piste"/);
+  assert.match(html,/data-rc-tout/);
+  // l'accueil s'ouvre tout seul dès que des lieux existent
+  assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose && lieux\.length\) ouvrirAccueilFeuille\(\);/);
+});
+
+test("les prochains départs n'inventent jamais d'horaire",()=>{
+  assert.match(html,/Prochains départs à proximité/);
+  assert.match(html,/Aucune donnée temps réel disponible ici/);
+  assert.match(html,/typeof T\.nextDepartures !== "function"/);
+});
+
+test("les heures affichées suivent le fuseau du lieu",()=>{
+  assert.match(html,/function heureLocale\(ts, l\)/);
+  assert.match(html,/timeZone:tz/);
+  // plus aucun formatage d'heure sans fuseau explicite dans les cartes
+  assert.doesNotMatch(html,/rankArrival\)\.toLocaleTimeString\("fr-FR",\{hour:"2-digit",minute:"2-digit"\}\)/);
+});
+
+test("la navigation basse existe et n'ouvre pas d'écran inexistant",()=>{
+  assert.match(html,/<nav id="navBas"/);
+  for(const t of ["explorer","evenements","favoris","messages","profil"])
+    assert.match(html,new RegExp('data-nb="'+t+'"'), t);
+  assert.match(html,/data-nb="favoris" aria-disabled="true"/);
+  assert.match(html,/prévenir les participants/);
+});
+
+test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>{
+  assert.match(html,/height:100dvh/);
+  assert.match(html,/--nav-height:calc\(var\(--safe-b\) \+ 58px\)/);
+  assert.match(html,/function mesurerHeader/);
+  // les bandeaux se posent sous l'en-tête mesuré, plus sous une hauteur devinée
+  assert.match(html,/top:calc\(var\(--header-height\) \+ 10px\)/);
 });
