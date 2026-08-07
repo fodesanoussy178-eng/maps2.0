@@ -42,16 +42,13 @@ test("les couches et actions tactiles essentielles ont un contrat central",()=>{
   assert.match(html,/pointerup/);
 });
 
-test("le bouton d’ajout est nommé « Créer » et jamais réduit à une icône",()=>{
-  assert.match(html,/<button id="btnAjouter" hidden aria-label="Créer un événement ou une activité">/);
-  assert.match(html,/<span class="creer-txt">Créer<\/span>/);
-  assert.doesNotMatch(html,/id="btnAjouter"[^>]*aria-label="Publier"/);
-  assert.match(html,/#btnAjouter\{[^}]*bottom:var\(--map-control-bottom\)/s);
+test("« Créer » est un onglet nommé, plus un bouton flottant en double",()=>{
+  // le FAB violet faisait doublon avec l'onglet : il est supprimé
+  assert.doesNotMatch(html,/id="btnAjouter"/);
+  assert.match(html,/data-nb="creer" aria-label="Créer un événement ou une activité"/);
+  assert.match(html,/<i class="nb-plus">/);
+  assert.match(html,/\.nb-plus\{[^}]*background:var\(--violet\)/s);
   assert.match(html,/--safe-b:env\(safe-area-inset-bottom,0px\)/);
-  // sur les écrans les plus étroits, seul l'espacement se resserre
-  const etroit = html.match(/@media \(max-width:359px\)\{\s*#btnAjouter\{[^}]*\}/s);
-  assert.ok(etroit,"règle très petits écrans");
-  assert.doesNotMatch(etroit[0],/display:none|font-size:0|width:4[0-9]px/);
 });
 
 test("le parcours de publication couvre les six familles annoncées",()=>{
@@ -167,10 +164,9 @@ test("le recentrage est une petite icône, plus un gros bouton libellé",()=>{
   assert.match(html,/\.rond-flottant\{[^}]*width:44px;height:44px/);
 });
 
-test("« Créer » est violet, nommé, et accessible depuis la carte",()=>{
-  assert.match(html,/#btnAjouter\{[^}]*background:var\(--violet\)/);
-  assert.match(html,/aria-label="Créer un événement ou une activité"/);
-  assert.match(html,/class="creer-txt">Créer/);
+test("« Créer » reste atteignable en un tap depuis l'écran principal",()=>{
+  assert.match(html,/if\(id === "creer"\)\{ retourFormulaire=false; ouvrirCreation\(\); return; \}/);
+  assert.match(html,/function ouvrirCreation/);
 });
 
 test("le bottom sheet propose au lieu de poser une question",()=>{
@@ -202,7 +198,9 @@ test("la navigation basse suit le produit",()=>{
   // Messages n'est plus un onglet permanent : prévenir les participants vit
   // sur l'événement qu'on a créé
   assert.doesNotMatch(html,/data-nb="messages"/);
-  assert.match(html,/data-nb="favoris" aria-disabled="true"/);
+  // Favoris n'est plus un onglet mort : il liste ce qui est enregistré
+  assert.doesNotMatch(html,/data-nb="favoris" aria-disabled/);
+  assert.match(html,/if\(id === "favoris"\)\{ ouvrirFavoris\(\); return; \}/);
 });
 
 test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>{
@@ -253,15 +251,12 @@ test("publier crée le canal et fait apparaître la section",()=>{
 });
 
 test("le nouveau design s'applique à toutes les tailles, sans seconde application",()=>{
-  // aucun composant de la refonte n'est enfermé dans un breakpoint mobile
   const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
                              html.indexOf("@media (min-width:1100px)")+2400);
-  for(const sel of ["#navBas","#appHeader","#feuilleBesoins",".rc-piste","#btnAjouter"])
+  for(const sel of ["#navBas","#appHeader","#feuilleBesoins",".rc-piste"])
     assert.ok(desktop.includes(sel), sel+" doit être adapté au desktop");
-  // le desktop réutilise les mêmes éléments : il ne les masque pas
   assert.doesNotMatch(desktop,/#appHeader\{[^}]*display:none/);
   assert.doesNotMatch(desktop,/#navBas\{[^}]*display:none/);
-  assert.doesNotMatch(desktop,/#btnAjouter\{[^}]*display:none/);
 });
 
 test("sur desktop la barre d'onglets devient un rail et la feuille une colonne",()=>{
@@ -294,11 +289,9 @@ test("les étiquettes de la carte gèrent leurs collisions",()=>{
 });
 
 test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
-  // marges latérales 16px, boutons flottants décollés du bord
   assert.match(html,/#appHeader\{[^}]*padding:calc\(var\(--safe-t\) \+ 8px\) 16px 10px/s);
   assert.match(html,/\.fb-corps\{[^}]*padding:0 16px/s);
   assert.match(html,/\.rond-flottant\{position:absolute;right:16px/);
-  assert.match(html,/#btnAjouter\{position:absolute;right:16px/);
 });
 
 test("les événements créés peuvent porter une image stockée dans Supabase",()=>{
@@ -347,9 +340,7 @@ test("les filtres ne flottent plus sur la carte et sont limités à trois",()=>{
 });
 
 test("Partager ne vit plus sur la carte",()=>{
-  // la liste qui REND visible ne le contient plus (celle qui masque en mode
-  // navigation le contient toujours, et c'est normal)
-  assert.match(html,/\["#navBas","#btnAjouter","#appHeader","#btnTransports","#btnCredits"\]/);
+  assert.match(html,/\["#navBas","#appHeader","#btnTransports","#btnCredits"\]/);
   assert.doesNotMatch(html,/\$\("#btnPartager"\)\.hidden=false/);
   assert.match(html,/Partager ne vit que sur la fiche d'un lieu/);
 });
@@ -401,4 +392,41 @@ test("l'envoi d'image accepte ce que produit réellement un téléphone",()=>{
   assert.match(html,/toBlob\(r, "image\/jpeg", \.82\)/);
   // un format illisible ne bloque pas la publication
   assert.match(html,/return null;   \/\/ format illisible/);
+});
+
+/* ---- Favoris et fiche compacte ----------------------------------------- */
+
+test("les favoris couvrent un lieu externe comme un événement Autour",()=>{
+  assert.match(html,/function refFavori/);
+  assert.match(html,/publication_id: l\.dbId \|\| null/);
+  assert.match(html,/lieu_ref: l\.dbId \? null : refFavori\(l\)/);
+  // instantané conservé : sans lui la liste serait vide hors de la zone
+  assert.match(html,/titre: l\.titre \|\| "Sans titre"/);
+});
+
+test("le cœur bascule immédiatement et se remet en place si la base refuse",()=>{
+  assert.match(html,/async function basculerFavori/);
+  assert.match(html,/if\(etait\) favorisIds\.delete\(cle\); else favorisIds\.add\(cle\);/);
+  // rétablissement en cas d'échec
+  assert.match(html,/if\(etait\) favorisIds\.add\(cle\); else favorisIds\.delete\(cle\);/);
+  assert.match(html,/Impossible d’enregistrer ce favori/);
+});
+
+test("l'identité n'est réclamée qu'au moment du favori",()=>{
+  assert.match(html,/l'identité anonyme n'est réclamée qu'ici, au moment où elle sert/);
+  assert.match(html,/if\(!\(await connecter\(\)\)\)\{/);
+});
+
+test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()=>{
+  assert.match(html,/m\.on\("click", \(\)=>\{ mettreAJourProfil\("clic", l\.cat\); ouvrirFicheCompacte\(l\); \}\);/);
+  assert.match(html,/function ouvrirFicheCompacte/);
+  assert.match(html,/class="fc-voir">Voir/);
+  // « Voir » seulement ensuite ouvre le détail
+  assert.match(html,/fermerFicheCompacte\(\); pileEcrans=\[\]; pousserEcran\(\(\)=>ouvrirDetail\(l\.id\)\);/);
+});
+
+test("la fiche compacte propose Partager et, au créateur, Prévenir",()=>{
+  assert.match(html,/const mien = !!\(l\.dbId && moiId && l\.auteur === moiId\);/);
+  assert.match(html,/l\.dbId \? '<button class="fc-part">Partager<\/button>' : ''/);
+  assert.match(html,/mien \? '<button class="fc-prevenir">Prévenir<\/button>' : ''/);
 });
