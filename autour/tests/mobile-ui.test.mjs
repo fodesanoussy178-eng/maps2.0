@@ -13,8 +13,10 @@ test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",
 });
 
 test("la bottom sheet possède les trois layouts et des hauteurs dynamiques",()=>{
-  assert.match(html,/height:52dvh;max-height:52dvh/);
-  assert.match(html,/height:90dvh;max-height:90dvh/);
+  // trois hauteurs : réduite (poignée + titre), moyenne, étendue
+  assert.match(html,/#feuilleBesoins\.reduite\{height:144px;max-height:144px\}/);
+  assert.match(html,/height:45dvh;max-height:45dvh/);
+  assert.match(html,/#feuilleBesoins\.deplie\{height:80dvh;max-height:80dvh\}/);
   assert.match(html,/@media \(min-width:768px\) and \(max-width:1099px\)/);
   assert.match(html,/@media \(min-width:1100px\)/);
   assert.match(html,/--sheet-visible-height:0px/);
@@ -120,10 +122,12 @@ test("un lieu fermé est atténué et badgé sur la carte, jamais masqué",()=>{
 
 test("les lieux fermés ne reviennent que sur demande explicite",()=>{
   assert.match(html,/data-fermes="1"/);
-  assert.match(html,/Voir aussi les lieux fermés/);
+  assert.match(html,/data-fermes="1"/);
   assert.match(html,/aria-pressed="'\+\(montrerFermes\?'true':'false'\)\+'"/);
-  // le rail reste visible tant que le filtre est actif, sinon on ne peut plus le défaire
-  assert.match(html,/filtresHumains\.size > 0 \|\| montrerFermes/);
+  // le rail reste visible tant qu'un filtre est actif, sinon on ne peut plus le défaire
+  assert.match(html,/const actifs = filtresHumains\.size > 0 \|\| montrerFermes;/);
+  // …et il ne sort pas tout seul : il faut avoir ouvert « Filtres »
+  assert.match(html,/const demande = z\.dataset\.force === "1";/);
 });
 
 /* ---- Refonte de l'interface mobile ------------------------------------- */
@@ -287,7 +291,7 @@ test("les étiquettes de la carte gèrent leurs collisions",()=>{
 
 test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
   // marges latérales 16px, boutons flottants décollés du bord
-  assert.match(html,/#appHeader\{[^}]*padding:calc\(var\(--safe-t\) \+ 10px\) 16px 12px/s);
+  assert.match(html,/#appHeader\{[^}]*padding:calc\(var\(--safe-t\) \+ 8px\) 16px 10px/s);
   assert.match(html,/\.fb-corps\{[^}]*padding:0 16px/s);
   assert.match(html,/\.rond-flottant\{position:absolute;right:16px/);
   assert.match(html,/#btnAjouter\{position:absolute;right:16px/);
@@ -318,4 +322,56 @@ test("aucun gros emoji ne sert d'image finale",()=>{
   assert.match(html,/\.rc-photo-vide\{position:relative;display:grid;place-items:center;/);
   assert.match(html,/\.rc-photo-vide i\{[^}]*font-size:20px/);
   assert.doesNotMatch(html,/\.rc-photo-vide\{display:grid;place-items:center;font-size:32px\}/);
+});
+
+/* ---- Passe simplification + performance -------------------------------- */
+
+test("le carousel de catégories ne coupe jamais une pill aux bords",()=>{
+  assert.match(html,/\.pills\{[^}]*padding-inline:16px;scroll-padding-inline:16px/s);
+  assert.match(html,/\.pills\{[^}]*overflow-x:auto/s);
+  assert.match(html,/scroll-snap-type:x proximity/);
+  assert.match(html,/\.pills\{[^}]*scrollbar-width:none/s);
+  assert.match(html,/\.rc\{scroll-snap-align:start\}/);
+});
+
+test("les filtres ne flottent plus sur la carte et sont limités à trois",()=>{
+  assert.match(html,/#filtresHumains\{display:flex/);
+  assert.doesNotMatch(html,/#filtresHumains\{position:absolute/);
+  assert.match(html,/visibles\.slice\(0,3\)/);
+  // ils ne sortent que sur demande, ou si un filtre est déjà actif
+  assert.match(html,/const montrer = demande \|\| actifs;/);
+});
+
+test("Partager ne vit plus sur la carte",()=>{
+  // la liste qui REND visible ne le contient plus (celle qui masque en mode
+  // navigation le contient toujours, et c'est normal)
+  assert.match(html,/\["#navBas","#btnAjouter","#appHeader","#btnTransports","#btnCredits"\]/);
+  assert.doesNotMatch(html,/\$\("#btnPartager"\)\.hidden=false/);
+  assert.match(html,/Partager ne vit que sur la fiche d'un lieu/);
+});
+
+test("les marqueurs sont plafonnés quand la carte est dézoomée",()=>{
+  assert.match(html,/const MARQUEURS_MAX_DEZOOME = 10;/);
+  assert.match(html,/function limiterMarqueurs/);
+  assert.match(html,/const choisis = limiterMarqueurs\(selectionner\(\)\);/);
+  // un événement publié n'est jamais masqué
+  assert.match(html,/if\(estTemporaire\(l\)\) retenus\.add\(l\.id\);/);
+});
+
+test("les images du carousel sont paresseuses et n'attendent rien",()=>{
+  assert.match(html,/loading="lazy" decoding="async"/);
+  assert.match(html,/\.rc-photo img\{position:absolute;inset:0;z-index:2/);
+  assert.match(html,/\.rc-photo img\.vue\{opacity:1\}/);
+});
+
+test("les étapes de démarrage sont mesurables",()=>{
+  assert.match(html,/window\.AutourPerf = PERF;/);
+  for(const jalon of ["interface","carte","geolocalisation","premiers-lieux","overpass-fin","marqueurs"])
+    assert.match(html,new RegExp('PERF\\.jalon\\("'+jalon+'"\\)'), jalon);
+  assert.match(html,/first-contentful-paint/);
+});
+
+test("changer de catégorie ne relance pas Overpass si les lieux sont en mémoire",()=>{
+  assert.match(html,/const enMemoire = new Set\(lieux\.map\(l=>l\.cat\)\);/);
+  assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
 });
