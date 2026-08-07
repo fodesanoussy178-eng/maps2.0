@@ -243,3 +243,52 @@ test("publier crée le canal et fait apparaître la section",()=>{
   assert.ok(i > 0);
   assert.match(html.slice(i, i+220),/rafraichirCanaux\(\)/);
 });
+
+test("le nouveau design s'applique à toutes les tailles, sans seconde application",()=>{
+  // aucun composant de la refonte n'est enfermé dans un breakpoint mobile
+  const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
+                             html.indexOf("@media (min-width:1100px)")+2400);
+  for(const sel of ["#navBas","#appHeader","#feuilleBesoins",".rc-piste","#btnAjouter"])
+    assert.ok(desktop.includes(sel), sel+" doit être adapté au desktop");
+  // le desktop réutilise les mêmes éléments : il ne les masque pas
+  assert.doesNotMatch(desktop,/#appHeader\{[^}]*display:none/);
+  assert.doesNotMatch(desktop,/#navBas\{[^}]*display:none/);
+  assert.doesNotMatch(desktop,/#btnAjouter\{[^}]*display:none/);
+});
+
+test("sur desktop la barre d'onglets devient un rail et la feuille une colonne",()=>{
+  assert.match(html,/--rail:88px/);
+  assert.match(html,/--panneau:400px/);
+  // la règle .accueil est reprise explicitement, sinon sa spécificité
+  // l'emportait et la colonne redevenait une feuille mobile étirée
+  assert.match(html,/#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie\{/);
+  assert.match(html,/#appHeader\{left:var\(--rail\)/);
+  assert.match(html,/#map\{left:var\(--rail\)\}/);
+  // le carousel horizontal devient une liste verticale
+  assert.match(html,/\.rc-piste\{flex-direction:column/);
+});
+
+test("les photos de lieux sont réellement demandées à Google",()=>{
+  // sans places.photos, toutes les cartes retombaient sur un emoji
+  assert.match(html,/"places\.photos,"/);
+  assert.match(html,/function photoGoogle/);
+  assert.match(html,/places\.googleapis\.com\/v1\/"\+photo\.name\+/);
+  // une photo de lieu ne remplace pas l'affiche d'un événement
+  assert.match(html,/if\(meilleur\.image && !l\.image\) l\.image = meilleur\.image;/);
+});
+
+test("les étiquettes de la carte gèrent leurs collisions",()=>{
+  assert.match(html,/function resoudreCollisions/);
+  // priorité donnée au classement : les lieux pertinents gardent leur label
+  assert.match(html,/dernierClassement\.forEach\(\(l,i\)=>rang\.set\(l\.id,i\)\)/);
+  assert.match(html,/\.poi-eti\.masquee\{display:none\}|\.poi-eti,\.poi-eti\.masquee\{display:none\}/);
+  assert.match(html,/requestAnimationFrame\(resoudreCollisions\)/);
+});
+
+test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
+  // marges latérales 16px, boutons flottants décollés du bord
+  assert.match(html,/#appHeader\{[^}]*padding:calc\(var\(--safe-t\) \+ 10px\) 16px 12px/s);
+  assert.match(html,/\.fb-corps\{[^}]*padding:0 16px/s);
+  assert.match(html,/\.rond-flottant\{position:absolute;right:16px/);
+  assert.match(html,/#btnAjouter\{position:absolute;right:16px/);
+});
