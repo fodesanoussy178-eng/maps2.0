@@ -338,7 +338,14 @@ input{font-family:inherit;font-size:16px}
 .creer-type em{font-size:24px;font-style:normal;line-height:1}
 .creer-type b{font-size:14.5px;font-weight:700}
 .creer-type:active{background:var(--paper)}
+/* « Créer » est le seul onglet à porter une pastille pleine : il reste
+   identifiable sans déséquilibrer le rail, et remplace l'ancien bouton
+   flottant qui faisait doublon. */
 .nb-creer{color:var(--violet)}
+.nb-plus{display:grid;place-items:center;width:34px;height:34px;border-radius:12px;
+  background:var(--violet);color:#fff;font-style:normal;
+  box-shadow:0 3px 10px rgba(124,58,237,.34)}
+.nb-creer svg{opacity:1}
 .nb.avec-pastille{position:relative}
 .nb.avec-pastille::after{content:"";position:absolute;top:4px;right:50%;
   transform:translateX(16px);width:7px;height:7px;border-radius:50%;background:var(--signal)}
@@ -354,6 +361,8 @@ input{font-family:inherit;font-size:16px}
   object-fit:cover;opacity:0;transition:opacity .18s ease}
 .rc-photo img.vue{opacity:1}
 .rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 11px 12px}
+.rc-haut{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.rc-haut .coeur{width:30px;height:30px;margin:-4px -6px -4px 0}
 .rc-cats{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
   letter-spacing:.06em;color:var(--violet)}
 .rc-nom{font-size:14px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
@@ -364,6 +373,31 @@ input{font-family:inherit;font-size:16px}
 .rc-min{font-size:12.5px;font-weight:750;color:var(--violet)}
 .rc-trajet{font-size:12px;color:var(--ink2);margin-top:2px}
 .rc-arrivee{font-size:11.5px;color:var(--ink2)}
+
+/* ---- Cœur des favoris --------------------------------------------------- */
+.coeur{flex-shrink:0;width:40px;height:40px;border:0;background:none;border-radius:50%;
+  color:var(--ink2);display:grid;place-items:center;transition:transform .12s ease}
+.coeur.actif{color:#E0334E}
+.coeur.actif svg{fill:currentColor}
+.coeur:active{transform:scale(.88)}
+
+/* ---- Fiche compacte ----------------------------------------------------- */
+#ficheCompacte{position:absolute;left:12px;right:12px;
+  bottom:calc(var(--nav-height) + 12px);z-index:645;
+  display:flex;flex-direction:column;gap:3px;padding:14px 14px 12px;
+  border:1px solid var(--bord);border-radius:20px;background:#fff;
+  box-shadow:0 6px 26px rgba(20,30,25,.20);animation:monteB .18s ease-out}
+@keyframes monteB{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.fc-tete{display:flex;align-items:center;gap:10px}
+.fc-tete b{flex:1;min-width:0;font-size:17px;font-weight:750;letter-spacing:-.01em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc-l2{font-size:13px;color:var(--ink2)}
+.fc-l3{font-size:13px;font-weight:650}
+.fc-modes{margin-top:2px;font-size:13px;color:var(--ink2)}
+.fc-actions{display:flex;gap:8px;margin-top:10px}
+.fc-actions button{flex:1;min-height:44px;padding:0 12px;border:1px solid var(--bord);
+  border-radius:12px;background:#fff;font-size:14px;font-weight:650}
+.fc-y{background:var(--violet)!important;border-color:var(--violet)!important;color:#fff}
 
 /* ---- Annonces d'un événement ------------------------------------------- */
 .an-msg{display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:10px 12px;
@@ -462,21 +496,6 @@ input{font-family:inherit;font-size:16px}
   box-shadow:0 2px 10px rgba(20,30,25,.16)}
 #credits a{color:var(--ink2)}
 
-/* « + Créer » : violet, plein, nommé en toutes lettres. Le libellé ne
-   disparaît sur aucune largeur — un « + » seul n'apprend rien à qui arrive. */
-#btnAjouter{position:absolute;right:16px;bottom:var(--map-control-bottom);z-index:602;
-  display:flex;align-items:center;justify-content:center;gap:6px;
-  height:54px;padding:0 24px;border:0;border-radius:99px;
-  background:var(--violet);color:#fff;
-  font-size:15.5px;font-weight:700;line-height:1;white-space:nowrap;
-  box-shadow:0 6px 20px rgba(124,58,237,.42);
-  transition:bottom .22s ease,transform .15s ease}
-#btnAjouter svg{flex-shrink:0}
-#btnAjouter .creer-txt{white-space:nowrap}
-#btnAjouter:active{transform:scale(.96)}
-@media (max-width:359px){
-  #btnAjouter{height:48px;padding:0 16px;gap:6px;font-size:15px}
-}
 
 /* ---- bottom sheet : fermée · compacte · dépliée ---- */
 #feuilleBesoins{position:absolute;left:8px;right:8px;bottom:0;z-index:640;
@@ -623,10 +642,9 @@ input{font-family:inherit;font-size:16px}
   .rc-nom{min-height:0}
 
   /* Les flottants se rangent à gauche de la colonne. */
-  #btnAjouter,#btnRevenir,#btnTransports{right:calc(var(--panneau) + 40px)}
+  #btnRevenir,#btnTransports{right:calc(var(--panneau) + 40px)}
   #btnRevenir{bottom:calc(var(--nav-height) + 124px)}
   #btnTransports{bottom:calc(var(--nav-height) + 72px)}
-  #btnAjouter{bottom:calc(var(--nav-height) + 16px)}
   #btnCredits,#credits{left:calc(var(--rail) + 12px)}
 
   /* Les bandeaux suivent la colonne de la carte. */
@@ -941,10 +959,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
   © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>
 </div>
-<button id="btnAjouter" hidden aria-label="Créer un événement ou une activité">
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-  <span class="creer-txt">Créer</span>
-</button>
+
 
 <!-- Bottom sheet : fermée, compacte, ou dépliée à la demande. -->
 <div id="feuilleBesoins" role="dialog" aria-labelledby="fbTitre" hidden>
@@ -969,11 +984,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>
     Maintenant
   </button>
-  <button class="nb nb-creer" data-nb="creer">
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
+    <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
     Créer
   </button>
-  <button class="nb" data-nb="favoris" aria-disabled="true">
+  <button class="nb" data-nb="favoris">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 5.6a5 5 0 0 0-7.1 0L12 6.9l-1.3-1.3a5 5 0 1 0-7.1 7.1L12 21l8.4-8.3a5 5 0 0 0 0-7.1z"/></svg>
     Favoris
   </button>
@@ -982,6 +997,9 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     Profil
   </button>
 </nav>
+
+<!-- Fiche compacte : premier niveau d'un lieu, au-dessus de la carte. -->
+<div id="ficheCompacte" hidden role="dialog" aria-label="Aperçu du lieu"></div>
 
 <div id="navBarre" hidden>
   <span class="nav-mode" id="navMode"></span>
@@ -1041,6 +1059,96 @@ const {
 /* Ville détectée : déclarée ici car demarrer() l'utilise bien avant le bloc
    qui définit detecterVille(). */
 let villeDetectee = null;
+
+/* ---- Favoris, côté écran ------------------------------------------------
+   L'identité est anonyme : personne ne crée de compte. On ne la réclame donc
+   qu'au premier favori — l'exploration reste possible sans rien signer.
+   L'affichage est optimiste : le cœur bascule tout de suite, et se remet en
+   place seulement si la base refuse. */
+const favorisIds = new Set();
+let favorisCharges = false;
+
+/* Référence stable d'un lieu externe : sa source et son identifiant. */
+function refFavori(l){
+  if(!l) return "";
+  if(l.dbId) return "";
+  return (l.source || "osm")+":"+l.id;
+}
+function cleFavori(l){
+  return l && l.dbId ? "pub:"+l.dbId : refFavori(l);
+}
+function estFavori(l){
+  return favorisIds.has(cleFavori(l));
+}
+
+async function chargerFavoris(){
+  if(favorisCharges) return;
+  if(!(await connecter())) return;
+  favorisCharges = true;
+  const lignes = await Store.favoris();
+  favorisIds.clear();
+  lignes.forEach(f=>favorisIds.add(f.publication_id ? "pub:"+f.publication_id : f.lieu_ref));
+  majCoeurs();
+}
+
+/* Bascule optimiste : l'écran répond immédiatement, la base suit. */
+async function basculerFavori(l){
+  const cle = cleFavori(l);
+  if(!cle) return;
+  const etait = favorisIds.has(cle);
+  if(etait) favorisIds.delete(cle); else favorisIds.add(cle);
+  majCoeurs();
+
+  // l'identité anonyme n'est réclamée qu'ici, au moment où elle sert
+  if(!(await connecter())){
+    if(etait) favorisIds.add(cle); else favorisIds.delete(cle);
+    majCoeurs();
+    toast("Favoris indisponibles hors connexion");
+    return;
+  }
+  const ok = etait ? await Store.retirerFavori(l) : await Store.ajouterFavori(l);
+  if(!ok){
+    if(etait) favorisIds.add(cle); else favorisIds.delete(cle);
+    majCoeurs();
+    toast("Impossible d’enregistrer ce favori");
+    return;
+  }
+  majNavBas();
+}
+
+/* Remet tous les cœurs affichés en accord avec l'état courant. */
+function majCoeurs(){
+  document.querySelectorAll("[data-coeur]").forEach(b=>{
+    const actif = favorisIds.has(b.dataset.coeur);
+    b.classList.toggle("actif", actif);
+    b.setAttribute("aria-pressed", String(actif));
+    b.setAttribute("aria-label", actif ? "Retirer des favoris" : "Ajouter aux favoris");
+  });
+}
+
+/* Le cœur lui-même : discret, et toujours au même endroit. */
+function boutonCoeur(l){
+  const cle = cleFavori(l);
+  if(!cle) return "";
+  const actif = favorisIds.has(cle);
+  return '<button class="coeur'+(actif?" actif":"")+'" data-coeur="'+esc(cle)+'" '+
+    'aria-pressed="'+actif+'" aria-label="'+(actif?"Retirer des favoris":"Ajouter aux favoris")+'">'+
+    '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" '+
+    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+
+    '<path d="M20.4 5.6a5 5 0 0 0-7.1 0L12 6.9l-1.3-1.3a5 5 0 1 0-7.1 7.1L12 21l8.4-8.3a5 5 0 0 0 0-7.1z"/>'+
+    '</svg></button>';
+}
+
+/* Un seul branchement, délégué : les cœurs sont recréés à chaque rendu. */
+document.addEventListener("click", (e)=>{
+  const bouton = e.target.closest && e.target.closest("[data-coeur]");
+  if(!bouton) return;
+  e.preventDefault(); e.stopPropagation();
+  const cle = bouton.dataset.coeur;
+  const lieu = lieux.find(x=>cleFavori(x) === cle) || favorisEnMemoire.get(cle);
+  if(lieu) basculerFavori(lieu);
+});
+const favorisEnMemoire = new Map();
 
 /* ---- Ouvert / fermé : une seule source de vérité ------------------------
    Toute la question « est-ce que c'est ouvert » passe par availability.js.
@@ -1815,6 +1923,48 @@ const Store = {
     if(!sb || !dbId) return false;
     const { error } = await sb.from("publications").delete().eq("id", dbId);
     if(error){ console.error("Suppression refusée :", error.message); return false; }
+    return true;
+  },
+
+  /* ---- Favoris ------------------------------------------------------------
+     Un favori vise soit une publication Autour, soit un lieu externe. Dans le
+     second cas on garde un instantané : sans lui, la liste serait vide dès
+     qu'on l'ouvre ailleurs qu'à l'endroit où on a enregistré. */
+  async favoris(){
+    if(!sb) return [];
+    const { data, error } = await sb.from("favoris")
+      .select("id,publication_id,lieu_ref,titre,cat,adresse,lat,lng,cree_le")
+      .order("cree_le",{ascending:false});
+    if(error){ console.error("Favoris indisponibles :", error.message); return []; }
+    return data || [];
+  },
+
+  async ajouterFavori(l){
+    if(!sb) return false;
+    const ligne = {
+      membre: moiId,
+      publication_id: l.dbId || null,
+      lieu_ref: l.dbId ? null : refFavori(l),
+      titre: l.titre || "Sans titre",
+      cat: l.cat || null,
+      adresse: l.adresse || null,
+      lat: Number(l.lat), lng: Number(l.lng),
+    };
+    const { error } = await sb.from("favoris").insert(ligne);
+    // déjà en favori : l'index unique refuse, ce n'est pas une erreur à montrer
+    if(error && !/duplicate|unique/i.test(error.message)){
+      console.error("Favori refusé :", error.message); return false;
+    }
+    return true;
+  },
+
+  async retirerFavori(l){
+    if(!sb) return false;
+    const requete = sb.from("favoris").delete().eq("membre", moiId);
+    const { error } = l.dbId
+      ? await requete.eq("publication_id", l.dbId)
+      : await requete.eq("lieu_ref", refFavori(l));
+    if(error){ console.error("Retrait refusé :", error.message); return false; }
     return true;
   },
 
@@ -2664,7 +2814,7 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#appHeader","#navBas","#btnAjouter","#btnRevenir","#btnTransports","#btnCredits"]
+  ["#appHeader","#navBas","#btnRevenir","#btnTransports","#btnCredits"]
     .forEach(s=>$(s).hidden=false);
   PERF.jalon("interface");        // l'écran est lisible et interactif
   mesurerHeader();
@@ -2758,6 +2908,7 @@ async function demarrer(coords){
     majAccueil();
     // les canaux décident de l'existence de la section Messages
     rafraichirCanaux();
+    chargerFavoris();
     // Contexte → suggestions → carte → lieux → action : dès que les lieux
     // sont là, l'accueil propose au lieu d'attendre une question. La carte
     // n'est jamais vide devant quelqu'un qui vient d'arriver.
@@ -2898,6 +3049,62 @@ function heureLocale(ts, l){
   const tz = (l && (l.timezone || l.timeZone)) ||
     (window.AutourAvailability && window.AutourAvailability.DEFAULT_TIMEZONE) || undefined;
   return new Date(ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit",timeZone:tz});
+}
+
+/* ---- Fiche compacte ------------------------------------------------------
+   Un tap sur un marqueur n'ouvre plus un panneau plein écran : il pose une
+   petite fiche au-dessus de la carte, qu'on lit sans perdre le contexte.
+   « Voir » seulement ensuite ouvre le détail complet. */
+function ouvrirFicheCompacte(l){
+  if(!l) return;
+  favorisEnMemoire.set(cleFavori(l), l);
+  const d = dispoDe(l);
+  const centre = positionMoi;
+  const dist = centre ? distanceM(centre[0],centre[1],l.lat,l.lng) : null;
+  const min = (kmh)=> dist == null ? null : tempsTrajetMinutes(dist, kmh);
+
+  const etiquettes = (l.categories||[]).filter(x=>ETIQUETTES_CAT[x]).slice(0,2)
+    .map(x=>ETIQUETTES_CAT[x]);
+  const ligne2 = [
+    l.note ? "⭐ "+l.note.toFixed(1).replace(".",",") : null,
+    ...etiquettes,
+  ].filter(Boolean).join(" · ");
+  const ligne3 = [
+    d && d.status !== "unknown" ? d.label : null,
+    dist != null ? formatDist(dist) : null,
+  ].filter(Boolean).join(" · ");
+
+  const modes = [
+    ["🚶", min(VITESSES_KMH.pied)],
+    ["🚲", min(VITESSES_KMH.velo)],
+  ].filter(([,m])=>m != null).map(([e,m])=>e+" "+m+" min").join("  ");
+
+  const mien = !!(l.dbId && moiId && l.auteur === moiId);
+  $("#ficheCompacte").innerHTML =
+    '<div class="fc-tete"><b>'+esc(l.titre)+'</b>'+boutonCoeur(l)+'</div>'+
+    (ligne2 ? '<span class="fc-l2">'+esc(ligne2)+'</span>' : '')+
+    (ligne3 ? '<span class="fc-l3">'+esc(ligne3)+'</span>' : '')+
+    (modes ? '<span class="fc-modes">'+modes+'</span>' : '')+
+    '<div class="fc-actions">'+
+      '<button class="fc-y">Y aller</button>'+
+      '<button class="fc-voir">Voir</button>'+
+      (l.dbId ? '<button class="fc-part">Partager</button>' : '')+
+      (mien ? '<button class="fc-prevenir">Prévenir</button>' : '')+
+    '</div>';
+  const f = $("#ficheCompacte");
+  f.hidden = false;
+  f.querySelector(".fc-voir").onclick = ()=>{
+    fermerFicheCompacte(); pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id));
+  };
+  f.querySelector(".fc-y").onclick = ()=>{ fermerFicheCompacte(); ouvrirDetail(l.id); };
+  if(f.querySelector(".fc-part")) f.querySelector(".fc-part").onclick = ()=>partagerInviter(l);
+  if(f.querySelector(".fc-prevenir")) f.querySelector(".fc-prevenir").onclick = ()=>{
+    fermerFicheCompacte(); pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id));
+  };
+}
+function fermerFicheCompacte(){
+  const f = $("#ficheCompacte");
+  if(f){ f.hidden = true; f.innerHTML = ""; }
 }
 
 /* La deuxième ligne d'une étiquette doit trancher : l'heure qui décide
@@ -3103,8 +3310,7 @@ function rendre(){
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
-      m.on("click", ()=>{ mettreAJourProfil("clic", l.cat);
-        pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); });
+      m.on("click", ()=>{ mettreAJourProfil("clic", l.cat); ouvrirFicheCompacte(l); });
       marqueurs.set(l.id,m);
       return;
     }
@@ -3209,7 +3415,7 @@ function fermerFeuille(options){
   dernierFocusFeuille = null;
   requestAnimationFrame(()=>{
     const retour = cible && document.contains(cible) && cible.getClientRects().length
-      ? cible : $("#btnAjouter");
+      ? cible : $('[data-nb="creer"]');
     if(retour && !retour.hidden) retour.focus();
   });
 }
@@ -3490,7 +3696,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#navBas","#btnAjouter","#appHeader","#btnPartager","#btnRevenir","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
+  ["#navBas","#appHeader","#btnPartager","#btnRevenir","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   feuilleNiveau = null;
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
@@ -3520,7 +3726,7 @@ function quitterNav(){
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
   $("#navEtapes").hidden = true;
-  ["#navBas","#btnAjouter","#appHeader","#btnTransports","#btnCredits"]
+  ["#navBas","#appHeader","#btnTransports","#btnCredits"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   majFiltres(); majRaccourcis();
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
@@ -4159,7 +4365,7 @@ function libelleQuand(b){
 function ouvrirModePose(){
   modePose=true;
   $("#viseur").hidden=false; $("#poseBarre").hidden=false;
-  $("#navBas").hidden=true; $("#btnAjouter").hidden=true; $("#btnTransports").hidden=true;
+  $("#navBas").hidden=true; $("#btnTransports").hidden=true;
   $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
   $("#feuilleBesoins").hidden=true;
   $("#poseBarre .txt").textContent = retourFormulaire
@@ -4169,7 +4375,7 @@ function ouvrirModePose(){
 function fermerModePose(){
   modePose=false;
   $("#viseur").hidden=true; $("#poseBarre").hidden=true;
-  $("#navBas").hidden=false; $("#btnAjouter").hidden=false; $("#btnTransports").hidden=false;
+  $("#navBas").hidden=false; $("#btnTransports").hidden=false;
   majBoutons();
   majRaccourcis(); majFeuille2();
 }
@@ -5822,6 +6028,7 @@ function recommandationsAccueil(limite){
 
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
 function carteRecommandation(l){
+  favorisEnMemoire.set(cleFavori(l), l);
   const c = CATS[l.cat] || {emoji:"📍"};
   const eta = l.rankEta;
   const dispo = l.rankAvailability;
@@ -5853,7 +6060,7 @@ function carteRecommandation(l){
   return '<button class="rc-carte" data-ac="'+esc(l.id)+'">'+
     visuel+
     '<span class="rc-corps">'+
-      '<span class="rc-cats">'+esc(cats)+'</span>'+
+      '<span class="rc-haut"><span class="rc-cats">'+esc(cats)+'</span>'+boutonCoeur(l)+'</span>'+
       '<span class="rc-nom">'+esc(l.titre)+'</span>'+
       '<span class="rc-ligne">'+
         (l.note ? '<span class="rc-note">★ '+l.note.toFixed(1).replace(".",",")+
@@ -6447,15 +6654,21 @@ $("#btnCredits").onclick=()=>{
   $("#btnCredits").setAttribute("aria-expanded", String(!c.hidden));
 };
 
-/* Mesure réelle de l'en-tête : sa hauteur dépend de la safe area, de la
-   taille de police système et du retour à la ligne des pills. */
+/* Mesure réelle de l'en-tête et de la barre du bas : leurs hauteurs dépendent
+   de la safe area, de la taille de police système et du retour à la ligne des
+   pills. Les deviner faisait chevaucher la fiche compacte et la navigation. */
 function mesurerHeader(){
   const h = $("#appHeader");
-  if(!h || h.hidden) return;
-  document.documentElement.style.setProperty("--header-height", h.offsetHeight+"px");
+  if(h && !h.hidden) document.documentElement.style.setProperty("--header-height", h.offsetHeight+"px");
+  const n = $("#navBas");
+  if(n && !n.hidden) document.documentElement.style.setProperty("--nav-height", n.offsetHeight+"px");
 }
 addEventListener("resize", mesurerHeader);
-if(window.ResizeObserver && $("#appHeader")) new ResizeObserver(mesurerHeader).observe($("#appHeader"));
+if(window.ResizeObserver){
+  const observateur = new ResizeObserver(mesurerHeader);
+  if($("#appHeader")) observateur.observe($("#appHeader"));
+  if($("#navBas")) observateur.observe($("#navBas"));
+}
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
    chargés : aucune requête, donc aucun effet sur le temps de chargement. */
 function suggerer(q){
@@ -6539,7 +6752,7 @@ function ouvrirCreation(){
   });
 }
 let typeAvantPose = null;
-$("#btnAjouter").onclick=()=>{ retourFormulaire=false; ouvrirCreation(); };
+
 $("#btnPoseOk").onclick=validerPose;
 $("#btnRevenir").onclick=()=>{
   if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
@@ -6581,9 +6794,7 @@ function majNavBas(){
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;
   if(b.getAttribute("aria-disabled") === "true"){
-    toast(id === "messages"
-      ? "Les messages servent à prévenir les participants d’un événement que tu as créé."
-      : "Les favoris arrivent bientôt.");
+    toast("Bientôt disponible.");
     return;
   }
   $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
@@ -6596,8 +6807,50 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
     ouvrirAccueilFeuille(); reglerEtatFeuille("deplie"); return;
   }
   if(id === "creer"){ retourFormulaire=false; ouvrirCreation(); return; }
+  if(id === "favoris"){ ouvrirFavoris(); return; }
   if(id === "profil"){ ouvrirCanaux(); return; }
 });
+
+/* Ce que j'ai enregistré. L'instantané stocké permet d'afficher un favori même
+   si son lieu n'est pas chargé dans la zone courante. */
+async function ouvrirFavoris(){
+  await chargerFavoris();
+  const lignes = await Store.favoris();
+  lignes.forEach(f=>{
+    const cle = f.publication_id ? "pub:"+f.publication_id : f.lieu_ref;
+    favorisIds.add(cle);
+    if(!favorisEnMemoire.has(cle)) favorisEnMemoire.set(cle, {
+      id:cle, dbId:f.publication_id || null, source:(f.lieu_ref||"").split(":")[0],
+      titre:f.titre, cat:f.cat, adresse:f.adresse, lat:f.lat, lng:f.lng,
+    });
+  });
+
+  const corps = lignes.length
+    ? lignes.map(f=>{
+        const cle = f.publication_id ? "pub:"+f.publication_id : f.lieu_ref;
+        const c = CATS[f.cat] || {emoji:"📍"};
+        return '<button class="ac-item" data-fav="'+esc(cle)+'">'+
+          '<span class="ac-emoji">'+c.emoji+'</span>'+
+          '<span class="ac-txt"><span class="ac-nom">'+esc(f.titre)+'</span>'+
+          '<span class="ac-sous">'+esc(f.adresse || (c.label || ""))+'</span></span>'+
+          boutonCoeur({dbId:f.publication_id, id:cle, source:(f.lieu_ref||"").split(":")[0]})+
+          '</button>';
+      }).join("")
+    : '<p class="liste-vide">Aucun favori pour l’instant.<br>'+
+      'Touche le cœur sur un lieu ou un événement pour l’enregistrer.</p>';
+
+  ouvrirFeuille(
+    '<div class="liste-tete"><h2>♡ Favoris</h2>'+
+    '<span class="liste-compte">'+lignes.length+'</span></div>'+corps);
+
+  $("#feuille").querySelectorAll("[data-fav]").forEach(b=>b.onclick=(e)=>{
+    if(e.target.closest("[data-coeur]")) return;   // le cœur ne navigue pas
+    const l = lieux.find(x=>cleFavori(x) === b.dataset.fav);
+    if(l){ fermerFeuille(); ouvrirFicheCompacte(l); }
+    else toast("Ce lieu n’est pas chargé dans cette zone");
+  });
+  majCoeurs();
+}
 
 /* La liste des canaux : un par événement qui me concerne, et rien d'autre. */
 function ouvrirCanaux(){
