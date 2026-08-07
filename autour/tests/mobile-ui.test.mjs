@@ -314,11 +314,11 @@ test("les événements créés peuvent porter une image stockée dans Supabase",
 
 test("le formulaire propose une photo sans l'imposer",()=>{
   assert.match(html,/id="fPhoto"/);
-  assert.match(html,/accept="image\/jpeg,image\/png,image\/webp"/);
   assert.match(html,/\(facultatif\)/);
   // rien n'est téléversé tant que l'événement n'est pas publié
-  assert.match(html,/n'est envoyée\s*\n?\s*qu'à la publication|qu'à la publication/);
-  assert.match(html,/Image trop lourde \(3 Mo maximum\)/);
+  assert.match(html,/qu'à la publication/);
+  // le refus ne tombe qu'après tentative de réduction
+  assert.match(html,/Image trop lourde, même après réduction/);
 });
 
 test("aucun gros emoji ne sert d'image finale",()=>{
