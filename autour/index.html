@@ -120,7 +120,7 @@ input{font-family:inherit;font-size:16px}
 .poi-eti span{font-size:10.5px;line-height:1.25;color:var(--ink2);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .poi-eti span.ouvre{color:#1B7F3B}
-.loin .poi-eti{display:none}
+.loin .poi-eti,.poi-eti.masquee{display:none}
 .poi-ferme .poi-eti{background:rgba(255,255,255,.82)}
 /* Fermé : atténué et badgé. Jamais le même style qu'un lieu ouvert, jamais
    masqué non plus — hors mode « Maintenant » il reste utile pour plus tard. */
@@ -225,7 +225,7 @@ input{font-family:inherit;font-size:16px}
 
 /* Les bandeaux se posent SOUS l'en-tête : sa hauteur est mesurée, donc ils
    ne recouvrent plus la recherche quel que soit l'appareil. */
-#bandeauGeo,#bandeauVide{position:absolute;left:14px;right:14px;
+#bandeauGeo,#bandeauVide{position:absolute;left:16px;right:16px;
   top:calc(var(--header-height) + 10px);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
@@ -244,82 +244,83 @@ input{font-family:inherit;font-size:16px}
    Sa hauteur réelle est mesurée et publiée dans --header-height : la carte
    et les boutons flottants s'y accrochent au lieu de deviner. */
 #appHeader{position:absolute;top:0;left:0;right:0;z-index:600;
-  padding:calc(var(--safe-t) + 10px) 14px 10px;
-  background:#fff;border-radius:0 0 22px 22px;
-  box-shadow:0 4px 18px rgba(20,30,25,.10)}
+  padding:calc(var(--safe-t) + 10px) 16px 12px;
+  background:#fff;border-radius:0 0 24px 24px;
+  box-shadow:0 2px 12px rgba(20,30,25,.06)}
 .hd-ligne{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .hd-lieu{flex:1;min-width:0;text-align:center;line-height:1.15}
-.hd-lieu b{display:block;font-size:19px;font-weight:800;letter-spacing:-.02em}
-.hd-lieu span{display:block;font-size:13px;color:var(--ink2)}
-.hd-icone{position:relative;flex-shrink:0;width:44px;height:44px;border-radius:50%;
+.hd-lieu b{display:block;font-size:18px;font-weight:800;letter-spacing:-.02em}
+.hd-lieu span{display:block;font-size:12.5px;color:var(--ink2)}
+.hd-icone{position:relative;flex-shrink:0;width:40px;height:40px;border-radius:50%;
   border:1px solid var(--bord);background:#fff;color:var(--ink);
   display:grid;place-items:center;box-shadow:0 1px 5px rgba(20,30,25,.10)}
 .hd-icone i{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;
   background:var(--signal);border:1.5px solid #fff}
 
 /* « Maintenant » : l'état du moment, en orange, toujours visible. */
-#btnMaintenant{flex-shrink:0;display:flex;align-items:center;gap:6px;height:44px;padding:0 16px;
+#btnMaintenant{flex-shrink:0;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink2);
-  font-size:14.5px;font-weight:700;box-shadow:0 1px 5px rgba(20,30,25,.10);
+  font-size:14px;font-weight:700;box-shadow:0 1px 5px rgba(20,30,25,.10);
   transition:background .16s ease,color .16s ease}
 #btnMaintenant.actif{background:var(--orange);border-color:var(--orange);color:#fff;
   box-shadow:0 3px 12px rgba(255,107,44,.36)}
 
 .hd-rech{display:flex;align-items:center;gap:10px}
 .hd-rech > svg{position:absolute;margin-left:15px;color:var(--ink2);pointer-events:none}
-.hd-rech input{flex:1;min-width:0;height:50px;padding:0 14px 0 43px;
+.hd-rech input{flex:1;min-width:0;height:46px;padding:0 40px 0 42px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;
   color:var(--ink);font-size:15px;outline:0}
-.hd-rech input::placeholder{color:#9AA49D}
+.hd-rech input::placeholder{color:#9AA49D;font-size:14.5px}
 .hd-rech input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
-.icone-btn{position:absolute;right:76px;width:40px;height:40px;border:0;background:none;
+.icone-btn{position:absolute;right:68px;width:36px;height:36px;border:0;background:none;
   color:var(--ink2);display:grid;place-items:center;padding:4px}
-.hd-filtres{flex-shrink:0;width:50px;height:50px;border-radius:50%;
+.hd-filtres{flex-shrink:0;width:46px;height:46px;border-radius:50%;
   border:1px solid var(--bord);background:#fff;color:var(--ink);
   display:grid;place-items:center;box-shadow:0 1px 5px rgba(20,30,25,.10)}
 
 /* ---- Pills de catégories ------------------------------------------------
    Petites, horizontales, scrollables. La sélection est pleine et colorée :
    elle doit se lire d'un coup d'œil, sans comparer les bordures. */
-.pills{display:flex;gap:8px;margin-top:11px;padding:2px 0 1px;
+.pills{display:flex;gap:6px;margin-top:10px;margin-left:-16px;margin-right:-16px;
+  padding:2px 16px;
   overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .pills::-webkit-scrollbar{display:none}
-.rc{flex:0 0 auto;display:flex;align-items:center;gap:6px;height:37px;padding:0 13px;
+.rc{flex:0 0 auto;display:flex;align-items:center;gap:5px;height:34px;padding:0 10px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
-  font-size:13.5px;font-weight:650;white-space:nowrap;
+  font-size:12.5px;font-weight:650;white-space:nowrap;
   box-shadow:0 1px 4px rgba(20,30,25,.07);transition:background .16s ease,color .16s ease}
-.rc em{font-size:14.5px;font-style:normal;line-height:1}
+.rc em{font-size:13px;font-style:normal;line-height:1}
 .rc:active{transform:scale(.97)}
 .rc.actif{background:var(--violet);border-color:var(--violet);color:#fff;
   box-shadow:0 3px 12px rgba(124,58,237,.34)}
 .rc.aide.actif{background:var(--aide);border-color:var(--aide)}
 
 /* ---- Carousel « Pour toi, maintenant » ---------------------------------- */
-.rc-tete{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:2px 2px 12px}
-.rc-tete strong{font-size:20px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+.rc-tete{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:2px 0 12px}
+.rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
 .rc-tout{flex-shrink:0;white-space:nowrap;border:0;background:none;
   color:var(--violet);font-size:14.5px;font-weight:700}
 .rc-piste{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;
-  padding:0 2px 4px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  padding:0 0 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
 .rc-piste::-webkit-scrollbar{display:none}
 .rc-carte{flex:0 0 178px;scroll-snap-align:start;display:flex;flex-direction:column;
   border:1px solid var(--bord);border-radius:16px;background:#fff;overflow:hidden;
   text-align:left;box-shadow:0 2px 10px rgba(20,30,25,.09)}
 .rc-carte:active{transform:scale(.985)}
-.rc-photo{display:block;height:88px;background:var(--paper) center/cover no-repeat}
+.rc-photo{display:block;height:74px;background:var(--paper) center/cover no-repeat}
 .rc-photo-vide{display:grid;place-items:center;font-size:32px}
-.rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 12px 12px}
-.rc-cats{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+.rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 11px 12px}
+.rc-cats{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
   letter-spacing:.06em;color:var(--violet)}
-.rc-nom{font-size:15px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
-  min-height:36px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rc-nom{font-size:14px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
+  min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rc-ligne{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
-.rc-note{font-size:13px;font-weight:650}
+.rc-note{font-size:12.5px;font-weight:650}
 .rc-note i{font-style:normal;font-weight:500;color:var(--ink2)}
-.rc-min{font-size:13px;font-weight:750;color:var(--violet)}
-.rc-trajet{font-size:12.5px;color:var(--ink2);margin-top:3px}
-.rc-arrivee{font-size:12px;color:var(--ink2)}
+.rc-min{font-size:12.5px;font-weight:750;color:var(--violet)}
+.rc-trajet{font-size:12px;color:var(--ink2);margin-top:2px}
+.rc-arrivee{font-size:11.5px;color:var(--ink2)}
 
 /* ---- Annonces d'un événement ------------------------------------------- */
 .an-msg{display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:10px 12px;
@@ -340,7 +341,7 @@ input{font-family:inherit;font-size:16px}
 .lien-fort{font-weight:700;color:var(--violet)}
 
 /* ---- Prochains départs -------------------------------------------------- */
-.tr-bloc{display:flex;align-items:center;gap:11px;margin:14px 2px 4px;padding:12px 13px;
+.tr-bloc{display:flex;align-items:center;gap:12px;margin:16px 0 8px;padding:13px 14px;
   border-radius:14px;background:var(--violet-doux)}
 .tr-icone{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#fff;
   display:grid;place-items:center;font-size:18px}
@@ -396,7 +397,7 @@ input{font-family:inherit;font-size:16px}
 /* ---- Boutons flottants sur la carte -------------------------------------
    Petites icônes rondes à droite : se recentrer, voir les transports. Elles
    ne portent plus de libellé — l'icône suffit et rend la carte au décor. */
-.rond-flottant{position:absolute;right:14px;z-index:601;width:44px;height:44px;
+.rond-flottant{position:absolute;right:16px;z-index:601;width:44px;height:44px;
   border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
   font-size:18px;line-height:1;display:grid;place-items:center;
   box-shadow:0 2px 10px rgba(20,30,25,.16);
@@ -419,7 +420,7 @@ input{font-family:inherit;font-size:16px}
 
 /* « + Créer » : violet, plein, nommé en toutes lettres. Le libellé ne
    disparaît sur aucune largeur — un « + » seul n'apprend rien à qui arrive. */
-#btnAjouter{position:absolute;right:14px;bottom:var(--map-control-bottom);z-index:602;
+#btnAjouter{position:absolute;right:16px;bottom:var(--map-control-bottom);z-index:602;
   display:flex;align-items:center;justify-content:center;gap:8px;
   height:52px;padding:0 22px;border:0;border-radius:99px;
   background:var(--violet);color:#fff;
@@ -458,7 +459,7 @@ input{font-family:inherit;font-size:16px}
   background:#fff;border:1px solid var(--bord);color:var(--ink);
   font-size:16px;line-height:1;display:grid;place-items:center}
 .fb-retour{font-size:22px}
-.fb-corps{flex:1;min-height:0;overflow-y:auto;padding:0 12px calc(var(--safe-b) + 14px);
+.fb-corps{flex:1;min-height:0;overflow-y:auto;padding:0 16px calc(var(--safe-b) + 20px);
   overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable}
 
 /* les grands choix : un par ligne, larges, lisibles de loin */
@@ -2256,6 +2257,39 @@ function majEpaisseurs(){
   const f = clamp(Math.pow(2, map.getZoom()-16), .35, 3.2);
   routes.forEach(r=>{ try{ r.couche.setStyle({weight: r.base*f}); }catch(e){} });
 }
+/* ---- Collisions d'étiquettes --------------------------------------------
+   Deux étiquettes qui se chevauchent sont illisibles toutes les deux. On
+   parcourt les marqueurs du plus pertinent au moins, et on réduit à sa
+   pastille tout label qui empiéterait sur un précédent. La carte reste
+   peuplée sans devenir un mur de texte. */
+let dernierClassement = [];
+function resoudreCollisions(){
+  if(!map) return;
+  const assezPres = map.getZoom() >= 15;
+  const rang = new Map();
+  dernierClassement.forEach((l,i)=>rang.set(l.id,i));
+  const priorite = ([id])=>rang.has(id) ? rang.get(id) : 9999;
+
+  const boites = [];
+  [...marqueurs.entries()]
+    .filter(([id])=>!String(id).startsWith("grappe:"))
+    .sort((a,b)=>priorite(a)-priorite(b))
+    .forEach(([,m])=>{
+      const el = m.getElement && m.getElement();
+      const eti = el && el.querySelector(".poi-eti");
+      if(!eti) return;
+      if(!assezPres){ eti.classList.add("masquee"); return; }
+      const p = map.latLngToContainerPoint(m.getLatLng());
+      // boîte approximative de l'étiquette, pastille comprise
+      const boite = {x:p.x-16, y:p.y-17, w:186, h:36};
+      const heurte = boites.some(b=>
+        boite.x < b.x+b.w && b.x < boite.x+boite.w &&
+        boite.y < b.y+b.h && b.y < boite.y+boite.h);
+      eti.classList.toggle("masquee", heurte);
+      if(!heurte) boites.push(boite);
+    });
+}
+
 function majEtiquettes(){
   if(!map) return;
   const montrer = map.getZoom() >= 16;
@@ -2559,7 +2593,7 @@ async function demarrer(coords){
   let minuteurRendu;
   map.on("moveend zoomend", ()=>{
     document.body.classList.toggle("loin", map.getZoom() < 15);
-    majEpaisseurs(); majEtiquettes(); majBoutons();
+    majEpaisseurs(); majEtiquettes(); majBoutons(); resoudreCollisions();
     // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
     // faisait saccader la carte sur téléphone
     // on ne relance rien tant que la carte bouge : un balayage de trois
@@ -2934,6 +2968,8 @@ function rendre(){
   }
   const garder = new Set();
   const choisis = selectionner();
+  // les étiquettes se départagent une fois les marqueurs posés
+  requestAnimationFrame(resoudreCollisions);
   majBandeauVide(choisis.length);
   if(feuilleNiveau !== null) majFeuille2();
   grouper(choisis).forEach(item=>{
@@ -4288,6 +4324,15 @@ const CAT_GOOGLE = {
   clothing_store:"friperie", thrift_store:"friperie", store:"commerce"
 };
 
+/* URL média d'une photo de lieu. Hauteur bornée : une carte de 88 px n'a
+   pas besoin d'un original de 4000 px sur un réseau mobile. */
+function photoGoogle(p){
+  const photo = (p.photos || [])[0];
+  if(!photo || !photo.name) return "";
+  return "https://places.googleapis.com/v1/"+photo.name+
+    "/media?maxHeightPx=400&skipHttpRedirect=false&key="+CLE_GOOGLE;
+}
+
 function mapperPlace(p){
   return {
     nom:(p.displayName&&p.displayName.text)||"",
@@ -4300,11 +4345,15 @@ function mapperPlace(p){
     horaires: (p.regularOpeningHours||{}).weekdayDescriptions || null,
     tel: p.nationalPhoneNumber || "",
     pmr: (p.accessibilityOptions||{}).wheelchairAccessibleEntrance,
-    type: p.primaryType || "", adresse: p.formattedAddress || ""
+    type: p.primaryType || "", adresse: p.formattedAddress || "",
+    image: photoGoogle(p)
   };
 }
 
+/* Une application de découverte doit donner envie avant de faire lire :
+   sans places.photos, toutes les cartes retombaient sur un emoji. */
 const CHAMPS_PLACE = "places.displayName,places.location,places.rating,"+
+  "places.photos,"+
   "places.userRatingCount,places.currentOpeningHours.openNow,"+
   "places.primaryType,places.formattedAddress,places.priceLevel,"+
   "places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,"+
@@ -4451,6 +4500,8 @@ function greffeNotes(liste, fiches){
       if(meilleur.horaires) l.horaires = meilleur.horaires;
       if(meilleur.tel) l.tel = meilleur.tel;
       if(meilleur.pmr != null) l.pmr = meilleur.pmr;
+      // la photo ne remplace jamais celle d'un événement déjà illustré
+      if(meilleur.image && !l.image) l.image = meilleur.image;
     }
   });
   rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
@@ -5561,6 +5612,8 @@ function recommandationsAccueil(limite){
     etaFor:l=>etaConnu(l, centre),
   });
   prechargerEta(classement, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
+  // sert aussi à décider quelles étiquettes survivent aux collisions
+  dernierClassement = classement;
   return classement.slice(0, limite || 12);
 }
 

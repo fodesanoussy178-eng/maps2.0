@@ -267,3 +267,28 @@ test("sur desktop la barre d'onglets devient un rail et la feuille une colonne",
   // le carousel horizontal devient une liste verticale
   assert.match(html,/\.rc-piste\{flex-direction:column/);
 });
+
+test("les photos de lieux sont réellement demandées à Google",()=>{
+  // sans places.photos, toutes les cartes retombaient sur un emoji
+  assert.match(html,/"places\.photos,"/);
+  assert.match(html,/function photoGoogle/);
+  assert.match(html,/places\.googleapis\.com\/v1\/"\+photo\.name\+/);
+  // une photo de lieu ne remplace pas l'affiche d'un événement
+  assert.match(html,/if\(meilleur\.image && !l\.image\) l\.image = meilleur\.image;/);
+});
+
+test("les étiquettes de la carte gèrent leurs collisions",()=>{
+  assert.match(html,/function resoudreCollisions/);
+  // priorité donnée au classement : les lieux pertinents gardent leur label
+  assert.match(html,/dernierClassement\.forEach\(\(l,i\)=>rang\.set\(l\.id,i\)\)/);
+  assert.match(html,/\.poi-eti\.masquee\{display:none\}|\.poi-eti,\.poi-eti\.masquee\{display:none\}/);
+  assert.match(html,/requestAnimationFrame\(resoudreCollisions\)/);
+});
+
+test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
+  // marges latérales 16px, boutons flottants décollés du bord
+  assert.match(html,/#appHeader\{[^}]*padding:calc\(var\(--safe-t\) \+ 10px\) 16px 12px/s);
+  assert.match(html,/\.fb-corps\{[^}]*padding:0 16px/s);
+  assert.match(html,/\.rond-flottant\{position:absolute;right:16px/);
+  assert.match(html,/#btnAjouter\{position:absolute;right:16px/);
+});
