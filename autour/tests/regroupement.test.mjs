@@ -216,3 +216,39 @@ test("la saisie entière se juge plus strictement qu'un début de phrase", () =>
   const defaut = parseSearchQuery("Bar-le-Duc", {isIntent: large});
   assert.equal(defaut.intention, "Bar-le-Duc");
 });
+
+/* ---- Destination en tête de phrase -------------------------------------- */
+
+const EST_LIEU = new Set(["lille", "paris", "roubaix", "tourcoing", "bar-le-duc"]);
+const isDestination = (t) => EST_LIEU.has(String(t).toLowerCase());
+
+test("la destination peut précéder l'intention", () => {
+  const opts = {isIntent, isDestination, isWholeIntent: (t) => INTENTIONS.has(String(t).toLowerCase())};
+  for (const [entree, intention, destination] of [
+    ["Lille restaurant",        "restaurant", "Lille"],
+    ["Paris cinéma",            "cinéma",     "Paris"],
+    ["Roubaix bar",             "bar",        "Roubaix"],
+    ["Tourcoing activité enfant","activité enfant","Tourcoing"],
+  ]) {
+    const r = parseSearchQuery(entree, opts);
+    assert.equal(r.intention, intention, entree);
+    assert.equal(r.destination, destination, entree);
+  }
+});
+
+test("on ne coupe pas sur un morceau qui ne peut pas être un lieu", () => {
+  const opts = {isIntent, isDestination, isWholeIntent: (t) => INTENTIONS.has(String(t).toLowerCase())};
+  // « restaurant » est une intention, mais « indien » n'est pas un lieu :
+  // couper là visait une destination inexistante et la carte ne bougeait pas
+  const r = parseSearchQuery("restaurant indien", opts);
+  assert.equal(r.destination, "");
+  assert.equal(r.intention, "restaurant indien");
+});
+
+test("une phrase commençant par un mot du vocabulaire est une demande", () => {
+  const opts = {isIntent, isDestination, isWholeIntent: (t) => INTENTIONS.has(String(t).toLowerCase())};
+  assert.equal(parseSearchQuery("bar à vin", opts).destination, "");
+  // alors qu'un nom propre inconnu du vocabulaire reste une destination
+  assert.equal(parseSearchQuery("Bar-le-Duc", opts).intention, "");
+  assert.equal(parseSearchQuery("Bar-le-Duc", opts).destination, "Bar-le-Duc");
+});

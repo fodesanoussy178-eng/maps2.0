@@ -353,7 +353,76 @@
     return [];
   }
 
+  /* ---- Lignes réellement desservies --------------------------------------
+     L'application proposait « Monter à X · Descendre à Y » en prenant l'arrêt
+     le plus proche du départ et celui le plus proche de l'arrivée, du même
+     type, puis en calculant une durée à vitesse moyenne. Rien ne vérifiait
+     qu'une ligne relie les deux : c'est un trajet inventé, et il envoyait
+     prendre un métro entre deux stations qu'aucune ligne ne relie.
+
+     OpenStreetMap sait le dire : chaque ligne est une relation `type=route`
+     dont les arrêts sont membres. Si la même relation apparaît autour du
+     départ ET autour de l'arrivée, une ligne dessert bien les deux — et son
+     mode comme son numéro se lisent dans ses tags, au lieu d'être devinés.
+
+     Ce qu'on n'affirme toujours PAS, faute de le savoir sans horaires : le
+     sens de circulation, l'ordre des arrêts, l'absence de correspondance, et
+     le fait qu'un service passe à cette heure. Le libellé doit rester à la
+     hauteur de ce qu'on sait. */
+
+  /* Le tag `route` d'OSM décrit le mode. On ne le devine jamais depuis autre
+     chose — c'était la source des « arrêts de bus » qui n'existent pas. */
+  const OSM_ROUTE_MODES = Object.freeze({
+    subway: "metro", light_rail: "tram", tram: "tram", train: "train",
+    bus: "bus", trolleybus: "bus", ferry: "ferry",
+  });
+
+  function routeToLine(relation) {
+    const tags = (relation && relation.tags) || {};
+    const mode = OSM_ROUTE_MODES[tags.route];
+    if (!mode) return null;                    // mode inconnu : on n'invente pas
+    const ref = (tags.ref || "").trim();
+    const name = (tags.name || "").trim();
+    return {
+      id: String(relation.id),
+      mode,
+      ref,
+      name,
+      // « T », « L5 », « 32 » : ce qui est écrit sur le véhicule. À défaut, le
+      // nom complet de la relation, jamais un numéro fabriqué.
+      label: ref || name,
+      operator: (tags.operator || "").trim(),
+    };
+  }
+
+  function linesFromRelations(elements) {
+    const out = new Map();
+    (elements || []).forEach((element) => {
+      if (!element || element.type !== "relation") return;
+      const line = routeToLine(element);
+      if (line && line.label) out.set(line.id, line);
+    });
+    return out;
+  }
+
+  /* Les lignes présentes des DEUX côtés. C'est la seule base honnête pour
+     proposer un trajet en transport : sans elle, on ne propose rien. */
+  function sharedLines(fromLines, toLines) {
+    const shared = [];
+    (fromLines instanceof Map ? fromLines : new Map()).forEach((line, id) => {
+      if (toLines instanceof Map && toLines.has(id)) shared.push(line);
+    });
+    // le mode le plus structurant d'abord : on préfère annoncer un métro
+    const rang = {metro: 0, train: 1, tram: 2, bus: 3, ferry: 4};
+    return shared.sort((a, b) => (rang[a.mode] ?? 9) - (rang[b.mode] ?? 9)
+      || a.label.localeCompare(b.label, "fr", {numeric: true}));
+  }
+
   root.AutourTransit = Object.freeze({
+    OSM_ROUTE_MODES,
+    routeToLine,
+    linesFromRelations,
+    sharedLines,
     nextDepartures,
     WALK_SPEED_M_PER_MIN,
     BOARDING_BUFFER_MIN,

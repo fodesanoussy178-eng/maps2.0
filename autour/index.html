@@ -877,6 +877,10 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .velo-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .velo-dispo{font-weight:700;color:var(--signal)}
 .velo-dist{color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:11px}
+/* Le mode écrit en toutes lettres à côté du nom : l'emoji seul se confond
+   d'un réseau à l'autre, et c'est ce qui se lisait de travers. */
+.arret-mode{font-style:normal;font-size:10.5px;color:var(--ink2);
+  font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.04em}
 
 dl.faits{margin:16px 0 18px}
 dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
@@ -1546,7 +1550,8 @@ const COULEURS_CAT = {
   parc:"#2E9E4F", terrain:"#2E9E4F", sport:"#2E9E4F", velo:"#2E9E4F",
   alimentaire:"#B82A3A", hebergement:"#B82A3A", sante:"#B82A3A", asso:"#B82A3A",
   emploi:"#B82A3A", collecte:"#B82A3A",
-  metro:"#2673E8", bus:"#2673E8", mairie:"#5D6B63", ecole:"#5D6B63",
+  metro:"#2673E8", bus:"#2673E8", tram:"#2673E8", train:"#2673E8",
+  mairie:"#5D6B63", ecole:"#5D6B63",
   toilettes:"#5D6B63", recharge:"#5D6B63", friperie:"#B14FE0", commerce:"#B14FE0",
   rencontre:"#E0952A", autre:"#5D6B63",
 };
@@ -1589,7 +1594,11 @@ const CATS = {
   mairie:   {label:"Services",      emoji:"🏛", eph:false},
   velo:     {label:"Stations vélo", emoji:"🚲", eph:false},
   metro:    {label:"Métro",         emoji:"🚇", eph:false},
-  bus:      {label:"Bus & tram",    emoji:"🚌", eph:false},
+  // « Bus & tram » mélangeait deux réseaux distincts : chercher un tram
+  // renvoyait des arrêts de bus, et l'inverse
+  bus:      {label:"Bus",           emoji:"🚌", eph:false},
+  tram:     {label:"Tram",          emoji:"🚊", eph:false},
+  train:    {label:"Gares",         emoji:"🚆", eph:false},
   recharge: {label:"Recharge",      emoji:"🔌", eph:false},
   toilettes:{label:"Toilettes",     emoji:"🚻", eph:false},
 };
@@ -1703,6 +1712,8 @@ const SYNONYMES = {
   mairie:["mairie","poste","administration","service public","papiers"],
   velo:["velo","bike","station velo","libre service"],
   metro:["metro","station"],
+  tram:["tram","tramway"],
+  train:["train","gare","ter","sncf"],
   bus:["bus","tram","arret","transport"],
   recharge:["recharge","borne","electrique"],
   toilettes:["toilette","wc","sanitaire"],
@@ -1993,8 +2004,11 @@ const REQUETES = [
 
   // -- transports
   ["station","subway","metro"], ["railway","subway_entrance","metro"],
-  ["railway","station","metro"], ["railway","halt","metro"],
-  ["railway","tram_stop","bus"], ["highway","bus_stop","bus"], ["amenity","bus_station","bus"],
+  // une gare ferroviaire n'est pas une station de métro, et un arrêt de tram
+  // n'est pas un arrêt de bus : la nomenclature de la carte doit dire le vrai
+  // mode, sinon on envoie quelqu'un chercher un arrêt qui n'existe pas
+  ["railway","station","train"], ["railway","halt","train"],
+  ["railway","tram_stop","tram"], ["highway","bus_stop","bus"], ["amenity","bus_station","bus"],
 ];
 
 
@@ -4090,11 +4104,15 @@ function ouvrirDetail(id){
 /* ================================================================== */
 
 const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // repli si OSRM injoignable
-const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", metro:"🚇", tram:"🚊", bus:"🚌" };
-const LABEL_MODE = { pied:"À pied", velo:"Vélo", voiture:"Voiture", metro:"Métro", tram:"Tram", bus:"Bus" };
+const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", metro:"🚇", tram:"🚊", bus:"🚌",
+                     train:"🚆", ferry:"⛴️" };
+/* Le libellé dit le mode réel. Un tram annoncé « Bus » envoie chercher un
+   arrêt qui n'existe pas — c'est arrivé. */
+const LABEL_MODE = { pied:"À pied", velo:"Vélo", voiture:"Voiture", metro:"Métro", tram:"Tram",
+                     bus:"Bus", train:"Train", ferry:"Bateau" };
 
 /* grammes de CO₂ par voyageur et par km — ordres de grandeur ADEME */
-const CO2_PAR_KM = { pied:0, velo:0, metro:5, tram:5, bus:100, voiture:193 };
+const CO2_PAR_KM = { pied:0, velo:0, metro:5, tram:5, bus:100, voiture:193, train:25, ferry:120 };
 /* à temps comparable, on met en avant le mode le plus sobre (rang le plus bas) */
 const RANG_ECO   = { pied:1, velo:2, metro:4, tram:5, bus:6, voiture:9 };
 
@@ -4327,8 +4345,13 @@ async function afficherTrajet(l){
   Promise.all([
     stationsVeloProchesCache(depart[0], depart[1]),
     arretsProchesCache(depart[0], depart[1]),
-    arretsAvecRepli(dest[0], dest[1])      // pour savoir à quel arrêt descendre
-  ]).then(async ([stations, arrets, arretsArrivee])=>{
+    arretsAvecRepli(dest[0], dest[1]),     // pour savoir à quel arrêt descendre
+    // les lignes qui passent réellement à chaque bout : sans elles, on ne
+    // propose aucun trajet en transport
+    lignesAutour(depart[0], depart[1]),
+    lignesAutour(dest[0], dest[1])
+  ]).then(async ([stations, arrets, arretsArrivee, lignesDepart, lignesArrivee])=>{
+    const lignesCommunes = TRANSIT.sharedLines(lignesDepart, lignesArrivee);
     const zone = $("#trajetInfos");
     if(!zone) return;
 
@@ -4341,22 +4364,29 @@ async function afficherTrajet(l){
       options.push({ mode:"velo", min:segMarche.min+segVelo.min, segments:[segMarche,segVelo] });
     }
 
-    if(arrets && arrets.length){
-      // un choix distinct par type d'arrêt détecté (métro, tram, bus), pas un seul mélangé
+    /* Un trajet en transport n'est proposé que si une ligne dessert VRAIMENT
+       les deux extrémités. Auparavant on prenait l'arrêt le plus proche de
+       chaque côté, du même type, et on affirmait qu'on pouvait aller de l'un à
+       l'autre : c'est ce qui faisait dire « monter à telle station, descendre
+       à telle autre » entre deux points qu'aucune ligne ne relie. */
+    if(arrets && arrets.length && lignesCommunes.length){
+      // un choix par MODE réellement desservi, tiré des lignes communes
+      const modesDesservis = [...new Set(lignesCommunes.map(x=>x.mode))];
       const parType = {}, parTypeArrivee = {};
-      arrets.forEach(a=>{ if(!parType[a.type]) parType[a.type]=a; });
-      (arretsArrivee||[]).forEach(a=>{ if(!parTypeArrivee[a.type]) parTypeArrivee[a.type]=a; });
+      arrets.forEach(a=>{ if(a.type && !parType[a.type]) parType[a.type]=a; });
+      (arretsArrivee||[]).forEach(a=>{ if(a.type && !parTypeArrivee[a.type]) parTypeArrivee[a.type]=a; });
 
-      for(const type of Object.keys(parType)){
+      for(const type of modesDesservis){
         const monte   = parType[type];
         const descend = parTypeArrivee[type];   // où descendre, côté arrivée
+        if(!monte || !descend) continue;        // pas d'arrêt de ce mode aux deux bouts
         // sans arrêt utile près du but, prendre ce mode ne rapproche de rien :
         // on exige que descendre là gagne au moins 300 m de marche
-        const gain = descend
-          ? distanceM(monte.lat,monte.lng,dest[0],dest[1]) -
-            distanceM(descend.lat,descend.lng,dest[0],dest[1])
-          : 0;
-        if(!descend || gain < 300) continue;
+        const gain = distanceM(monte.lat,monte.lng,dest[0],dest[1]) -
+                     distanceM(descend.lat,descend.lng,dest[0],dest[1]);
+        if(gain < 300) continue;
+        const lignes = lignesCommunes.filter(x=>x.mode === type);
+        const nomLignes = lignes.slice(0,3).map(x=>x.label).join(", ");
 
         const [versArret, depuisArret] = await Promise.all([
           segmentTrajet("pied", depart, [monte.lat,monte.lng]),
@@ -4370,13 +4400,17 @@ async function afficherTrajet(l){
         options.push({
           mode:type,
           min: versArret.min + attente + minRoule + depuisArret.min,
+          lignes:nomLignes,
           etapes:[
             {ic:"🚶", txt:"Marcher jusqu’à "+monte.nom, min:versArret.min,
              sous:formatDist(monte.dist)},
-            {ic:EMOJI_MODE[type], txt:"Monter à "+monte.nom, min:attente,
-             sous:"attente moyenne estimée"},
+            // le mode est nommé, et la ligne aussi : « Monter » sans dire quoi
+            // prendre laissait deviner, et deviner était souvent faux
+            {ic:EMOJI_MODE[type], txt:LABEL_MODE[type]+" "+nomLignes+" à "+monte.nom, min:attente,
+             sous:"attente moyenne estimée · sens à vérifier sur place"},
             {ic:"🏁", txt:"Descendre à "+descend.nom, min:minRoule,
-             sous:formatDist(distanceM(monte.lat,monte.lng,descend.lat,descend.lng))+" de trajet"},
+             sous:formatDist(distanceM(monte.lat,monte.lng,descend.lat,descend.lng))+
+                  " · durée estimée, correspondances non vérifiées"},
             {ic:"🚶", txt:"Finir à pied jusqu’à "+l.titre, min:depuisArret.min,
              sous:formatDist(descend.dist)}
           ],
@@ -4405,10 +4439,25 @@ async function afficherTrajet(l){
       html += '<p class="trajet-soustitre">Arrêts de transport à proximité</p>'+
         arrets.slice(0,5).map(a=>
           '<div class="velo-station">'+
-            '<span class="velo-nom">'+EMOJI_MODE[a.type]+' '+esc(a.nom)+'</span>'+
+            // sans type connu, on ne colle pas d'icône de mode : une puce
+            // neutre vaut mieux qu'un pictogramme faux
+            '<span class="velo-nom">'+(a.type ? EMOJI_MODE[a.type]+' ' : '📍 ')+esc(a.nom)+
+              (a.type ? ' <i class="arret-mode">'+esc(LABEL_MODE[a.type])+'</i>' : '')+'</span>'+
             '<span class="velo-dist">'+formatDist(a.dist)+'</span>'+
           '</div>'
         ).join("");
+      /* Dire pourquoi aucun trajet n'est proposé vaut mieux que de n'en
+         proposer aucun sans explication — et infiniment mieux que d'en
+         inventer un, ce que faisait la version précédente. */
+      if(!lignesCommunes.length){
+        html += '<p class="trajet-aide">'+
+          (lignesDepart && lignesArrivee
+            ? 'Aucune ligne ne dessert à la fois ces arrêts et le point d’arrivée '+
+              'd’après OpenStreetMap : aucun trajet en transport n’est proposé ici.'
+            : 'Lignes de transport non consultables pour le moment : aucun trajet '+
+              'en transport n’est proposé plutôt qu’un trajet approximatif.')+
+          '</p>';
+      }
     }
     const zone2 = $("#trajetInfos");
     if(zone2) zone2.innerHTML = html ||
@@ -4510,9 +4559,32 @@ async function stationsDuSysteme(urlDecouverte, lat, lng){
 /*  Arrêts de transport en commun (métro, tram, bus) à proximité      */
 /* ================================================================== */
 
-const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16 };
+/* Le mode d'un arrêt se lit dans les tags qui l'encodent, et nulle part
+   ailleurs. L'ancienne règle rangeait en « bus » tout ce qu'elle ne
+   reconnaissait pas, et en « métro » toute gare ferroviaire : d'où des arrêts
+   de bus annoncés là où il n'y en a pas, et des gares SNCF présentées comme
+   des stations de métro. Quand les tags ne disent rien, le type reste nul —
+   l'arrêt est alors montré comme information, jamais comme un mode à prendre. */
+const ETIQUETTE_ARRET = { metro:"Station de métro", tram:"Arrêt de tram",
+                          bus:"Arrêt de bus", train:"Gare" };
+
+function typeArret(t){
+  const tags = t || {};
+  const rail = tags.railway || "";
+  if(rail === "tram_stop" || tags.tram === "yes" || tags.light_rail === "yes") return "tram";
+  if(rail === "subway_entrance" || tags.station === "subway" || tags.subway === "yes") return "metro";
+  if(rail === "station" || rail === "halt"){
+    // une gare reste une gare : seule la présence d'un marqueur métro la
+    // requalifie, et il est traité juste au-dessus
+    return tags.train === "no" ? null : "train";
+  }
+  if(tags.highway === "bus_stop" || tags.amenity === "bus_station" || tags.bus === "yes") return "bus";
+  return null;                       // on ne devine pas
+}
+
+const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16, train:60, ferry:15 };
 /* attente moyenne à l'arrêt, faute d'horaires temps réel accessibles partout */
-const ATTENTE_MIN = { metro:4, tram:5, bus:7 };
+const ATTENTE_MIN = { metro:4, tram:5, bus:7, train:12, ferry:12 };
 
 async function arretsProches(lat,lng){
   try{
@@ -4531,13 +4603,10 @@ node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
     if(!els || !els.length) return null;
     const arrets = els.map(e=>{
       const t = e.tags||{};
-      const rail = t.railway||"";
-      const type = (rail==="tram_stop" || t.tram==="yes") ? "tram"
-                 : (rail==="station" || rail==="halt" || rail==="subway_entrance"
-                    || t.station==="subway" || t.public_transport==="station") ? "metro"
-                 : "bus";
+      const type = typeArret(t);
       return {
-        type, nom: t.name || ({metro:"Station",tram:"Arrêt tram",bus:"Arrêt bus"})[type],
+        type,
+        nom: t.name || (type ? ETIQUETTE_ARRET[type] : "Arrêt"),
         lat:e.lat, lng:e.lon, dist: distanceM(lat,lng,e.lat,e.lon)
       };
     }).sort((a,b)=>a.dist-b.dist);
@@ -4557,9 +4626,11 @@ node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
    couverte. Google connaît ces arrêts : on lui demande quand OSM se tait. */
 const TYPES_ARRET = ["bus_station","transit_station","subway_station",
                      "light_rail_station","train_station"];
+/* transit_station est générique chez Google : il ne dit pas le mode. Le ranger
+   en « bus » fabriquait des arrêts de bus. Sans mode connu, pas de mode. */
 const ARRET_GOOGLE = {
-  subway_station:"metro", train_station:"metro", light_rail_station:"tram",
-  bus_station:"bus", bus_stop:"bus", transit_station:"bus"
+  subway_station:"metro", train_station:"train", light_rail_station:"tram",
+  bus_station:"bus", bus_stop:"bus", transit_station:null
 };
 
 async function arretsGoogle(lat,lng){
@@ -4577,7 +4648,9 @@ async function arretsGoogle(lat,lng){
     const vus = new Set();
     return (j.places||[]).map(p=>{
       const nom = (p.displayName&&p.displayName.text) || "Arrêt";
-      const type = ARRET_GOOGLE[p.primaryType] || "bus";
+      // « || "bus" » transformait tout type inconnu en arrêt de bus
+      const type = Object.prototype.hasOwnProperty.call(ARRET_GOOGLE, p.primaryType)
+        ? ARRET_GOOGLE[p.primaryType] : null;
       return { type, nom, lat:p.location.latitude, lng:p.location.longitude,
                dist: distanceM(lat,lng,p.location.latitude,p.location.longitude) };
     }).filter(a=>{
@@ -4604,6 +4677,29 @@ async function arretsAvecRepli(lat,lng){
   let a = await arretsProches(lat,lng);
   if(!a || !a.length) a = await arretsGoogle(lat,lng);
   return a;
+}
+
+/* ---- Quelles lignes desservent ce point ? --------------------------------
+   Une ligne est une relation `type=route` dans OpenStreetMap, dont les arrêts
+   sont membres. On demande les relations qui contiennent un arrêt proche : ce
+   sont, réellement, les lignes qui passent là.
+
+   C'est ce qui manquait pour arrêter d'inventer des trajets. */
+const RAYON_LIGNES = 500;
+
+async function lignesAutour(lat,lng){
+  try{
+    const q = `[out:json][timeout:20];(
+node(around:${RAYON_LIGNES},${lat},${lng})["public_transport"~"^(stop_position|platform|station)$"];
+node(around:${RAYON_LIGNES},${lat},${lng})["highway"="bus_stop"];
+node(around:${RAYON_LIGNES},${lat},${lng})["railway"~"^(tram_stop|station|halt|subway_entrance)$"];
+)->.arrets;
+rel(bn.arrets)["type"="route"]["route"~"^(bus|tram|subway|light_rail|train|trolleybus|ferry)$"];
+out tags;`;
+    const els = await overpass(q, 12000);
+    if(!els) return null;                 // réseau muet : on ne conclut rien
+    return TRANSIT.linesFromRelations(els);
+  }catch(e){ return null; }
 }
 
 async function arretsProchesCache(lat,lng){
@@ -7221,9 +7317,7 @@ function suggerer(q){
      commune on ne voyait aucune façon d'y aller.
      On ne DÉCIDE pas ici que « Lille » est une ville — on le propose, et c'est
      le géocodeur qui tranchera au moment de valider. */
-  const decoupe = parseSearchQuery(q, {
-    isIntent: intentionConnue, isWholeIntent: estTermeMetier,
-  });
+  const decoupe = parseSearchQuery(q, DECOUPAGE);
   const dest = decoupe.destination;
   if(dest && ressembleAUneZone(dest)){
     sug.push({emo:"📍", lab:dest, sous:"destination", texte:dest});
@@ -7303,10 +7397,7 @@ async function lancerRecherche(){
 
   // « cinéma Lille », « restaurant Roubaix », « activité enfant Tourcoing » :
   // on sépare avant d'interroger quoi que ce soit
-  const {intention, destination} = parseSearchQuery(q, {
-    isIntent: intentionConnue,        // tolérant, pour découper un début de phrase
-    isWholeIntent: estTermeMetier,    // strict, pour ne pas confisquer « Bar-le-Duc »
-  });
+  const {intention, destination} = parseSearchQuery(q, DECOUPAGE);
 
   // une destination plausible déplace la carte ; l'intention, s'il y en a une,
   // devient le filtre appliqué une fois sur place
@@ -7319,7 +7410,10 @@ async function lancerRecherche(){
       ouvrirResultatsZone(destination, intention);
       return;
     }
-    // géocodage muet : on ne prétend pas avoir trouvé la ville
+    /* Le géocodeur n'a rien trouvé. C'est lui qui fait autorité sur ce qui est
+       un lieu : plutôt que de deviner mieux, on relit la requête entière comme
+       une demande. « bar à vin » vise ainsi les bars, et non la commune
+       imaginaire « vin » que le découpage avait isolée. */
     if(!intention){ toast("Lieu introuvable : "+destination); return; }
   }
   appliquerPhrase(q);        // même compréhension que la barre « Autour IA »
@@ -7333,6 +7427,19 @@ async function lancerRecherche(){
    « activité enfant » n'est ni l'un ni l'autre : c'est l'interprète de phrases
    qui le comprend, via son filtre famille. */
 const FILTRES_INTENTION = new Set(["famille","etudier","monde","libre"]);
+
+/* Les trois questions que pose le découpage d'une requête, réunies ici pour
+   qu'elles ne divergent jamais entre la barre de recherche et les
+   suggestions :
+     · isIntent      — tolérant, pour reconnaître un morceau de phrase ;
+     · isWholeIntent — strict, pour ne pas confisquer « Bar-le-Duc » ;
+     · isDestination — ce morceau peut-il être un lieu ? Sans lui, on coupait
+       n'importe où : « Lille restaurant indien » visait « indien ». */
+const DECOUPAGE = {
+  isIntent: (t)=>intentionConnue(t),
+  isWholeIntent: (t)=>estTermeMetier(t),
+  isDestination: (t)=>ressembleAUneZone(t),
+};
 
 function intentionConnue(t){
   const texte = String(t||"").trim();

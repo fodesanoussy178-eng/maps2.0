@@ -635,7 +635,7 @@ test("la touche Retour du clavier lance réellement la recherche",()=>{
 test("les suggestions distinguent une destination d'une intention",()=>{
   // en tapant un nom de commune, la liste ne proposait que des catégories et
   // des lieux déjà chargés : aucune façon visible d'aller là-bas
-  assert.match(html,/const decoupe = parseSearchQuery\(q, \{/);
+  assert.match(html,/const decoupe = parseSearchQuery\(q, DECOUPAGE\);/);
   assert.match(html,/if\(dest && ressembleAUneZone\(dest\)\)\{/);
   assert.match(html,/sug\.push\(\{emo:"📍", lab:dest, sous:"destination", texte:dest\}\);/);
   assert.match(html,/sous:"intention · destination"/);
@@ -660,11 +660,14 @@ test("le nom accessible du panneau ne porte plus l'ancien CTA",()=>{
 });
 
 test("une requête composée sépare destination et intention",()=>{
-  assert.match(html,/parseSearchQuery\(q, \{/);
-  // deux prédicats : tolérant pour découper un début de phrase, strict pour la
-  // saisie entière — sinon « Bar-le-Duc » devenait l'intention « bar »
-  assert.match(html,/isIntent: intentionConnue,/);
-  assert.match(html,/isWholeIntent: estTermeMetier,/);
+  // un seul jeu de prédicats, partagé par la barre et les suggestions
+  assert.match(html,/parseSearchQuery\(q, DECOUPAGE\)/);
+  assert.match(html,/const DECOUPAGE = \{/);
+  assert.match(html,/isIntent: \(t\)=>intentionConnue\(t\),/);
+  assert.match(html,/isWholeIntent: \(t\)=>estTermeMetier\(t\),/);
+  // sans ce troisième prédicat on coupait n'importe où : « Lille restaurant
+  // indien » visait la destination « indien »
+  assert.match(html,/isDestination: \(t\)=>ressembleAUneZone\(t\),/);
   assert.match(html,/if\(destination && ressembleAUneZone\(destination\)\)\{/);
   assert.match(html,/if\(intention\) appliquerIntention\(intention\);/);
   assert.match(html,/ouvrirResultatsZone\(destination, intention\);/);
@@ -782,4 +785,58 @@ test("la navigation nomme le produit",()=>{
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
   assert.match(html,/Autour de moi\n  <\/button>/);
   assert.match(html,/Pour toi\n  <\/button>/);
+});
+
+/* ---- Trajets : ne jamais annoncer un transport qui ne circule pas ------- */
+
+test("aucun trajet en transport sans ligne desservant les deux bouts",()=>{
+  // l'ancienne version prenait l'arrêt le plus proche de chaque côté, du même
+  // type, et affirmait qu'on pouvait aller de l'un à l'autre : elle envoyait
+  // prendre un métro entre deux stations qu'aucune ligne ne relie
+  assert.match(html,/const lignesCommunes = TRANSIT\.sharedLines\(lignesDepart, lignesArrivee\);/);
+  assert.match(html,/if\(arrets && arrets\.length && lignesCommunes\.length\)\{/);
+  // les modes proposés sortent des lignes réelles, plus des arrêts trouvés
+  assert.match(html,/const modesDesservis = \[\.\.\.new Set\(lignesCommunes\.map\(x=>x\.mode\)\)\];/);
+  assert.match(html,/for\(const type of modesDesservis\)\{/);
+  // la requête demande les relations type=route qui contiennent un arrêt proche
+  assert.match(html,/rel\(bn\.arrets\)\["type"="route"\]/);
+  assert.match(html,/function lignesAutour\(lat,lng\)/);
+});
+
+test("l'étape nomme le mode et la ligne, et borne ce qu'elle affirme",()=>{
+  assert.match(html,/txt:LABEL_MODE\[type\]\+" "\+nomLignes\+" à "\+monte\.nom/);
+  assert.match(html,/sous:"attente moyenne estimée · sens à vérifier sur place"/);
+  assert.match(html,/correspondances non vérifiées/);
+  // et quand rien ne relie les deux points, on le dit au lieu de se taire
+  assert.match(html,/Aucune ligne ne dessert à la fois ces arrêts/);
+});
+
+test("le mode d'un arrêt se lit dans ses tags, jamais par défaut",()=>{
+  assert.match(html,/function typeArret\(t\)\{/);
+  // une gare ferroviaire n'est pas un métro
+  assert.match(html,/if\(rail === "station" \|\| rail === "halt"\)\{/);
+  assert.match(html,/return tags\.train === "no" \? null : "train";/);
+  // un tram n'est pas un bus
+  assert.match(html,/if\(rail === "tram_stop" \|\| tags\.tram === "yes" \|\| tags\.light_rail === "yes"\) return "tram";/);
+  assert.match(html,/\["railway","tram_stop","tram"\]/);
+  assert.match(html,/\["railway","station","train"\], \["railway","halt","train"\]/);
+  // rien de reconnu : pas de type, donc pas de mode annoncé
+  assert.match(html,/return null;\s*\/\/ on ne devine pas/);
+  // Google : transit_station est générique, il ne vaut pas « bus »
+  assert.match(html,/transit_station:null/);
+  assert.doesNotMatch(html,/ARRET_GOOGLE\[p\.primaryType\] \|\| "bus"/);
+  // Bus et tram ne partagent plus une seule catégorie
+  assert.match(html,/tram:     \{label:"Tram"/);
+  assert.match(html,/train:    \{label:"Gares"/);
+  assert.doesNotMatch(html,/label:"Bus & tram"/);
+});
+
+test("un seul jeu de prédicats pour la barre et les suggestions",()=>{
+  // « Lille restaurant indien » : la carte ne bougeait pas, parce que le
+  // découpage ne cherchait la destination qu'en fin de phrase et ne vérifiait
+  // jamais que le morceau restant pouvait être un lieu
+  assert.match(html,/const DECOUPAGE = \{/);
+  assert.match(html,/isDestination: \(t\)=>ressembleAUneZone\(t\),/);
+  const n = (html.match(/parseSearchQuery\(q, DECOUPAGE\)/g) || []).length;
+  assert.equal(n, 2, "la barre et les suggestions partagent le même découpage");
 });

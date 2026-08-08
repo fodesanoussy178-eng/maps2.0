@@ -518,6 +518,11 @@
        même qu'avant. */
     const isWholeIntent = typeof settings.isWholeIntent === "function"
       ? settings.isWholeIntent : isIntent;
+    /* « Ce morceau peut-il être un lieu ? » — sans cette question, on coupait
+       n'importe où pourvu que le début ressemble à une intention :
+       « Lille restaurant indien » donnait la destination « indien ». */
+    const isDestination = typeof settings.isDestination === "function"
+      ? settings.isDestination : () => true;
     const raw = String(query || "").trim().replace(/\s+/g, " ");
     if (!raw) return { intention: "", destination: "", raw };
 
@@ -531,23 +536,42 @@
        vocabulaire de l'application sait, lui, que « bar à vin » est une seule
        intention ; la préposition ne sert que de repli. */
     const words = raw.split(" ");
+    const propre = (t, motif) => t.replace(motif, "").trim();
+
+    // 1. intention d'abord, destination ensuite — « cinéma Lille »
     for (let cut = words.length - 1; cut >= 1; cut -= 1) {
-      const head = words.slice(0, cut).join(" ");
-      const tail = words.slice(cut).join(" ");
-      if (!isIntent(head)) continue;
-      const destination = tail.replace(LEADING_PREPOSITION, "").trim();
-      if (!destination) continue;                    // « restaurant à » ne vise rien
-      return { intention: head.replace(TRAILING_PREPOSITION, "").trim(), destination, raw };
+      const head = propre(words.slice(0, cut).join(" "), TRAILING_PREPOSITION);
+      const tail = propre(words.slice(cut).join(" "), LEADING_PREPOSITION);
+      if (!head || !tail) continue;                  // « restaurant à » ne vise rien
+      if (isIntent(head) && isDestination(tail)) return { intention: head, destination: tail, raw };
     }
 
-    // repli : une préposition sépare explicitement, même sans vocabulaire connu
+    /* 2. destination d'abord — « Lille restaurant indien », « Paris cinéma ».
+       C'est une façon de taper au moins aussi courante que l'autre, et elle
+       n'était pas prévue : la requête partait entière au géocodeur, qui ne
+       trouvait rien, et la carte ne bougeait pas. */
+    for (let cut = 1; cut < words.length; cut += 1) {
+      const head = propre(words.slice(0, cut).join(" "), TRAILING_PREPOSITION);
+      const tail = propre(words.slice(cut).join(" "), LEADING_PREPOSITION);
+      if (!head || !tail) continue;
+      if (isDestination(head) && isIntent(tail)) return { intention: tail, destination: head, raw };
+    }
+
+    /* 3. repli : une préposition sépare explicitement, même sans vocabulaire
+       connu — mais seulement si ce qu'elle laisse à droite peut être un lieu.
+       Sans cette condition, « bar à vin » partait chercher la commune « vin ». */
     const byPreposition = raw.split(PREPOSITIONS);
-    if (byPreposition.length === 2 && byPreposition[0].trim() && byPreposition[1].trim()) {
+    if (byPreposition.length === 2 && byPreposition[0].trim() && byPreposition[1].trim()
+        && isDestination(byPreposition[1].trim())) {
       return { intention: byPreposition[0].trim(), destination: byPreposition[1].trim(), raw };
     }
 
-    // rien à couper : c'est une intention seule, ou une destination seule
+    /* 4. rien à couper. Une phrase qui COMMENCE par un mot du vocabulaire est
+       une demande, pas un nom de lieu : « restaurant indien » est une
+       intention entière, quand « Bar-le-Duc » — un seul mot, absent du
+       vocabulaire — est une commune. */
     if (isWholeIntent(raw)) return { intention: raw, destination: "", raw };
+    if (words.length > 1 && isWholeIntent(words[0])) return { intention: raw, destination: "", raw };
     return { intention: "", destination: raw, raw };
   }
 
