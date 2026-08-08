@@ -208,8 +208,10 @@ test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>
   assert.match(html,/height:100dvh/);
   assert.match(html,/--nav-height:calc\(var\(--safe-b\) \+ 58px\)/);
   assert.match(html,/function mesurerHeader/);
-  // les bandeaux se posent sous l'en-tête mesuré, plus sous une hauteur devinée
-  assert.match(html,/top:calc\(var\(--header-height\) \+ 10px\)/);
+  // les bandeaux se posent sous le bord bas mesuré de l'en-tête, plus sous une
+  // hauteur devinée — et plus sous sa seule hauteur, qui ignorait son décalage
+  assert.match(html,/top:calc\(var\(--header-bas\) \+ 10px\)/);
+  assert.match(html,/setProperty\("--header-height", h\.offsetHeight\+"px"\)/);
 });
 
 /* ---- Coordination d'événement, pas messagerie -------------------------- */
@@ -260,16 +262,57 @@ test("le nouveau design s'applique à toutes les tailles, sans seconde applicati
   assert.doesNotMatch(desktop,/#navBas\{[^}]*display:none/);
 });
 
-test("sur desktop la barre d'onglets devient un rail et la feuille une colonne",()=>{
-  assert.match(html,/--rail:88px/);
+test("sur desktop la carte occupe toute la fenêtre, sans rail ni sidebar",()=>{
+  const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
+                             html.indexOf("/* ---- grappes de marqueurs"));
+
+  // plus aucun rail : la carte n'est décalée par rien
+  assert.doesNotMatch(html,/--rail:/);
+  assert.match(desktop,/#map\{left:0;right:0;top:0;bottom:0\}/);
+  // rien ne réserve de hauteur en bas : la navigation flotte
+  assert.match(desktop,/--nav-height:0px/);
+
+  // navigation : une pastille flottante en bas à gauche, jamais pleine hauteur
+  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:20px;right:auto;width:auto/);
+  assert.match(desktop,/border-radius:99px/);
+
+  // en-tête et recherche : flottants en haut à gauche, largeur bornée
+  assert.match(desktop,/#appHeader\{left:20px;right:auto/);
+  assert.match(desktop,/#rechercheOverlay\{left:20px;right:auto/);
+
+  // panneau de résultats : temporaire et fermable, pas une sidebar. La règle
+  // .accueil est reprise explicitement, sinon sa spécificité l'emportait et
+  // le panneau redevenait une feuille mobile étirée.
+  assert.match(desktop,/#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie,\s*#feuilleBesoins\.reduite\{/);
+  assert.match(desktop,/width:var\(--panneau\)/);
   assert.match(html,/--panneau:400px/);
-  // la règle .accueil est reprise explicitement, sinon sa spécificité
-  // l'emportait et la colonne redevenait une feuille mobile étirée
-  assert.match(html,/#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie\{/);
-  assert.match(html,/#appHeader\{left:var\(--rail\)/);
-  assert.match(html,/#map\{left:var\(--rail\)\}/);
+  // la croix reste atteignable même sur l'accueil : c'est elle qui rend
+  // l'espace à la carte
+  assert.match(desktop,/#feuilleBesoins\.accueil \.fb-tete\{display:flex\}/);
+
   // le carousel horizontal devient une liste verticale
-  assert.match(html,/\.rc-piste\{flex-direction:column/);
+  assert.match(desktop,/\.rc-piste\{flex-direction:column/);
+});
+
+test("la hauteur mesurée de la navigation ne rogne pas la carte sur desktop",()=>{
+  // la mesure en ligne l'emporte sur le media query : elle doit donc publier
+  // elle-même 0 quand la navigation flotte, sinon la carte perd 60px en bas
+  assert.match(html,/matchMedia\("\(min-width:1100px\)"\)/);
+  assert.match(html,/NAV_FLOTTANTE\.matches \? "0px" : haut\+"px"/);
+  assert.match(html,/setProperty\("--nav-flottante", haut\+"px"\)/);
+  // l'attribution se range au-dessus de la pastille, pas dessous
+  assert.match(html,/#btnCredits\{left:20px;bottom:calc\(var\(--nav-flottante,60px\) \+ 28px\)\}/);
+});
+
+test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa hauteur",()=>{
+  // l'en-tête flotte : il ne commence pas à 0, et son décalage haut change
+  // selon le breakpoint. S'accrocher à --header-height le recouvrait.
+  assert.match(html,/--header-bas:calc\(var\(--safe-t\) \+ 54px\)/);
+  assert.match(html,/setProperty\("--header-bas",\s*\n?\s*Math\.round\(h\.getBoundingClientRect\(\)\.bottom\)\+"px"\)/);
+  for(const sel of ["#bandeauGeo,#bandeauVide","#charge"])
+    assert.ok(html.includes(sel+"{position:absolute;top:calc(var(--header-bas) + 10px)") ||
+              html.includes(sel+"{position:absolute;left:16px;right:16px;\n  top:calc(var(--header-bas) + 10px)"),
+              sel+" doit s'accrocher au bord bas de l'en-tête");
 });
 
 test("les photos de lieux sont réellement demandées à Google",()=>{
