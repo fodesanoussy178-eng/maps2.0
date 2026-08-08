@@ -349,6 +349,208 @@
     return result;
   }
 
+  /* ---- Regroupement logique ----------------------------------------------
+     dedupeItems() répond à « ces deux fiches sont-elles le même enregistrement
+     vu par deux sources ? ». Ce n'est pas la même question que « ces objets
+     désignent-ils le même endroit pour quelqu'un qui regarde la carte ? ».
+
+     Un pôle d'échange comme Phalempins existe dans OpenStreetMap sous la forme
+     d'une station de métro, de deux bouches de métro, d'un arrêt de bus par
+     sens et parfois d'un arrêt de tram — objets distincts, légitimement, pour
+     qui cartographie le réseau. Sur la carte d'Autour, c'est UN endroit. Les
+     titres ne sont pas identiques (« Phalempins », « Métro Phalempins »,
+     « Phalempins - Quai 2 ») et les distances dépassent les 120 m du
+     dédoublonnage : aucune des deux conditions de dedupeItems n'est remplie,
+     et six pastilles se superposaient.
+
+     On regroupe donc par famille d'usage + nom normalisé + proximité, avec un
+     rayon propre à chaque famille : large pour un pôle de transport qui
+     s'étale sur un carrefour, serré pour des commerces qui se touchent sans
+     être le même. Rien n'est supprimé — les membres restent attachés au
+     représentant, et l'ETA comme les itinéraires continuent de les voir. */
+
+  const TRANSPORT_CATEGORIES = Object.freeze(["metro", "bus", "tram", "train", "velo"]);
+
+  /* Mots qui décrivent le rôle de l'objet, pas l'endroit. « Métro Phalempins »
+     et « Arrêt Phalempins » nomment le même lieu ; les retirer fait apparaître
+     le nom réel. La liste reste courte et explicite : deviner large ferait
+     fusionner « Gare » et « Gare Saint-Sauveur ». */
+  const TRANSPORT_ROLE_WORDS = /\b(gare|station|arret|halte|metro|tram|tramway|bus|autobus|quai|voie|acces|entree|sortie|bouche|platform|stop|parking velo|velo|station velo)\b/g;
+  const NAME_NOISE = /\b(le|la|les|l|du|de|des|d|the|saint|st)\b/g;
+
+  function normalizePlaceName(value, family) {
+    let text = normalizeText(value);
+    if (family === "transport") text = text.replace(TRANSPORT_ROLE_WORDS, " ");
+    // « Phalempins - Quai 2 », « Phalempins (direction CHU) » : le qualificatif
+    // de quai ou de direction distingue deux objets du MÊME lieu
+    text = text.replace(/\b\d+\b/g, " ").replace(/\bdirection\b.*$/, " ");
+    return text.replace(NAME_NOISE, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function placeFamily(item) {
+    if (!item) return "autre";
+    const categories = [item.cat, ...(item.categories || [])];
+    if (categories.some((category) => TRANSPORT_CATEGORIES.includes(category))) return "transport";
+    return "autre";
+  }
+
+  /* Rayons choisis d'après la réalité du terrain, pas au jugé, et distincts
+     selon la force de la preuve :
+
+       · `exact` — les deux noms normalisés sont IDENTIQUES. C'est la preuve
+         la plus forte, on accepte donc une distance plus grande : un pôle
+         d'échange s'étale sur un carrefour entier, et deux relevés du même
+         commerce importés de sources différentes dérivent d'une centaine de
+         mètres.
+       · `inclus` — l'un des noms contient l'autre (« Gare Lille Flandres » et
+         « Lille Flandres »). Preuve plus faible, donc rayon plus serré :
+         sinon « Marché » et « Marché de Wazemmes » finiraient confondus.
+
+     Deux boulangeries homonymes à 600 m restent deux boulangeries. */
+  const GROUPING_RADIUS = Object.freeze({
+    transport: { exact: 350, inclus: 300 },
+    autre:     { exact: 200, inclus: 120 },
+  });
+
+  /* Renvoie la nature du rapprochement, ou null s'il n'y en a pas : c'est elle
+     qui décide du rayon applicable. */
+  function nameRelation(left, right) {
+    if (!left || !right) return null;
+    if (left === right) return "exact";
+    // le plus court doit rester assez long pour ne pas être un mot
+    // passe-partout — « gare » ou « parc » ne rapprochent rien
+    const short = left.length <= right.length ? left : right;
+    const long = short === left ? right : left;
+    return short.length >= 5 && long.indexOf(short) !== -1 ? "inclus" : null;
+  }
+
+  /* Quel membre représente le groupe ? Celui qui porte le plus d'information :
+     un objet nommé passe devant un objet anonyme, une station devant une
+     bouche, et à égalité le plus proche du barycentre. */
+  const FAMILY_RANK = Object.freeze({ train: 5, metro: 4, tram: 3, bus: 2, velo: 1 });
+
+  function representativeScore(item) {
+    let score = FAMILY_RANK[item.cat] || 0;
+    if (normalizeText(item.title || item.titre)) score += 10;
+    if (item.openingHours) score += 2;
+    if (item.rating || item.note) score += 2;
+    if (Number.isFinite(Number(item.reviewCount || item.avis))) score += 1;
+    return score;
+  }
+
+  function groupLogicalPlaces(items, distanceBetween, options) {
+    const settings = options || {};
+    const radii = Object.assign({}, GROUPING_RADIUS, settings.radius);
+    const groups = [];
+
+    (items || []).forEach((item) => {
+      // un événement daté n'est pas un lieu : deux concerts au même endroit
+      // sont deux propositions distinctes, jamais un « hub »
+      if (item.isTemporary) { groups.push({ members: [item], family: "evenement" }); return; }
+      const family = placeFamily(item);
+      const name = normalizePlaceName(item.title || item.titre, family);
+      if (!name) { groups.push({ members: [item], family, name }); return; }
+      const radius = radii[family] || radii.autre;
+
+      const found = groups.find((group) => {
+        if (group.family !== family || !group.name) return false;
+        const relation = nameRelation(group.name, name);
+        if (!relation) return false;
+        const limit = radius[relation];
+        return group.members.some((member) => {
+          const distance = distanceBetween(member.latitude, member.longitude, item.latitude, item.longitude);
+          return Number.isFinite(distance) && distance <= limit;
+        });
+      });
+
+      if (found) found.members.push(item);
+      else groups.push({ members: [item], family, name });
+    });
+
+    return groups.map((group) => {
+      if (group.members.length === 1) return group.members[0];
+      const best = group.members.slice().sort((a, b) => representativeScore(b) - representativeScore(a))[0];
+      // le représentant hérite des appartenances de tout le groupe : chercher
+      // « bus » doit encore trouver un pôle représenté par sa station de métro
+      const categoryWeights = {};
+      group.members.forEach((member) => {
+        if (member.categoryWeights) addWeights(categoryWeights, member.categoryWeights);
+        (member.categories || []).forEach((category) => addWeights(categoryWeights, { [category]: DECLARED_WEIGHT }));
+        if (member.cat) addWeights(categoryWeights, { [member.cat]: 1 });
+      });
+      return Object.assign({}, best, {
+        categoryWeights,
+        categories: sortByWeight(categoryWeights),
+        // ce qui a été replié reste joignable : l'itinéraire vers un pôle
+        // doit pouvoir viser la bouche de métro exacte, pas le barycentre
+        regroupes: group.members.filter((member) => member !== best),
+        nbRegroupes: group.members.length,
+      });
+    });
+  }
+
+  /* ---- Requêtes composées ------------------------------------------------
+     « cinéma Lille » demande deux choses à la fois : une intention et une
+     destination. Jusqu'ici seule la forme avec préposition était comprise
+     (« restaurant à Lille ») ; sans elle, la requête partait entière dans la
+     recherche plein texte et la carte ne bougeait pas.
+
+     On sépare donc avant d'interroger quoi que ce soit. Le vocabulaire des
+     catégories vit dans l'application, pas ici : l'appelant fournit `isIntent`.
+     On ne devine jamais qu'un mot est une ville — c'est le géocodeur qui
+     tranche, et lui seul. */
+
+  const PREPOSITIONS = /\s+(?:a|à|au|aux|sur|vers|dans|en|pres de|près de|autour de)\s+/i;
+  const LEADING_PREPOSITION = /^(?:a|à|au|aux|sur|vers|dans|en|pres de|près de|autour de)\s+/i;
+  const TRAILING_PREPOSITION = /\s+(?:a|à|au|aux|sur|vers|dans|en|de|du|des)$/i;
+
+  function parseSearchQuery(query, options) {
+    const settings = options || {};
+    const isIntent = typeof settings.isIntent === "function" ? settings.isIntent : () => false;
+    /* « Ce début de phrase est-il une intention ? » et « cette saisie entière
+       est-elle une intention ? » ne sont pas la même question, et y répondre
+       pareil cassait deux cas opposés :
+         · en tête de phrase il faut être TOLÉRANT — « restaurant italien Lyon »
+           n'est reconnu que si « restaurant italien » passe par sous-chaîne ;
+         · sur la saisie entière il faut être STRICT — « Bar-le-Duc » contient
+           « bar » et devenait une intention, donc n'était jamais géocodé.
+       L'appelant fournit donc les deux ; à défaut, le comportement est le
+       même qu'avant. */
+    const isWholeIntent = typeof settings.isWholeIntent === "function"
+      ? settings.isWholeIntent : isIntent;
+    const raw = String(query || "").trim().replace(/\s+/g, " ");
+    if (!raw) return { intention: "", destination: "", raw };
+
+    /* On cherche la PLUS LONGUE intention reconnue qui laisse encore une
+       destination — « activité enfant Tourcoing » doit donner « activité
+       enfant », pas « activité ».
+
+       Ce balayage passe AVANT la découpe par préposition, et pas l'inverse :
+       toutes les prépositions ne séparent pas une destination. « bar à vin
+       Roubaix » coupé sur « à » donnait la destination « vin Roubaix ». Le
+       vocabulaire de l'application sait, lui, que « bar à vin » est une seule
+       intention ; la préposition ne sert que de repli. */
+    const words = raw.split(" ");
+    for (let cut = words.length - 1; cut >= 1; cut -= 1) {
+      const head = words.slice(0, cut).join(" ");
+      const tail = words.slice(cut).join(" ");
+      if (!isIntent(head)) continue;
+      const destination = tail.replace(LEADING_PREPOSITION, "").trim();
+      if (!destination) continue;                    // « restaurant à » ne vise rien
+      return { intention: head.replace(TRAILING_PREPOSITION, "").trim(), destination, raw };
+    }
+
+    // repli : une préposition sépare explicitement, même sans vocabulaire connu
+    const byPreposition = raw.split(PREPOSITIONS);
+    if (byPreposition.length === 2 && byPreposition[0].trim() && byPreposition[1].trim()) {
+      return { intention: byPreposition[0].trim(), destination: byPreposition[1].trim(), raw };
+    }
+
+    // rien à couper : c'est une intention seule, ou une destination seule
+    if (isWholeIntent(raw)) return { intention: raw, destination: "", raw };
+    return { intention: "", destination: raw, raw };
+  }
+
   function isAvailableNow(item, at) {
     const now = at == null ? Date.now() : Number(at);
     if (item.isTemporary) {
@@ -777,6 +979,11 @@
     toCommonItem,
     matchesCategory,
     dedupeItems,
+    normalizePlaceName,
+    placeFamily,
+    groupLogicalPlaces,
+    TRANSPORT_CATEGORIES,
+    parseSearchQuery,
     isAvailableNow,
     INTENT_PROFILES,
     rankResults,

@@ -77,8 +77,11 @@ test("les accès principaux suivent l'intention, pas la nomenclature",()=>{
     const bloc = html.slice(html.indexOf('id:"'+id+'"'), html.indexOf('id:"'+id+'"')+240);
     assert.match(bloc,/secondaire:true/, id+" doit être secondaire");
   }
-  // « Gratuit » est un filtre réel exposé comme pill, pas une fausse catégorie
-  assert.match(html,/data-filtre="gratuit"/);
+  // « Gratuit » est une contrainte, pas une intention : un seul foyer, les
+  // filtres. Il était exposé aux DEUX endroits, avec deux états à maintenir.
+  assert.doesNotMatch(html,/data-filtre="gratuit"/);
+  assert.match(html,/const CONTRAINTES = \["ouvert","proche","gratuit","budget"\];/);
+  assert.match(html,/\{ id:"gratuit", label:"Gratuit"/);
 });
 
 test("« Plus » est atteignable depuis les pills de l’en-tête",()=>{
@@ -159,9 +162,11 @@ test("le marqueur utilisateur est un point bleu, pas un emoji",()=>{
   assert.match(html,/\.moi-in b\{display:block;width:17px;height:17px;border-radius:50%;\s*\n\s*background:#1A73E8/);
 });
 
-test("le recentrage est une petite icône, plus un gros bouton libellé",()=>{
-  assert.match(html,/id="btnRevenir" hidden aria-label="Revenir à ma position"/);
-  assert.doesNotMatch(html,/id="btnRevenir"[^>]*>◎ <span>Ma position/);
+test("un seul contrôle ramène à sa position",()=>{
+  // la pastille ronde « revenir » et le bouton « Autour de moi » faisaient la
+  // même chose ; il ne reste que celui qui dit ce qu'il fait
+  assert.doesNotMatch(html,/btnRevenir/);
+  assert.match(html,/id="btnAutourDeMoi" hidden>⌖ Revenir autour de moi<\/button>/);
   assert.match(html,/\.rond-flottant\{[^}]*width:44px;height:44px/);
 });
 
@@ -324,10 +329,101 @@ test("les photos de lieux sont réellement demandées à Google",()=>{
   assert.match(html,/if\(meilleur\.image && !l\.image\) l\.image = meilleur\.image;/);
 });
 
+test("les transports sont chargés mais pas dessinés sans qu'on les demande",()=>{
+  assert.match(html,/const CATS_TRANSPORT = new Set\(\["metro","bus","tram","train","velo"\]\);/);
+  assert.match(html,/if\(CATS_TRANSPORT\.has\(l\.cat\) && !transportsDemandes\(ctx\)\) return false;/);
+  // trois portes d'entrée, et rien d'autre
+  assert.match(html,/if\(coucheTransport \|\| modeNav \|\| itineraireOuvert\) return true;/);
+  assert.match(html,/if\(catsActives && \[\.\.\.catsActives\]\.some\(c=>CATS_TRANSPORT\.has\(c\)\)\) return true;/);
+  assert.match(html,/return !!\(q && CATS_TRANSPORT\.has\(categorieRecherchee\(q\)\)\);/);
+  // le bouton transports est un interrupteur de couche
+  assert.match(html,/coucheTransport = !coucheTransport;/);
+  // ouvrir un itinéraire les rend pertinents, le refermer les range
+  assert.match(html,/itineraireOuvert = true;/);
+  assert.match(html,/if\(itineraireOuvert\)\{ itineraireOuvert = false; rendre\(\); \}/);
+  // la requête Overpass n'est PAS amputée : la donnée reste chargée
+  assert.match(html,/node\(around:800,\$\{lat\},\$\{lng\}\)\[highway=bus_stop\]/);
+});
+
+test("le plafond de marqueurs suit l'ordre de la sélection de la carte",()=>{
+  // il se fiait à dernierClassement, construit ailleurs : dès que les deux
+  // listes ne se recouvraient plus — après un déplacement vers une autre ville
+  // — aucun lieu n'avait de rang et la carte se vidait entièrement
+  assert.match(html,/const retenus = new Set\(liste\.slice\(0, MARQUEURS_MAX_DEZOOME\)\.map\(l=>l\.id\)\);/);
+  assert.doesNotMatch(html,/dernierClassement\.forEach\(\(l,i\)=>rang/);
+  // un événement publié reste malgré tout affiché
+  assert.match(html,/liste\.forEach\(l=>\{ if\(estTemporaire\(l\)\) retenus\.add\(l\.id\); \}\);/);
+});
+
+test("le classement se réfère à la zone regardée quand on est parti ailleurs",()=>{
+  // « loin de chez toi » n'est pas un défaut d'un lieu quand on regarde
+  // volontairement une autre ville : tout Paris est loin de Tourcoing, et la
+  // pénalité de distance écartait l'intégralité des résultats demandés
+  assert.match(html,/moi: \(rechercheGeo \? \[rechercheGeo\.lat, rechercheGeo\.lng\] : positionMoi\) \|\| \[0,0\],/);
+  assert.match(html,/positionReelle: positionMoi \|\| \[0,0\],/);
+  assert.match(html,/const \[lat,lng\] = ctx\.moi;/);
+});
+
+test("au repos la carte ne porte qu'une poignée de recommandations",()=>{
+  assert.match(html,/const MARQUEURS_AU_REPOS = 6;/);
+  assert.match(html,/function auRepos\(ctx\)\{/);
+  assert.match(html,/const cible = repos \? MARQUEURS_AU_REPOS/);
+  // au repos = rien de demandé ; une recherche ou un filtre lève le plafond
+  assert.match(html,/return !ctx\.q && !catsActives && filtreActif === "tout" && !filtresHumains\.size/);
+});
+
+test("les objets qui désignent le même endroit sont repliés en un marqueur",()=>{
+  // le repliement vit dans l'unique entonnoir de ce qui peut s'afficher :
+  // placé plus loin, la liste de recommandations choisissait cinq membres du
+  // même pôle avant que quiconque ne les replie
+  assert.match(html,/function visibles\(\)\{\s*\n\s*return groupLogicalPlaces\(visiblesBruts\(\), distanceM\);\s*\n\}/);
+  assert.match(html,/function visiblesBruts\(\)\{/);
+  assert.match(html,/regroupesAuto = brut\.reduce\(\(n,l\)=>n \+ \(\(l\.nbRegroupes\|\|1\) - 1\), 0\);/);
+  // le regroupement ne compte pas comme un masquage : sinon le bandeau
+  // proposerait « tout voir » alors que rien n'a été caché
+  assert.match(html,/ecartesAuto = \(brut\.length - admis\.length\) \+ \(avant - notes\.length\);/);
+  // et la liste de résultats d'une zone est repliée elle aussi
+  assert.match(html,/rankResults\(groupLogicalPlaces\(vivier, distanceM\)/);
+});
+
+test("les résultats d'une zone survivent à l'arrivée des données",()=>{
+  // Overpass répond une seconde après le déplacement de carte et redessine la
+  // feuille : sans cet état, « Pour toi, maintenant » écrasait les résultats
+  assert.match(html,/let zoneAffichee = null;/);
+  assert.match(html,/if\(feuilleNiveau === "racine" && zoneAffichee\)\{/);
+  assert.match(html,/remplirResultatsZone\(zoneAffichee\.nom, zoneAffichee\.intention\);/);
+  // et il se relâche quand on revient à soi ou qu'on relance une recherche
+  assert.match(html,/zoneAffichee = null;\s*\/\/ la feuille reprend ses recommandations locales/);
+  assert.match(html,/zoneAffichee = null;\s*\/\/ une nouvelle recherche remplace la précédente/);
+  // déclaré tôt : majFeuille2 le lit dès le premier rendu
+  const decl = html.indexOf("let zoneAffichee = null;");
+  assert.ok(decl < html.indexOf("function majFeuille2"), "zoneAffichee doit précéder majFeuille2");
+});
+
+test("« Maintenant » masque les lieux fermés, les filtres les rendent",()=>{
+  assert.match(html,/if\(\(creneau === "maintenant" \|\| filtreMaintenant\) && !montrerFermes && estFerme\(l\)\) return false;/);
+  assert.match(html,/data-fermes="1"/);
+  assert.match(html,/montrerFermes = !montrerFermes;/);
+});
+
+test("les étiquettes ne sortent pas de l'écran et ne se recouvrent pas",()=>{
+  assert.match(html,/const MARGE_ECRAN = 6;/);
+  // mesure réelle : le marqueur est centré par une transformée CSS, une boîte
+  // calculée à la main donnait une position fausse
+  assert.match(html,/const r = eti\.getBoundingClientRect\(\);/);
+  assert.match(html,/b\.x >= MARGE_ECRAN && b\.x \+ b\.w <= taille\.x - MARGE_ECRAN/);
+  assert.match(html,/b\.y >= MARGE_ECRAN && b\.y \+ b\.h <= taille\.y - MARGE_ECRAN/);
+  // seconde chance de l'autre côté de la pastille avant de s'effacer
+  assert.match(html,/eti\.classList\.add\("a-gauche"\);/);
+  assert.match(html,/\.poi-eti\.a-gauche\{order:-1/);
+});
+
 test("les étiquettes de la carte gèrent leurs collisions",()=>{
   assert.match(html,/function resoudreCollisions/);
-  // priorité donnée au classement : les lieux pertinents gardent leur label
-  assert.match(html,/dernierClassement\.forEach\(\(l,i\)=>rang\.set\(l\.id,i\)\)/);
+  // priorité donnée à la sélection de la CARTE, pas aux recommandations de la
+  // feuille : les deux divergent dès qu'on regarde une autre zone, et tous les
+  // lieux affichés se retrouvaient alors à égalité
+  assert.match(html,/derniereSelection\.forEach\(\(x,i\)=>rang\.set\(x\.l\.id, i\)\)/);
   assert.match(html,/\.poi-eti\.masquee\{display:none\}|\.poi-eti,\.poi-eti\.masquee\{display:none\}/);
   assert.match(html,/requestAnimationFrame\(resoudreCollisions\)/);
 });
@@ -519,23 +615,165 @@ test("la recherche est un bouton loupe, pas une barre permanente",()=>{
   assert.match(html,/function fermerRecherche/);
   assert.match(html,/<div id="rechercheOverlay" hidden/);
   // les catégories vivent dans l'overlay : l'écran de départ reste nu
-  assert.match(html,/<div id="rechercheOverlay"[\s\S]{0,900}id="raccourcis" class="pills"/);
+  assert.match(html,/<div id="rechercheOverlay"[\s\S]{0,1600}id="raccourcis" class="pills"/);
+});
+
+test("la touche Retour du clavier lance réellement la recherche",()=>{
+  // un vrai <form> : c'est lui qui fait valider la touche « rechercher » des
+  // claviers mobiles. Écouter keydown seul laissait iOS sans action.
+  assert.match(html,/<form class="ro-barre" id="formRech" role="search"/);
+  assert.match(html,/enterkeyhint="search"/);
+  assert.match(html,/\$\("#formRech"\)\.addEventListener\("submit", e=>\{ e\.preventDefault\(\); lancerRecherche\(\); \}\)/);
+  // le clavier se referme avant que la carte ne bouge, sinon il la masque
+  assert.match(html,/champ\.blur\(\);\s+\/\/ referme le clavier/);
+  assert.match(html,/fermerRecherche\(\);/);
+  // les boutons de la barre ne soumettent pas le formulaire
+  assert.match(html,/id="btnFermerRech" type="button"/);
+  assert.match(html,/id="btnFiltres" type="button"/);
+});
+
+test("les suggestions distinguent une destination d'une intention",()=>{
+  // en tapant un nom de commune, la liste ne proposait que des catégories et
+  // des lieux déjà chargés : aucune façon visible d'aller là-bas
+  assert.match(html,/const decoupe = parseSearchQuery\(q, \{/);
+  assert.match(html,/if\(dest && ressembleAUneZone\(dest\)\)\{/);
+  assert.match(html,/sug\.push\(\{emo:"📍", lab:dest, sous:"destination", texte:dest\}\);/);
+  assert.match(html,/sous:"intention · destination"/);
+  assert.match(html,/const SUGGESTIONS_INTENTION = \[/);
+  // une suggestion de destination emprunte le même chemin que la touche Retour
+  assert.match(html,/if\(x\.texte\)\{ \$\("#rech"\)\.value = x\.texte; lancerRecherche\(\); return; \}/);
+});
+
+test("changer de catégorie ne relance pas le réseau si les lieux sont là",()=>{
+  assert.match(html,/const manquantes = cats\.filter\(c=>!categorieEnMemoire\(c\)\);/);
+  assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
+  // le rail de besoins passe bien par ce filtre
+  assert.match(html,/const manquantes = b\.sous\.flatMap\(x=>x\.cats\)\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
+  assert.match(html,/if\(manquantes\.length\) chargerPourCats\(manquantes\);/);
+});
+
+test("le nom accessible du panneau ne porte plus l'ancien CTA",()=>{
+  // « Que faire autour de moi ? » était invisible à l'œil mais annoncé tel
+  // quel par un lecteur d'écran avant le premier rendu
+  assert.doesNotMatch(html,/id="fbTitre">Que faire autour de moi/);
+  assert.match(html,/<span class="fb-titre" id="fbTitre">Pour toi, maintenant<\/span>/);
+});
+
+test("une requête composée sépare destination et intention",()=>{
+  assert.match(html,/parseSearchQuery\(q, \{/);
+  // deux prédicats : tolérant pour découper un début de phrase, strict pour la
+  // saisie entière — sinon « Bar-le-Duc » devenait l'intention « bar »
+  assert.match(html,/isIntent: intentionConnue,/);
+  assert.match(html,/isWholeIntent: estTermeMetier,/);
+  assert.match(html,/if\(destination && ressembleAUneZone\(destination\)\)\{/);
+  assert.match(html,/if\(intention\) appliquerIntention\(intention\);/);
+  assert.match(html,/ouvrirResultatsZone\(destination, intention\);/);
+  // un géocodage muet ne se fait pas passer pour un succès
+  assert.match(html,/toast\("Lieu introuvable : "\+destination\)/);
 });
 
 test("une recherche géographique déplace la carte et montre peu de résultats",()=>{
   assert.match(html,/function ressembleAUneZone/);
   assert.match(html,/function rechercheGeographique/);
-  assert.match(html,/map\.flyTo\(pos, 15/);
   assert.match(html,/const RESULTATS_RECHERCHE_INITIAUX = 5;/);
   assert.match(html,/\.slice\(0, RESULTATS_RECHERCHE_INITIAUX\)/);
-  // on ne géocode pas « pizza »
-  assert.match(html,/if\(categorieRecherchee\(texte\) \|\| cuisineRecherchee\(texte\)\) return false;/);
+  // on ne géocode pas « pizza », mais on géocode « Bar-le-Duc » : la
+  // comparaison est exacte, plus par sous-chaîne
+  assert.match(html,/if\(estTermeMetier\(texte\)\) return false;/);
 });
 
-test("« Autour de moi » n'apparaît que lorsqu'on s'est éloigné",()=>{
+test("aucune ville n'est écrite dans le code",()=>{
+  // le seul savoir territorial vient du géocodeur. Une condition du genre
+  // « si la ville vaut Lille » figerait le produit sur un terrain.
+  const code = html.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code,/===\s*["']Lille["']/i);
+  assert.doesNotMatch(code,/ville\s*===/i);
+  // pas de liste de communes en dur non plus
+  assert.doesNotMatch(code,/\[\s*["']Paris["']\s*,/i);
+});
+
+test("le cadrage suit l'emprise réelle de la zone, bornée des deux côtés",()=>{
+  // un zoom fixe ne peut convenir à la fois à un hameau et à une métropole
+  assert.match(html,/const ZOOM_ZONE_MAX = 15;/);
+  // la borne basse n'est pas choisie : c'est le seuil de chargement lui-même.
+  // Les laisser diverger posait la carte sur Paris au zoom 12, où chargerZone
+  // refuse de partir — bon endroit, écran vide, aucune explication.
+  assert.match(html,/const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;/);
+  assert.match(html,/if\(!map \|\| map\.getZoom\(\) < ZOOM_MIN_CHARGEMENT\) return Promise\.resolve\(\[\]\);/);
+  // et il doit être déclaré avant d'être lu : une zone morte temporelle ici
+  // casse tout le script au démarrage
+  assert.ok(html.indexOf("const ZOOM_MIN_CHARGEMENT = 13;") <
+            html.indexOf("const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;"),
+    "ZOOM_MIN_CHARGEMENT doit précéder ZOOM_ZONE_MIN");
+  assert.match(html,/map\.fitBounds\(zone\.emprise, \{maxZoom:ZOOM_ZONE_MAX/);
+  assert.match(html,/if\(map\.getZoom\(\) < ZOOM_ZONE_MIN\) map\.setZoom\(ZOOM_ZONE_MIN\);/);
+  // repli si le géocodeur ne fournit pas d'emprise
+  assert.match(html,/map\.flyTo\(\[zone\.lat, zone\.lng\], ZOOM_ZONE_MAX/);
+});
+
+test("le géocodeur départage les homonymes sans privilégier un pays",()=>{
+  assert.match(html,/limit=5/);
+  assert.match(html,/const ECART_IMPORTANCE = 0\.15;/);
+  // à importance comparable, le plus proche de l'endroit regardé
+  assert.match(html,/const d = distanceM\(depuis\[0\], depuis\[1\], parseFloat\(x\.lat\), parseFloat\(x\.lon\)\);/);
+  assert.match(html,/boundingbox/);
+});
+
+test("le nom de la zone cesse d'être un filtre plein texte une fois arrivé",()=>{
+  // sinon « Lille » faisait remonter « Gare Lille Flandres » au titre de
+  // correspondance explicite — donc des arrêts, que cette passe range
+  const i = html.indexOf("async function rechercheGeographique");
+  const bloc = html.slice(i, i + 1800);
+  assert.match(bloc,/recherche = "";/);
+  assert.match(bloc,/if\(\$\("#rech"\)\) \$\("#rech"\)\.value = "";/);
+});
+
+test("un seul point de référence après un déplacement : celui de la carte",()=>{
+  // le géocodeur donne aussi un « point de la commune » qui n'est pas le
+  // centre de l'emprise — 2,9 km d'écart à Bordeaux. Charger autour de l'un et
+  // classer depuis l'autre mettait tous les lieux hors du rayon de recherche.
+  assert.match(html,/const c = map\.getCenter\(\);/);
+  assert.match(html,/const centre = c \? \[c\.lat, c\.lng\] : \[zone\.lat, zone\.lng\];/);
+  assert.match(html,/rechercheGeo = \{nom:q, lat:centre\[0\], lng:centre\[1\]\};/);
+  assert.match(html,/chargerZone\(centre\[0\], centre\[1\]\);/);
+  // et il est fixé APRÈS le cadrage, sinon il décrit l'ancienne vue
+  assert.ok(html.indexOf("map.fitBounds(zone.emprise") <
+            html.indexOf("rechercheGeo = {nom:q, lat:centre[0]"),
+    "le point de référence se lit après le cadrage");
+});
+
+test("les recommandations gardent leur épingle malgré le regroupement",()=>{
+  // un quartier dense se réduisait à une seule grappe : la carte devenait
+  // juste et inutilisable — on demandait Paris, on obtenait un rond « 24 »
+  assert.match(html,/const EPINGLES_PRIORITAIRES = 6;/);
+  assert.match(html,/const epingles = new Set\(liste\.slice\(0, EPINGLES_PRIORITAIRES\)\.map\(l=>l\.id\)\);/);
+  assert.match(html,/if\(epingles\.has\(l\.id\)\)\{ seuls\.push\(\{seul:l\}\); return; \}/);
+});
+
+test("le vocabulaire métier se compare exactement, pas par sous-chaîne",()=>{
+  assert.match(html,/const MOTS_BESOINS = \(\(\)=>\{/);
+  // déclaré APRÈS BESOINS, qu'il parcourt : l'inverse levait une zone morte
+  // temporelle qui cassait tout le script au démarrage
+  assert.ok(html.indexOf("const BESOINS = [") < html.indexOf("const MOTS_BESOINS"),
+    "MOTS_BESOINS doit suivre BESOINS");
+  assert.match(html,/function estTermeMetier\(texte\)\{/);
+  assert.match(html,/return INDEX_MOTS\.has\(t\) \|\| MOTS_BESOINS\.has\(t\);/);
+  // les besoins « chiller », « sortir », « bouger » comptent comme intentions
+  assert.match(html,/const FILTRES_INTENTION = new Set\(\["famille","etudier","monde","libre"\]\);/);
+  // un besoin applique toutes ses catégories, pas une seule
+  assert.match(html,/if\(bes && bes\.sous\)\{ catsActives = new Set\(bes\.sous\.flatMap\(x=>x\.cats\)\);/);
+  // les contraintes tapées dans la phrase s'appliquent aussi
+  assert.match(html,/if\(a && a\.filtres && a\.filtres\.size\) a\.filtres\.forEach\(f=>filtresHumains\.add\(f\)\);/);
+});
+
+test("« Revenir autour de moi » apparaît dès que la carte s'est déplacée",()=>{
   assert.match(html,/id="btnAutourDeMoi"/);
-  assert.match(html,/const ECART_HORS_ZONE = 3000;/);
+  // un quartier, pas trois kilomètres : une recherche sur la commune voisine
+  // déplaçait la carte sans faire apparaître le bouton
+  assert.match(html,/const ECART_HORS_ZONE = 1200;/);
   assert.match(html,/function carteHorsPosition/);
+  // une recherche géographique déplace la carte par définition
+  assert.match(html,/if\(rechercheGeo\) return true;/);
   assert.match(html,/retour\.hidden = !map \|\| modePose \|\| modeNav \|\| !carteHorsPosition\(\)/);
 });
 
