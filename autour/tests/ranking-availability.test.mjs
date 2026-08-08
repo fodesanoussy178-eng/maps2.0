@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// l'ordre compte : le classement consulte availability.js s'il est présent
+// l'ordre compte : le classement consulte availability.js et temporel.js
+// s'ils sont présents — comme dans la page, où les deux le précèdent
 await import("../availability.js");
+await import("../temporel.js");
 await import("../core.js");
 
 const {rankResults} = globalThis.AutourCore;
@@ -107,4 +109,65 @@ test("un événement terminé reste exclu, indépendamment des horaires de lieu"
     intent: "sortir", position: POSITION, now: MERCREDI_MIDI, distanceBetween: distance,
   });
   assert.deepEqual(vus, []);
+});
+
+/* ---- Le temps se tranche avant la pertinence -----------------------------
+   La proximité ne doit jamais suffire à faire remonter un événement futur
+   dans « maintenant » : c'est exactement ce que faisait l'ancien classement. */
+
+const evenement = (id, debut, extra) => Object.assign({
+  id, titre: "Événement " + id, cat: "concert", lat: 50.6301, lng: 3.0601,
+  isTemporary: true, startsAt: debut, endsAt: debut == null ? null : debut + 2 * 3600000,
+}, extra);
+
+const classerSorties = (items, options) => rankResults(items, Object.assign({
+  intent: "sortir", position: POSITION, now: MERCREDI_MIDI, distanceBetween: distance,
+  etaFor: () => ({minutes: 5, mode: "walk"}),
+}, options));
+
+test("en mode Maintenant, un événement dans trois mois est écarté même s’il est à cinquante mètres", () => {
+  const loin = evenement("dans-3-mois", MERCREDI_MIDI + 90 * 86400000);
+  const encours = Object.assign(evenement("en-cours", MERCREDI_MIDI - 3600000),
+    {lat: 50.70, lng: 3.20});   // bien plus loin
+  const vus = classerSorties([loin, encours], {nowOnly: true});
+  assert.deepEqual(vus.map((l) => l.id), ["en-cours"]);
+});
+
+test("en mode Maintenant, un événement sans date exploitable n’est jamais « maintenant »", () => {
+  const sansDate = evenement("sans-date", null);
+  assert.deepEqual(classerSorties([sansDate], {nowOnly: true}), []);
+});
+
+test("un événement qui commence dans trente minutes reste dans Maintenant", () => {
+  const bientot = evenement("bientot", MERCREDI_MIDI + 30 * 60000);
+  const vus = classerSorties([bientot], {nowOnly: true});
+  assert.deepEqual(vus.map((l) => l.id), ["bientot"]);
+  assert.equal(vus[0].rankTemporal, "starting_soon");
+  assert.equal(vus[0].rankStart, MERCREDI_MIDI + 30 * 60000);
+});
+
+test("hors mode Maintenant, un événement futur est routé vers une section", () => {
+  const ceSoir = evenement("ce-soir", paris(2026, 7, 15, 21, 0));
+  const plusTard = evenement("dans-3-mois", MERCREDI_MIDI + 90 * 86400000);
+  const vus = classerSorties([ceSoir, plusTard]);
+  const par = Object.fromEntries(vus.map((l) => [l.id, l.rankSection]));
+  assert.equal(par["ce-soir"], "ce_soir");
+  assert.equal(par["dans-3-mois"], "a_venir");
+});
+
+test("un événement récurrent est daté sur sa prochaine occurrence", () => {
+  const hebdo = {
+    id: "hebdo", titre: "Marché", cat: "concert", lat: 50.631, lng: 3.061, isTemporary: true,
+    occurrences: [
+      {start: MERCREDI_MIDI - 7 * 86400000, end: MERCREDI_MIDI - 7 * 86400000 + 3600000},
+      {start: MERCREDI_MIDI + 45 * 60000, end: MERCREDI_MIDI + 45 * 60000 + 3600000},
+      {start: MERCREDI_MIDI + 7 * 86400000, end: MERCREDI_MIDI + 7 * 86400000 + 3600000},
+    ],
+  };
+  const vus = classerSorties([hebdo], {nowOnly: true});
+  assert.equal(vus.length, 1);
+  assert.equal(vus[0].rankStart, MERCREDI_MIDI + 45 * 60000);
+  assert.equal(vus[0].rankTemporal, "starting_soon");
+  // l'arrivée se juge sur l'occurrence, pas sur la première séance de la série
+  assert.match(vus[0].rankReason, /avant le début/);
 });

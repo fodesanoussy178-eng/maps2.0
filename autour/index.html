@@ -326,6 +326,10 @@ input{font-family:inherit;font-size:16px}
 .rc-tete{display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:2px 0 12px}
 .rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+/* sections secondaires (Ce soir, Ce week-end, À venir) : présentes, mais
+   sous le bloc principal, pas à égalité avec lui */
+.rc-tete-sec{padding-top:16px}
+.rc-tete-sec strong{font-size:15.5px;font-weight:750}
 .rc-tout{flex-shrink:0;white-space:nowrap;border:0;background:none;
   color:var(--violet);font-size:14.5px;font-weight:700}
 .rc-piste{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;
@@ -394,6 +398,16 @@ input{font-family:inherit;font-size:16px}
 .rc-min{font-size:12.5px;font-weight:750;color:var(--violet)}
 .rc-trajet{font-size:12px;color:var(--ink2);margin-top:2px}
 .rc-arrivee{font-size:11.5px;color:var(--ink2)}
+/* La date réelle est ce qu'on lit en premier sur un événement ; le trajet
+   passe derrière. Sans cette hiérarchie « 9 min à pied » se lit comme si
+   l'événement avait lieu maintenant, ce qui est faux la plupart du temps. */
+.rc-quand{display:block;margin-top:3px;font-size:12.5px;font-weight:750;
+  color:var(--ink);line-height:1.25}
+.rc-quand.en-cours{color:#1B7F4C}
+.rc-quand.imminent{color:#B85C00}
+.rc-quand.flou{color:var(--ink2);font-weight:600}
+/* trajet secondaire dès qu'une date occupe la ligne forte */
+.rc-carte:has(.rc-quand) .rc-min{font-weight:600;color:var(--ink2)}
 
 /* ---- Cœur des favoris --------------------------------------------------- */
 .coeur{flex-shrink:0;width:40px;height:40px;border:0;background:none;border-radius:50%;
@@ -1130,6 +1144,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="availability.js"></script>
+<script src="temporel.js"></script>
 <script src="events.js"></script>
 <script src="core.js"></script>
 <script src="transit.js"></script>
@@ -1144,6 +1159,8 @@ function panne(titre, corps){
    le pipeline, et elles partaient dans la console de tout le monde — du bruit,
    et un aperçu gratuit du fonctionnement interne. `__autourDebug = true` les
    rallume. Les vraies erreurs, elles, passent toujours par console.error. */
+const TEMPS = window.AutourTemps;
+
 const journal = {
   info(...a){ if(window.__autourDebug) console.info(...a); },
   warn(...a){ if(window.__autourDebug) console.warn(...a); },
@@ -1350,10 +1367,12 @@ const favorisEnMemoire = new Map();
    Toute la question « est-ce que c'est ouvert » passe par availability.js.
    Aucun écran ne relit un opening_hours de son côté, sinon la carte et la
    fiche finissent par se contredire. */
-function dispoDe(l, arrivee){
+function dispoDe(l, arrivee, quand){
   const module = window.AutourAvailability;
   if(!module) return null;
-  return module.getPlaceAvailability(l, instantCreneau().getTime(), arrivee);
+  // l'instant est paramétrable : le moteur temporel évalue une exposition
+  // longue à un moment donné, pas forcément le créneau affiché
+  return module.getPlaceAvailability(l, quand == null ? instantCreneau().getTime() : quand, arrivee);
 }
 
 /* Le libellé exact demandé par cas : « Ouvert • ferme à 23:30 », « Fermé •
@@ -2543,11 +2562,37 @@ async function evenementsOpenAgenda(lat,lng){
     });
     const bruts = [...uniques.values()];
     journal.info("OpenAgenda:", bruts.length, "événement(s) bruts depuis", agendas.length, "agenda(s)");
+    /* Toutes les séances, pas seulement la première : une série hebdomadaire
+       transmise par son seul `firstTiming` était datée sur une séance passée
+       depuis des mois, et par sa seule période sur toute son étendue. Le
+       moteur temporel choisit ensuite la prochaine occurrence réelle. */
+    const occurrencesDe = (evt)=>{
+      const brutes = Array.isArray(evt.timings) && evt.timings.length
+        ? evt.timings
+        : [evt.nextTiming, evt.firstTiming].filter(Boolean);
+      return brutes.map(t=>{
+        const debut = t && t.begin ? new Date(t.begin).getTime() : null;
+        const fin = t && t.end ? new Date(t.end).getTime() : null;
+        return debut == null && fin == null ? null : {start:debut, end:fin};
+      }).filter(Boolean).sort((a,b)=>(a.start||0)-(b.start||0));
+    };
+    // celle qui compte à cet instant : en cours, sinon la prochaine à venir
+    const occurrenceUtile = (occ)=>{
+      if(!occ.length) return null;
+      const t = Date.now();
+      return occ.find(o=>o.start != null && o.start <= t && (o.end == null || o.end > t))
+        || occ.find(o=>o.start != null && o.start > t)
+        || occ[occ.length-1];
+    };
+
     const classes = bruts.map(evt=>{
       const loc = evt.location || {};
       if(loc.latitude==null || loc.longitude==null) return null;
       if(distanceM(lat,lng,Number(loc.latitude),Number(loc.longitude)) > 8000) return null;
+      const occurrences = occurrencesDe(evt);
+      const seance = occurrenceUtile(occurrences);
       return normaliserItem({
+        occurrences,
         id:"oa"+evt.uid, cat:catOpenAgenda(evt),
         titre:(evt.title && (evt.title.fr||Object.values(evt.title)[0])) || "Événement",
         description:(evt.description && (evt.description.fr||Object.values(evt.description)[0])) || "",
@@ -2555,23 +2600,17 @@ async function evenementsOpenAgenda(lat,lng){
         eventCategory:(evt.keywords && (evt.keywords.fr||[]).join(" ")) || "",
         adresse: loc.name || loc.address || commune,
         cp: [loc.postalCode, loc.city].filter(Boolean).join(" ") || commune,
-        quand: (()=>{
-          const t = evt.nextTiming || evt.firstTiming || (evt.timings||[])[0];
-          if(!t || !t.begin) return "Voir sur place";
-          return new Date(t.begin).toLocaleString("fr-FR",
-            {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
-        })(),
-        debutLe: (()=>{
-          const t = evt.nextTiming || evt.firstTiming || (evt.timings||[])[0];
-          return t && t.begin ? new Date(t.begin).getTime() : null;
-        })(),
-        // fin réelle, pour ne plus afficher un événement d'hier
-        finLe: (()=>{
-          const t = evt.nextTiming || evt.firstTiming || (evt.timings||[])[0];
-          if(!t) return null;
-          const f = t.end || t.begin;
-          return f ? new Date(f).getTime() + (t.end ? 0 : 3*3600*1000) : null;
-        })(),
+        quand: seance && seance.start != null
+          ? new Date(seance.start).toLocaleString("fr-FR",
+              {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
+          : "Voir sur place",
+        debutLe: seance ? seance.start : null,
+        // fin réelle, pour ne plus afficher un événement d'hier ; sans fin
+        // publiée on suppose trois heures plutôt que rien
+        finLe: seance
+          ? (seance.end != null ? seance.end
+             : (seance.start != null ? seance.start + 3*3600*1000 : null))
+          : null,
         gratuit: !(evt.registration && evt.registration.price), prix:0,
         places:null, qr:false, par:"OpenAgenda",
         isTemporary:true,
@@ -2863,7 +2902,10 @@ function majEtiquettes(){
 /* Ajoute sans écraser : chaque source arrive à son rythme et complète les
    précédentes, au lieu de remplacer la liste entière. */
 /* Un événement terminé n'a plus rien à faire sur la carte. */
+/* Passé : c'est le moteur temporel qui tranche, pour qu'un événement récurrent
+   ne soit pas déclaré terminé sur la fin de sa première séance. */
 function estPasse(l){
+  if(estTemporaire(l)) return statutTemps(l).statut === TEMPS.STATUTS.PASSE;
   return l.endsAt != null && l.endsAt < Date.now();
 }
 
@@ -3495,13 +3537,23 @@ function instantCreneau(){
 }
 
 /* « Maintenant » : ce qui est vivant à cet instant, et rien d'autre. */
+/* Le statut temporel d'un objet, calculé par le moteur qui fait autorité
+   là-dessus. Un seul point d'entrée pour toute l'application : la carte, les
+   cartes du carousel et les sections doivent lire la même chose. */
+function statutTemps(l, quand){
+  return TEMPS.statutTemporel(l, quand == null ? Date.now() : quand,
+    {disponibilite:(x,t)=>dispoDe(x, null, t)});
+}
+
 function estVivant(l){
   const t = instantCreneau().getTime();
   if(estTemporaire(l)){
-    if(l.annule) return false;                              // annulé : rien n'y a lieu
-    if(l.endsAt && l.endsAt < t) return false;              // déjà terminé
-    if(l.startsAt && l.startsAt > t + 12*3600e3) return false; // trop lointain
-    return true;
+    /* « Maintenant » n'accepte que ce qui a lieu ou commence dans les deux
+       heures. L'ancienne règle laissait passer douze heures, et surtout elle
+       laissait passer un événement SANS date : `startsAt` nul ne déclenchait
+       aucun refus. C'est ce qui remplissait le bloc d'événements prévus des
+       semaines plus tard. */
+    return TEMPS.estMaintenant(statutTemps(l, t).statut);
   }
   // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
   // la plupart des lieux OpenStreetMap n'ont aucune donnée d'ouverture, et
@@ -3576,9 +3628,14 @@ function ouvrirFicheCompacte(l){
     l.note ? "⭐ "+l.note.toFixed(1).replace(".",",") : null,
     ...etiquettes,
   ].filter(Boolean).join(" · ");
-  // l'annulation passe devant tout le reste : c'est la seule chose qui compte
+  // l'annulation passe devant tout le reste : c'est la seule chose qui compte,
+  // puis la date réelle de l'événement, puis seulement la distance
+  const quandFiche = estTemporaire(l) && !l.annule
+    ? TEMPS.libelleTemporel(l, instantCreneau().getTime(),
+        {disponibilite:(x,t)=>dispoDe(x, null, t)})
+    : null;
   const ligne3 = [
-    l.annule ? "Annulé" : (d && d.status !== "unknown" ? d.label : null),
+    l.annule ? "Annulé" : (quandFiche || (d && d.status !== "unknown" ? d.label : null)),
     dist != null ? formatDist(dist) : null,
   ].filter(Boolean).join(" · ");
 
@@ -3623,6 +3680,15 @@ function sousTitreMarqueur(l){
   const eta = centre ? etaConnu(l, centre) : null;
   const trajet = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
 
+  // pour un événement, la date qui compte est la prochaine occurrence réelle,
+  // pas le début de la période de récurrence
+  if(estTemporaire(l)){
+    const etat = statutTemps(l);
+    const libelle = TEMPS.libelleTemporel(l, Date.now(),
+      {disponibilite:(x,t)=>dispoDe(x, null, t), statut: etat});
+    if(libelle) return '<span'+(etat.statut===TEMPS.STATUTS.EN_COURS?' class="ouvre"':'')+'>'+
+      esc(libelle)+(trajet ? " · "+trajet : "")+'</span>';
+  }
   if(l.startsAt && l.startsAt > Date.now())
     return '<span>'+heure(l.startsAt)+(trajet ? " · "+trajet : "")+'</span>';
 
@@ -3646,7 +3712,8 @@ function htmlMarqueur(l){
         (l.annule?'ANNULÉ':(l.gratuit?'GRATUIT':l.prix+' €'))+'</span>'+
       (l.places!=null && !l.annule?'<span class="a-places">· '+l.places+' pl.</span>':'')+'</span>'+
       '<span class="a-titre">'+esc(l.titre)+'</span>'+
-      '<span class="a-lieu">'+esc(l.adresse)+'</span>'+
+      // un événement sans adresse écrivait littéralement « undefined »
+      (l.adresse ? '<span class="a-lieu">'+esc(l.adresse)+'</span>' : '')+
       '</div></span>';
   }
   // le lieu reste, l'événement se pose dessus : une pastille signale qu'il s'y
@@ -6201,9 +6268,12 @@ const POIDS_AIDE = {
    Inventer une réponse ici ferait se déplacer quelqu'un pour rien. */
 function disponibleAujourdhui(l){
   if(estTemporaire(l)){
-    if(!l.debutLe) return true;
-    const d = new Date(l.debutLe), n = new Date();
-    return d.toDateString() === n.toDateString() || (l.finLe && l.finLe > n.getTime());
+    // sans date exploitable on ne sait pas : dire « oui » ferait se déplacer
+    // quelqu'un pour un événement dont personne ne connaît le jour
+    const etat = statutTemps(l);
+    if(etat.statut === TEMPS.STATUTS.INCONNU) return null;
+    if(etat.statut === TEMPS.STATUTS.PASSE) return false;
+    return etat.statut !== TEMPS.STATUTS.A_VENIR;
   }
   const h = horaireDuJour(l);
   if(h) return !/ferm/i.test(h);
@@ -6594,6 +6664,7 @@ function majFeuille2(){
           '<div class="rc-piste" data-testid="primary-results">'+
             reco.map(carteRecommandation).join("")+'</div>'
         : statutRechercheHTML(0))+
+      sectionsAVenirHTML()+
       blocTransports()+
       piedFeuille();
   }else if(feuilleNiveau === "plus"){
@@ -6722,6 +6793,60 @@ function recommandationsAccueil(limite){
   return classement.slice(0, limite || 12);
 }
 
+/* ---- Ce qui n'a pas lieu maintenant, mais qui aura lieu ------------------
+   Écarter un événement de « maintenant » ne doit pas le faire disparaître :
+   il part dans la section qui correspond à sa vraie date. Le classement du
+   moteur temporel a déjà rangé chaque objet (`rankSection`), on ne fait ici
+   que rassembler et afficher. */
+const SECTIONS_A_VENIR = [
+  {id:"ce_soir",     titre:"Ce soir"},
+  {id:"ce_week_end", titre:"Ce week-end"},
+  {id:"a_venir",     titre:"À venir"},
+];
+
+function evenementsParSection(parSection){
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  const groupes = {};
+  if(!centre || !lieux.length) return groupes;
+
+  // sans `nowOnly` : c'est justement ce qui n'est pas « maintenant » qu'on
+  // cherche ici. Le filtrage temporel écarte quand même le passé.
+  const futurs = rankResults(lieux.filter(l=>estTemporaire(l) && nomExploitable(l)),{
+    intent:"sortir",
+    categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))],
+    position:centre,
+    now:instantCreneau().getTime(),
+    nowOnly:false,
+    radius:rayonRecherche,
+    distanceBetween:distanceM,
+    etaFor:l=>etaConnu(l, centre),
+  });
+
+  futurs.forEach(l=>{
+    const s = l.rankSection;
+    if(!s || s === "maintenant" || s === "aujourdhui") return;
+    (groupes[s] = groupes[s] || []).push(l);
+  });
+  // au sein d'une section, c'est la date qui ordonne : « ce soir » se lit
+  // dans l'ordre des heures, pas dans l'ordre du score
+  Object.keys(groupes).forEach(k=>{
+    groupes[k].sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
+    groupes[k] = groupes[k].slice(0, parSection || 6);
+  });
+  return groupes;
+}
+
+function sectionsAVenirHTML(){
+  const groupes = evenementsParSection(6);
+  return SECTIONS_A_VENIR.map(s=>{
+    const liste = groupes[s.id];
+    if(!liste || !liste.length) return "";
+    return '<div class="rc-tete rc-tete-sec"><strong>'+esc(s.titre)+'</strong></div>'+
+      '<div class="rc-piste" data-section="'+s.id+'">'+
+        liste.map(carteRecommandation).join("")+'</div>';
+  }).join("");
+}
+
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
 function carteRecommandation(l){
   favorisEnMemoire.set(cleFavori(l), l);
@@ -6753,6 +6878,19 @@ function carteRecommandation(l){
     ? "Arrivée "+heureLocale(l.rankArrival, l)
     : (dispo && dispo.closesAtTime ? "Ferme à "+dispo.closesAtTime : "");
 
+  // La date réelle passe devant le temps de trajet : « Commence dans 35 min »
+  // fait décider d'y aller, « 9 min à pied » ne décide de rien tout seul.
+  // Sur un lieu permanent la ligne n'apporte rien (« Maintenant » sur une
+  // boulangerie ouverte est du bruit) : on la réserve aux événements.
+  const quand = estTemporaire(l)
+    ? TEMPS.libelleTemporel(l, instantCreneau().getTime(),
+        {disponibilite:(x,t)=>dispoDe(x, null, t), statut: statutTemps(l, instantCreneau().getTime())})
+    : "";
+  const etatQuand = quand ? statutTemps(l, instantCreneau().getTime()).statut : "";
+  const classeQuand = etatQuand === TEMPS.STATUTS.EN_COURS ? " en-cours"
+    : etatQuand === TEMPS.STATUTS.IMMINENT ? " imminent"
+    : etatQuand === TEMPS.STATUTS.INCONNU ? " flou" : "";
+
   // Un <button> ne peut pas en contenir un autre : le parseur extrait le cœur
   // et disloque la carte. On utilise donc un conteneur avec rôle de bouton.
   return '<div class="rc-carte'+(l.annule?' annulee':'')+'" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
@@ -6762,6 +6900,7 @@ function carteRecommandation(l){
       '<span class="rc-haut"><span class="rc-cats">'+
         (l.annule ? '<b class="rc-annule">Annulé</b>' : esc(cats))+'</span>'+boutonCoeur(l)+'</span>'+
       '<span class="rc-nom">'+esc(l.titre)+'</span>'+
+      (quand ? '<span class="rc-quand'+classeQuand+'" data-testid="carte-quand">'+esc(quand)+'</span>' : '')+
       '<span class="rc-ligne">'+
         (l.note ? '<span class="rc-note">★ '+l.note.toFixed(1).replace(".",",")+
           (l.avis?' <i>('+l.avis+')</i>':'')+'</span>' : '<span class="rc-note"></span>')+

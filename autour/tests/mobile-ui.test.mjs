@@ -3,6 +3,8 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 
 const html = await readFile(new URL("../index.html",import.meta.url),"utf8");
+const temporel = await readFile(new URL("../temporel.js",import.meta.url),"utf8");
+const core = await readFile(new URL("../core.js",import.meta.url),"utf8");
 
 test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",()=>{
   assert.match(html,/<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" \/>/);
@@ -109,7 +111,10 @@ test("aucun horaire n'est inventé faute de clé transport",()=>{
 test("l'état ouvert/fermé a une seule source de vérité",()=>{
   assert.match(html,/<script src="availability\.js"><\/script>/);
   // les écrans passent tous par le même helper, aucun ne relit un horaire
-  assert.match(html,/function dispoDe\(l, arrivee\)/);
+  assert.match(html,/function dispoDe\(l, arrivee, quand\)/);
+  // le moteur temporel fait autorité sur le « quand »
+  assert.match(html,/<script src="temporel\.js"><\/script>/);
+  assert.match(html,/function statutTemps\(l, quand\)\{/);
   assert.match(html,/function badgeDispo\(l\)/);
   assert.doesNotMatch(html,/x\.ouvert === true\)\s+sous\.push/);
   assert.doesNotMatch(html,/l\.ouvert === false && creneau === "maintenant"/);
@@ -895,8 +900,8 @@ test("un événement annulé ne se lit jamais comme un événement qui a lieu",(
   // la colonne, le déclencheur et le bouton existaient ; le champ se perdait
   // dans versLieu, et la carte l'affichait comme normal
   assert.match(html,/annule: !!p\.annule/);
-  // « Maintenant » l'écarte, comme un lieu fermé
-  assert.match(html,/if\(l\.annule\) return false;\s*\/\/ annulé/);
+  // « Maintenant » l'écarte : le moteur temporel range une annulation en passé
+  assert.match(temporel,/if \(source\.annule\) return \{ statut: STATUTS\.PASSE/);
   // sur la carte : affiche conservée mais barrée et mentionnée
   assert.match(html,/\(l\.annule\?' annulee':''\)/);
   assert.match(html,/\(l\.annule\?'ANNULÉ':/);
@@ -936,4 +941,64 @@ test("les diagnostics ne partent plus dans la console de tout le monde",()=>{
   // déclaré avant son premier usage : une zone morte temporelle ici casse tout
   assert.ok(html.indexOf("const journal = {") < html.indexOf("journal.warn("),
     "le journal doit précéder son premier appel");
+});
+
+test("la carte d'un événement montre sa date avant son temps de trajet",()=>{
+  // « 9 min à pied » ne dit pas si l'événement a lieu ce soir ou dans trois mois
+  assert.match(html,/const quand = estTemporaire\(l\)\s*\n\s*\? TEMPS\.libelleTemporel\(/);
+  // dans le DOM, la date précède la ligne qui porte le temps de trajet
+  const quand = html.indexOf('<span class="rc-quand');
+  const ligne = html.indexOf(`'<span class="rc-ligne">'`);
+  assert.ok(quand > 0 && ligne > 0 && quand < ligne,
+    "la date doit être écrite avant la ligne note/trajet");
+  // et le trajet s'efface visuellement quand une date occupe la carte
+  assert.match(html,/\.rc-carte:has\(\.rc-quand\) \.rc-min\{/);
+  // un lieu permanent n'a pas de ligne « Maintenant » : ce serait du bruit
+  assert.match(html,/estTemporaire\(l\)\s*\n\s*\? TEMPS\.libelleTemporel/);
+});
+
+test("les événements futurs partent dans des sections, ils ne disparaissent pas",()=>{
+  assert.match(html,/const SECTIONS_A_VENIR = \[/);
+  assert.match(html,/\{id:"ce_soir",\s+titre:"Ce soir"\}/);
+  assert.match(html,/\{id:"ce_week_end", titre:"Ce week-end"\}/);
+  assert.match(html,/\{id:"a_venir",\s+titre:"À venir"\}/);
+  // l'accueil les rend sous le bloc principal
+  assert.match(html,/sectionsAVenirHTML\(\)\+\s*\n\s*blocTransports\(\)/);
+  // le rangement vient du moteur, pas d'une règle réécrite ici
+  assert.match(html,/const s = l\.rankSection;/);
+  // et à l'intérieur d'une section, c'est l'heure qui ordonne
+  assert.match(html,/groupes\[k\]\.sort\(\(a,b\)=>\(a\.rankStart\|\|0\)-\(b\.rankStart\|\|0\)\);/);
+  assert.ok(html.indexOf("const SECTIONS_A_VENIR") < html.indexOf("return SECTIONS_A_VENIR.map"),
+    "SECTIONS_A_VENIR doit précéder son premier usage");
+});
+
+test("OpenAgenda transmet toutes ses séances, pas seulement la première",()=>{
+  // une série hebdomadaire datée sur `firstTiming` était jugée sur une séance
+  // passée depuis des mois
+  assert.match(html,/const occurrencesDe = \(evt\)=>\{/);
+  assert.match(html,/Array\.isArray\(evt\.timings\) && evt\.timings\.length/);
+  assert.match(html,/const occurrences = occurrencesDe\(evt\);/);
+  assert.match(html,/const seance = occurrenceUtile\(occurrences\);/);
+  assert.match(html,/debutLe: seance \? seance\.start : null,/);
+  // plus aucune lecture directe du premier créneau
+  assert.doesNotMatch(html,/evt\.nextTiming \|\| evt\.firstTiming \|\| \(evt\.timings\|\|\[\]\)\[0\]/);
+});
+
+test("le classement tranche le temps avant de calculer la pertinence",()=>{
+  // la proximité ne doit jamais faire remonter un événement futur
+  assert.match(core,/const survivants = \[\];/);
+  assert.match(core,/if \(temporary && etat && etat\.statut === temps\.STATUTS\.PASSE\) return;/);
+  assert.match(core,/if \(ctx\.nowOnly && !isAvailableNow\(date, now\)\) return;/);
+  assert.ok(core.indexOf("survivants.push(") < core.indexOf("return survivants.map("),
+    "le filtre temporel doit précéder le calcul du score");
+  // le statut calculé est exposé, il n'est pas recalculé autrement ailleurs
+  assert.match(core,/rankTemporal: etat \? etat\.statut : null,/);
+  assert.match(core,/rankSection: etat && temps \? temps\.sectionTemporelle\(etat, now\) : null,/);
+});
+
+test("une exposition fermée annonce sa réouverture, pas le début de sa période",()=>{
+  assert.match(temporel,/const ouvre = dispo\.opensAt \? Date\.parse\(dispo\.opensAt\) : NaN;/);
+  assert.match(temporel,/\{ debut: suivant, dansMs: suivant - t \}/);
+  // et elle n'est jamais « imminente » : ce n'est pas un événement qui commence
+  assert.doesNotMatch(temporel,/statut: STATUTS\.IMMINENT, periodeLongue/);
 });

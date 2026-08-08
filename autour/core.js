@@ -580,17 +580,40 @@
     return { intention: "", destination: raw, raw };
   }
 
+  /* Les horaires d'un lieu, lus par le module qui fait autorité là-dessus.
+     Passé au moteur temporel plutôt que réimplémenté : une exposition longue a
+     besoin de la même lecture qu'un café. */
+  function disponibiliteDe(item, at) {
+    const module = root.AutourAvailability;
+    return module ? module.getPlaceAvailability(item, at) : null;
+  }
+
   function isAvailableNow(item, at) {
     const now = at == null ? Date.now() : Number(at);
-    if (item.isTemporary) {
-      if (item.endsAt != null && item.endsAt < now) return false;
-      if (item.startsAt != null && item.startsAt > now + 12 * 3600 * 1000) return false;
-      return true;
+    const temps = root.AutourTemps;
+
+    /* Le moteur temporel décide, et lui seul. L'ancienne règle acceptait tout
+       ce qui commençait dans les douze heures — et surtout, elle acceptait un
+       événement SANS date : `startsAt` nul ne déclenchait aucun refus, si bien
+       qu'un événement dont la date n'avait pas pu être lue passait pour un
+       événement en cours. C'est ce qui remplissait « maintenant » de choses
+       prévues des semaines plus tard. */
+    if (temps) {
+      const etat = temps.statutTemporel(item, now, { disponibilite: disponibiliteDe });
+      if (item.isTemporary) return temps.estMaintenant(etat.statut);
+      // un lieu permanent dont on ignore l'horaire reste proposable : la
+      // plupart des lieux OpenStreetMap n'en publient aucun
+      if (etat.statut === temps.STATUTS.INCONNU) return item.ouvert !== false;
+      return temps.estMaintenant(etat.statut);
     }
-    // hors événement, l'horaire fait foi dès qu'on sait le lire ; le booléen
-    // « ouvert » d'une source tierce ne sert plus que de repli
-    const module = root.AutourAvailability;
-    const dispo = module ? module.getPlaceAvailability(item, now) : null;
+
+    // repli si le module n'est pas chargé : au moins ne rien affirmer de faux
+    if (item.isTemporary) {
+      if (item.startsAt == null) return false;
+      if (item.endsAt != null && item.endsAt < now) return false;
+      return item.startsAt <= now + 2 * 3600 * 1000;
+    }
+    const dispo = disponibiliteDe(item, now);
     if (dispo && dispo.status === "permanently_closed") return false;
     if (dispo && dispo.status !== "unknown") return dispo.isOpenNow;
     return item.ouvert !== false;
@@ -847,12 +870,29 @@
     const radius = Number.isFinite(Number(ctx.radius)) ? Number(ctx.radius) : Infinity;
     const deduped = dedupeItems(results || [], distanceBetween);
 
-    return deduped.map((item) => {
+    /* ---- Filtrage temporel, AVANT toute notion de pertinence --------------
+       La proximité et les centres d'intérêt ne doivent jamais faire remonter
+       un événement futur dans « maintenant ». On tranche donc le temps en
+       premier, sur la seule autorité du moteur temporel, et on ne calcule un
+       score que sur ce qui a survécu. */
+    const temps = root.AutourTemps;
+    const survivants = [];
+    deduped.forEach((item) => {
       const startsAt = parseTime(item.startsAt != null ? item.startsAt : item.debutLe);
       const endsAt = parseTime(item.endsAt != null ? item.endsAt : item.finLe);
       const temporary = item.isTemporary === true || TEMPORARY_CATEGORIES.includes(item.cat);
-      if (temporary && endsAt != null && endsAt < now) return null;
-      if (ctx.nowOnly && !isAvailableNow(Object.assign({}, item, {startsAt, endsAt, isTemporary:temporary}), now)) return null;
+      const date = Object.assign({}, item, {startsAt, endsAt, isTemporary: temporary});
+      const etat = temps ? temps.statutTemporel(date, now, { disponibilite: disponibiliteDe }) : null;
+
+      // un événement terminé n'est plus un résultat, à aucun créneau
+      if (temporary && etat && etat.statut === temps.STATUTS.PASSE) return;
+      if (temporary && !etat && endsAt != null && endsAt < now) return;
+      if (ctx.nowOnly && !isAvailableNow(date, now)) return;
+
+      survivants.push({ item, startsAt, endsAt, temporary, etat });
+    });
+
+    return survivants.map(({ item, startsAt, endsAt, temporary, etat }) => {
       // un lieu entre dans un besoin s'il y a une appartenance, même
       // secondaire — c'est ce qui fait qu'un parc sort dans Famille ET Sortir
       const categoryFit = bestCategoryWeight(item, categories);
@@ -896,17 +936,25 @@
       }
 
       if (temporary) {
-        const inProgress = (startsAt == null || startsAt <= now) && (endsAt == null || endsAt >= now);
-        const minutesUntil = startsAt == null ? null : Math.round((startsAt - now) / 60000);
+        // le statut vient du moteur : sur un événement récurrent c'est la
+        // prochaine occurrence réelle qui compte, pas le début de la période
+        const debut = etat && etat.debut != null ? etat.debut : startsAt;
+        const inProgress = etat
+          ? etat.statut === temps.STATUTS.EN_COURS
+          : (startsAt == null || startsAt <= now) && (endsAt == null || endsAt >= now);
+        const imminent = etat
+          ? etat.statut === temps.STATUTS.IMMINENT
+          : debut != null && debut >= now && debut - now <= 2 * 3600 * 1000;
+        const minutesUntil = debut == null ? null : Math.round((debut - now) / 60000);
         if (inProgress) {
           availability = 6;
           score += profile.event + 70;
           temporalReason = "En cours";
-        } else if (minutesUntil != null && minutesUntil >= 0 && minutesUntil <= 120) {
+        } else if (imminent && minutesUntil != null) {
           availability = 5;
           score += profile.event + Math.max(0, 120 - minutesUntil);
-          temporalReason = "Commence dans " + minutesUntil + " min";
-        } else if (startsAt != null) {
+          temporalReason = "Commence dans " + Math.max(1, minutesUntil) + " min";
+        } else if (debut != null) {
           availability = Math.max(availability, 1);
           score += Math.max(20, profile.event * .35);
         }
@@ -929,7 +977,15 @@
       const eta = resolveEta(ctx, item, distance);
       const minutes = eta ? eta.minutes : null;
       const arrival = minutes == null ? null : now + minutes * 60000;
-      const outlook = arrivalOutlook(item, arrival, temporary, startsAt, endsAt, now);
+      // sur un événement récurrent, l'arrivée se juge par rapport à la
+      // prochaine occurrence, pas au début de la période de récurrence
+      const outlook = arrivalOutlook(item, arrival, temporary,
+        temporary && etat && etat.debut != null ? etat.debut : startsAt,
+        // la fin réelle de l'occurrence, jamais la durée supposée : inventer
+        // une fin ferait rater un événement dont on ignore la durée
+        temporary && etat && etat.occurrence && etat.occurrence.fin != null
+          ? etat.occurrence.fin : endsAt,
+        now);
 
       score += outlook.score;
       // la faisabilité joue sur la disponibilité, pas seulement sur le score :
@@ -979,6 +1035,11 @@
         rankArrival: arrival,
         rankOutlook: outlook.state,
         rankAvailability: outlook.dispo || null,
+        // statut temporel déjà calculé : l'interface s'en sert pour classer en
+        // sections sans refaire le travail ni risquer une réponse différente
+        rankTemporal: etat ? etat.statut : null,
+        rankSection: etat && temps ? temps.sectionTemporelle(etat, now) : null,
+        rankStart: etat && etat.debut != null ? etat.debut : startsAt,
         rankRelevance: relevance,
         rankBreakdown: {availability, intentMatch, distance, startsAt, quality,
           categoryFit, etaMinutes: minutes, relevance},
