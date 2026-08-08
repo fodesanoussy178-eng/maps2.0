@@ -426,6 +426,7 @@ input{font-family:inherit;font-size:16px}
 .fc-tete{display:flex;align-items:center;gap:10px}
 .fc-tete b{flex:1;min-width:0;font-size:17px;font-weight:750;letter-spacing:-.01em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc-expli{font-size:13px;line-height:1.35;color:var(--ink)}
 .fc-l2{font-size:13px;color:var(--ink2)}
 .fc-l3{font-size:13px;font-weight:650}
 .fc-modes{margin-top:2px;font-size:13px;color:var(--ink2)}
@@ -895,6 +896,19 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   font-size:12.5px;line-height:1.45;color:var(--ink)}
 .service-bloc{margin:-8px 0 14px;padding:8px 11px;border-radius:3px;
   background:rgba(44,58,51,.08);font-size:12.5px;font-weight:600;color:var(--ardoise)}
+/* « À quoi ça sert » : le texte qu'on lit avant de décider de s'y rendre.
+   Assez lisible pour être lu vraiment, assez sobre pour ne pas passer devant
+   l'adresse et les horaires. */
+.expli{margin:-4px 0 14px;padding:11px 13px;border-radius:12px;
+  background:rgba(44,58,51,.05);border:1px solid var(--bord)}
+.expli-txt{margin:0;font-size:14px;line-height:1.45;color:var(--ink)}
+.expli-public{margin:6px 0 0;font-size:13px;font-weight:650;color:var(--ardoise)}
+.expli-src{margin:7px 0 0;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+/* deux lignes au plus : la liste sert à choisir, pas à lire. Le texte complet
+   est sur la fiche. Sans cette limite, une seule entrée occupait l'écran. */
+.ac-expli{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;font-size:12px;line-height:1.35;color:var(--ink2);margin-top:2px}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
 .trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
 .trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
@@ -1145,6 +1159,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="availability.js"></script>
 <script src="temporel.js"></script>
+<script src="explications.js"></script>
 <script src="events.js"></script>
 <script src="core.js"></script>
 <script src="transit.js"></script>
@@ -1160,6 +1175,7 @@ function panne(titre, corps){
    et un aperçu gratuit du fonctionnement interne. `__autourDebug = true` les
    rallume. Les vraies erreurs, elles, passent toujours par console.error. */
 const TEMPS = window.AutourTemps;
+const EXPLIQUE = window.AutourExplications;
 
 const journal = {
   info(...a){ if(window.__autourDebug) console.info(...a); },
@@ -3645,8 +3661,12 @@ function ouvrirFicheCompacte(l){
   ].filter(([,m])=>m != null).map(([e,m])=>e+" "+m+" min").join("  ");
 
   const mien = !!(l.dbId && moiId && l.auteur === moiId);
+  // un lieu d'aide dit à quoi il sert dès la fiche posée sur la carte :
+  // ouvrir le détail pour comprendre ce qu'est un CCAS est un pas de trop
+  const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 130) : "";
   $("#ficheCompacte").innerHTML =
     '<div class="fc-tete"><b>'+esc(l.titre)+'</b>'+boutonCoeur(l)+'</div>'+
+    (aQuoi ? '<span class="fc-expli">'+esc(aQuoi)+'</span>' : '')+
     (ligne2 ? '<span class="fc-l2">'+esc(ligne2)+'</span>' : '')+
     (ligne3 ? '<span class="fc-l3">'+esc(ligne3)+'</span>' : '')+
     (modes ? '<span class="fc-modes">'+modes+'</span>' : '')+
@@ -4172,6 +4192,43 @@ function basculerGarde(id){
   return gardes.has(id);
 }
 
+/* ---- « À quoi ça sert ? » -----------------------------------------------
+   Le texte vient du moteur d'explications : d'abord ce que Google publie sur
+   CE lieu, sinon ce qu'OpenStreetMap en dit, sinon ce que fait ce type de
+   structure. La provenance est écrite : une explication de réseau ne doit pas
+   se lire comme une phrase écrite par l'antenne du coin.
+
+   Le descriptif Google arrive après coup — il se demande lieu par lieu — donc
+   la fiche s'ouvre avec l'explication générique et la remplace si mieux
+   arrive. Personne n'attend devant un écran vide. */
+function blocExplication(l){
+  if(!EXPLIQUE) return "";
+  const e = EXPLIQUE.explication(l);
+  if(!e.texte && !e.public) return "";
+  return '<section class="expli" id="expliBloc" data-pour="'+esc(String(l.id))+'" '+
+    'data-source="'+esc(e.source||"")+'">'+
+    (e.texte ? '<p class="expli-txt">'+esc(e.texte)+'</p>' : '')+
+    (e.public ? '<p class="expli-public">'+esc(e.public)+'</p>' : '')+
+    (e.mention ? '<p class="expli-src">'+esc(e.mention)+'</p>' : '')+
+    '</section>';
+}
+
+/* Va chercher le descriptif du lieu chez Google et remplace le texte
+   générique s'il en existe un. Réservé aux lieux d'aide et fait une seule
+   fois par lieu : ces résumés sont facturés à part. */
+function completerExplication(l){
+  if(!EXPLIQUE || !l || !l.idGoogle || l.resumeGoogle) return;
+  if(!SET_AIDE.has(l.cat)) return;
+  descriptifGoogle(l.idGoogle).then(texte=>{
+    if(!texte) return;
+    l.resumeGoogle = texte;
+    const bloc = $("#expliBloc");
+    // la fiche a pu être refermée entre-temps, ou en montrer une autre
+    if(!bloc || bloc.dataset.pour !== String(l.id)) return;
+    bloc.outerHTML = blocExplication(l);
+  });
+}
+
 function noteVacances(l){
   if(l.cat !== "ecole") return "";
   const v = vacancesScolaires(new Date());
@@ -4205,6 +4262,10 @@ function ouvrirDetail(id){
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Enregistré':'Enregistrer')+'</button>'+
     '</div>'+
     (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
+    // « CCAS », « Mission locale », « Banque alimentaire » : des noms qui ne
+    // disent rien à qui n'a jamais eu à s'en servir — c'est-à-dire à qui ouvre
+    // cet écran. Chaque fiche explique donc ce qu'on y fait.
+    blocExplication(l)+
     // un établissement scolaire trouvé par son nom en pleines vacances : le
     // dire évite un déplacement pour rien devant une grille fermée
     noteVacances(l)+
@@ -4240,6 +4301,7 @@ function ouvrirDetail(id){
   );
   if($("#btnSignal")) $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
   if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
+  completerExplication(l);
   if(l.dbId) chargerCanal(l);
 
   /* Suppression en deux temps : un appui demande confirmation, le second
@@ -5424,6 +5486,11 @@ function photoGoogle(p){
 
 function mapperPlace(p){
   return {
+    // l'identifiant Google : c'est lui qui permettra d'aller chercher, à la
+    // demande, le descriptif du lieu sans le payer pour toute une zone
+    idGoogle: p.id || (typeof p.name === "string" && p.name.indexOf("places/") === 0
+      ? p.name.slice("places/".length) : ""),
+    resumeGoogle: EXPLIQUE ? EXPLIQUE.resumeGoogle(p) : "",
     nom:(p.displayName&&p.displayName.text)||"",
     lat:p.location.latitude, lng:p.location.longitude,
     note:p.rating, avis:p.userRatingCount,
@@ -5441,12 +5508,71 @@ function mapperPlace(p){
 
 /* Une application de découverte doit donner envie avant de faire lire :
    sans places.photos, toutes les cartes retombaient sur un emoji. */
-const CHAMPS_PLACE = "places.displayName,places.location,places.rating,"+
+const CHAMPS_PLACE = "places.id,places.displayName,places.location,places.rating,"+
   "places.photos,"+
   "places.userRatingCount,places.currentOpeningHours.openNow,"+
   "places.primaryType,places.formattedAddress,places.priceLevel,"+
   "places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,"+
   "places.accessibilityOptions.wheelchairAccessibleEntrance";
+
+/* ---- Le descriptif d'un lieu, demandé lieu par lieu ----------------------
+   Les résumés de Google (éditorial et généré) sont facturés dans une formule
+   plus chère que le reste. Les demander pour les vingt fiches de chaque zone
+   coûterait cher pour un texte que personne ne lira. On ne les demande donc
+   que lorsqu'une fiche s'ouvre vraiment, une fois par lieu, et on garde la
+   réponse : c'est un texte qui ne change pas d'un jour à l'autre.
+
+   Un échec n'est pas un problème : l'explication générique prend le relais. */
+const CHAMPS_DESCRIPTIF = "id,generativeSummary,editorialSummary";
+/* `generativeSummary` n'est pas ouvert à toutes les clés ni à tous les pays.
+   Quand l'API le refuse, elle refuse la requête entière : on redemande alors
+   le seul résumé éditorial plutôt que de perdre le descriptif. */
+const CHAMPS_DESCRIPTIF_SOBRE = "id,editorialSummary";
+let champsDescriptif = CHAMPS_DESCRIPTIF;
+const CLE_DESCRIPTIF = "autour.descriptif.";
+const descriptifs = new Map();
+
+function descriptifEnCache(idGoogle){
+  if(descriptifs.has(idGoogle)) return descriptifs.get(idGoogle);
+  try{
+    const brut = localStorage.getItem(CLE_DESCRIPTIF+idGoogle);
+    if(brut != null){ descriptifs.set(idGoogle, brut); return brut; }
+  }catch(e){ /* stockage indisponible : on redemandera, sans casser l'écran */ }
+  return null;
+}
+
+async function descriptifGoogle(idGoogle){
+  if(!CLE_GOOGLE || !idGoogle) return "";
+  const connu = descriptifEnCache(idGoogle);
+  if(connu != null) return connu;
+
+  const demander = (champs)=>fetch(
+    "https://places.googleapis.com/v1/places/"+encodeURIComponent(idGoogle)+"?languageCode=fr",
+    {headers:{"X-Goog-Api-Key":CLE_GOOGLE, "X-Goog-FieldMask":champs}});
+
+  try{
+    let r = await demander(champsDescriptif);
+    // champ refusé : on retombe sur le résumé éditorial, une fois pour toutes
+    if(r.status === 400 && champsDescriptif !== CHAMPS_DESCRIPTIF_SOBRE){
+      journal.warn("Descriptif Google : résumé généré indisponible, repli sur l’éditorial");
+      champsDescriptif = CHAMPS_DESCRIPTIF_SOBRE;
+      r = await demander(champsDescriptif);
+    }
+    if(!r.ok){
+      journal.warn("Descriptif Google: HTTP", r.status);
+      // une erreur du client ne se corrigera pas en réessayant : on retient
+      // l'absence pour ne pas relancer la même requête à chaque ouverture.
+      // Une panne serveur, si.
+      if(r.status < 500) descriptifs.set(idGoogle, "");
+      return "";
+    }
+    const texte = EXPLIQUE ? EXPLIQUE.resumeGoogle(await r.json()) : "";
+    descriptifs.set(idGoogle, texte);
+    // on mémorise aussi l'absence de résumé : la redemander coûterait autant
+    try{ localStorage.setItem(CLE_DESCRIPTIF+idGoogle, texte); }catch(e){}
+    return texte;
+  }catch(e){ console.error("Descriptif Google:", e); return ""; }
+}
 
 /* Recherche libre chez Google. OpenStreetMap ignore beaucoup d'équipements
    publics (une mission locale y est rarement cartographiée) alors que Google
@@ -5550,6 +5676,7 @@ function ajouterLieuxGoogle(fiches, catDefaut){
     aAjouter.push(normaliserItem({
       id:"g"+hash(f.nom+f.lat), cat, titre:f.nom,
       description:f.description || "", type:f.type,
+      idGoogle:f.idGoogle || "", resumeGoogle:f.resumeGoogle || "",
       adresse:f.adresse || f.nom, cp:commune,
       quand:"Voir sur place", gratuit:true, prix:0,
       places:null, qr:false, par:"Google Maps",
@@ -5591,6 +5718,10 @@ function greffeNotes(liste, fiches){
       if(meilleur.pmr != null) l.pmr = meilleur.pmr;
       // la photo ne remplace jamais celle d'un événement déjà illustré
       if(meilleur.image && !l.image) l.image = meilleur.image;
+      // l'identifiant Google voyage avec le reste : c'est ce qui permet
+      // d'aller chercher le descriptif d'un lieu venu d'OpenStreetMap
+      if(meilleur.idGoogle && !l.idGoogle) l.idGoogle = meilleur.idGoogle;
+      if(meilleur.resumeGoogle && !l.resumeGoogle) l.resumeGoogle = meilleur.resumeGoogle;
     }
   });
   rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
@@ -6754,9 +6885,13 @@ function blocResultats(){
     const c = CATS[l.cat] || {emoji:"📍"};
     const bouts = ['<span class="raison">'+esc(l.rankReason)+'</span>'];
     if(l.note) bouts.push("★ "+l.note.toFixed(1));
+    // dans l'aide, le nom seul ne suffit pas : « CCAS » ne dit rien tant
+    // qu'on n'a pas eu besoin d'un CCAS. Une ligne dit à quoi ça sert.
+    const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 110) : "";
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+(index+1)+'</span>'+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
+      (aQuoi ? '<span class="ac-expli">'+esc(aQuoi)+'</span>' : '')+
       '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
       '<span class="ac-dist" aria-hidden="true">'+c.emoji+'</span></button>';
   }).join("")+(classement.length>5

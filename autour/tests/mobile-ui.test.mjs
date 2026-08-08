@@ -5,6 +5,7 @@ import test from "node:test";
 const html = await readFile(new URL("../index.html",import.meta.url),"utf8");
 const temporel = await readFile(new URL("../temporel.js",import.meta.url),"utf8");
 const core = await readFile(new URL("../core.js",import.meta.url),"utf8");
+const explications = await readFile(new URL("../explications.js",import.meta.url),"utf8");
 
 test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",()=>{
   assert.match(html,/<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" \/>/);
@@ -1001,4 +1002,52 @@ test("une exposition fermée annonce sa réouverture, pas le début de sa pério
   assert.match(temporel,/\{ debut: suivant, dansMs: suivant - t \}/);
   // et elle n'est jamais « imminente » : ce n'est pas un événement qui commence
   assert.doesNotMatch(temporel,/statut: STATUTS\.IMMINENT, periodeLongue/);
+});
+
+test("dans l'aide, chaque lieu dit à quoi il sert",()=>{
+  // « CCAS », « Mission locale », « Banque alimentaire » : des noms qui ne
+  // veulent rien dire tant qu'on n'a pas eu besoin de s'en servir
+  assert.match(html,/<script src="explications\.js"><\/script>/);
+  assert.match(html,/const EXPLIQUE = window\.AutourExplications;/);
+  // la fiche détaillée porte le descriptif complet
+  assert.match(html,/function blocExplication\(l\)\{/);
+  assert.match(html,/blocExplication\(l\)\+/);
+  // la liste et la fiche posée sur la carte en portent une ligne
+  assert.match(html,/const aQuoi = EXPLIQUE && SET_AIDE\.has\(l\.cat\) \? EXPLIQUE\.resumeCourt\(l, 110\) : "";/);
+  assert.match(html,/const aQuoi = EXPLIQUE && SET_AIDE\.has\(l\.cat\) \? EXPLIQUE\.resumeCourt\(l, 130\) : "";/);
+  // la provenance est toujours écrite : une explication de réseau ne doit pas
+  // se lire comme une phrase écrite par l'antenne du coin
+  assert.match(html,/e\.mention \? '<p class="expli-src">'/);
+  // deux lignes au plus dans la liste : elle sert à choisir, pas à lire
+  assert.match(html,/\.ac-expli\{display:-webkit-box;-webkit-line-clamp:2;/);
+});
+
+test("le descriptif Google est demandé lieu par lieu, jamais par zone",()=>{
+  // ces résumés sont facturés dans une formule plus chère : les demander pour
+  // les vingt fiches de chaque zone coûterait cher pour un texte non lu
+  assert.match(html,/const CHAMPS_DESCRIPTIF = "id,generativeSummary,editorialSummary";/);
+  assert.doesNotMatch(html,/CHAMPS_PLACE = "[^"]*generativeSummary/);
+  assert.doesNotMatch(html,/CHAMPS_PLACE = "[^"]*editorialSummary/);
+  // réservé à l'aide, et une seule fois par lieu
+  assert.match(html,/if\(!SET_AIDE\.has\(l\.cat\)\) return;/);
+  assert.match(html,/if\(!EXPLIQUE \|\| !l \|\| !l\.idGoogle \|\| l\.resumeGoogle\) return;/);
+  assert.match(html,/const connu = descriptifEnCache\(idGoogle\);\s*\n\s*if\(connu != null\) return connu;/);
+  // l'identifiant Google doit être demandé pour pouvoir aller le chercher
+  assert.match(html,/CHAMPS_PLACE = "places\.id,/);
+  // un échec n'efface rien : l'explication générique reste
+  assert.match(html,/journal\.warn\("Descriptif Google: HTTP", r\.status\);/);
+  // le résumé généré n'est pas ouvert à toutes les clés : refus ⇒ repli sur
+  // l'éditorial, une fois, plutôt que perdre le descriptif
+  assert.match(html,/if\(r\.status === 400 && champsDescriptif !== CHAMPS_DESCRIPTIF_SOBRE\)\{/);
+  // une erreur client ne se réessaie pas à chaque ouverture, une panne serveur si
+  assert.match(html,/if\(r\.status < 500\) descriptifs\.set\(idGoogle, ""\);/);
+});
+
+test("aucune explication n'est écrite pour une ville en particulier",()=>{
+  // le fichier d'explications ne connaît que des réseaux et des tags ; on
+  // regarde le code, pas les commentaires, qui citent des villes en exemple
+  const code = explications.replace(/\/\*[\s\S]*?\*\//g,"").replace(/^\s*\/\/.*$/gm,"");
+  assert.doesNotMatch(code,/if\s*\(?\s*ville/i);
+  for(const ville of ["Lille","Tourcoing","Roubaix","Paris","Lyon","Marseille"])
+    assert.doesNotMatch(code, new RegExp(ville,"i"), ville+" ne doit pas y figurer");
 });
