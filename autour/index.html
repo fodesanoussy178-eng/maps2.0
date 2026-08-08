@@ -239,44 +239,49 @@ input{font-family:inherit;font-size:16px}
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
 
-/* ---- En-tête fixe -------------------------------------------------------
-   Blanc, posé au-dessus de la carte, il porte le contexte et l'intention.
-   Sa hauteur réelle est mesurée et publiée dans --header-height : la carte
-   et les boutons flottants s'y accrochent au lieu de deviner. */
-#appHeader{position:absolute;top:0;left:0;right:0;z-index:600;
-  padding:calc(var(--safe-t) + 8px) 16px 10px;
-  background:#fff;border-radius:0 0 24px 24px;
-  box-shadow:0 2px 12px rgba(20,30,25,.06)}
-.hd-ligne{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.hd-lieu{flex:1;min-width:0;text-align:center;line-height:1.15}
-.hd-lieu b{display:block;font-size:18px;font-weight:800;letter-spacing:-.02em}
-.hd-lieu span{display:block;font-size:12.5px;color:var(--ink2)}
-.hd-icone{position:relative;flex-shrink:0;width:38px;height:38px;border-radius:50%;
+/* ---- En-tête flottant compact -------------------------------------------
+   La carte est le produit : l'interface se pose dessus au lieu de la
+   repousser. Une pastille de contexte, une loupe, une cloche — rien qui
+   occupe une bande pleine largeur. */
+#appHeader{position:absolute;top:calc(var(--safe-t) + 10px);left:12px;right:12px;
+  z-index:600;display:flex;align-items:center;gap:8px;background:none;
+  box-shadow:none;padding:0;border-radius:0}
+#btnMaintenant{flex:1;min-width:0;display:flex;align-items:center;gap:6px;
+  height:44px;padding:0 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink2);font-size:14px;font-weight:700;
+  box-shadow:0 2px 12px rgba(20,30,25,.16);
+  overflow:hidden;white-space:nowrap;
+  transition:background .16s ease,color .16s ease}
+#btnMaintenant.actif{background:var(--orange);border-color:var(--orange);color:#fff;
+  box-shadow:0 3px 14px rgba(255,107,44,.38)}
+.hd-sep{font-style:normal;opacity:.5}
+#btnMaintenant b{min-width:0;overflow:hidden;text-overflow:ellipsis;
+  font-weight:800;color:inherit}
+.hd-icone{position:relative;flex-shrink:0;width:44px;height:44px;border-radius:50%;
   border:1px solid var(--bord);background:#fff;color:var(--ink);
-  display:grid;place-items:center;box-shadow:0 1px 5px rgba(20,30,25,.10)}
+  display:grid;place-items:center;box-shadow:0 2px 12px rgba(20,30,25,.16)}
 .hd-icone i{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;
   background:var(--signal);border:1.5px solid #fff}
 
-/* « Maintenant » : l'état du moment, en orange, toujours visible. */
-#btnMaintenant{flex-shrink:0;display:flex;align-items:center;gap:6px;height:38px;padding:0 13px;
-  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink2);
-  font-size:14px;font-weight:700;box-shadow:0 1px 5px rgba(20,30,25,.10);
-  transition:background .16s ease,color .16s ease}
-#btnMaintenant.actif{background:var(--orange);border-color:var(--orange);color:#fff;
-  box-shadow:0 3px 12px rgba(255,107,44,.36)}
-
-.hd-rech{display:flex;align-items:center;gap:10px}
-.hd-rech > svg{position:absolute;margin-left:15px;color:var(--ink2);pointer-events:none}
-.hd-rech input{flex:1;min-width:0;height:44px;padding:0 40px 0 42px;
+/* ---- Recherche superposée ------------------------------------------------
+   Elle recouvre la carte sans la remplacer : on garde le décor, on ajoute
+   l'intention. */
+#rechercheOverlay{position:absolute;top:0;left:0;right:0;z-index:660;
+  padding:calc(var(--safe-t) + 10px) 16px 14px;
+  background:#fff;border-radius:0 0 22px 22px;
+  box-shadow:0 4px 22px rgba(20,30,25,.16);animation:monteT .16s ease-out}
+.ro-barre{display:flex;align-items:center;gap:10px;position:relative}
+.ro-barre > svg{position:absolute;margin-left:15px;color:var(--ink2);pointer-events:none}
+.ro-barre input{flex:1;min-width:0;height:46px;padding:0 44px 0 42px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;
   color:var(--ink);font-size:15px;outline:0}
-.hd-rech input::placeholder{color:#9AA49D;font-size:14.5px}
-.hd-rech input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
-.icone-btn{position:absolute;right:68px;width:36px;height:36px;border:0;background:none;
+.ro-barre input::placeholder{color:#9AA49D;font-size:14.5px}
+.ro-barre input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+.icone-btn{position:absolute;right:62px;width:38px;height:38px;border:0;background:none;
   color:var(--ink2);display:grid;place-items:center;padding:4px}
-.hd-filtres{flex-shrink:0;width:44px;height:44px;border-radius:50%;
+.hd-filtres{flex-shrink:0;width:46px;height:46px;border-radius:50%;
   border:1px solid var(--bord);background:#fff;color:var(--ink);
-  display:grid;place-items:center;box-shadow:0 1px 5px rgba(20,30,25,.10)}
+  display:grid;place-items:center}
 
 /* ---- Pills de catégories ------------------------------------------------
    Petites, horizontales, scrollables. La sélection est pleine et colorée :
@@ -486,6 +491,15 @@ input{font-family:inherit;font-size:16px}
 
 /* Attribution : obligatoire, donc conservée — mais repliée derrière un « ⓘ »
    au lieu d'occuper le bas de la carte en permanence. */
+/* Retour à soi : n'apparaît que lorsqu'on s'est éloigné, sinon il ne veut
+   rien dire et occupe la carte pour rien. */
+#btnAutourDeMoi{position:absolute;left:50%;transform:translateX(-50%);
+  top:calc(var(--safe-t) + 66px);z-index:604;
+  height:40px;padding:0 16px;border:0;border-radius:99px;
+  background:var(--trait);color:#fff;font-size:14px;font-weight:700;
+  box-shadow:0 4px 16px rgba(20,30,25,.30);animation:monteT .18s ease-out}
+#btnAutourDeMoi:active{transform:translateX(-50%) scale(.96)}
+
 #btnCredits{position:absolute;left:12px;bottom:calc(var(--map-control-bottom) + 4px);z-index:601;
   width:26px;height:26px;border-radius:50%;border:1px solid var(--bord);
   background:rgba(255,255,255,.9);color:var(--ink2);font-size:13px;line-height:1;
@@ -913,39 +927,44 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <!-- En-tête fixe : le contexte d'abord (où je suis, quand), puis l'intention
      (que veux-tu faire), puis le raccourci (catégories). La carte est un
      décor derrière ça, pas l'interface elle-même. -->
+<!-- En-tête flottant compact : la carte domine, l'interface se pose dessus.
+     Une pastille de contexte, une loupe, une cloche. Rien d'autre. -->
 <header id="appHeader" hidden>
-  <div class="hd-ligne">
-    <button id="btnMaintenant" aria-pressed="true" title="Ce qui est utilisable maintenant">⚡ <span>Maintenant</span></button>
-    <div class="hd-lieu">
-      <b id="hdVille">Autour de toi</b>
-      <span id="hdSous" hidden>Autour de toi</span>
-    </div>
-    <button class="hd-icone" id="btnNotifs" aria-label="Notifications">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-      <i id="notifPastille" hidden></i>
-    </button>
-  </div>
-
-  <div class="hd-rech">
+  <button id="btnMaintenant" aria-pressed="true" title="Ce qui est utilisable maintenant">
+    ⚡ <span>Maintenant</span><i class="hd-sep">·</i><b id="hdVille">Autour de toi</b>
+  </button>
+  <button class="hd-icone" id="btnLoupe" aria-label="Rechercher">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
-    <input id="rech" placeholder="Que veux-tu faire maintenant&nbsp;?" />
-    <button class="icone-btn" id="btnFermerRech" hidden aria-label="Effacer la recherche">
+  </button>
+  <button class="hd-icone" id="btnNotifs" aria-label="Notifications">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    <i id="notifPastille" hidden></i>
+  </button>
+</header>
+
+<!-- Recherche : superposée à la carte, jamais un écran de remplacement. -->
+<div id="rechercheOverlay" hidden role="dialog" aria-label="Rechercher">
+  <div class="ro-barre">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+    <input id="rech" placeholder="Une envie, un lieu, une ville…" />
+    <button class="icone-btn" id="btnFermerRech" aria-label="Fermer la recherche">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
     <button class="hd-filtres" id="btnFiltres" aria-label="Filtres" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
     </button>
   </div>
-
-  <!-- Pills : quatre besoins + Plus. Rempli par majRaccourcis(). -->
   <div id="raccourcis" class="pills"></div>
   <div id="filtresHumains" hidden></div>
   <div id="suggestions" hidden></div>
-</header>
+</div>
 
 <!-- Partager ne vit que sur la fiche d'un lieu : la carte n'a pas à le porter. -->
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
 
+<!-- Quand une recherche déplace la carte loin de soi, un seul geste ramène
+     à sa position et à ses recommandations locales. -->
+<button id="btnAutourDeMoi" hidden>⌖ Autour de moi</button>
 <button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.6v3.2M12 18.2v3.2M21.4 12h-3.2M5.8 12H2.6"/></svg>
 </button>
@@ -978,11 +997,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <nav id="navBas" hidden>
   <button class="nb actif" data-nb="explorer">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-    Explorer
+    Autour de moi
   </button>
   <button class="nb" data-nb="maintenant">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>
-    Maintenant
+    Pour toi
   </button>
   <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
     <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
@@ -1056,9 +1075,37 @@ const {
   rankResults,
 } = window.AutourCore;
 
-/* Ville détectée : déclarée ici car demarrer() l'utilise bien avant le bloc
-   qui définit detecterVille(). */
+/* Déclarés ici parce que le démarrage les lit bien avant les blocs qui les
+   définissent : sans ça, la zone morte temporelle casse le premier rendu. */
 let villeDetectee = null;
+let canauxAMoi = [];
+
+/* ---- Recherche géographique ----------------------------------------------
+   « Tourcoing », « Wazemmes » : on déplace la carte vers la zone et on
+   n'affiche d'abord que trois à cinq résultats fortement pertinents. Le reste
+   se charge derrière, sans bloquer. */
+let rechercheGeo = null;              // {nom, lat, lng} de la zone visée
+const RESULTATS_RECHERCHE_INITIAUX = 5;
+
+/* Une requête est géographique si elle ne correspond à aucune catégorie ni
+   cuisine connue : on ne géocode pas « pizza ». */
+function ressembleAUneZone(q){
+  const texte = (q||"").trim();
+  if(texte.length < 3) return false;
+  if(categorieRecherchee(texte) || cuisineRecherchee(texte)) return false;
+  return /^[\p{L}\s'’-]+$/u.test(texte);
+}
+
+async function rechercheGeographique(q){
+  const pos = await geocoderVille(q);
+  if(!pos || !map) return false;
+  rechercheGeo = {nom:q, lat:pos[0], lng:pos[1]};
+  map.flyTo(pos, 15, {duration:.8});
+  // les lieux de la nouvelle zone arrivent derrière : l'interface n'attend pas
+  chargerZone(pos[0], pos[1]);
+  majBoutons();
+  return true;
+}
 
 /* ---- Favoris, côté écran ------------------------------------------------
    L'identité est anonyme : personne ne crée de compte. On ne la réclame donc
@@ -3049,10 +3096,18 @@ async function demarrer(coords){
 /* Le bouton de position reste là en permanence : c'est l'un des quatre
    repères de l'écran de départ, il ne doit pas disparaître sous les pieds
    de quelqu'un qui le cherche. */
+/* Seuil au-delà duquel « autour de moi » ne décrit plus ce qu'on regarde. */
+const ECART_HORS_ZONE = 3000;
+function carteHorsPosition(){
+  if(!map || !positionMoi) return false;
+  const c = map.getCenter();
+  return distanceM(positionMoi[0], positionMoi[1], c.lat, c.lng) > ECART_HORS_ZONE;
+}
 function majBoutons(){
   const b = $("#btnRevenir");
-  if(!b) return;
-  b.hidden = !map || modePose || modeNav;
+  if(b) b.hidden = !map || modePose || modeNav;
+  const retour = $("#btnAutourDeMoi");
+  if(retour) retour.hidden = !map || modePose || modeNav || !carteHorsPosition();
 }
 
 /* ================================================================== */
@@ -6179,7 +6234,9 @@ function carteRecommandation(l){
     ? "Arrivée "+heureLocale(l.rankArrival, l)
     : (dispo && dispo.closesAtTime ? "Ferme à "+dispo.closesAtTime : "");
 
-  return '<button class="rc-carte" data-ac="'+esc(l.id)+'">'+
+  // Un <button> ne peut pas en contenir un autre : le parseur extrait le cœur
+  // et disloque la carte. On utilise donc un conteneur avec rôle de bouton.
+  return '<div class="rc-carte" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
     visuel+
     '<span class="rc-corps">'+
       '<span class="rc-haut"><span class="rc-cats">'+esc(cats)+'</span>'+boutonCoeur(l)+'</span>'+
@@ -6191,7 +6248,7 @@ function carteRecommandation(l){
       '</span>'+
       (detail.length ? '<span class="rc-trajet">'+detail.join(" ")+'</span>' : '')+
       (arrivee ? '<span class="rc-arrivee">'+esc(arrivee)+'</span>' : '')+
-    '</span></button>';
+    '</span></div>';
 }
 
 /* ---- Prochains départs --------------------------------------------------
@@ -6222,6 +6279,11 @@ function brancherFeuille2(){
   const corps = $("#fbCorps");
 
   // « Voir tout » : la liste complète des recommandations de l'accueil
+  // rôle de bouton : Entrée et Espace doivent l'activer comme un vrai bouton
+  corps.querySelectorAll('[role="button"][data-ac]').forEach(x=>x.onkeydown=e=>{
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); x.click(); }
+  });
+
   corps.querySelectorAll("[data-rc-tout]").forEach(b=>b.onclick=()=>{
     const tout = recommandationsAccueil(60);
     pileEcrans = [];
@@ -6750,14 +6812,26 @@ demarrer(positionTest || positionMemorisee()).then(()=>{
 /* La recherche est désormais toujours visible : elle porte l'intention
    («&nbsp;que veux-tu faire&nbsp;?»), elle ne se déplie plus. La croix
    n'apparaît que s'il y a quelque chose à effacer. */
+/* La recherche n'occupe plus l'écran en permanence : elle s'ouvre à la loupe
+   et se referme entièrement, rendant la carte à l'utilisateur. */
+function ouvrirRecherche(){
+  $("#rechercheOverlay").hidden = false;
+  $("#appHeader").hidden = true;
+  majRaccourcis();
+  layerManager.activate(NOMS_COUCHES.searchOverlay);
+  requestAnimationFrame(()=>$("#rech").focus());
+}
+function fermerRecherche(){
+  $("#rechercheOverlay").hidden = true;
+  $("#appHeader").hidden = false;
+  $("#suggestions").hidden = true;
+  layerManager.deactivate(NOMS_COUCHES.searchOverlay);
+}
+$("#btnLoupe").onclick = ouvrirRecherche;
 $("#btnFermerRech").onclick=()=>{
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
-  $("#btnFermerRech").hidden=true;
-  layerManager.deactivate(NOMS_COUCHES.searchOverlay); rendre(); majAccueil();
+  fermerRecherche(); rendre(); majAccueil();
 };
-$("#rech").addEventListener("input",()=>{
-  $("#btnFermerRech").hidden = !$("#rech").value;
-});
 
 /* Les filtres humains vivaient dans un rail flottant que rien n'annonçait :
    ils ont maintenant un bouton dédié dans l'en-tête. */
@@ -6850,13 +6924,50 @@ $("#rech").oninput=e=>{
   minuteurSug = setTimeout(()=>suggerer(recherche), 130);
 };
 // Entrée : on bascule du filtrage des pastilles vers un vrai classement
-$("#rech").onkeydown=e=>{
+$("#rech").onkeydown=async e=>{
   if(e.key !== "Enter") return;
   const q = e.target.value.trim();
   if(!q) return;
   e.target.blur();
+  fermerRecherche();
+  // une zone déplace la carte ; le reste passe par la compréhension habituelle
+  if(ressembleAUneZone(q) && await rechercheGeographique(q)){
+    ouvrirResultatsZone(q);
+    return;
+  }
   appliquerPhrase(q);        // même compréhension que la barre « Autour IA »
 };
+
+/* Après un déplacement de carte : trois à cinq résultats forts, pas un mur.
+   Le reste continue d'arriver et se classera derrière. */
+function ouvrirResultatsZone(nom){
+  const centre = rechercheGeo ? [rechercheGeo.lat, rechercheGeo.lng] : positionMoi;
+  if(!centre) return;
+  const forts = rankResults(lieux.filter(nomExploitable), {
+    intent:"sortir",
+    categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []))],
+    position:centre,
+    now:instantCreneau().getTime(),
+    nowOnly:filtreMaintenant && !montrerFermes,
+    radius:rayonRecherche,
+    distanceBetween:distanceM,
+    etaFor:l=>etaConnu(l, centre),
+    requete:nom,
+  }).slice(0, RESULTATS_RECHERCHE_INITIAUX);
+
+  feuilleNiveau = "racine";
+  $("#feuilleBesoins").hidden = false;
+  const corps = $("#fbCorps");
+  corps.innerHTML =
+    '<div class="rc-tete"><strong>'+esc(nom)+'</strong>'+
+      '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
+    (forts.length
+      ? '<div class="rc-piste" data-testid="primary-results">'+
+          forts.map(carteRecommandation).join("")+'</div>'
+      : '<p class="liste-vide">Les lieux de cette zone arrivent…</p>');
+  brancherFeuille2();
+  reglerEtatFeuille("moyenne");
+}
 /* On pense d'abord à ce qu'on crée, ensuite à l'endroit. Demander « déplace
    la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
    inversait l'ordre naturel. */
@@ -6880,6 +6991,20 @@ $("#btnRevenir").onclick=()=>{
   if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
   else suivreMaPosition();
 };
+/* Revenir à soi : la carte reprend sa position, la recherche est relâchée et
+   l'accueil retrouve ses recommandations locales. */
+$("#btnAutourDeMoi").onclick=()=>{
+  if(!positionMoi) { suivreMaPosition(); return; }
+  rechercheGeo = null;
+  recherche = ""; if($("#rech")) $("#rech").value = "";
+  catsActives = null; filtreActif = "tout";
+  map.flyTo(positionMoi, 16, {duration:.6});
+  chargerZone(positionMoi[0], positionMoi[1]);
+  rendre(); majAccueil();
+  if(feuilleNiveau !== null) majFeuille2(); else ouvrirAccueilFeuille();
+  majBoutons();
+};
+
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
 
@@ -6896,7 +7021,6 @@ $("#btnTransports").onclick=()=>{
    n'existe pas encore et le dit, plutôt que d'ouvrir un écran vide. */
 /* Mes canaux : créés, rejoints ou suivis. C'est la seule chose qui fait
    exister la section Messages — il n'y a pas de boîte de réception générale. */
-let canauxAMoi = [];
 async function rafraichirCanaux(){
   canauxAMoi = await Store.mesCanaux();
   majNavBas();
@@ -6951,12 +7075,12 @@ async function ouvrirFavoris(){
     ? lignes.map(f=>{
         const cle = f.publication_id ? "pub:"+f.publication_id : f.lieu_ref;
         const c = CATS[f.cat] || {emoji:"📍"};
-        return '<button class="ac-item" data-fav="'+esc(cle)+'">'+
+        return '<div class="ac-item" role="button" tabindex="0" data-fav="'+esc(cle)+'">'+
           '<span class="ac-emoji">'+c.emoji+'</span>'+
           '<span class="ac-txt"><span class="ac-nom">'+esc(f.titre)+'</span>'+
           '<span class="ac-sous">'+esc(f.adresse || (c.label || ""))+'</span></span>'+
           boutonCoeur({dbId:f.publication_id, id:cle, source:(f.lieu_ref||"").split(":")[0]})+
-          '</button>';
+          '</div>';
       }).join("")
     : '<p class="liste-vide">Aucun favori pour l’instant.<br>'+
       'Touche le cœur sur un lieu ou un événement pour l’enregistrer.</p>';

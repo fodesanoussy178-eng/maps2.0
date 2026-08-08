@@ -570,6 +570,34 @@
     return eta.minutes + " min" + suffix;
   }
 
+  /* Pertinence textuelle d'un lieu pour une requête : titre d'abord, puis
+     catégorie et adresse. Rend 0 quand aucune requête n'est posée, ce qui
+     laisse le classement inchangé. */
+  function searchRelevance(item, query) {
+    const q = normalizeText(query);
+    if (!q) return 0;
+    const mots = q.split(" ").filter((m) => m.length > 2);
+    if (!mots.length) return 0;
+    const titre = normalizeText(item.title || item.titre);
+    const reste = normalizeText([item.cat, item.adresse, item.cuisine,
+      ...(item.categories || [])].filter(Boolean).join(" "));
+    let score = 0;
+    mots.forEach((mot) => {
+      if (titre === mot) score += 1;
+      else if (titre.includes(mot)) score += .7;
+      else if (reste.includes(mot)) score += .35;
+    });
+    return Math.min(1, score / mots.length);
+  }
+
+  /* Le nombre d'avis tempère la note : 4,9 sur trois avis ne vaut pas 4,5 sur
+     huit cents. Croissance logarithmique, bornée. */
+  function reviewWeight(count) {
+    const n = Number(count);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(1, Math.log10(n + 1) / 3);
+  }
+
   function compareEta(a, b) {
     const left = a.rankBreakdown.etaMinutes;
     const right = b.rankBreakdown.etaMinutes;
@@ -612,6 +640,16 @@
       let score = (exactMatch ? 145 : 105) + Math.round(categoryFit * 35 + exactWeight * 25);
       const quality = dataQuality(item);
       score += quality;
+
+      // pertinence de recherche : décisive quand une requête est posée,
+      // sans effet quand il n'y en a pas
+      const relevance = searchRelevance(item, ctx.requete);
+      if (ctx.requete) {
+        if (relevance <= 0) return null;      // hors sujet : on ne le montre pas
+        score += relevance * 220;
+      }
+      // le nombre d'avis conforte la note au lieu de la remplacer
+      score += reviewWeight(item.avis) * 18;
       score += profile.distance * Math.exp(-distance / profile.distanceScale);
 
       let availability = 2;
@@ -710,11 +748,14 @@
         rankArrival: arrival,
         rankOutlook: outlook.state,
         rankAvailability: outlook.dispo || null,
-        rankBreakdown: {availability, intentMatch, distance, startsAt, quality, categoryFit, etaMinutes: minutes},
+        rankRelevance: relevance,
+        rankBreakdown: {availability, intentMatch, distance, startsAt, quality,
+          categoryFit, etaMinutes: minutes, relevance},
       });
     }).filter(Boolean).sort((a, b) =>
       b.rankBreakdown.availability - a.rankBreakdown.availability ||
       b.rankBreakdown.intentMatch - a.rankBreakdown.intentMatch ||
+      (b.rankBreakdown.relevance || 0) - (a.rankBreakdown.relevance || 0) ||
       // « le plus proche » se juge en temps de trajet réel, pas à vol d'oiseau :
       // un lieu à 400 m de l'autre côté du canal est plus loin qu'un lieu à 2 km
       // desservi directement
@@ -739,6 +780,8 @@
     isAvailableNow,
     INTENT_PROFILES,
     rankResults,
+    searchRelevance,
+    reviewWeight,
     arrivalOutlook,
     walkingEta,
     etaLabel,
