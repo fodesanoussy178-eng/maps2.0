@@ -193,3 +193,26 @@ test("sans vocabulaire fourni, tout est traité comme une destination", () => {
   assert.equal(r.intention, "");
   assert.equal(r.destination, "cinéma Lille");
 });
+
+test("la saisie entière se juge plus strictement qu'un début de phrase", () => {
+  // « Bar-le-Duc » contient « bar » : tolérer la sous-chaîne sur la saisie
+  // entière confisquait la commune, qui n'était donc jamais géocodée
+  const large = (t) => /bar/i.test(t);            // reconnaissance par sous-chaîne
+  const strict = (t) => /^bar$/i.test(t);         // égalité exacte
+
+  const commune = parseSearchQuery("Bar-le-Duc", {isIntent: large, isWholeIntent: strict});
+  assert.equal(commune.intention, "");
+  assert.equal(commune.destination, "Bar-le-Duc");
+
+  const boisson = parseSearchQuery("bar", {isIntent: large, isWholeIntent: strict});
+  assert.equal(boisson.intention, "bar");
+  assert.equal(boisson.destination, "");
+
+  // en tête de phrase, la tolérance reste utile
+  const compose = parseSearchQuery("bar à vin Roubaix", {isIntent: large, isWholeIntent: strict});
+  assert.equal(compose.destination, "Roubaix");
+
+  // sans isWholeIntent, le comportement d'avant est conservé
+  const defaut = parseSearchQuery("Bar-le-Duc", {isIntent: large});
+  assert.equal(defaut.intention, "Bar-le-Duc");
+});

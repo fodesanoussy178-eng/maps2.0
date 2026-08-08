@@ -1148,22 +1148,74 @@ let rechercheGeo = null;              // {nom, lat, lng} de la zone visée
 let zoneAffichee = null;
 const RESULTATS_RECHERCHE_INITIAUX = 5;
 
-/* Une requête est géographique si elle ne correspond à aucune catégorie ni
-   cuisine connue : on ne géocode pas « pizza ». */
+/* Une requête est géographique si elle n'est pas, EXACTEMENT, un mot du
+   vocabulaire de l'application : on ne géocode pas « pizza », mais on géocode
+   « Bar-le-Duc ». Aucune ville n'est listée nulle part — c'est le géocodeur
+   qui tranche, et lui seul. */
 function ressembleAUneZone(q){
   const texte = (q||"").trim();
   if(texte.length < 3) return false;
-  if(categorieRecherchee(texte) || cuisineRecherchee(texte)) return false;
-  return /^[\p{L}\s'’-]+$/u.test(texte);
+  if(estTermeMetier(texte)) return false;
+  return /^[\p{L}\d\s'’-]+$/u.test(texte);
 }
 
+/* Cadrage : on suit l'emprise réelle de la zone, bornée des deux côtés.
+   Sans borne haute, un hameau remplissait l'écran d'un seul pâté de maisons ;
+   sans borne basse, une métropole s'affichait de si loin que plus aucune
+   étiquette ne tenait. */
+/* En deçà, la zone visible couvre trop de terrain pour qu'Overpass réponde
+   quelque chose d'exploitable. Le cadrage d'une recherche s'aligne sur ce
+   seuil : poser la carte plus loin la laissait sans aucun lieu, et rien ne
+   disait pourquoi. */
+const ZOOM_MIN_CHARGEMENT = 13;
+
+const ZOOM_ZONE_MAX = 15;
+/* La borne basse n'est pas choisie : c'est le seuil en dessous duquel le
+   chargement des lieux ne part pas. Les laisser diverger posait la carte sur
+   Paris ou Marseille au zoom 12, où aucun POI n'était demandé — carte au bon
+   endroit, écran vide, aucune explication. */
+const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;
+
 async function rechercheGeographique(q){
-  const pos = await geocoderVille(q);
-  if(!pos || !map) return false;
-  rechercheGeo = {nom:q, lat:pos[0], lng:pos[1]};
-  map.flyTo(pos, 15, {duration:.8});
+  const zone = await geocoderVille(q);
+  if(!zone || !map) return false;
+  /* Le nom de la zone ne doit pas rester un filtre plein texte sur les lieux :
+     une fois la carte à Lille, garder « lille » comme requête faisait remonter
+     « Gare Lille Flandres » au titre de correspondance explicite — donc des
+     arrêts de transport, que cette passe range précisément par défaut.
+     La destination a servi à déplacer la carte ; son travail est fini. */
+  recherche = "";
+  if($("#rech")) $("#rech").value = "";
+
+  if(zone.emprise && map.fitBounds){
+    map.fitBounds(zone.emprise, {maxZoom:ZOOM_ZONE_MAX, padding:[24,24], animate:true});
+    if(map.getZoom() < ZOOM_ZONE_MIN) map.setZoom(ZOOM_ZONE_MIN);
+  }else{
+    map.flyTo([zone.lat, zone.lng], ZOOM_ZONE_MAX, {duration:.8});
+  }
+
+  /* Un seul point de référence : celui que la carte montre effectivement.
+     Le géocodeur donne aussi un « point de la commune » — mairie ou centroïde
+     — qui n'est pas le centre de l'emprise. À Bordeaux les deux sont à 2,9 km
+     l'un de l'autre : les lieux étaient chargés autour du centre affiché, puis
+     classés depuis le point géocodé, et TOUS tombaient hors du rayon de
+     recherche. Zéro résultat sur une ville pleine de lieux. */
+  const c = map.getCenter();
+  const centre = c ? [c.lat, c.lng] : [zone.lat, zone.lng];
+  rechercheGeo = {nom:q, lat:centre[0], lng:centre[1]};
+
+  /* Redessiner tout de suite, sans attendre le réseau. Deux raisons :
+     · la zone peut être déjà chargée — chargerZone ne repart alors pas, aucune
+       donnée n'arrive, et rien ne déclenchait de rendu : les marqueurs de la
+       vue précédente restaient posés sur la nouvelle ville ;
+     · même quand elle charge, on veut voir immédiatement ce qu'on a déjà
+       plutôt qu'un écran figé pendant la requête. */
+  selectionAccueil = null;      // les recommandations se recalculent pour ici
+  rendre();
+  majAccueil();
+
   // les lieux de la nouvelle zone arrivent derrière : l'interface n'attend pas
-  chargerZone(pos[0], pos[1]);
+  chargerZone(centre[0], centre[1]);
   majBoutons();
   return true;
 }
@@ -1853,6 +1905,30 @@ const ETIQUETTES_CAT = {
 const BESOINS_PRINCIPAUX  = BESOINS.filter(b=>!b.secondaire);
 const BESOINS_SECONDAIRES = BESOINS.filter(b=>b.secondaire);
 const BESOIN_DE = id => BESOINS.find(b=>b.id === id);
+
+/* ---- « Est-ce un mot de l'application, ou un nom de lieu ? » ---------------
+   categorieRecherchee() cherche des SOUS-CHAÎNES, ce qui est juste pour une
+   recherche mais faux pour cette question-là : « Bar-le-Duc » contient « bar »
+   sans être un bar, et la commune n'était donc jamais géocodée.
+   Ici la comparaison est EXACTE, sur le vocabulaire réellement défini —
+   catégories, cuisines, besoins. Aucune ville n'y figure : c'est le géocodeur
+   qui sait ce qui est un lieu, pas une liste écrite à la main. */
+const MOTS_BESOINS = (()=>{
+  const m = new Set();
+  BESOINS.forEach(b=>{
+    m.add(sansAccents(b.id));
+    m.add(sansAccents(b.label));
+    (b.sous||[]).forEach(s=>m.add(sansAccents(s.label)));
+  });
+  return m;
+})();
+
+function estTermeMetier(texte){
+  const t = sansAccents(String(texte||"")).trim();
+  if(!t) return false;
+  return INDEX_MOTS.has(t) || MOTS_BESOINS.has(t);
+}
+
 
 /* [clé OSM, valeur, catégorie] — l'ordre compte : la première règle qui
    correspond gagne, donc les cas précis passent avant les cas généraux
@@ -2660,8 +2736,11 @@ const MARGE_ECRAN = 6;
 function resoudreCollisions(){
   if(!map) return;
   const assezPres = map.getZoom() >= 15;
+  /* Priorité d'étiquette : l'ordre de la sélection de la CARTE, pas celui des
+     recommandations de la feuille. Les deux divergent dès qu'on regarde une
+     autre zone, et les lieux affichés se retrouvaient alors tous à égalité. */
   const rang = new Map();
-  dernierClassement.forEach((l,i)=>rang.set(l.id,i));
+  derniereSelection.forEach((x,i)=>rang.set(x.l.id, i));
   const priorite = ([id])=>rang.has(id) ? rang.get(id) : 9999;
   const conteneur = map.getContainer ? map.getContainer() : null;
   const cadre = conteneur ? conteneur.getBoundingClientRect() : {left:0, top:0};
@@ -2895,7 +2974,7 @@ function cleZone(lat, lng, z, cats){
 }
 
 function chargerZone(lat, lng, opts){
-  if(!map || map.getZoom() < 13) return Promise.resolve([]);
+  if(!map || map.getZoom() < ZOOM_MIN_CHARGEMENT) return Promise.resolve([]);
   const o = opts || {};
   const cle = cleZone(lat, lng, map.getZoom(), o.cats);
   if(chargementsZone.has(cle)) return chargementsZone.get(cle);
@@ -3473,16 +3552,26 @@ function htmlMarqueur(l){
    ~70 px d'écran, ce qui suit naturellement le zoom. */
 const TAILLE_GRAPPE = 70;
 
+/* Combien de recommandations gardent leur propre épingle, quel que soit le
+   zoom. Sans elles, un quartier dense se réduisait à une seule grappe : la
+   carte devenait juste, et parfaitement inutilisable — on demandait Paris et
+   on obtenait un rond marqué « 24 ». */
+const EPINGLES_PRIORITAIRES = 6;
+
 function grouper(liste){
   if(map.getZoom() >= 16) return liste.map(l=>({seul:l}));
-  const cases = new Map();
+  // la liste sort de selectionner(), triée par score : son début est ce qu'on
+  // recommande, et cela doit rester lisible un par un
+  const epingles = new Set(liste.slice(0, EPINGLES_PRIORITAIRES).map(l=>l.id));
+  const seuls = [], cases = new Map();
   liste.forEach(l=>{
+    if(epingles.has(l.id)){ seuls.push({seul:l}); return; }
     const p = map.latLngToLayerPoint([l.lat,l.lng]);
     const cle = Math.round(p.x/TAILLE_GRAPPE)+":"+Math.round(p.y/TAILLE_GRAPPE);
     if(!cases.has(cle)) cases.set(cle, []);
     cases.get(cle).push(l);
   });
-  return [...cases.values()].map(g => g.length===1 ? {seul:g[0]} : {grappe:g});
+  return seuls.concat([...cases.values()].map(g => g.length===1 ? {seul:g[0]} : {grappe:g}));
 }
 
 /* Compté une fois par rendu plutôt qu'une fois par marqueur : rendre() tourne
@@ -3605,15 +3694,15 @@ function majBandeauVide(retenus){
    meilleures recommandations et ce que les gens ont publié, le reste revient
    au zoom ou se lit dans la feuille. */
 const MARQUEURS_MAX_DEZOOME = 10;
+/* La liste reçue sort déjà de selectionner(), triée par score : on garde son
+   début. Elle se classait auparavant d'après dernierClassement, une liste
+   construite ailleurs (les recommandations de la feuille) — dès que les deux
+   ne se recouvraient plus, aucun lieu n'avait de rang et la carte se vidait
+   entièrement. C'est ce qui arrivait après un déplacement vers une autre
+   ville : le classement de la feuille parlait encore de l'ancienne zone. */
 function limiterMarqueurs(liste){
   if(!map || map.getZoom() >= 16) return liste;
-  const rang = new Map();
-  dernierClassement.forEach((l,i)=>rang.set(l.id,i));
-  const prioritaires = liste
-    .filter(l=>rang.has(l.id))
-    .sort((a,b)=>rang.get(a.id)-rang.get(b.id))
-    .slice(0, MARQUEURS_MAX_DEZOOME);
-  const retenus = new Set(prioritaires.map(l=>l.id));
+  const retenus = new Set(liste.slice(0, MARQUEURS_MAX_DEZOOME).map(l=>l.id));
   // un événement publié n'est jamais masqué : c'est la raison d'être de l'app
   liste.forEach(l=>{ if(estTemporaire(l)) retenus.add(l.id); });
   return liste.filter(l=>retenus.has(l.id));
@@ -5520,14 +5609,43 @@ function villeRecherchee(q){
   return m ? m[1].trim() : null;
 }
 
-async function geocoderVille(nom){
+/* Géocodage générique — aucune ville n'est connue d'avance.
+   Deux raisons de ne plus se contenter du premier résultat :
+     · les homonymes. « Roubaix » existe ailleurs qu'en France ; à importance
+       comparable, on préfère le plus proche de l'endroit regardé, ce qui ne
+       privilégie aucun pays mais suit l'utilisateur ;
+     · l'étendue. Nominatim renvoie une emprise : s'en servir évite d'afficher
+       un arrondissement quand on a demandé Paris, ou trois départements quand
+       on a demandé un quartier. Un zoom fixe ne peut pas convenir aux deux. */
+const ECART_IMPORTANCE = 0.15;   // en deçà, deux résultats se valent
+
+async function geocoderVille(nom, pres){
   try{
-    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+
-      encodeURIComponent(nom));
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2"+
+      "&limit=5&addressdetails=0&q="+encodeURIComponent(nom),
+      {headers:{"Accept-Language":"fr"}});
     if(!r.ok) return null;
     const j = await r.json();
     if(!j.length) return null;
-    return [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+
+    const depuis = pres || positionMoi;
+    const meilleure = j.reduce((m,x)=>Math.max(m, Number(x.importance)||0), 0);
+    const candidats = j.filter(x=>meilleure - (Number(x.importance)||0) <= ECART_IMPORTANCE);
+    const choisi = depuis
+      ? candidats.reduce((a,x)=>{
+          const d = distanceM(depuis[0], depuis[1], parseFloat(x.lat), parseFloat(x.lon));
+          return (a && a.d <= d) ? a : {x, d};
+        }, null).x
+      : candidats[0];
+
+    const bb = choisi.boundingbox;                   // [sud, nord, ouest, est]
+    return {
+      lat: parseFloat(choisi.lat), lng: parseFloat(choisi.lon),
+      nom: choisi.display_name || nom,
+      emprise: Array.isArray(bb) && bb.length === 4
+        ? [[parseFloat(bb[0]), parseFloat(bb[2])], [parseFloat(bb[1]), parseFloat(bb[3])]]
+        : null,
+    };
   }catch(e){ return null; }
 }
 
@@ -5535,7 +5653,8 @@ async function geocoderVille(nom){
    directement, au lieu de les filtrer sur les lieux déjà chargés ici. */
 async function rechercherAilleurs(phrase, ville){
   charge("Recherche à "+ville+"…");
-  const pos = await geocoderVille(ville);
+  const zone = await geocoderVille(ville);
+  const pos = zone ? [zone.lat, zone.lng] : null;
   const depuis = pos || positionMoi;
   const res = await chercherGoogle(phrase, depuis[0], depuis[1]);
   charge(null);
@@ -5773,7 +5892,14 @@ function contexteActuel(){
     t: d.getTime(), heure: d.getHours(), jour: d.getDay(),
     moment: momentActuel(),
     centre: c ? [c.lat, c.lng] : positionMoi,
-    moi: positionMoi || [0,0],
+    /* Point de référence du classement. Normalement soi ; mais quand on est
+       parti voir ailleurs, « loin de chez toi » n'est plus un défaut du lieu :
+       tout Paris est loin de Tourcoing, et la pénalité de distance écartait
+       alors l'intégralité des résultats de la zone demandée. */
+    moi: (rechercheGeo ? [rechercheGeo.lat, rechercheGeo.lng] : positionMoi) || [0,0],
+    /* La vraie position, pour ce qui parle bien de la personne — un itinéraire
+       part d'où l'on est, pas d'où l'on regarde. */
+    positionReelle: positionMoi || [0,0],
     q: sansAccents(recherche.trim()),
     interets: personnalisation ? obtenirInteretsProbables() : [],
     large: map ? map.getZoom() < 15 : false
@@ -6882,7 +7008,12 @@ function majAccueil(){
   if(!map || !positionMoi || modeNav) return;
   if(selectionAccueil === false) return;
   const ctx = contexteActuel();
-  const [lat,lng] = positionMoi;
+  /* Le point de référence est celui du classement — soi, ou la zone qu'on est
+     parti voir. Chercher « Paris » depuis Tourcoing déplaçait bien la carte,
+     mais les recommandations restaient calculées autour de Tourcoing : à
+     250 km, plus rien ne passait le rayon, et la carte de Paris n'affichait
+     qu'un ou deux marqueurs restés de l'ancienne zone. */
+  const [lat,lng] = ctx.moi;
 
   // en mode Aide on accepte d'aller plus loin : cinq kilomètres pour un
   // hébergement d'urgence, ce n'est pas la même chose que pour un café
@@ -7091,7 +7222,7 @@ function suggerer(q){
      On ne DÉCIDE pas ici que « Lille » est une ville — on le propose, et c'est
      le géocodeur qui tranchera au moment de valider. */
   const decoupe = parseSearchQuery(q, {
-    isIntent:x => !!(categorieRecherchee(x) || cuisineRecherchee(x)),
+    isIntent: intentionConnue, isWholeIntent: estTermeMetier,
   });
   const dest = decoupe.destination;
   if(dest && ressembleAUneZone(dest)){
@@ -7173,7 +7304,8 @@ async function lancerRecherche(){
   // « cinéma Lille », « restaurant Roubaix », « activité enfant Tourcoing » :
   // on sépare avant d'interroger quoi que ce soit
   const {intention, destination} = parseSearchQuery(q, {
-    isIntent:t => !!(categorieRecherchee(t) || cuisineRecherchee(t) || intentionConnue(t)),
+    isIntent: intentionConnue,        // tolérant, pour découper un début de phrase
+    isWholeIntent: estTermeMetier,    // strict, pour ne pas confisquer « Bar-le-Duc »
   });
 
   // une destination plausible déplace la carte ; l'intention, s'il y en a une,
@@ -7193,11 +7325,27 @@ async function lancerRecherche(){
   appliquerPhrase(q);        // même compréhension que la barre « Autour IA »
 }
 
-/* Une intention reconnue par l'interprète de phrases, au-delà des seules
-   catégories : « sortir », « bouger », « chiller »… */
+/* Une intention reconnue, au-delà des seules catégories. Tolérante par
+   construction : elle sert à découper le DÉBUT d'une phrase, où l'on préfère
+   reconnaître trop que pas assez. « chiller », « sortir » et « bouger » sont
+   des besoins et non des catégories — ils n'étaient reconnus nulle part, si
+   bien que « chiller Bordeaux » partait entier au géocodeur.
+   « activité enfant » n'est ni l'un ni l'autre : c'est l'interprète de phrases
+   qui le comprend, via son filtre famille. */
+const FILTRES_INTENTION = new Set(["famille","etudier","monde","libre"]);
+
 function intentionConnue(t){
-  const a = interpreter(String(t));
-  return !!(a && a.cats && a.cats.size);
+  const texte = String(t||"").trim();
+  if(!texte) return false;
+  if(estTermeMetier(texte)) return true;
+  // reconnaissance par sous-chaîne : « restaurant italien » n'est un terme
+  // exact ni de CATS ni de CUISINES, mais désigne bien une intention
+  if(categorieRecherchee(texte) || cuisineRecherchee(texte)) return true;
+  const a = interpreter(texte);
+  if(a && a.cats && a.cats.size) return true;
+  // seuls les filtres qui décrivent CE QU'ON CHERCHE comptent ici ; « gratuit »
+  // ou « pas loin » sont des contraintes, elles ne font pas une intention
+  return !!(a && a.filtres && [...a.filtres].some(f=>FILTRES_INTENTION.has(f)));
 }
 
 /* Applique l'intention extraite d'une requête composée, sans toucher à la
@@ -7206,9 +7354,20 @@ function appliquerIntention(intention){
   const a = interpreter(intention);
   if(a && a.cats && a.cats.size){ catsActives = a.cats; filtreActif = "tout"; }
   else {
-    const cat = categorieRecherchee(intention);
-    if(cat){ catsActives = null; filtreActif = cat; }
+    // un besoin (« sortir », « chiller ») porte plusieurs catégories : elles
+    // valent mieux qu'une seule, quand il s'agit d'un besoin et non d'une cat
+    const bes = BESOINS.find(b=>sansAccents(b.id) === sansAccents(intention)
+                              || sansAccents(b.label) === sansAccents(intention));
+    if(bes && bes.sous){ catsActives = new Set(bes.sous.flatMap(x=>x.cats)); filtreActif = "tout"; }
+    else {
+      const cat = categorieRecherchee(intention);
+      if(cat){ catsActives = null; filtreActif = cat; }
+    }
   }
+  // les contraintes tapées dans la même phrase (« gratuit », « pas loin »,
+  // un budget en euros) s'appliquent aussi : elles font partie de la demande
+  if(a && a.filtres && a.filtres.size) a.filtres.forEach(f=>filtresHumains.add(f));
+  if(a && a.creneau){ creneau = a.creneau; filtreMaintenant = true; }
   selectionAccueil = false;
   dessinerFiltres(); majFiltres();
 }

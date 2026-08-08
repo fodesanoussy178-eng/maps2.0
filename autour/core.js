@@ -501,31 +501,53 @@
      tranche, et lui seul. */
 
   const PREPOSITIONS = /\s+(?:a|à|au|aux|sur|vers|dans|en|pres de|près de|autour de)\s+/i;
+  const LEADING_PREPOSITION = /^(?:a|à|au|aux|sur|vers|dans|en|pres de|près de|autour de)\s+/i;
+  const TRAILING_PREPOSITION = /\s+(?:a|à|au|aux|sur|vers|dans|en|de|du|des)$/i;
 
   function parseSearchQuery(query, options) {
     const settings = options || {};
     const isIntent = typeof settings.isIntent === "function" ? settings.isIntent : () => false;
+    /* « Ce début de phrase est-il une intention ? » et « cette saisie entière
+       est-elle une intention ? » ne sont pas la même question, et y répondre
+       pareil cassait deux cas opposés :
+         · en tête de phrase il faut être TOLÉRANT — « restaurant italien Lyon »
+           n'est reconnu que si « restaurant italien » passe par sous-chaîne ;
+         · sur la saisie entière il faut être STRICT — « Bar-le-Duc » contient
+           « bar » et devenait une intention, donc n'était jamais géocodé.
+       L'appelant fournit donc les deux ; à défaut, le comportement est le
+       même qu'avant. */
+    const isWholeIntent = typeof settings.isWholeIntent === "function"
+      ? settings.isWholeIntent : isIntent;
     const raw = String(query || "").trim().replace(/\s+/g, " ");
     if (!raw) return { intention: "", destination: "", raw };
 
-    // forme explicite : la préposition dit où couper, on ne cherche pas plus loin
+    /* On cherche la PLUS LONGUE intention reconnue qui laisse encore une
+       destination — « activité enfant Tourcoing » doit donner « activité
+       enfant », pas « activité ».
+
+       Ce balayage passe AVANT la découpe par préposition, et pas l'inverse :
+       toutes les prépositions ne séparent pas une destination. « bar à vin
+       Roubaix » coupé sur « à » donnait la destination « vin Roubaix ». Le
+       vocabulaire de l'application sait, lui, que « bar à vin » est une seule
+       intention ; la préposition ne sert que de repli. */
+    const words = raw.split(" ");
+    for (let cut = words.length - 1; cut >= 1; cut -= 1) {
+      const head = words.slice(0, cut).join(" ");
+      const tail = words.slice(cut).join(" ");
+      if (!isIntent(head)) continue;
+      const destination = tail.replace(LEADING_PREPOSITION, "").trim();
+      if (!destination) continue;                    // « restaurant à » ne vise rien
+      return { intention: head.replace(TRAILING_PREPOSITION, "").trim(), destination, raw };
+    }
+
+    // repli : une préposition sépare explicitement, même sans vocabulaire connu
     const byPreposition = raw.split(PREPOSITIONS);
     if (byPreposition.length === 2 && byPreposition[0].trim() && byPreposition[1].trim()) {
       return { intention: byPreposition[0].trim(), destination: byPreposition[1].trim(), raw };
     }
 
-    // forme juxtaposée : on prend la PLUS LONGUE intention reconnue qui laisse
-    // encore une destination — « activité enfant Tourcoing » doit donner
-    // « activité enfant », pas « activité »
-    const words = raw.split(" ");
-    for (let cut = words.length - 1; cut >= 1; cut -= 1) {
-      const head = words.slice(0, cut).join(" ");
-      const tail = words.slice(cut).join(" ");
-      if (isIntent(head)) return { intention: head, destination: tail, raw };
-    }
-
     // rien à couper : c'est une intention seule, ou une destination seule
-    if (isIntent(raw)) return { intention: raw, destination: "", raw };
+    if (isWholeIntent(raw)) return { intention: raw, destination: "", raw };
     return { intention: "", destination: raw, raw };
   }
 

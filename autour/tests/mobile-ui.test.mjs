@@ -345,6 +345,25 @@ test("les transports sont chargés mais pas dessinés sans qu'on les demande",()
   assert.match(html,/node\(around:800,\$\{lat\},\$\{lng\}\)\[highway=bus_stop\]/);
 });
 
+test("le plafond de marqueurs suit l'ordre de la sélection de la carte",()=>{
+  // il se fiait à dernierClassement, construit ailleurs : dès que les deux
+  // listes ne se recouvraient plus — après un déplacement vers une autre ville
+  // — aucun lieu n'avait de rang et la carte se vidait entièrement
+  assert.match(html,/const retenus = new Set\(liste\.slice\(0, MARQUEURS_MAX_DEZOOME\)\.map\(l=>l\.id\)\);/);
+  assert.doesNotMatch(html,/dernierClassement\.forEach\(\(l,i\)=>rang/);
+  // un événement publié reste malgré tout affiché
+  assert.match(html,/liste\.forEach\(l=>\{ if\(estTemporaire\(l\)\) retenus\.add\(l\.id\); \}\);/);
+});
+
+test("le classement se réfère à la zone regardée quand on est parti ailleurs",()=>{
+  // « loin de chez toi » n'est pas un défaut d'un lieu quand on regarde
+  // volontairement une autre ville : tout Paris est loin de Tourcoing, et la
+  // pénalité de distance écartait l'intégralité des résultats demandés
+  assert.match(html,/moi: \(rechercheGeo \? \[rechercheGeo\.lat, rechercheGeo\.lng\] : positionMoi\) \|\| \[0,0\],/);
+  assert.match(html,/positionReelle: positionMoi \|\| \[0,0\],/);
+  assert.match(html,/const \[lat,lng\] = ctx\.moi;/);
+});
+
 test("au repos la carte ne porte qu'une poignée de recommandations",()=>{
   assert.match(html,/const MARQUEURS_AU_REPOS = 6;/);
   assert.match(html,/function auRepos\(ctx\)\{/);
@@ -401,8 +420,10 @@ test("les étiquettes ne sortent pas de l'écran et ne se recouvrent pas",()=>{
 
 test("les étiquettes de la carte gèrent leurs collisions",()=>{
   assert.match(html,/function resoudreCollisions/);
-  // priorité donnée au classement : les lieux pertinents gardent leur label
-  assert.match(html,/dernierClassement\.forEach\(\(l,i\)=>rang\.set\(l\.id,i\)\)/);
+  // priorité donnée à la sélection de la CARTE, pas aux recommandations de la
+  // feuille : les deux divergent dès qu'on regarde une autre zone, et tous les
+  // lieux affichés se retrouvaient alors à égalité
+  assert.match(html,/derniereSelection\.forEach\(\(x,i\)=>rang\.set\(x\.l\.id, i\)\)/);
   assert.match(html,/\.poi-eti\.masquee\{display:none\}|\.poi-eti,\.poi-eti\.masquee\{display:none\}/);
   assert.match(html,/requestAnimationFrame\(resoudreCollisions\)/);
 });
@@ -640,7 +661,10 @@ test("le nom accessible du panneau ne porte plus l'ancien CTA",()=>{
 
 test("une requête composée sépare destination et intention",()=>{
   assert.match(html,/parseSearchQuery\(q, \{/);
-  assert.match(html,/isIntent:t => !!\(categorieRecherchee\(t\) \|\| cuisineRecherchee\(t\) \|\| intentionConnue\(t\)\)/);
+  // deux prédicats : tolérant pour découper un début de phrase, strict pour la
+  // saisie entière — sinon « Bar-le-Duc » devenait l'intention « bar »
+  assert.match(html,/isIntent: intentionConnue,/);
+  assert.match(html,/isWholeIntent: estTermeMetier,/);
   assert.match(html,/if\(destination && ressembleAUneZone\(destination\)\)\{/);
   assert.match(html,/if\(intention\) appliquerIntention\(intention\);/);
   assert.match(html,/ouvrirResultatsZone\(destination, intention\);/);
@@ -651,11 +675,95 @@ test("une requête composée sépare destination et intention",()=>{
 test("une recherche géographique déplace la carte et montre peu de résultats",()=>{
   assert.match(html,/function ressembleAUneZone/);
   assert.match(html,/function rechercheGeographique/);
-  assert.match(html,/map\.flyTo\(pos, 15/);
   assert.match(html,/const RESULTATS_RECHERCHE_INITIAUX = 5;/);
   assert.match(html,/\.slice\(0, RESULTATS_RECHERCHE_INITIAUX\)/);
-  // on ne géocode pas « pizza »
-  assert.match(html,/if\(categorieRecherchee\(texte\) \|\| cuisineRecherchee\(texte\)\) return false;/);
+  // on ne géocode pas « pizza », mais on géocode « Bar-le-Duc » : la
+  // comparaison est exacte, plus par sous-chaîne
+  assert.match(html,/if\(estTermeMetier\(texte\)\) return false;/);
+});
+
+test("aucune ville n'est écrite dans le code",()=>{
+  // le seul savoir territorial vient du géocodeur. Une condition du genre
+  // « si la ville vaut Lille » figerait le produit sur un terrain.
+  const code = html.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code,/===\s*["']Lille["']/i);
+  assert.doesNotMatch(code,/ville\s*===/i);
+  // pas de liste de communes en dur non plus
+  assert.doesNotMatch(code,/\[\s*["']Paris["']\s*,/i);
+});
+
+test("le cadrage suit l'emprise réelle de la zone, bornée des deux côtés",()=>{
+  // un zoom fixe ne peut convenir à la fois à un hameau et à une métropole
+  assert.match(html,/const ZOOM_ZONE_MAX = 15;/);
+  // la borne basse n'est pas choisie : c'est le seuil de chargement lui-même.
+  // Les laisser diverger posait la carte sur Paris au zoom 12, où chargerZone
+  // refuse de partir — bon endroit, écran vide, aucune explication.
+  assert.match(html,/const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;/);
+  assert.match(html,/if\(!map \|\| map\.getZoom\(\) < ZOOM_MIN_CHARGEMENT\) return Promise\.resolve\(\[\]\);/);
+  // et il doit être déclaré avant d'être lu : une zone morte temporelle ici
+  // casse tout le script au démarrage
+  assert.ok(html.indexOf("const ZOOM_MIN_CHARGEMENT = 13;") <
+            html.indexOf("const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;"),
+    "ZOOM_MIN_CHARGEMENT doit précéder ZOOM_ZONE_MIN");
+  assert.match(html,/map\.fitBounds\(zone\.emprise, \{maxZoom:ZOOM_ZONE_MAX/);
+  assert.match(html,/if\(map\.getZoom\(\) < ZOOM_ZONE_MIN\) map\.setZoom\(ZOOM_ZONE_MIN\);/);
+  // repli si le géocodeur ne fournit pas d'emprise
+  assert.match(html,/map\.flyTo\(\[zone\.lat, zone\.lng\], ZOOM_ZONE_MAX/);
+});
+
+test("le géocodeur départage les homonymes sans privilégier un pays",()=>{
+  assert.match(html,/limit=5/);
+  assert.match(html,/const ECART_IMPORTANCE = 0\.15;/);
+  // à importance comparable, le plus proche de l'endroit regardé
+  assert.match(html,/const d = distanceM\(depuis\[0\], depuis\[1\], parseFloat\(x\.lat\), parseFloat\(x\.lon\)\);/);
+  assert.match(html,/boundingbox/);
+});
+
+test("le nom de la zone cesse d'être un filtre plein texte une fois arrivé",()=>{
+  // sinon « Lille » faisait remonter « Gare Lille Flandres » au titre de
+  // correspondance explicite — donc des arrêts, que cette passe range
+  const i = html.indexOf("async function rechercheGeographique");
+  const bloc = html.slice(i, i + 1800);
+  assert.match(bloc,/recherche = "";/);
+  assert.match(bloc,/if\(\$\("#rech"\)\) \$\("#rech"\)\.value = "";/);
+});
+
+test("un seul point de référence après un déplacement : celui de la carte",()=>{
+  // le géocodeur donne aussi un « point de la commune » qui n'est pas le
+  // centre de l'emprise — 2,9 km d'écart à Bordeaux. Charger autour de l'un et
+  // classer depuis l'autre mettait tous les lieux hors du rayon de recherche.
+  assert.match(html,/const c = map\.getCenter\(\);/);
+  assert.match(html,/const centre = c \? \[c\.lat, c\.lng\] : \[zone\.lat, zone\.lng\];/);
+  assert.match(html,/rechercheGeo = \{nom:q, lat:centre\[0\], lng:centre\[1\]\};/);
+  assert.match(html,/chargerZone\(centre\[0\], centre\[1\]\);/);
+  // et il est fixé APRÈS le cadrage, sinon il décrit l'ancienne vue
+  assert.ok(html.indexOf("map.fitBounds(zone.emprise") <
+            html.indexOf("rechercheGeo = {nom:q, lat:centre[0]"),
+    "le point de référence se lit après le cadrage");
+});
+
+test("les recommandations gardent leur épingle malgré le regroupement",()=>{
+  // un quartier dense se réduisait à une seule grappe : la carte devenait
+  // juste et inutilisable — on demandait Paris, on obtenait un rond « 24 »
+  assert.match(html,/const EPINGLES_PRIORITAIRES = 6;/);
+  assert.match(html,/const epingles = new Set\(liste\.slice\(0, EPINGLES_PRIORITAIRES\)\.map\(l=>l\.id\)\);/);
+  assert.match(html,/if\(epingles\.has\(l\.id\)\)\{ seuls\.push\(\{seul:l\}\); return; \}/);
+});
+
+test("le vocabulaire métier se compare exactement, pas par sous-chaîne",()=>{
+  assert.match(html,/const MOTS_BESOINS = \(\(\)=>\{/);
+  // déclaré APRÈS BESOINS, qu'il parcourt : l'inverse levait une zone morte
+  // temporelle qui cassait tout le script au démarrage
+  assert.ok(html.indexOf("const BESOINS = [") < html.indexOf("const MOTS_BESOINS"),
+    "MOTS_BESOINS doit suivre BESOINS");
+  assert.match(html,/function estTermeMetier\(texte\)\{/);
+  assert.match(html,/return INDEX_MOTS\.has\(t\) \|\| MOTS_BESOINS\.has\(t\);/);
+  // les besoins « chiller », « sortir », « bouger » comptent comme intentions
+  assert.match(html,/const FILTRES_INTENTION = new Set\(\["famille","etudier","monde","libre"\]\);/);
+  // un besoin applique toutes ses catégories, pas une seule
+  assert.match(html,/if\(bes && bes\.sous\)\{ catsActives = new Set\(bes\.sous\.flatMap\(x=>x\.cats\)\);/);
+  // les contraintes tapées dans la phrase s'appliquent aussi
+  assert.match(html,/if\(a && a\.filtres && a\.filtres\.size\) a\.filtres\.forEach\(f=>filtresHumains\.add\(f\)\);/);
 });
 
 test("« Revenir autour de moi » apparaît dès que la carte s'est déplacée",()=>{
