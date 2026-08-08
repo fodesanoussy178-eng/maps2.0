@@ -67,7 +67,7 @@ input{font-family:inherit;font-size:16px}
 .leaflet-container{font-family:inherit;background:var(--sol)}
 /* La carte est un décor : ni boutons +/-, ni bandeau d'attribution posé
    dessus. Le zoom se fait au pinch, et l'attribution — légalement due —
-   vit derrière le « ⓘ » en bas à gauche (#btnCredits / #credits). */
+   est écrite sur la carte (#attribution), le détail derrière le « ⓘ ». */
 .leaflet-control-zoom,.leaflet-control-attribution{display:none!important}
 /* La carte descend sous l'en-tête arrondi et sous la barre basse : le fond
    continue derrière eux, ce qui donne la profondeur d'une app native. */
@@ -76,7 +76,7 @@ input{font-family:inherit;font-size:16px}
 /* étiquettes de rue */
 .rue{background:none;border:0;width:0!important;height:0!important}
 .rue-in{position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;
-  font-size:10px;font-weight:500;color:var(--label);letter-spacing:.01em;
+  font-size:11px;font-weight:500;color:var(--label);letter-spacing:.01em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 
 .mk{width:0!important;height:0!important;background:none;border:0}
@@ -91,9 +91,9 @@ input{font-family:inherit;font-size:16px}
 .affiche::after{content:"";position:absolute;left:50%;bottom:-11px;width:1.5px;height:11px;
   background:rgba(31,42,37,.45);transform:translateX(-50%)}
 .a-haut{display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;
-  font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
-.a-titre{font-size:12px;font-weight:600;line-height:1.25}
-.a-lieu{font-size:10px;line-height:1.2;opacity:.72}
+  font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.a-titre{font-size:12.5px;font-weight:600;line-height:1.25}
+.a-lieu{font-size:11px;line-height:1.25;opacity:.75}
 .a-places{opacity:.72;font-weight:500}
 .gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
 .payant{background:#fff;color:var(--ink)}
@@ -112,7 +112,7 @@ input{font-family:inherit;font-size:16px}
 .poi{display:flex;flex-direction:column;align-items:center;gap:2px;animation:surgit .2s ease-out}
 .poi-rond{width:23px;height:23px;border-radius:50%;background:#fff;border:1px solid var(--bord);
   display:grid;place-items:center;font-size:12px;line-height:1;box-shadow:0 1px 3px rgba(20,30,25,.28)}
-.poi-nom{max-width:104px;text-align:center;font-size:10px;font-weight:600;line-height:1.15;
+.poi-nom{max-width:104px;text-align:center;font-size:11px;font-weight:600;line-height:1.15;
   color:#37423D;letter-spacing:-.005em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 .poi-rond{position:relative}
@@ -129,7 +129,7 @@ input{font-family:inherit;font-size:16px}
   box-shadow:0 1px 6px rgba(20,30,25,.20);max-width:158px}
 .poi-eti b{font-size:11.5px;font-weight:700;line-height:1.2;letter-spacing:-.01em;
   color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.poi-eti span{font-size:10.5px;line-height:1.25;color:var(--ink2);white-space:nowrap;
+.poi-eti span{font-size:11px;line-height:1.25;color:var(--ink2);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .poi-eti span.ouvre{color:#1B7F3B}
 .loin .poi-eti,.poi-eti.masquee{display:none}
@@ -145,11 +145,11 @@ input{font-family:inherit;font-size:16px}
 .poi-ferme .poi-nom{color:#6B756F;font-weight:500}
 .poi-ferme-badge{position:absolute;top:-7px;left:50%;transform:translateX(-50%);
   padding:0 3px;border-radius:2px;background:#8A3B3B;color:#fff;
-  font-size:7.5px;font-weight:700;line-height:1.5;letter-spacing:.02em;font-style:normal}
+  font-size:11px;font-weight:700;line-height:1.5;letter-spacing:.02em;font-style:normal}
 .inconnu{font-weight:600;color:var(--ink2)}
 .poi-pastille{position:absolute;top:-5px;right:-6px;min-width:15px;height:15px;padding:0 3px;
   border-radius:99px;background:var(--signal);color:#fff;border:1.5px solid #fff;
-  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;font-style:normal;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;font-style:normal;
   display:grid;place-items:center;animation:battement 2.2s ease-in-out infinite}
 @keyframes battement{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
 .loin .poi-nom{display:none}
@@ -163,9 +163,9 @@ input{font-family:inherit;font-size:16px}
 .ou-nom{display:block;font-size:14px;font-weight:600;line-height:1.3;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ou-coord{display:block;margin-top:2px;font-family:'JetBrains Mono',monospace;
-  font-size:10px;color:var(--ink2)}
+  font-size:11px;color:var(--ink2)}
 .ou-bouton{flex-shrink:0;padding:8px 12px;border:1px solid var(--bord);border-radius:99px;
-  background:var(--paper);font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  background:var(--paper);font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
 .duo{display:flex;gap:9px}
 .duo>label{flex:1;min-width:0}
@@ -179,12 +179,12 @@ input{font-family:inherit;font-size:16px}
 
 .liste-tete{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
 .liste-tete h2{font-family:'Anton',sans-serif;font-size:25px;line-height:1;text-transform:uppercase}
-.liste-compte{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+.liste-compte{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
 .liste-tri{margin:0 0 14px;font-size:11.5px;color:var(--ink2);line-height:1.45}
 .tri-barre{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 9px}
 .tri-barre .tri{padding:7px 12px;border:1px solid var(--bord);border-radius:99px;background:#fff;
-  color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
 .tri-barre .tri.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 .rang{display:flex;align-items:center;gap:11px;width:100%;padding:11px 4px;border:0;
@@ -206,7 +206,7 @@ input{font-family:inherit;font-size:16px}
 .ferme{font-weight:700;color:var(--signal)}
 .badge{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:99px;
   background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;
-  font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;vertical-align:1px}
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;vertical-align:1px}
 .badge.mien{background:var(--ardoise)}
 .liste-vide{padding:26px 0 10px;text-align:center;font-size:14px;color:var(--ink2);line-height:1.6}
 
@@ -248,11 +248,11 @@ input{font-family:inherit;font-size:16px}
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
 #bandeauTxt,#videTxt{flex:1;min-width:0}
 #bandeauOk,#videOk{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
-  color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
 #charge{position:absolute;top:calc(var(--header-bas) + 10px);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
-  background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  background:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
 
 /* ---- En-tête flottant compact -------------------------------------------
@@ -262,16 +262,16 @@ input{font-family:inherit;font-size:16px}
 #appHeader{position:absolute;top:calc(var(--safe-t) + 10px);left:12px;right:12px;
   z-index:600;display:flex;align-items:center;gap:8px;background:none;
   box-shadow:none;padding:0;border-radius:0}
-#btnMaintenant{flex:1;min-width:0;display:flex;align-items:center;gap:6px;
+#btnLieu{flex:1;min-width:0;display:flex;align-items:center;gap:6px;
   height:44px;padding:0 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;color:var(--ink2);font-size:14px;font-weight:700;
   box-shadow:0 2px 12px rgba(20,30,25,.16);
   overflow:hidden;white-space:nowrap;
   transition:background .16s ease,color .16s ease}
-#btnMaintenant.actif{background:var(--orange);border-color:var(--orange);color:#fff;
+#btnLieu.inconnu{background:#fff;border-color:var(--signal);color:var(--signal);
   box-shadow:0 3px 14px rgba(255,107,44,.38)}
 .hd-sep{font-style:normal;opacity:.5}
-#btnMaintenant b{min-width:0;overflow:hidden;text-overflow:ellipsis;
+#btnLieu b{min-width:0;overflow:hidden;text-overflow:ellipsis;
   font-weight:800;color:inherit}
 .hd-icone{position:relative;flex-shrink:0;width:44px;height:44px;border-radius:50%;
   border:1px solid var(--bord);background:#fff;color:var(--ink);
@@ -326,15 +326,55 @@ input{font-family:inherit;font-size:16px}
 .rc-tete{display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:2px 0 12px}
 .rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
-/* sections secondaires (Ce soir, Ce week-end, À venir) : présentes, mais
-   sous le bloc principal, pas à égalité avec lui */
-.rc-tete-sec{padding-top:16px}
-.rc-tete-sec strong{font-size:15.5px;font-weight:750}
+
+/* ---- Les quatre groupes de temps ----------------------------------------
+   Une seule rangée, en tête de la feuille : c'est la première question qu'on
+   se pose (« maintenant ou plus tard ? ») et elle mérite d'être visible sans
+   ouvrir de menu. */
+.ong-temps{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+  padding:0 0 12px;margin:0 -2px}
+.ong-temps::-webkit-scrollbar{display:none}
+.ong{flex:0 0 auto;min-height:44px;padding:11px 15px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink2);
+  font-size:13.5px;font-weight:700;white-space:nowrap}
+.ong.actif{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* ---- « Où veux-tu regarder ? » ------------------------------------------
+   Ce qui s'affiche tant que personne n'a donné sa position : deux gestes et
+   cinq envies, plutôt qu'une carte de Paris légendée « autour de toi ».
+   Préfixe `pdep` (point de départ) : `.ou` désigne déjà le bloc « où » du
+   formulaire de publication, et les deux se marchaient dessus. */
+.pdep{display:block;margin:0 0 14px;padding:14px;border:1px solid var(--bord);
+  border-radius:16px;background:rgba(44,58,51,.05)}
+.pdep-titre{margin:0 0 10px;font-size:16px;font-weight:750;line-height:1.25}
+.pdep-actions{display:flex;flex-wrap:wrap;gap:8px}
+.pdep-btn{min-height:44px;padding:10px 16px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:14px;font-weight:700;color:var(--ink)}
+.pdep-btn.pdep-fort{background:var(--signal);border-color:var(--signal);color:#fff}
+.pdep-sous{margin:12px 0 8px;font-size:13px;color:var(--ink2)}
+.pdep-envies{display:flex;flex-wrap:wrap;gap:6px}
+.pdep-envie{min-height:44px;padding:9px 13px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13.5px;font-weight:650;color:var(--ink);
+  display:inline-flex;align-items:center;gap:6px}
+.pdep-envie em{font-style:normal;font-size:15px}
+/* 89 × 16 px : impossible à viser au pouce. Le texte ne change pas, la zone
+   de frappe passe à 44 px de haut. */
 .rc-tout{flex-shrink:0;white-space:nowrap;border:0;background:none;
+  min-height:44px;padding:0 4px;margin:-12px -4px;
   color:var(--violet);font-size:14.5px;font-weight:700}
 .rc-piste{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;
   padding:0 0 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
 .rc-piste::-webkit-scrollbar{display:none}
+/* Le bloc principal se lit en colonne, y compris sur téléphone : deux cartes
+   côte à côte, c'était deux recommandations visibles sur douze. En rangée on
+   en voit trois ou quatre d'un coup, avec plus d'information sur chacune —
+   sans devenir une liste : la carte reste là, derrière, à la moitié de
+   l'écran. Les autres pistes gardent le défilement horizontal. */
+.rc-colonne{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:8px}
+.rc-colonne .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
+.rc-colonne .rc-photo{width:88px;height:auto;min-height:88px;flex-shrink:0}
+.rc-colonne .rc-corps{flex:1;min-width:0}
+.rc-colonne .rc-nom{min-height:0}
 .rc-carte{flex:0 0 178px;scroll-snap-align:start;display:flex;flex-direction:column;
   border:1px solid var(--bord);border-radius:16px;background:#fff;overflow:hidden;
   text-align:left;box-shadow:0 2px 10px rgba(20,30,25,.09)}
@@ -387,9 +427,14 @@ input{font-family:inherit;font-size:16px}
 .rc-photo img.vue{opacity:1}
 .rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 11px 12px}
 .rc-haut{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.rc-haut .coeur{width:30px;height:30px;margin:-4px -6px -4px 0}
-.rc-cats{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
-  letter-spacing:.06em;color:var(--violet)}
+/* le cœur des cartes : 30 px de large, sous le seuil du pouce. On garde le
+   dessin à 30 px et on élargit la zone de frappe autour. */
+.rc-haut .coeur{width:44px;height:44px;margin:-11px -13px -11px 0}
+.rc-haut .coeur svg{width:19px;height:19px}
+/* 9 px en majuscules monospace : illisible dès qu'on n'a pas vingt ans et un
+   écran propre. Rien ne descend plus sous 11 px dans l'application. */
+.rc-cats{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.05em;color:var(--violet)}
 .rc-nom{font-size:14px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
   min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rc-ligne{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
@@ -440,7 +485,7 @@ input{font-family:inherit;font-size:16px}
   border-left:3px solid var(--bord);border-radius:0 10px 10px 0;background:var(--paper)}
 .an-msg.systeme{border-left-color:var(--violet);background:var(--violet-doux)}
 .an-msg.urgent{border-left-color:var(--aide);background:#FBEDEE}
-.an-tag{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
+.an-tag{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.07em;text-transform:uppercase;color:var(--ink2)}
 .an-msg.urgent .an-tag{color:var(--aide)}
 .an-corps{font-size:14px;line-height:1.35}
@@ -476,7 +521,7 @@ input{font-family:inherit;font-size:16px}
 .sg:first-child{border-top:0}
 .sg:active{background:var(--paper)}
 .sg-emo{width:22px;text-align:center;font-size:15px}
-.sg-sous{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink2)}
+.sg-sous{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink2)}
 .sg-rapides{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;scrollbar-width:none}
 .sg-rapides::-webkit-scrollbar{display:none}
 .sg-rapide{flex:0 0 auto;padding:7px 12px;border:1px solid var(--bord);border-radius:99px;
@@ -540,10 +585,21 @@ input{font-family:inherit;font-size:16px}
   box-shadow:0 4px 16px rgba(20,30,25,.30);animation:monteT .18s ease-out}
 #btnAutourDeMoi:active{transform:translateX(-50%) scale(.96)}
 
-#btnCredits{position:absolute;left:12px;bottom:calc(var(--map-control-bottom) + 4px);z-index:601;
-  width:26px;height:26px;border-radius:50%;border:1px solid var(--bord);
-  background:rgba(255,255,255,.9);color:var(--ink2);font-size:13px;line-height:1;
-  display:grid;place-items:center;transition:bottom .22s ease}
+/* ---- Attribution ---------------------------------------------------------
+   Elle était entièrement derrière ce bouton : légalement due, mais invisible
+   tant qu'on ne cliquait pas. Elle est maintenant écrite sur la carte, en
+   petit et en discret, et le bouton ne sert plus qu'à ouvrir le détail. */
+#attribution{position:absolute;left:10px;bottom:calc(var(--map-control-bottom) + 4px);
+  z-index:601;padding:2px 7px;border-radius:7px;
+  background:rgba(255,255,255,.82);color:var(--ink2);
+  font-size:11px;line-height:1.5;letter-spacing:.01em;
+  display:flex;align-items:center;gap:6px;transition:bottom .22s ease;
+  pointer-events:auto}
+#attribution a{color:inherit;text-decoration:none;padding:5px 2px;margin:-5px 0}
+#attribution a:hover,#attribution a:focus-visible{text-decoration:underline}
+#btnCredits{flex-shrink:0;width:44px;height:44px;margin:-11px -11px -11px 0;
+  border:0;background:none;color:var(--ink2);font-size:13px;line-height:1;
+  display:grid;place-items:center}
 #credits{position:absolute;left:12px;right:12px;bottom:calc(var(--map-control-bottom) + 36px);
   z-index:601;padding:8px 11px;border:1px solid var(--bord);border-radius:10px;
   background:rgba(255,255,255,.96);font-size:11px;line-height:1.4;color:var(--ink2);
@@ -555,7 +611,11 @@ input{font-family:inherit;font-size:16px}
 #feuilleBesoins{position:absolute;left:8px;right:8px;bottom:0;z-index:640;
   display:flex;flex-direction:column;
   width:auto;max-width:none;margin:0;
-  height:45dvh;max-height:45dvh;
+  /* un peu plus haute qu'avant : à 45 dvh on ne voyait que deux
+     recommandations sur douze, et la question « qu'est-ce que je peux faire »
+     restait sous le pli. La carte garde un peu plus de 40 % de l'écran, et
+     reste entièrement rendue derrière. */
+  height:58dvh;max-height:58dvh;
   background:#fff;border:1px solid var(--bord);border-bottom:0;border-radius:22px 22px 0 0;
   box-shadow:0 -3px 18px rgba(20,30,25,.13);
   transition:height .22s ease,max-height .22s ease}
@@ -563,6 +623,14 @@ input{font-family:inherit;font-size:16px}
    et se passe de barre de titre, le titre étant dans le corps. */
 #feuilleBesoins.accueil{left:0;right:0;border-left:0;border-right:0}
 #feuilleBesoins.accueil .fb-tete{display:none}
+/* À l'accueil, la poignée et le titre coûtent une recommandation entière :
+   on les resserre pour qu'une troisième carte tienne au-dessus du pli. */
+/* le trait reste fin — c'est la zone de frappe qui doit faire 44 px, pas le
+   dessin : on la déborde sur la carte plutôt que sur les recommandations */
+#feuilleBesoins.accueil .fb-poignee{height:44px;margin-top:-18px}
+#feuilleBesoins.accueil .fb-poignee::before{top:25px}
+#feuilleBesoins.accueil .rc-tete{padding:0 0 8px}
+#feuilleBesoins.accueil .rc-tete strong{font-size:17px}
 #feuilleBesoins.deplie{height:80dvh;max-height:80dvh}
 /* État réduit : la poignée et le titre restent lus, la carte reprend la main.
    La feuille ne disparaît jamais complètement — elle dit toujours ce qu'elle
@@ -596,12 +664,12 @@ input{font-family:inherit;font-size:16px}
 .bn.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 .bn.actif i{color:rgba(255,255,255,.72)}
 .bn.actif::after{content:"✓";font-size:15px;font-weight:700}
-.fb-section{margin:14px 2px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+.fb-section{margin:14px 2px 8px;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
 .fb-resultats-tete{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
   margin:2px 2px 6px}
 .fb-resultats-tete strong{font-size:14px;line-height:1.25}
-.fb-resultats-tete span{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--ink2);
+.fb-resultats-tete span{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink2);
   text-transform:uppercase;letter-spacing:.08em;text-align:right}
 .fb-statut{margin:4px 0 10px;padding:11px 12px;border-radius:12px;background:#fff;
   border:1px solid var(--bord);font-size:13px;line-height:1.4;color:var(--ink2)}
@@ -680,7 +748,7 @@ input{font-family:inherit;font-size:16px}
   /* L'en-tête reste la même pastille flottante, simplement plus large. */
   #appHeader{left:20px;right:auto;top:calc(var(--safe-t) + 20px);
     width:auto;max-width:520px}
-  #btnMaintenant{flex:0 0 auto;max-width:340px}
+  #btnLieu{flex:0 0 auto;max-width:340px}
 
   /* La recherche se pose en haut à gauche, sous l'en-tête, au lieu de
      recouvrir toute la largeur. */
@@ -721,7 +789,7 @@ input{font-family:inherit;font-size:16px}
   #btnAide{bottom:96px}
   /* l'attribution se pose au-dessus de la pastille de navigation, qui occupe
      désormais le coin bas gauche */
-  #btnCredits{left:20px;bottom:calc(var(--nav-flottante,60px) + 28px)}
+  #attribution{left:20px;bottom:calc(var(--nav-flottante,60px) + 24px)}
   #credits{left:20px;right:auto;width:min(420px,40vw);
     bottom:calc(var(--nav-flottante,60px) + 64px)}
 
@@ -774,14 +842,14 @@ body.nav .leaflet-control-zoom{display:none}
   font-size:13.5px;font-weight:600;white-space:nowrap;box-shadow:0 2px 10px rgba(20,30,25,.14)}
 .filtre.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
 
-.sp-tete{margin-bottom:2px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+.sp-tete{margin-bottom:2px;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
 .sp-raison{margin:-6px 0 15px;font-size:13.5px;font-weight:600;color:var(--signal)}
 
 .mini{position:absolute;top:calc(var(--safe-t) + 72px);right:14px;z-index:600;
   display:flex;align-items:center;gap:6px;padding:9px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;
-  font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
   box-shadow:0 2px 10px rgba(20,30,25,.14)}
 [hidden]{display:none!important}
 
@@ -833,15 +901,15 @@ button:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{
   outline:3px solid #2673E8!important;outline-offset:3px!important}
 .retour{display:inline-flex;align-items:center;margin-bottom:12px;padding:7px 13px 7px 9px;
   border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
-  font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
 .retour:active{transform:scale(.96)}
 
 .d-haut{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tag{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;
-  font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+  font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
 .prix-tag{padding:4px 9px;border:1px solid var(--bord);border-radius:2px;
-  font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.11em;text-transform:uppercase}
 .prix-tag.g{background:var(--signal);border-color:var(--signal);color:#fff}
 h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
@@ -855,7 +923,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .resume .ouvert,.resume .ferme{font-weight:700}
 .actions{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
 .act{flex:1;min-width:88px;padding:12px 10px;border:1px solid var(--bord);border-radius:99px;
-  background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:10px;
+  background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-align:center;
   text-decoration:none;display:block;transition:transform .15s}
 .act:active{transform:scale(.95)}
@@ -869,7 +937,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .trajet-reco{display:flex;flex-direction:column;gap:3px;margin-bottom:11px;padding:11px 13px;
   border-radius:3px;background:rgba(255,74,23,.08);border:1px solid rgba(255,74,23,.25)}
 .trajet-reco:empty{display:none}
-.reco-titre{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+.reco-titre{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;color:var(--signal)}
 .reco-mode{font-size:15px;font-weight:700;line-height:1.25}
 .reco-co2{font-size:11.5px;color:#1B7F3B;font-weight:600}
@@ -884,7 +952,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   font-weight:700;color:var(--ink2);padding-top:2px}
 .prix-n{font-weight:700;color:#1B7F3B}
 .horaires{margin:0 0 16px;padding:11px 14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
-.horaires summary{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+.horaires summary{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.11em;text-transform:uppercase;color:var(--ink2);cursor:pointer}
 .h-ligne{padding:5px 0;font-size:13px;color:var(--ink2);
   border-top:1px solid rgba(20,30,25,.09)}
@@ -903,7 +971,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   background:rgba(44,58,51,.05);border:1px solid var(--bord)}
 .expli-txt{margin:0;font-size:14px;line-height:1.45;color:var(--ink)}
 .expli-public{margin:6px 0 0;font-size:13px;font-weight:650;color:var(--ardoise)}
-.expli-src{margin:7px 0 0;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+.expli-src{margin:7px 0 0;font-family:'JetBrains Mono',monospace;font-size:11px;
   letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
 /* deux lignes au plus : la liste sert à choisir, pas à lire. Le texte complet
    est sur la fiche. Sans cette limite, une seule entrée occupait l'écran. */
@@ -911,7 +979,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   overflow:hidden;font-size:12px;line-height:1.35;color:var(--ink2);margin-top:2px}
 .trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
 .trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
-.trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+.trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2)}
 .velo-station{display:flex;align-items:center;gap:8px;padding:8px 0;
   border-top:1px solid rgba(20,30,25,.13);font-size:13px}
@@ -920,14 +988,14 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .velo-dist{color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:11px}
 /* Le mode écrit en toutes lettres à côté du nom : l'emoji seul se confond
    d'un réseau à l'autre, et c'est ce qui se lisait de travers. */
-.arret-mode{font-style:normal;font-size:10.5px;color:var(--ink2);
+.arret-mode{font-style:normal;font-size:11px;color:var(--ink2);
   font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.04em}
 
 dl.faits{margin:16px 0 18px}
 dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
   border-top:1px solid rgba(20,30,25,.13)}
 dl.faits>div:last-child{border-bottom:1px solid rgba(20,30,25,.13)}
-dl.faits dt{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
+dl.faits dt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.11em;text-transform:uppercase;color:var(--ink2);padding-top:2px}
 dl.faits dd{font-size:14.5px;font-weight:600;text-align:right}
 .billet{display:flex;gap:14px;align-items:center;padding:14px;border:1px solid var(--bord);
@@ -950,7 +1018,7 @@ dl.faits dd{font-size:14.5px;font-weight:600;text-align:right}
 h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transform:uppercase;margin:0 0 20px}
 .champ{display:block;margin-bottom:17px}
 .champ>span{display:block;margin-bottom:7px;font-family:'JetBrains Mono',monospace;
-  font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+  font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
 .champ input[type=text]{width:100%;padding:12px;border:1px solid var(--bord);
   border-radius:2px;background:#fff;color:var(--ink)}
 .champ input::placeholder{color:#A3ADA6}
@@ -983,7 +1051,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 #toast{position:absolute;left:50%;bottom:calc(var(--safe-b) + 150px);z-index:950;
   transform:translateX(-50%);padding:11px 16px;border:1px solid var(--bord);border-radius:2px;
   background:#fff;color:var(--ink);white-space:nowrap;font-family:'JetBrains Mono',monospace;
-  font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
   box-shadow:0 2px 10px rgba(20,30,25,.18);animation:monteT .26s}
 @keyframes monteT{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
 
@@ -993,7 +1061,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 #panne strong{display:block;margin-bottom:5px}
 #panne button{margin-top:10px;padding:8px 12px;border:1px solid var(--bord);
   border-radius:99px;background:var(--ardoise);color:#fff;font-family:'JetBrains Mono',monospace;
-  font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+  font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
 
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -1020,8 +1088,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <!-- En-tête flottant compact : la carte domine, l'interface se pose dessus.
      Une pastille de contexte, une loupe, une cloche. Rien d'autre. -->
 <header id="appHeader" hidden>
-  <button id="btnMaintenant" aria-pressed="true" title="Ce qui est utilisable maintenant">
-    ⚡ <span>Maintenant</span><i class="hd-sep">·</i><b id="hdVille">Autour de toi</b>
+  <!-- Le lieu regardé, et rien d'autre. Cette pastille portait aussi
+       « Maintenant », ce qui faisait deux commandes du temps (ici et dans la
+       feuille) et brouillait la seule question qu'elle doit répondre : où
+       est-ce que je regarde ? Un appui recentre, ou demande où regarder. -->
+  <button id="btnLieu" title="Recentrer sur ma position">
+    ⌖ <b id="hdVille">Autour de toi</b>
   </button>
   <button class="hd-icone" id="btnLoupe" aria-label="Rechercher">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
@@ -1073,8 +1145,14 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
 </button>
 
-<!-- Attribution : légalement due, mais elle n'a pas à occuper la carte. -->
-<button id="btnCredits" hidden aria-label="Sources et attributions" aria-expanded="false">ⓘ</button>
+<!-- Attribution : légalement due, et donc lisible sur la carte elle-même.
+     Elle vivait entièrement derrière le « ⓘ », c'est-à-dire nulle part pour
+     qui ne clique pas. Compacte, discrète, mais présente. -->
+<div id="attribution" hidden>
+  <span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OSM</a>
+  · <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></span>
+  <button id="btnCredits" aria-label="Sources et attributions" aria-expanded="false">ⓘ</button>
+</div>
 <div id="credits" hidden>
   © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
   © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>
@@ -1100,13 +1178,14 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
      d'un événement qu'on a créé (annulation, changement d'horaire, limite
      de places) : il ne s'active donc que si on a publié quelque chose. -->
 <nav id="navBas" hidden>
+  <!-- « Autour de moi » et « Pour toi » ouvraient le même écran par deux
+       portes : c'était deux noms pour une seule chose. Il n'en reste qu'une,
+       Explorer, et le temps se choisit à l'intérieur (Maintenant, Ce soir,
+       Ce week-end, À venir). Revenir à sa position est devenu un geste
+       géographique : la pastille de l'en-tête et le bouton de la carte. -->
   <button class="nb actif" data-nb="explorer">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-    Autour de moi
-  </button>
-  <button class="nb" data-nb="maintenant">
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>
-    Pour toi
+    Explorer
   </button>
   <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
     <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
@@ -1157,12 +1236,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="panne" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script src="availability.js"></script>
-<script src="temporel.js"></script>
-<script src="explications.js"></script>
-<script src="events.js"></script>
-<script src="core.js"></script>
-<script src="transit.js"></script>
+<script src="availability.js?v=fefb49c1"></script>
+<script src="temporel.js?v=feebfc4c"></script>
+<script src="explications.js?v=4f3ec1ed"></script>
+<script src="events.js?v=6c291809"></script>
+<script src="core.js?v=72c83089"></script>
+<script src="transit.js?v=17e44189"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -1984,6 +2063,19 @@ const ETIQUETTES_CAT = {
   services:"SERVICES", transport:"TRANSPORT", buy:"BOUTIQUES",
 };
 
+/* Deux catégories différentes peuvent porter la même étiquette : `eat` et
+   `restaurant` se lisent tous les deux « MANGER ». Sans déduplication, les
+   cartes affichaient « MANGER • MANGER », ce qui se lit comme un bug parce
+   que c'en est un. On prend donc les deux premières étiquettes DISTINCTES. */
+function etiquettesLisibles(l){
+  const vues = [];
+  ((l && l.categories) || []).forEach(c=>{
+    const e = ETIQUETTES_CAT[c];
+    if(e && !vues.includes(e)) vues.push(e);
+  });
+  return vues.slice(0,2);
+}
+
 const BESOINS_PRINCIPAUX  = BESOINS.filter(b=>!b.secondaire);
 const BESOINS_SECONDAIRES = BESOINS.filter(b=>b.secondaire);
 const BESOIN_DE = id => BESOINS.find(b=>b.id === id);
@@ -2350,6 +2442,11 @@ let permanentPlaces=[], externalEvents=[], userPublications=[];
 let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
 let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
+/* D'où vient le point que la carte regarde : "gps" (la personne l'a autorisé),
+   "memoire" (dernière zone visitée), "choix" (une ville choisie à la main),
+   ou null — et null veut dire « on ne sait pas », pas « il n'y a rien ». */
+let originePosition = null;
+const positionConnue = ()=>originePosition !== null;
 let routes=[]; // {couche, base}
 let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
@@ -3329,20 +3426,33 @@ async function demarrer(coords){
     panne("Carte indisponible","Leaflet n’a pas pu être téléchargé depuis le CDN.");
     return;
   }
+  /* Sans position connue, l'application affichait Paris et l'annonçait comme
+     « autour de toi », puis « rien d'ouvert autour de toi ». Elle affirmait
+     deux choses fausses : qu'elle savait où on est, et qu'il n'y a rien.
+     On garde un point de départ pour que la carte existe, mais on note que
+     personne ne l'a choisi — et tout ce qui parle de « autour de toi » lit
+     ce drapeau. */
+  originePosition = coords ? "memoire" : null;
   positionMoi = coords || [48.8566,2.3522];
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
-  const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#appHeader","#navBas","#btnAide","#btnTransports","#btnCredits"]
+  // un lien vers un événement ne porte pas de coordonnées : on reste sur la
+  // position connue et c'est `ouvrirLieuPartage` qui recadre à l'arrivée
+  const centre = partage && partage.lat != null
+    ? [partage.lat, partage.lng] : positionMoi;
+  ["#appHeader","#navBas","#btnAide","#btnTransports","#attribution"]
     .forEach(s=>$(s).hidden=false);
   PERF.jalon("ui_ready");         // l'écran est lisible et interactif
+  majEnteteLieu();
   mesurerHeader();
-  // le contexte d'abord : la ville s'affiche sans attendre les lieux
-  detecterVille(positionMoi[0], positionMoi[1]);
+  // le contexte d'abord : la ville s'affiche sans attendre les lieux. Mais on
+  // ne nomme pas la ville d'un point que personne n'a choisi : afficher
+  // « Paris » à quelqu'un qui est à Lille est pire que ne rien afficher.
+  if(positionConnue()) detecterVille(positionMoi[0], positionMoi[1]);
 
-  // ni contrôle de zoom, ni bandeau d'attribution : la carte doit se lire
-  // comme un fond d'application, pas comme une démo Leaflet. L'attribution
-  // reste due et vit derrière le « ⓘ » (#btnCredits).
+  // ni contrôle de zoom, ni bandeau Leaflet : la carte doit se lire comme un
+  // fond d'application. L'attribution reste due — elle est écrite en bas à
+  // gauche (#attribution), le détail complet derrière le « ⓘ ».
   map = L.map("map",{zoomControl:false, attributionControl:false, tap:false, preferCanvas:true})
         .setView(centre, partage ? 17 : 16);
   map.createPane("villePane"); map.getPane("villePane").style.zIndex = 200;
@@ -3533,12 +3643,25 @@ const SUGGESTIONS_INTENTION = [
 ];
 
 /* Timeline : la même carte, à un autre moment de la journée. */
+/* Quatre groupes de temps, pas un de plus. « Dans 1 heure » et « Demain »
+   étaient des nuances de « maintenant » et de « à venir » : deux entrées de
+   menu de plus pour la même décision. Ce qui n'est pas maintenant n'est pas
+   perdu pour autant — il part dans l'un des trois autres groupes. */
 const CRENEAUX = [
-  { id:"maintenant", label:"Maintenant",   de:0,          a:2*3600e3 },
-  { id:"1h",         label:"Dans 1 heure", de:45*60e3,    a:3*3600e3 },
-  { id:"soir",       label:"Ce soir",      de:0,          a:0, heure:19 },
-  { id:"demain",     label:"Demain",       de:0,          a:0, heure:10, jour:1 },
+  { id:"maintenant", label:"Maintenant"  },
+  { id:"soir",       label:"Ce soir",     heure:19 },
+  { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
+  { id:"avenir",     label:"À venir"      },
 ];
+/* Le créneau choisi ↔ la section rendue par le moteur temporel. « Plus tard
+   aujourd'hui » rejoint « ce soir » : personne ne distingue les deux quand il
+   s'agit de décider de sortir. */
+const SECTIONS_DU_CRENEAU = Object.freeze({
+  maintenant:["maintenant"],
+  soir:["ce_soir","aujourdhui"],
+  weekend:["ce_week_end"],
+  avenir:["a_venir"],
+});
 let creneau = "maintenant";
 
 /* Instant de référence du créneau choisi : c'est lui qui décide des poids
@@ -3546,10 +3669,23 @@ let creneau = "maintenant";
 function instantCreneau(){
   const c = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
   const d = new Date();
-  if(c.jour) d.setDate(d.getDate()+c.jour);
-  if(c.heure != null) d.setHours(c.heure, 0, 0, 0);
-  else if(c.id === "1h") d.setTime(d.getTime() + 3600e3);
+  // le week-end : le prochain samedi, ou aujourd'hui si on y est déjà
+  if(c.weekend){
+    const jour = d.getDay();                       // 0 dimanche … 6 samedi
+    if(jour !== 0 && jour !== 6) d.setDate(d.getDate() + (6 - jour));
+  }
+  if(c.heure != null){
+    d.setHours(c.heure, 0, 0, 0);
+    // « ce soir » quand il est déjà 21 h : c'est maintenant, pas dans le passé
+    if(d.getTime() < Date.now()) return new Date();
+  }
   return d;
+}
+
+/* La section temporelle d'un objet, telle que le moteur la calcule. */
+function sectionDe(l, quand){
+  const t = quand == null ? Date.now() : quand;
+  return TEMPS.sectionTemporelle(statutTemps(l, t), t);
 }
 
 /* « Maintenant » : ce qui est vivant à cet instant, et rien d'autre. */
@@ -3569,7 +3705,11 @@ function estVivant(l){
        laissait passer un événement SANS date : `startsAt` nul ne déclenchait
        aucun refus. C'est ce qui remplissait le bloc d'événements prévus des
        semaines plus tard. */
-    return TEMPS.estMaintenant(statutTemps(l, t).statut);
+    if(creneau === "maintenant") return TEMPS.estMaintenant(statutTemps(l, t).statut);
+    // les autres créneaux montrent leur groupe, calculé depuis l'instant réel :
+    // un événement de samedi appartient au week-end, pas à « maintenant »
+    const sections = SECTIONS_DU_CRENEAU[creneau] || [];
+    return sections.includes(sectionDe(l));
   }
   // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
   // la plupart des lieux OpenStreetMap n'ont aucune donnée d'ouverture, et
@@ -3638,8 +3778,7 @@ function ouvrirFicheCompacte(l){
   const dist = centre ? distanceM(centre[0],centre[1],l.lat,l.lng) : null;
   const min = (kmh)=> dist == null ? null : tempsTrajetMinutes(dist, kmh);
 
-  const etiquettes = (l.categories||[]).filter(x=>ETIQUETTES_CAT[x]).slice(0,2)
-    .map(x=>ETIQUETTES_CAT[x]);
+  const etiquettes = etiquettesLisibles(l);
   const ligne2 = [
     l.note ? "⭐ "+l.note.toFixed(1).replace(".",",") : null,
     ...etiquettes,
@@ -3874,7 +4013,10 @@ function majBandeauVide(retenus){
   // un seul bandeau à la fois : celui de la géolocalisation passe avant
   const erreurPartielle = etatErreurPartielle();
   const videReel = retenus === 0 && lieux.length > 0 && !montrerFermes && !rechercheEnCours();
-  const montrer = (erreurPartielle || videReel) && !modeNav && $("#bandeauGeo").hidden;
+  // tant qu'on ignore où se trouve la personne, on ne peut pas affirmer qu'il
+  // n'y a rien autour d'elle : on ne sait même pas de quel « autour » il s'agit
+  const montrer = (erreurPartielle || (videReel && positionConnue()))
+    && !modeNav && $("#bandeauGeo").hidden;
   b.hidden = !montrer;
   if(!montrer) return;
   if(erreurPartielle){
@@ -4372,7 +4514,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#navBas","#appHeader","#btnPartager","#btnAide","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
+  ["#navBas","#appHeader","#btnPartager","#btnAide","#btnTransports","#attribution","#filtresHumains","#feuilleBesoins","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   feuilleNiveau = null;
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
@@ -4402,7 +4544,7 @@ function quitterNav(){
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
   $("#navEtapes").hidden = true;
-  ["#navBas","#appHeader","#btnTransports","#btnCredits"]
+  ["#navBas","#appHeader","#btnTransports","#attribution"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   majFiltres(); majRaccourcis();
   ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
@@ -4947,13 +5089,47 @@ async function arretsProchesCache(lat,lng){
 
 /* Un lien qui ouvre vraiment le lieu chez l'autre personne, au lieu de la
    déposer sur la carte sans contexte. */
+/* ---- Adresses partageables ----------------------------------------------
+   Les liens étaient de la forme `#l=lat,lng|titre`. Un fragment n'est jamais
+   envoyé au serveur : aucune plateforme ne peut en tirer un titre, une image
+   ni une description, et tous les liens partagés se ressemblaient donc.
+
+   Les liens émis sont maintenant des chemins — `/l/<lat>,<lng>/<titre>` pour
+   un lieu, `/e/<id>` pour un événement publié — que Vercel réécrit vers
+   l'application. C'est la forme qu'une fonction serveur pourra intercepter
+   pour poser de vraies métadonnées Open Graph (voir docs/partage-og.md).
+   Les anciens liens continuent d'ouvrir exactement le même lieu : la lecture
+   accepte les deux formes, et ce n'est pas près de changer. */
+const slug = (t)=>String(t||"").toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60);
+
 function lienVers(l){
   const u = new URL(location.href);
-  u.hash = "l="+l.lat.toFixed(5)+","+l.lng.toFixed(5)+"|"+encodeURIComponent(l.titre||"");
+  u.hash = "";
+  u.search = "";
+  // un événement publié a une identité stable côté base : on la garde
+  if(l.dbId){
+    u.pathname = "/e/"+encodeURIComponent(l.dbId)+(slug(l.titre) ? "/"+slug(l.titre) : "");
+    return u.toString();
+  }
+  u.pathname = "/l/"+l.lat.toFixed(5)+","+l.lng.toFixed(5)+
+    (slug(l.titre) ? "/"+slug(l.titre) : "");
   return u.toString();
 }
 
 function lieuPartage(){
+  // forme actuelle : /l/<lat>,<lng>[/<titre>] ou /e/<id>[/<titre>]
+  const chemin = /^\/(l|e)\/([^/]+)(?:\/([^/]*))?\/?$/.exec(location.pathname||"");
+  if(chemin){
+    const [, type, cle, titre] = chemin;
+    if(type === "e") return { dbId:decodeURIComponent(cle), lat:null, lng:null,
+                              titre: titre ? decodeURIComponent(titre) : "" };
+    const c = /^(-?[\d.]+),(-?[\d.]+)$/.exec(decodeURIComponent(cle));
+    if(c) return { lat:parseFloat(c[1]), lng:parseFloat(c[2]),
+                   titre: titre ? decodeURIComponent(titre) : "" };
+  }
+  // forme historique : #l=lat,lng|titre — les liens déjà partagés vivent
   const m = /^#l=(-?[\d.]+),(-?[\d.]+)(?:\|(.*))?$/.exec(location.hash||"");
   if(!m) return null;
   return { lat:parseFloat(m[1]), lng:parseFloat(m[2]),
@@ -4966,7 +5142,9 @@ function ouvrirLieuPartage(){
   if(partageOuvert) return;
   const p = lieuPartage();
   if(!p) return;
-  const cible = lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
+  const cible = p.dbId != null
+    ? lieux.find(l=>String(l.dbId) === String(p.dbId))
+    : lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
   if(!cible) return;                 // les lieux ne sont pas encore tous arrivés
   partageOuvert = true;
   map.flyTo([cible.lat,cible.lng], 17, {duration:.8});
@@ -6779,24 +6957,27 @@ function majFeuille2(){
   if(feuilleNiveau === "racine"){
     // L'accueil ne pose plus de question : il propose. Les besoins sont dans
     // les pills de l'en-tête, la feuille sert à montrer des lieux.
-    $("#fbTitre").textContent = "Pour toi, maintenant";
+    const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
+    const titre = creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label;
+    $("#fbTitre").textContent = titre;
     retour.hidden = true;
     // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
     let reco = recommandationsAccueil(12);
   // le classement peut ne rien rendre au tout début (aucun ETA, aucun horaire) :
   // on montre alors l'échantillon varié du cache plutôt qu'un écran vide
-  if(!reco.length) reco = echantillonImmediat(lieux.filter(nomExploitable));
+  if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
   if(reco.length) PERF.jalon("cached_pois_visible");
     corps.innerHTML =
+      blocOuRegarder()+
+      ongletsTemps()+
       (reco.length
-        ? '<div class="rc-tete"><strong>Pour toi, maintenant</strong>'+
+        ? '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
             '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
-          '<div class="rc-piste" data-testid="primary-results">'+
+          '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
             reco.map(carteRecommandation).join("")+'</div>'
-        : statutRechercheHTML(0))+
-      sectionsAVenirHTML()+
-      blocTransports()+
+        : statutGroupeHTML())+
+      (creneau === "maintenant" ? blocTransports() : "")+
       piedFeuille();
   }else if(feuilleNiveau === "plus"){
     $("#fbTitre").textContent = "Plus de catégories";
@@ -6903,6 +7084,14 @@ function blocResultats(){
    quoi que ce soit : il propose. Le classement est le même que celui des
    besoins, sans filtre de catégorie — donc soumis aux mêmes règles
    d'ouverture, d'ETA et de faisabilité. */
+/* Ce que l'accueil considère. Les catégories de transport en sont exclues :
+   « Vélo » est un sous-besoin légitime de Bouger, mais une station de vélos
+   n'est pas une réponse à « qu'est-ce que je peux faire maintenant ». Elles
+   restent accessibles par Bouger → Vélo et par le bouton transports. */
+const CATS_ACCUEIL = ()=>[...new Set(
+  BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))]
+  .filter(c=>!CATS_TRANSPORT.has(c));
+
 function recommandationsAccueil(limite){
   const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre) return [];
@@ -6910,76 +7099,89 @@ function recommandationsAccueil(limite){
   // varié tiré du cache et des favoris, plutôt qu'un écran vide. Il sera
   // remplacé silencieusement dès que le classement complet arrive.
   if(!lieux.length) return [];
-  const classement = rankResults(lieux.filter(nomExploitable),{
+
+  /* Trois des quatre groupes ne parlent que d'événements : un restaurant n'a
+     pas de « ce week-end », il a des horaires. On ne classe donc que les
+     éphémères hors de « maintenant », et on les range par date réelle. */
+  const groupe = creneau === "maintenant";
+  const candidats = groupe
+    ? lieux.filter(nomExploitable)
+    : lieux.filter(l=>estTemporaire(l) && nomExploitable(l));
+
+  const classement = rankResults(candidats,{
     intent:"sortir",
     // toutes les catégories des besoins principaux : l'accueil ne présélectionne
     // pas une intention, il montre ce qui est réellement faisable
-    categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))],
+    categories:CATS_ACCUEIL(),
     position:centre,
-    now:instantCreneau().getTime(),
-    nowOnly:filtreMaintenant && !montrerFermes,
+    now:Date.now(),
+    // le filtre « maintenant » n'a de sens que dans le groupe « maintenant » :
+    // ailleurs c'est la section temporelle qui trie
+    nowOnly:groupe && filtreMaintenant && !montrerFermes,
     radius:rayonRecherche,
     distanceBetween:distanceM,
     etaFor:l=>etaConnu(l, centre),
   });
+
+  if(!groupe){
+    const sections = SECTIONS_DU_CRENEAU[creneau] || [];
+    const retenus = classement.filter(l=>sections.includes(l.rankSection))
+      .sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
+    prechargerEta(retenus, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
+    return retenus.slice(0, limite || 12);
+  }
+
   prechargerEta(classement, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
   return classement.slice(0, limite || 12);
 }
 
-/* ---- Ce qui n'a pas lieu maintenant, mais qui aura lieu ------------------
-   Écarter un événement de « maintenant » ne doit pas le faire disparaître :
-   il part dans la section qui correspond à sa vraie date. Le classement du
-   moteur temporel a déjà rangé chaque objet (`rankSection`), on ne fait ici
-   que rassembler et afficher. */
-const SECTIONS_A_VENIR = [
-  {id:"ce_soir",     titre:"Ce soir"},
-  {id:"ce_week_end", titre:"Ce week-end"},
-  {id:"a_venir",     titre:"À venir"},
-];
-
-function evenementsParSection(parSection){
-  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
-  const groupes = {};
-  if(!centre || !lieux.length) return groupes;
-
-  // sans `nowOnly` : c'est justement ce qui n'est pas « maintenant » qu'on
-  // cherche ici. Le filtrage temporel écarte quand même le passé.
-  const futurs = rankResults(lieux.filter(l=>estTemporaire(l) && nomExploitable(l)),{
-    intent:"sortir",
-    categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))],
-    position:centre,
-    now:instantCreneau().getTime(),
-    nowOnly:false,
-    radius:rayonRecherche,
-    distanceBetween:distanceM,
-    etaFor:l=>etaConnu(l, centre),
-  });
-
-  futurs.forEach(l=>{
-    const s = l.rankSection;
-    if(!s || s === "maintenant" || s === "aujourdhui") return;
-    (groupes[s] = groupes[s] || []).push(l);
-  });
-  // au sein d'une section, c'est la date qui ordonne : « ce soir » se lit
-  // dans l'ordre des heures, pas dans l'ordre du score
-  Object.keys(groupes).forEach(k=>{
-    groupes[k].sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
-    groupes[k] = groupes[k].slice(0, parSection || 6);
-  });
-  return groupes;
+/* ---- Les quatre groupes de temps, en tête de l'accueil -------------------
+   « Maintenant », « Autour de moi », « Pour toi » et « Explorer » disaient à
+   peu près la même chose par quatre portes différentes. Il n'en reste qu'une :
+   Explorer, et à l'intérieur le temps. */
+function ongletsTemps(){
+  return '<div class="ong-temps" role="tablist" aria-label="Quand">'+
+    CRENEAUX.map(c=>
+      '<button class="ong'+(c.id===creneau?' actif':'')+'" role="tab" '+
+        'aria-selected="'+(c.id===creneau)+'" data-creneau="'+c.id+'">'+
+        esc(c.label)+'</button>').join("")+
+    '</div>';
 }
 
-function sectionsAVenirHTML(){
-  const groupes = evenementsParSection(6);
-  return SECTIONS_A_VENIR.map(s=>{
-    const liste = groupes[s.id];
-    if(!liste || !liste.length) return "";
-    return '<div class="rc-tete rc-tete-sec"><strong>'+esc(s.titre)+'</strong></div>'+
-      '<div class="rc-piste" data-section="'+s.id+'">'+
-        liste.map(carteRecommandation).join("")+'</div>';
-  }).join("");
+/* Ce qu'on écrit quand un groupe est vide. Jamais « rien autour de toi »
+   quand on ignore où est « toi ». */
+function statutGroupeHTML(){
+  if(!positionConnue())
+    return '<p class="fb-statut">Choisis un point de départ pour voir ce qui '+
+           'se passe autour.</p>';
+  if(creneau === "maintenant") return statutRechercheHTML(0);
+  const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
+  return '<p class="fb-statut">Rien d’annoncé pour « '+esc(groupe.label.toLowerCase())+
+    ' » dans cette zone.<br>Les événements arrivent au fil des publications.</p>';
+}
+
+/* ---- « Où est-ce que je regarde ? » --------------------------------------
+   Sans position connue, l'application affichait un point par défaut et le
+   commentait comme s'il s'agissait du quartier de la personne. Elle dit
+   maintenant ce qu'elle sait — c'est-à-dire rien — et propose les deux gestes
+   qui débloquent la situation, plus les intentions pour commencer quand même. */
+function blocOuRegarder(){
+  if(positionConnue()) return "";
+  const intentions = [...BESOINS_PRINCIPAUX.slice(0,4).map(b=>({id:b.id, emoji:b.emoji, label:b.label})),
+    {id:"aide", emoji:"❤️", label:"Aide"}];
+  return '<section class="pdep" data-testid="ou-regarder">'+
+    '<p class="pdep-titre">Où veux-tu regarder ?</p>'+
+    '<div class="pdep-actions">'+
+      '<button class="pdep-btn pdep-fort" data-ou="position">⌖ Utiliser ma position</button>'+
+      '<button class="pdep-btn" data-ou="ville">Choisir une ville</button>'+
+    '</div>'+
+    '<p class="pdep-sous">Ou commence par une envie :</p>'+
+    '<div class="pdep-envies">'+intentions.map(i=>
+      '<button class="pdep-envie" data-ou-besoin="'+esc(i.id)+'">'+
+      '<em>'+i.emoji+'</em>'+esc(i.label)+'</button>').join("")+'</div>'+
+    '</section>';
 }
 
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
@@ -6988,8 +7190,8 @@ function carteRecommandation(l){
   const c = CATS[l.cat] || {emoji:"📍"};
   const eta = l.rankEta;
   const dispo = l.rankAvailability;
-  const cats = (l.categories||[]).filter(x=>ETIQUETTES_CAT[x]).slice(0,2)
-    .map(x=>ETIQUETTES_CAT[x]).join(" • ") || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
+  const cats = etiquettesLisibles(l).join(" • ")
+    || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
 
   // Une vraie photo si on en a une ; sinon une tuile teintée par la catégorie.
   // Jamais un gros emoji en guise d'image : ça se lit comme une image manquante.
@@ -7006,10 +7208,20 @@ function carteRecommandation(l){
     '</span>';
 
   const minutes = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
+  /* Le détail du trajet n'a d'intérêt que s'il APPREND quelque chose : quand
+     le trajet est une marche de six minutes, « 6 min » puis « 🚶 6 min » puis
+     « Arrivée 01:14 » font trois lignes pour une seule information, et
+     repoussent la recommandation suivante sous le pli. */
   const detail = [];
-  if(eta && eta.walkMinutes) detail.push('🚶 '+eta.walkMinutes+' min');
+  const marcheSeule = eta && eta.walkMinutes && eta.walkMinutes === eta.minutes
+    && !(eta.lines && eta.lines.length);
+  if(eta && eta.walkMinutes && !marcheSeule) detail.push('🚶 '+eta.walkMinutes+' min');
   if(eta && eta.lines && eta.lines.length) detail.push('🚇 '+esc(eta.lines[0]));
-  const arrivee = l.rankArrival
+  // l'heure d'arrivée compte pour ce qui ferme ou ce qui commence ; pour un
+  // événement déjà en cours, elle ne décide de rien
+  const dejaEnCours = estTemporaire(l) &&
+    statutTemps(l).statut === TEMPS.STATUTS.EN_COURS;
+  const arrivee = l.rankArrival && !dejaEnCours
     ? "Arrivée "+heureLocale(l.rankArrival, l)
     : (dispo && dispo.closesAtTime ? "Ferme à "+dispo.closesAtTime : "");
 
@@ -7080,10 +7292,38 @@ function brancherFeuille2(){
   });
 
   corps.querySelectorAll("[data-rc-tout]").forEach(b=>b.onclick=()=>{
+    const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
     const tout = recommandationsAccueil(60);
     pileEcrans = [];
-    pousserEcran(()=>afficherListe("✨","Pour toi, maintenant", tout, false,
-      ()=>b.click()));
+    pousserEcran(()=>afficherListe("✨",
+      creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label,
+      tout, false, ()=>b.click()));
+  });
+
+  // les quatre groupes de temps : un seul geste, aucune page de plus
+  corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
+    if(creneau === b.dataset.creneau) return;
+    creneau = b.dataset.creneau;
+    // « n'afficher que ce qui est utilisable » n'a de sens que dans
+    // « maintenant » : ailleurs c'est la date qui trie, pas l'ouverture
+    filtreMaintenant = creneau === "maintenant";
+    majFeuille2();
+    reinitialiserScrollFeuille();
+    rendre();            // la carte suit le groupe choisi
+    majFiltres();
+  });
+
+  // sans position connue : les deux gestes qui débloquent, et les envies
+  corps.querySelectorAll("[data-ou]").forEach(b=>b.onclick=()=>{
+    if(b.dataset.ou === "position"){ suivreMaPosition(); return; }
+    ouvrirRecherche();
+    const champ = $("#rech");
+    if(champ){ champ.value = ""; champ.placeholder = "Dans quelle ville ?"; }
+  });
+  corps.querySelectorAll("[data-ou-besoin]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.ouBesoin;
+    if(id === "aide"){ if(!modeAide) basculerAide(); return; }
+    ouvrirFeuille2(id);
   });
 
   corps.querySelectorAll("[data-tr]").forEach(b=>b.onclick=()=>{
@@ -7227,8 +7467,8 @@ function majRaccourcis(){
    Aide, la même barre porte les six besoins : un seul rail de boutons à
    lire, jamais deux superposés. */
 function majFiltres(){
-  const b = $("#btnMaintenant");
-  if(b) b.classList.toggle("actif", filtreMaintenant);
+  const b = $("#btnLieu");
+  if(b) b.classList.toggle("inconnu", !positionConnue());
   const z = $("#filtresHumains");
   if(!z) return;
 
@@ -7445,7 +7685,8 @@ function interpreter(phrase){
   if(/pres|proche|a cote|pas loin/.test(t)){ act.filtres.add("proche"); act.dit.push("tout près"); }
 
   if(/ce soir|soiree|tantot/.test(t)){ act.creneau = "soir"; act.dit.push("ce soir"); }
-  else if(/demain/.test(t)){ act.creneau = "demain"; act.dit.push("demain"); }
+  else if(/week[- ]?end|samedi|dimanche/.test(t)){ act.creneau = "weekend"; act.dit.push("ce week-end"); }
+  else if(/demain|prochain|plus tard|a venir/.test(t)){ act.creneau = "avenir"; act.dit.push("à venir"); }
   else if(/maintenant|tout de suite|la|now/.test(t)){ act.creneau = "maintenant"; act.dit.push("maintenant"); }
 
   return act;
@@ -7572,8 +7813,13 @@ function suivreMaPosition(){
       const c = [p.coords.latitude, p.coords.longitude];
       PERF.jalon("geolocation_ready");
       memoriserPosition(c);
-      const bouge = !positionMoi || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
+      const bouge = !positionConnue() || !positionMoi
+        || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
       positionMoi = c;
+      originePosition = "gps";
+      majEnteteLieu();
+      detecterVille(c[0], c[1]);
+      majAccueil();
       if(moi) moi.setLatLng(c);
       if(bouge && map){
         map.flyTo(c, 16, {duration:.9});
@@ -7958,8 +8204,10 @@ let typeAvantPose = null;
 $("#btnPoseOk").onclick=validerPose;
 /* Revenir à soi : la carte reprend sa position, la recherche est relâchée et
    l'accueil retrouve ses recommandations locales. */
-$("#btnAutourDeMoi").onclick=()=>{
-  if(!positionMoi) { suivreMaPosition(); return; }
+/* Revenir à sa position : une action géographique, appelée par le bouton
+   flottant comme par la pastille de lieu de l'en-tête. */
+function revenirAutourDeMoi(){
+  if(!positionMoi || !positionConnue()) { suivreMaPosition(); return; }
   rechercheGeo = null;
   zoneAffichee = null;          // la feuille reprend ses recommandations locales
   recherche = ""; if($("#rech")) $("#rech").value = "";
@@ -7969,7 +8217,8 @@ $("#btnAutourDeMoi").onclick=()=>{
   rendre(); majAccueil();
   if(feuilleNiveau !== null) majFeuille2(); else ouvrirAccueilFeuille();
   majBoutons();
-};
+}
+$("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
 
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
@@ -8031,13 +8280,6 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   }
   $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
   if(id === "explorer"){ fermerFeuille2(); ouvrirAccueilFeuille(); return; }
-  if(id === "maintenant"){
-    // « Maintenant » n'est pas un écran de plus : c'est l'accueil, déplié sur
-    // ce qui est réellement faisable à cet instant
-    if(modeAide) basculerAide();
-    if(!filtreMaintenant) basculerMaintenant();
-    ouvrirAccueilFeuille(); reglerEtatFeuille("deplie"); return;
-  }
   if(id === "creer"){ retourFormulaire=false; ouvrirCreation(); return; }
   if(id === "favoris"){ ouvrirFavoris(); return; }
   if(id === "profil"){ ouvrirCanaux(); return; }
@@ -8115,6 +8357,16 @@ function ouvrirCanaux(){
 /* ---- Ville détectée -----------------------------------------------------
    Reverse-geocoding Nominatim, une seule fois par position. En cas d'échec,
    l'en-tête garde « Autour de toi » : on n'affiche pas une ville devinée. */
+/* Ce que l'en-tête dit du lieu regardé. Tant que personne n'a donné sa
+   position ni choisi de ville, il le dit — au lieu de faire croire que le
+   point affiché est « autour de toi ». */
+function majEnteteLieu(){
+  const v = $("#hdVille");
+  if(!v) return;
+  if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
+  if(v.textContent === "Choisir un endroit") v.textContent = "Autour de toi";
+}
+
 async function detecterVille(lat,lng){
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(villeDetectee === cle) return;
@@ -8182,7 +8434,14 @@ poigneeFeuille.addEventListener("pointerup",e=>{
     else fermerFeuille2();
   }
 });
-$("#btnMaintenant").onclick = basculerMaintenant;
+/* La pastille de lieu : recentrer si on sait où on est, demander sinon.
+   C'est la seule commande géographique — « Autour de moi » n'est plus un
+   concept concurrent de « Maintenant », c'est ce geste-là. */
+$("#btnLieu").onclick = ()=>{
+  if(!positionConnue()){ suivreMaPosition(); return; }
+  if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
+  if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
+};
 </script>
 </body>
 </html>

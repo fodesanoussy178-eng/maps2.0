@@ -892,7 +892,24 @@
       survivants.push({ item, startsAt, endsAt, temporary, etat });
     });
 
+    /* Un arrêt de métro ou une station de vélos sert à ALLER quelque part ;
+       ce n'est pas un endroit où l'on va. Ces objets remontaient pourtant en
+       tête de « Sortir » : ouverts 24 h/24, tout près, et rattachés à `sport`
+       par le vélo. On ne les propose donc comme résultat que si le transport
+       a été demandé explicitement. */
+    const transportDemande = categories.some((c) => TRANSPORT_CATEGORIES.includes(c));
+
     return survivants.map(({ item, startsAt, endsAt, temporary, etat }) => {
+      if (!transportDemande && hasAnyCategory(item, TRANSPORT_CATEGORIES)) {
+        /* Sauf s'il est vraiment autre chose : une gare qui est aussi un
+           monument reste un monument. On compare donc les forces plutôt que
+           de se contenter d'un seuil — une station de vélos tient à `sport`
+           par 0,8, ce qui suffisait à la faire passer pour une sortie. */
+        const forceTransport = bestCategoryWeight(item, TRANSPORT_CATEGORIES);
+        const forceDemandee = bestCategoryWeight(item,
+          categories.filter((c) => !TRANSPORT_CATEGORIES.includes(c)));
+        if (forceDemandee < forceTransport) return null;
+      }
       // un lieu entre dans un besoin s'il y a une appartenance, même
       // secondaire — c'est ce qui fait qu'un parc sort dans Famille ET Sortir
       const categoryFit = bestCategoryWeight(item, categories);

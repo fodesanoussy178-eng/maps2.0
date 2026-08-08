@@ -18,7 +18,7 @@ test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",
 test("la bottom sheet possède les trois layouts et des hauteurs dynamiques",()=>{
   // trois hauteurs : réduite (poignée + titre), moyenne, étendue
   assert.match(html,/#feuilleBesoins\.reduite\{height:144px;max-height:144px\}/);
-  assert.match(html,/height:45dvh;max-height:45dvh/);
+  assert.match(html,/height:58dvh;max-height:58dvh/);
   assert.match(html,/#feuilleBesoins\.deplie\{height:80dvh;max-height:80dvh\}/);
   assert.match(html,/@media \(min-width:768px\) and \(max-width:1099px\)/);
   assert.match(html,/@media \(min-width:1100px\)/);
@@ -110,11 +110,11 @@ test("aucun horaire n'est inventé faute de clé transport",()=>{
 });
 
 test("l'état ouvert/fermé a une seule source de vérité",()=>{
-  assert.match(html,/<script src="availability\.js"><\/script>/);
+  assert.match(html,/<script src="availability\.js\?v=[a-f0-9]{8}"><\/script>/);
   // les écrans passent tous par le même helper, aucun ne relit un horaire
   assert.match(html,/function dispoDe\(l, arrivee, quand\)/);
   // le moteur temporel fait autorité sur le « quand »
-  assert.match(html,/<script src="temporel\.js"><\/script>/);
+  assert.match(html,/<script src="temporel\.js\?v=[a-f0-9]{8}"><\/script>/);
   assert.match(html,/function statutTemps\(l, quand\)\{/);
   assert.match(html,/function badgeDispo\(l\)/);
   assert.doesNotMatch(html,/x\.ouvert === true\)\s+sous\.push/);
@@ -205,8 +205,10 @@ test("les heures affichées suivent le fuseau du lieu",()=>{
 
 test("la navigation basse suit le produit",()=>{
   assert.match(html,/<nav id="navBas"/);
-  for(const t of ["explorer","maintenant","creer","favoris","profil"])
+  for(const t of ["explorer","creer","favoris","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
+  // « Autour de moi » et « Pour toi » ouvraient le même écran : un seul reste
+  assert.doesNotMatch(html,/data-nb="maintenant"/);
   // Messages n'est plus un onglet permanent : prévenir les participants vit
   // sur l'événement qu'on a créé
   assert.doesNotMatch(html,/data-nb="messages"/);
@@ -228,7 +230,7 @@ test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>
 /* ---- Coordination d'événement, pas messagerie -------------------------- */
 
 test("prévenir les participants vit sur l'événement, pas dans une boîte",()=>{
-  assert.match(html,/<script src="events\.js"><\/script>/);
+  assert.match(html,/<script src="events\.js\?v=[a-f0-9]{8}"><\/script>/);
   assert.match(html,/function rafraichirCanaux/);
   // aucune boîte de réception générale
   assert.doesNotMatch(html,/data-nb="messages"/);
@@ -312,7 +314,7 @@ test("la hauteur mesurée de la navigation ne rogne pas la carte sur desktop",()
   assert.match(html,/NAV_FLOTTANTE\.matches \? "0px" : haut\+"px"/);
   assert.match(html,/setProperty\("--nav-flottante", haut\+"px"\)/);
   // l'attribution se range au-dessus de la pastille, pas dessous
-  assert.match(html,/#btnCredits\{left:20px;bottom:calc\(var\(--nav-flottante,60px\) \+ 28px\)\}/);
+  assert.match(html,/#attribution\{left:20px;bottom:calc\(var\(--nav-flottante,60px\) \+ 24px\)\}/);
 });
 
 test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa hauteur",()=>{
@@ -486,7 +488,7 @@ test("les filtres ne flottent plus sur la carte et sont limités à trois",()=>{
 });
 
 test("Partager ne vit plus sur la carte",()=>{
-  assert.match(html,/\["#navBas","#appHeader","#btnTransports","#btnCredits"\]/);
+  assert.match(html,/\["#navBas","#appHeader","#btnTransports","#attribution"\]/);
   assert.doesNotMatch(html,/\$\("#btnPartager"\)\.hidden=false/);
   assert.match(html,/Partager ne vit que sur la fiche d'un lieu/);
 });
@@ -787,10 +789,13 @@ test("« Revenir autour de moi » apparaît dès que la carte s'est déplacée",
 });
 
 test("la navigation nomme le produit",()=>{
-  for(const t of ["explorer","maintenant","creer","favoris","profil"])
+  for(const t of ["explorer","creer","favoris","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
-  assert.match(html,/Autour de moi\n  <\/button>/);
-  assert.match(html,/Pour toi\n  <\/button>/);
+  assert.match(html,/Explorer\n  <\/button>/);
+  // le temps se choisit DANS Explorer, pas dans la barre du bas
+  assert.match(html,/function ongletsTemps\(\)\{/);
+  for(const label of ["Maintenant","Ce soir","Ce week-end","À venir"])
+    assert.match(html,new RegExp('label:"'+label.replace("À","À")+'"'), label);
 });
 
 /* ---- Trajets : ne jamais annoncer un transport qui ne circule pas ------- */
@@ -857,7 +862,7 @@ test("« Trouver de l'aide » est un contrôle permanent de la carte",()=>{
   assert.match(html,/#btnAide\.actif\{/);
   assert.match(html,/\$\("#btnAide"\)\.onclick=\(\)=>\{/);
   // affiché et masqué avec les autres contrôles de carte
-  assert.match(html,/\["#appHeader","#navBas","#btnAide","#btnTransports","#btnCredits"\]/);
+  assert.match(html,/\["#appHeader","#navBas","#btnAide","#btnTransports","#attribution"\]/);
   // et il n'existe plus dans le rail : un seul foyer, un seul état
   assert.match(html,/const ordre = BESOINS_PRINCIPAUX\.filter\(b=>b\.id !== "aide"\);/);
   assert.doesNotMatch(html,/data-rc="aide"/);
@@ -958,19 +963,18 @@ test("la carte d'un événement montre sa date avant son temps de trajet",()=>{
   assert.match(html,/estTemporaire\(l\)\s*\n\s*\? TEMPS\.libelleTemporel/);
 });
 
-test("les événements futurs partent dans des sections, ils ne disparaissent pas",()=>{
-  assert.match(html,/const SECTIONS_A_VENIR = \[/);
-  assert.match(html,/\{id:"ce_soir",\s+titre:"Ce soir"\}/);
-  assert.match(html,/\{id:"ce_week_end", titre:"Ce week-end"\}/);
-  assert.match(html,/\{id:"a_venir",\s+titre:"À venir"\}/);
-  // l'accueil les rend sous le bloc principal
-  assert.match(html,/sectionsAVenirHTML\(\)\+\s*\n\s*blocTransports\(\)/);
-  // le rangement vient du moteur, pas d'une règle réécrite ici
-  assert.match(html,/const s = l\.rankSection;/);
-  // et à l'intérieur d'une section, c'est l'heure qui ordonne
-  assert.match(html,/groupes\[k\]\.sort\(\(a,b\)=>\(a\.rankStart\|\|0\)-\(b\.rankStart\|\|0\)\);/);
-  assert.ok(html.indexOf("const SECTIONS_A_VENIR") < html.indexOf("return SECTIONS_A_VENIR.map"),
-    "SECTIONS_A_VENIR doit précéder son premier usage");
+test("les événements futurs partent dans des groupes, ils ne disparaissent pas",()=>{
+  // quatre groupes, pas un de plus
+  assert.match(html,/const SECTIONS_DU_CRENEAU = Object\.freeze\(\{/);
+  assert.match(html,/soir:\["ce_soir","aujourdhui"\],/);
+  assert.match(html,/weekend:\["ce_week_end"\],/);
+  assert.match(html,/avenir:\["a_venir"\],/);
+  // le rangement vient du moteur temporel, pas d'une règle réécrite ici
+  assert.match(html,/const retenus = classement\.filter\(l=>sections\.includes\(l\.rankSection\)\)/);
+  // et à l'intérieur d'un groupe, c'est l'heure qui ordonne
+  assert.match(html,/\.sort\(\(a,b\)=>\(a\.rankStart\|\|0\)-\(b\.rankStart\|\|0\)\);/);
+  assert.ok(html.indexOf("const SECTIONS_DU_CRENEAU") < html.indexOf("SECTIONS_DU_CRENEAU[creneau]"),
+    "SECTIONS_DU_CRENEAU doit précéder son premier usage");
 });
 
 test("OpenAgenda transmet toutes ses séances, pas seulement la première",()=>{
@@ -1007,7 +1011,7 @@ test("une exposition fermée annonce sa réouverture, pas le début de sa pério
 test("dans l'aide, chaque lieu dit à quoi il sert",()=>{
   // « CCAS », « Mission locale », « Banque alimentaire » : des noms qui ne
   // veulent rien dire tant qu'on n'a pas eu besoin de s'en servir
-  assert.match(html,/<script src="explications\.js"><\/script>/);
+  assert.match(html,/<script src="explications\.js\?v=[a-f0-9]{8}"><\/script>/);
   assert.match(html,/const EXPLIQUE = window\.AutourExplications;/);
   // la fiche détaillée porte le descriptif complet
   assert.match(html,/function blocExplication\(l\)\{/);
@@ -1050,4 +1054,100 @@ test("aucune explication n'est écrite pour une ville en particulier",()=>{
   assert.doesNotMatch(code,/if\s*\(?\s*ville/i);
   for(const ville of ["Lille","Tourcoing","Roubaix","Paris","Lyon","Marseille"])
     assert.doesNotMatch(code, new RegExp(ville,"i"), ville+" ne doit pas y figurer");
+});
+
+/* ---- Passe de finition produit ------------------------------------------ */
+
+test("sans position connue, l'application ne prétend pas savoir où on est",()=>{
+  // elle affichait Paris, l'annonçait « autour de toi », puis « rien d'ouvert
+  // autour de toi » : deux affirmations fausses d'affilée
+  assert.match(html,/let originePosition = null;/);
+  assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
+  assert.match(html,/originePosition = coords \? "memoire" : null;/);
+  // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
+  assert.match(html,/if\(positionConnue\(\)\) detecterVille\(positionMoi\[0\], positionMoi\[1\]\);/);
+  assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
+  // et surtout : plus jamais « rien autour de toi » quand on ignore où est « toi »
+  assert.match(html,/const montrer = \(erreurPartielle \|\| \(videReel && positionConnue\(\)\)\)/);
+  // déclaré avant son premier usage
+  assert.ok(html.indexOf("let originePosition = null;") < html.indexOf("positionConnue()"),
+    "originePosition doit précéder son premier usage");
+});
+
+test("un état utile s'affiche immédiatement, même sans permission",()=>{
+  assert.match(html,/function blocOuRegarder\(\)\{/);
+  assert.match(html,/data-ou="position">⌖ Utiliser ma position/);
+  assert.match(html,/data-ou="ville">Choisir une ville/);
+  // `.ou` désignait déjà le bloc « où » de la publication : deux classes de
+  // même nom se marchaient dessus et cassaient la mise en page
+  assert.match(html,/<section class="pdep" data-testid="ou-regarder">/);
+  assert.match(html,/\.pdep\{display:block;/);
+  // les intentions principales, plus l'aide
+  assert.match(html,/BESOINS_PRINCIPAUX\.slice\(0,4\)\.map/);
+  assert.match(html,/\{id:"aide", emoji:"❤️", label:"Aide"\}/);
+  // le cache local reste utilisé tel quel : rien n'attend la permission
+  assert.match(html,/const enCache = lireCacheProche\(lat,lng\);/);
+});
+
+test("la pastille de l'en-tête est géographique, pas temporelle",()=>{
+  // « Maintenant » y était en double avec les onglets de la feuille
+  assert.doesNotMatch(html,/id="btnMaintenant"/);
+  assert.match(html,/<button id="btnLieu" title="Recentrer sur ma position">/);
+  assert.match(html,/\$\("#btnLieu"\)\.onclick = \(\)=>\{/);
+  assert.match(html,/if\(zoneAffichee \|\| rechercheGeo\)\{ revenirAutourDeMoi\(\); return; \}/);
+  // « Revenir autour de moi » est la même action, pas un concept concurrent
+  assert.match(html,/function revenirAutourDeMoi\(\)\{/);
+  assert.match(html,/\$\("#btnAutourDeMoi"\)\.onclick = revenirAutourDeMoi;/);
+});
+
+test("une étiquette de catégorie ne se répète pas sur une carte",()=>{
+  // `eat` et `restaurant` se lisent tous deux « MANGER » : les cartes
+  // affichaient « MANGER • MANGER »
+  assert.match(html,/function etiquettesLisibles\(l\)\{/);
+  assert.match(html,/if\(e && !vues\.includes\(e\)\) vues\.push\(e\);/);
+  assert.doesNotMatch(html,/filter\(x=>ETIQUETTES_CAT\[x\]\)\.slice\(0,2\)/);
+});
+
+test("une station n'est pas une destination de découverte",()=>{
+  // elle arrivait en tête de « Sortir » : ouverte 24 h/24, tout près, et
+  // rattachée à `sport` par le vélo
+  assert.match(core,/const transportDemande = categories\.some\(\(c\) => TRANSPORT_CATEGORIES\.includes\(c\)\);/);
+  assert.match(core,/const forceTransport = bestCategoryWeight\(item, TRANSPORT_CATEGORIES\);/);
+  assert.match(core,/if \(forceDemandee < forceTransport\) return null;/);
+  // et l'accueil ne les demande pas du tout
+  assert.match(html,/\.filter\(c=>!CATS_TRANSPORT\.has\(c\)\);/);
+});
+
+test("les liens partagés ont une adresse propre, sans casser les anciens",()=>{
+  assert.match(html,/u\.pathname = "\/e\/"\+encodeURIComponent\(l\.dbId\)/);
+  assert.match(html,/u\.pathname = "\/l\/"\+l\.lat\.toFixed\(5\)\+","\+l\.lng\.toFixed\(5\)\+/);
+  // la lecture accepte les deux formes : des liens sont déjà partagés
+  assert.match(html,/const chemin = \/\^\\\/\(l\|e\)\\\//);
+  assert.match(html,/forme historique : #l=lat,lng\|titre/);
+  assert.match(html,/const m = \/\^#l=/);
+});
+
+test("l'attribution cartographique est lisible sur la carte",()=>{
+  // elle vivait entièrement derrière le « ⓘ », c'est-à-dire nulle part
+  assert.match(html,/<div id="attribution" hidden>/);
+  assert.match(html,/openstreetmap\.org\/copyright[^>]*>OSM<\/a>/);
+  assert.match(html,/carto\.com\/attributions[^>]*>CARTO<\/a>/);
+  assert.match(html,/#attribution\{position:absolute/);
+});
+
+test("plus aucun texte sous 11 px, et les cibles font 44 px",()=>{
+  // on relève toutes les tailles de police déclarées dans la feuille de style
+  const styles = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const tailles = [...styles.matchAll(/font-size:([\d.]+)px/g)].map(m=>parseFloat(m[1]));
+  // seule exception : la pastille de comptage d'un marqueur, qui est un chiffre
+  // dans un rond de 15 px et non un texte à lire
+  const pastille = /\.poi-pastille\{[^}]*font-size:10px/.test(styles);
+  assert.ok(pastille, "la pastille de comptage garde sa taille de puce");
+  const trop = tailles.filter(t=>t < 11 && t !== 10);
+  assert.deepEqual(trop, [], "aucune taille sous 11 px : "+trop.join(", "));
+  assert.equal(tailles.filter(t=>t === 10).length, 1, "une seule exception admise");
+  // les onglets de temps et le cœur des cartes sont visables au pouce
+  assert.match(html,/\.ong\{flex:0 0 auto;min-height:44px/);
+  assert.match(html,/\.rc-haut \.coeur\{width:44px;height:44px/);
+  assert.match(html,/\.rc-tout\{[^}]*min-height:44px/);
 });
