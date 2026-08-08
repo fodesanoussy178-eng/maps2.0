@@ -98,6 +98,15 @@ input{font-family:inherit;font-size:16px}
 .gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
 .payant{background:#fff;color:var(--ink)}
 .payant .a-haut{color:var(--ink2)}
+/* Annulé : l'affiche reste sur la carte — la faire disparaître laisserait
+   croire à une erreur — mais elle ne peut plus se lire comme un événement qui
+   a lieu. Titre barré, couleurs éteintes, mention en clair. */
+.affiche.annulee{background:#fff;border-color:var(--bord);color:var(--ink2);
+  opacity:.72;filter:grayscale(1)}
+.affiche.annulee .a-titre{text-decoration:line-through}
+.affiche.annulee .a-haut{color:#B82A3A}
+.rc-carte.annulee .rc-nom{text-decoration:line-through;color:var(--ink2)}
+.rc-annule{color:#B82A3A;font-weight:700}
 
 /* lieux permanents : pastille façon Maps — rond + nom dessous */
 .poi{display:flex;flex-direction:column;align-items:center;gap:2px;animation:surgit .2s ease-out}
@@ -1131,6 +1140,15 @@ function panne(titre, corps){
     '<button onclick="document.getElementById(\'panne\').hidden=true">Fermer</button>';
   p.hidden = false;
 }
+/* Diagnostic. Silencieux par défaut : ces lignes servaient à mettre au point
+   le pipeline, et elles partaient dans la console de tout le monde — du bruit,
+   et un aperçu gratuit du fonctionnement interne. `__autourDebug = true` les
+   rallume. Les vraies erreurs, elles, passent toujours par console.error. */
+const journal = {
+  info(...a){ if(window.__autourDebug) console.info(...a); },
+  warn(...a){ if(window.__autourDebug) console.warn(...a); },
+};
+
 window.addEventListener("error", e=>{ panne("Ça a coincé", e.message||"Script externe indisponible."); });
 
 const {
@@ -2073,7 +2091,7 @@ function chargerSupabase(){
     const el = document.createElement("script");
     el.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
     el.onload = ()=>ok(true);
-    el.onerror = ()=>{ console.warn("Supabase indisponible."); ok(false); };
+    el.onerror = ()=>{ journal.warn("Supabase indisponible."); ok(false); };
     document.head.appendChild(el);
   });
   return pSupabase;
@@ -2116,7 +2134,11 @@ function versLieu(p){
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
     finLe: p.fin_le ? new Date(p.fin_le).getTime() : null,
-    isTemporary:true, url:p.url || "", image:p.image_url || p.image || ""
+    isTemporary:true, url:p.url || "", image:p.image_url || p.image || "",
+    /* Une annulation était enregistrée en base, écrite dans le canal, et
+       perdue ici : la carte et la fiche affichaient l'événement comme s'il
+       avait lieu. Quelqu'un se déplaçait pour rien. */
+    annule: !!p.annule
   }, "autour");
 }
 
@@ -2370,7 +2392,7 @@ async function overpass(q, msMax, signal){
   const simule = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) &&
     new URLSearchParams(location.search).get("simulateOverpassFailure") === "1";
   if(simule){
-    console.warn("Overpass : panne simulée pour le test local");
+    journal.warn("Overpass : panne simulée pour le test local");
     return null;
   }
   for(const url of SERVEURS){
@@ -2385,10 +2407,10 @@ async function overpass(q, msMax, signal){
         body:"data="+encodeURIComponent(q),
         headers:{"Content-Type":"application/x-www-form-urlencoded"}});
       clearTimeout(t);
-      if(!r.ok){ console.warn("Overpass", r.status, url); continue; }
+      if(!r.ok){ journal.warn("Overpass", r.status, url); continue; }
       const j = await r.json();
       if(j && j.elements) return j.elements;
-    }catch(e){ console.warn("Overpass injoignable :", url, e.name||e); }
+    }catch(e){ journal.warn("Overpass injoignable :", url, e.name||e); }
   }
   console.error("Overpass : aucun serveur n’a répondu");
   return null;
@@ -2520,7 +2542,7 @@ async function evenementsOpenAgenda(lat,lng){
       segment.value.forEach(evt=>uniques.set(evt.uid,evt));
     });
     const bruts = [...uniques.values()];
-    console.info("OpenAgenda:", bruts.length, "événement(s) bruts depuis", agendas.length, "agenda(s)");
+    journal.info("OpenAgenda:", bruts.length, "événement(s) bruts depuis", agendas.length, "agenda(s)");
     const classes = bruts.map(evt=>{
       const loc = evt.location || {};
       if(loc.latitude==null || loc.longitude==null) return null;
@@ -2847,7 +2869,7 @@ function estPasse(l){
 
 function journaliserPipeline(source, brut, classes, dedupliques){
   const apresMaintenant = (dedupliques||[]).filter(l=>isAvailableNow(l, Date.now())).length;
-  console.info("[Autour][données]", {
+  journal.info("[Autour][données]", {
     source,
     bruts:brut,
     apresClassification:(classes||[]).length,
@@ -2981,9 +3003,56 @@ function echantillonImmediat(candidats){
   return retenus;
 }
 
+/* Le cache des zones n'était jamais purgé : une entrée par tuile de ~110 m,
+   jusqu'à trois cents lieux chacune. En explorant, on finissait par saturer le
+   quota du navigateur ; l'erreur était avalée par un catch vide, et l'écriture
+   cessait sans que rien ne le dise. C'est pourtant ce cache qui porte
+   l'affichage immédiat au démarrage : il se dégradait invisiblement.
+
+   On plafonne donc le nombre de tuiles, et quand le quota saute malgré tout on
+   fait de la place au lieu d'abandonner. */
+const CACHE_TUILES_MAX = 40;
+
+function tuilesCache(){
+  const tuiles = [];
+  try{
+    for(let i = 0; i < localStorage.length; i += 1){
+      const cle = localStorage.key(i);
+      if(!cle || cle.indexOf("autour:lieux:v4:") !== 0) continue;
+      let t = 0;
+      try{ t = (JSON.parse(localStorage.getItem(cle)) || {}).t || 0; }catch(e){}
+      tuiles.push({cle, t});
+    }
+  }catch(e){ return []; }
+  return tuiles.sort((a,b)=>a.t - b.t);      // la plus ancienne en premier
+}
+
+function libererCache(combien){
+  const tuiles = tuilesCache();
+  let libere = 0;
+  for(const tuile of tuiles){
+    if(libere >= combien) break;
+    try{ localStorage.removeItem(tuile.cle); libere += 1; }catch(e){}
+  }
+  return libere;
+}
+
 function ecrireCacheLieux(lat,lng,l){
-  try{ localStorage.setItem(cleCache(lat,lng), JSON.stringify({t:Date.now(), l})); }
-  catch(e){}
+  const cle = cleCache(lat,lng);
+  const charge = JSON.stringify({t:Date.now(), l});
+  // au-delà du plafond, on retire les zones les plus anciennes avant d'écrire
+  // +1 : on fait la place de celle qu’on s’apprête à écrire, sinon le
+  // plafond est dépassé d’une tuile en permanence
+  const surplus = tuilesCache().length - CACHE_TUILES_MAX + 1;
+  if(surplus > 0) libererCache(surplus);
+  try{ localStorage.setItem(cle, charge); return true; }
+  catch(e){
+    // quota atteint : faire de la place et réessayer une fois, plutôt que de
+    // renoncer silencieusement
+    if(!libererCache(Math.max(5, Math.ceil(CACHE_TUILES_MAX / 4)))) return false;
+    try{ localStorage.setItem(cle, charge); return true; }
+    catch(e2){ return false; }
+  }
 }
 
 /* Les lieux n'étaient chargés qu'autour du point de départ : explorer un autre
@@ -3429,6 +3498,7 @@ function instantCreneau(){
 function estVivant(l){
   const t = instantCreneau().getTime();
   if(estTemporaire(l)){
+    if(l.annule) return false;                              // annulé : rien n'y a lieu
     if(l.endsAt && l.endsAt < t) return false;              // déjà terminé
     if(l.startsAt && l.startsAt > t + 12*3600e3) return false; // trop lointain
     return true;
@@ -3506,8 +3576,9 @@ function ouvrirFicheCompacte(l){
     l.note ? "⭐ "+l.note.toFixed(1).replace(".",",") : null,
     ...etiquettes,
   ].filter(Boolean).join(" · ");
+  // l'annulation passe devant tout le reste : c'est la seule chose qui compte
   const ligne3 = [
-    d && d.status !== "unknown" ? d.label : null,
+    l.annule ? "Annulé" : (d && d.status !== "unknown" ? d.label : null),
     dist != null ? formatDist(dist) : null,
   ].filter(Boolean).join(" · ");
 
@@ -3567,9 +3638,13 @@ function htmlMarqueur(l){
   const c = CATS[l.cat]||CATS.event;
   if(estTemporaire(l)){
     const tilt = ((hash(l.id)%700)/100-3.5).toFixed(2);
-    return '<span class="mk-in"><div class="affiche '+(l.gratuit?'gratuit':'payant')+'" style="--tilt:'+tilt+'deg">'+
-      '<span class="a-haut"><span>'+c.emoji+'</span><span>'+(l.gratuit?'GRATUIT':l.prix+' €')+'</span>'+
-      (l.places!=null?'<span class="a-places">· '+l.places+' pl.</span>':'')+'</span>'+
+    // annulé : l'affiche reste, mais elle ne peut pas se lire comme un
+    // événement qui a lieu — c'est tout l'intérêt de ne pas le supprimer
+    return '<span class="mk-in"><div class="affiche '+(l.gratuit?'gratuit':'payant')+
+      (l.annule?' annulee':'')+'" style="--tilt:'+tilt+'deg">'+
+      '<span class="a-haut"><span>'+c.emoji+'</span><span>'+
+        (l.annule?'ANNULÉ':(l.gratuit?'GRATUIT':l.prix+' €'))+'</span>'+
+      (l.places!=null && !l.annule?'<span class="a-places">· '+l.places+' pl.</span>':'')+'</span>'+
       '<span class="a-titre">'+esc(l.titre)+'</span>'+
       '<span class="a-lieu">'+esc(l.adresse)+'</span>'+
       '</div></span>';
@@ -3691,7 +3766,7 @@ function selectionner(){
 
   derniereSelection = retenus;
   if(window.__autourDebug)
-    console.info("[Autour] reçus", brut.length, "· écartés d'office", ecartesAuto,
+    journal.info("[Autour] reçus", brut.length, "· écartés d'office", ecartesAuto,
       "· regroupés", regroupesAuto, "· retenus", retenus.length,
       "· niveau A", notes.filter(x=>x.niveau==="A").length,
       "· classement", (performance.now()-t0).toFixed(1)+" ms",
@@ -4736,7 +4811,7 @@ async function arretsProchesCache(lat,lng){
   if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length){
     CACHE_TRANSPORT = await arretsGoogle(lat,lng);
     if(CACHE_TRANSPORT && CACHE_TRANSPORT.length)
-      console.info("Transports : "+CACHE_TRANSPORT.length+" arrêt(s) via Google (OSM muet)");
+      journal.info("Transports : "+CACHE_TRANSPORT.length+" arrêt(s) via Google (OSM muet)");
   }
   return CACHE_TRANSPORT;
 }
@@ -5326,7 +5401,7 @@ async function chercherGoogle(q, lat, lng){
     });
     if(!r.ok){ console.error("Recherche Google: HTTP", r.status, await r.text()); return []; }
     const j = await r.json();
-    console.info("Recherche Google «"+q+"» :", (j.places||[]).length, "résultat(s)");
+    journal.info("Recherche Google «"+q+"» :", (j.places||[]).length, "résultat(s)");
     return (j.places||[]).map(mapperPlace);
   }catch(e){ console.error("Recherche Google:", e); return []; }
 }
@@ -5365,7 +5440,7 @@ async function notesGoogle(lat, lng, opts){
     const uniques = new Map();
     recus.flat().forEach(f=>{ if(f.nom) uniques.set(f.nom+"|"+f.lat.toFixed(4), f); });
     const fiches = [...uniques.values()];
-    console.info("Google Places :", fiches.length, "fiche(s) reçue(s)");
+    journal.info("Google Places :", fiches.length, "fiche(s) reçue(s)");
     return fiches;
   }catch(e){
     if(e && e.name === "AbortError") return null;
@@ -5420,7 +5495,7 @@ function ajouterLieuxGoogle(fiches, catDefaut){
   });
   const ajoutes = aAjouter.length;
   if(ajoutes) fusionner(aAjouter, "permanent");
-  if(ajoutes) console.info("Google Places :", ajoutes, "lieu(x) ajouté(s)");
+  if(ajoutes) journal.info("Google Places :", ajoutes, "lieu(x) ajouté(s)");
   return ajoutes;
 }
 
@@ -5726,7 +5801,7 @@ async function chargerAideVraiment(lat,lng){
 
   try{ localStorage.setItem(cleAide(lat,lng), JSON.stringify({t:Date.now(), l:garder})); }
   catch(e){}
-  console.info("Aide sociale :", garder.length, "point(s) trouvé(s)");
+  journal.info("Aide sociale :", garder.length, "point(s) trouvé(s)");
   majAccueil();
 }
 
@@ -6680,10 +6755,12 @@ function carteRecommandation(l){
 
   // Un <button> ne peut pas en contenir un autre : le parseur extrait le cœur
   // et disloque la carte. On utilise donc un conteneur avec rôle de bouton.
-  return '<div class="rc-carte" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
+  return '<div class="rc-carte'+(l.annule?' annulee':'')+'" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
     visuel+
     '<span class="rc-corps">'+
-      '<span class="rc-haut"><span class="rc-cats">'+esc(cats)+'</span>'+boutonCoeur(l)+'</span>'+
+      // une annulation remplace la catégorie : c'est ce qu'il faut lire d'abord
+      '<span class="rc-haut"><span class="rc-cats">'+
+        (l.annule ? '<b class="rc-annule">Annulé</b>' : esc(cats))+'</span>'+boutonCoeur(l)+'</span>'+
       '<span class="rc-nom">'+esc(l.titre)+'</span>'+
       '<span class="rc-ligne">'+
         (l.note ? '<span class="rc-note">★ '+l.note.toFixed(1).replace(".",",")+
@@ -7524,6 +7601,16 @@ function appliquerIntention(intention){
   if(a && a.creneau){ creneau = a.creneau; filtreMaintenant = true; }
   selectionAccueil = false;
   dessinerFiltres(); majFiltres();
+
+  /* Et surtout : aller chercher les lieux de ces catégories. Choisir un besoin
+     dans le rail les chargeait, une recherche non — « restaurant Lille »
+     déplaçait la carte et posait le filtre, mais n'affichait que ce que le
+     chargement générique avait ramené au passage. Or celui-ci se partage un
+     plafond de trois cents objets entre TOUTES les catégories de départ : en
+     centre-ville dense, les restaurants s'y font évincer.
+     chargerPourCats ne repart pas si les lieux sont déjà là. */
+  if(catsActives && catsActives.size) chargerPourCats([...catsActives]);
+  else if(filtreActif !== "tout") chargerPourCats([filtreActif]);
 }
 
 /* Après un déplacement de carte : trois à cinq résultats forts, pas un mur.

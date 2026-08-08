@@ -888,3 +888,52 @@ test("une cuisine trie les résultats, elle ne les exclut pas",()=>{
   // et le classement d'une zone ne rajoute pas un second filtre textuel
   assert.match(html,/requete: catsActives \? "" : \(intention \|\| ""\),/);
 });
+
+/* ---- Passe d'audit : annulation, cache, chargement, journal ------------- */
+
+test("un événement annulé ne se lit jamais comme un événement qui a lieu",()=>{
+  // la colonne, le déclencheur et le bouton existaient ; le champ se perdait
+  // dans versLieu, et la carte l'affichait comme normal
+  assert.match(html,/annule: !!p\.annule/);
+  // « Maintenant » l'écarte, comme un lieu fermé
+  assert.match(html,/if\(l\.annule\) return false;\s*\/\/ annulé/);
+  // sur la carte : affiche conservée mais barrée et mentionnée
+  assert.match(html,/\(l\.annule\?' annulee':''\)/);
+  assert.match(html,/\(l\.annule\?'ANNULÉ':/);
+  assert.match(html,/\.affiche\.annulee \.a-titre\{text-decoration:line-through\}/);
+  // sur les cartes et la fiche compacte
+  assert.match(html,/l\.annule \? '<b class="rc-annule">Annulé<\/b>' : esc\(cats\)/);
+  assert.match(html,/l\.annule \? "Annulé" :/);
+});
+
+test("le cache des zones s'évince au lieu d'échouer en silence",()=>{
+  assert.match(html,/const CACHE_TUILES_MAX = 40;/);
+  assert.match(html,/function tuilesCache\(\)\{/);
+  assert.match(html,/function libererCache\(combien\)\{/);
+  // trié du plus ancien au plus récent : c'est ce qu'on évince d'abord
+  assert.match(html,/return tuiles\.sort\(\(a,b\)=>a\.t - b\.t\);/);
+  // quota atteint : on fait de la place et on réessaie, une fois
+  assert.match(html,/if\(!libererCache\(Math\.max\(5, Math\.ceil\(CACHE_TUILES_MAX \/ 4\)\)\)\) return false;/);
+  assert.doesNotMatch(html,/localStorage\.setItem\(cleCache\(lat,lng\), JSON\.stringify\(\{t:Date\.now\(\), l\}\)\); \}\s*\n\s*catch\(e\)\{\}/);
+});
+
+test("une recherche charge les lieux de la catégorie qu'elle pose",()=>{
+  // choisir un besoin dans le rail les chargeait, une recherche non :
+  // « restaurant Lille » n'affichait que ce que le chargement générique avait
+  // ramené, en se partageant 300 objets avec toutes les autres catégories
+  assert.match(html,/if\(catsActives && catsActives\.size\) chargerPourCats\(\[\.\.\.catsActives\]\);/);
+  assert.match(html,/else if\(filtreActif !== "tout"\) chargerPourCats\(\[filtreActif\]\);/);
+});
+
+test("les diagnostics ne partent plus dans la console de tout le monde",()=>{
+  assert.match(html,/const journal = \{/);
+  assert.match(html,/info\(\.\.\.a\)\{ if\(window\.__autourDebug\) console\.info\(\.\.\.a\); \},/);
+  // plus aucun appel direct hors la définition du journal
+  const directs = (html.match(/\bconsole\.(info|warn)\(/g) || []).length;
+  assert.equal(directs, 2, "seuls les deux appels internes au journal subsistent");
+  // les vraies erreurs restent visibles
+  assert.ok((html.match(/\bconsole\.error\(/g) || []).length > 10);
+  // déclaré avant son premier usage : une zone morte temporelle ici casse tout
+  assert.ok(html.indexOf("const journal = {") < html.indexOf("journal.warn("),
+    "le journal doit précéder son premier appel");
+});
