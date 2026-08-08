@@ -48,6 +48,9 @@
   /* hauteurs mesurées au lieu d'être devinées : l'en-tête et la barre basse
      changent de taille selon l'appareil et la présence des safe areas */
   --header-height:150px; --nav-height:calc(var(--safe-b) + 58px);
+  /* bord bas réel de l'en-tête flottant : ce qui se range juste dessous doit
+     s'y accrocher, pas à sa hauteur seule — l'en-tête ne commence pas à 0 */
+  --header-bas:calc(var(--safe-t) + 54px);
   --map-control-bottom:max(calc(var(--nav-height) + 14px),calc(var(--sheet-visible-height) + 12px));
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -226,7 +229,7 @@ input{font-family:inherit;font-size:16px}
 /* Les bandeaux se posent SOUS l'en-tête : sa hauteur est mesurée, donc ils
    ne recouvrent plus la recherche quel que soit l'appareil. */
 #bandeauGeo,#bandeauVide{position:absolute;left:16px;right:16px;
-  top:calc(var(--header-height) + 10px);z-index:650;
+  top:calc(var(--header-bas) + 10px);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
@@ -234,7 +237,7 @@ input{font-family:inherit;font-size:16px}
 #bandeauOk,#videOk{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
   color:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
-#charge{position:absolute;top:calc(var(--header-height) + 10px);left:50%;transform:translateX(-50%);
+#charge{position:absolute;top:calc(var(--header-bas) + 10px);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
@@ -606,66 +609,95 @@ input{font-family:inherit;font-size:16px}
   .rc-carte{flex:0 0 210px}
 }
 
-/* ---- Desktop : la même application, dans une disposition de grand écran --
-   Rien n'est dupliqué. Les mêmes éléments changent de place :
-     · la barre d'onglets devient un rail vertical à gauche ;
-     · l'en-tête s'aligne à droite de ce rail ;
-     · « Pour toi, maintenant » devient une colonne, et son carousel une
-       liste verticale de cartes horizontales ;
-     · la carte occupe tout le reste, avec ses marqueurs et son point bleu.
+/* ---- Desktop : la même application, carte plein écran ---------------------
+   Rien n'est dupliqué et rien n'est réservé autour de la carte : elle occupe
+   toute la fenêtre et sert de canvas, exactement comme en mobile. Les mêmes
+   éléments changent seulement de place et de taille :
+     · la barre d'onglets devient une pastille flottante en bas à gauche ;
+     · l'en-tête reste une pastille flottante, en haut à gauche ;
+     · la recherche se pose sous l'en-tête au lieu de couvrir la largeur ;
+     · « Pour toi, maintenant » devient un panneau latéral temporaire, que la
+       croix referme pour rendre toute la fenêtre à la carte ;
+     · le carousel de ce panneau devient une liste verticale.
+   Aucune sidebar permanente, aucun rail : tout flotte au-dessus de la carte.
    Priorité mobile conservée : ces règles ne s'ajoutent qu'au-delà de 1100px. */
 @media (min-width:1100px){
   :root{
-    --rail:88px;            /* largeur du rail de navigation */
-    --panneau:400px;        /* colonne des recommandations */
-    --nav-height:16px;      /* plus de barre basse : rien à réserver en bas */
+    --panneau:400px;        /* panneau de résultats, temporaire */
+    --nav-height:0px;       /* la navigation flotte : rien à réserver */
   }
 
-  /* La barre d'onglets se redresse en rail vertical. */
-  #navBas{top:0;bottom:0;right:auto;width:var(--rail);
-    flex-direction:column;justify-content:flex-start;gap:2px;
-    padding:calc(var(--safe-t) + 16px) 8px 16px;
-    border-top:0;border-right:1px solid rgba(20,30,25,.09)}
-  .nb{flex:0 0 auto;gap:5px;padding:11px 4px;border-radius:14px;font-size:11.5px}
+  /* La carte est le canvas : elle occupe toute la fenêtre, sans rail ni
+     colonne qui la rognent. Tout le reste se pose dessus. */
+  #map{left:0;right:0;top:0;bottom:0}
+
+  /* Navigation : une pastille flottante en bas à gauche, pas un rail
+     pleine hauteur. Même produit qu'en mobile, autre disposition. */
+  #navBas{top:auto;bottom:20px;left:20px;right:auto;width:auto;
+    flex-direction:row;gap:2px;padding:6px;
+    border-top:0;border-radius:99px;
+    box-shadow:0 6px 26px rgba(20,30,25,.20)}
+  .nb{flex:0 0 auto;gap:4px;padding:8px 14px;border-radius:99px;font-size:12px}
   .nb.actif{background:var(--violet-doux)}
 
-  /* L'en-tête et la carte commencent après le rail. */
-  #appHeader{left:var(--rail);padding:calc(var(--safe-t) + 14px) 24px 12px}
-  #map{left:var(--rail)}
-  .hd-ligne{max-width:none}
-  .hd-lieu{flex:0 0 auto;text-align:left;margin-right:auto;padding-left:14px}
-  .hd-rech{max-width:640px}
-  .hd-rech input{height:52px}
-  .pills{margin-top:12px}
+  /* L'en-tête reste la même pastille flottante, simplement plus large. */
+  #appHeader{left:20px;right:auto;top:calc(var(--safe-t) + 20px);
+    width:auto;max-width:520px}
+  #btnMaintenant{flex:0 0 auto;max-width:340px}
 
-  /* Les recommandations deviennent une colonne, pas une feuille. */
-  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie{
-    left:auto;right:20px;top:calc(var(--header-height) + 14px);bottom:20px;
+  /* La recherche se pose en haut à gauche, sous l'en-tête, au lieu de
+     recouvrir toute la largeur. */
+  #rechercheOverlay{left:20px;right:auto;top:calc(var(--safe-t) + 20px);
+    width:min(520px,calc(100vw - 40px));
+    border-radius:22px;padding:16px}
+
+  /* Panneau de résultats : temporaire, fermable, jamais une sidebar. Il
+     n'apparaît que si la feuille est ouverte, et la croix le referme pour
+     rendre toute la fenêtre à la carte. */
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite{
+    left:auto;right:20px;top:calc(var(--safe-t) + 20px);bottom:20px;
     width:var(--panneau);height:auto;max-height:none;transform:none;
-    border:1px solid var(--bord);border-radius:22px}
-  #feuilleBesoins.accueil{border-left:1px solid var(--bord);border-right:1px solid var(--bord)}
+    border:1px solid var(--bord);border-radius:22px;
+    box-shadow:0 8px 34px rgba(20,30,25,.18)}
   .fb-poignee{display:none}
-  .fb-tete{padding-top:8px;border-radius:22px 22px 0 0}
+  .fb-tete{padding-top:10px;border-radius:22px 22px 0 0}
+  /* la croix doit rester visible même sur l'accueil : c'est elle qui rend
+     l'espace à la carte */
+  #feuilleBesoins.accueil .fb-tete{display:flex}
+  #feuilleBesoins.accueil .fb-titre{opacity:0}
 
-  /* Le carousel horizontal devient une liste verticale : sur grand écran on
-     fait défiler vers le bas, pas latéralement. */
+  /* Le carousel devient une liste verticale : sur grand écran on fait
+     défiler vers le bas, pas latéralement. */
   .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none}
   .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
   .rc-photo{width:96px;height:auto;min-height:96px;flex-shrink:0}
   .rc-corps{flex:1;min-width:0}
   .rc-nom{min-height:0}
 
-  /* Les flottants se rangent à gauche de la colonne. */
-  #btnRevenir,#btnTransports{right:calc(var(--panneau) + 40px)}
-  #btnRevenir{bottom:calc(var(--nav-height) + 124px)}
-  #btnTransports{bottom:calc(var(--nav-height) + 72px)}
-  #btnCredits,#credits{left:calc(var(--rail) + 12px)}
-
-  /* Les bandeaux suivent la colonne de la carte. */
-  #bandeauGeo,#bandeauVide{left:calc(var(--rail) + 20px);
+  /* Flottants de droite : ils se décalent seulement quand le panneau est
+     ouvert, sinon ils longent le bord de la fenêtre. */
+  #btnRevenir,#btnTransports{right:20px}
+  body.sheet-open #btnRevenir,body.sheet-open #btnTransports{
     right:calc(var(--panneau) + 40px)}
-  #charge{left:calc(var(--rail) + (100vw - var(--rail) - var(--panneau)) / 2)}
-  #filtresHumains{left:var(--rail);right:calc(var(--panneau) + 24px);width:auto;max-width:none}
+  #btnRevenir{bottom:96px}
+  #btnTransports{bottom:44px}
+  /* l'attribution se pose au-dessus de la pastille de navigation, qui occupe
+     désormais le coin bas gauche */
+  #btnCredits{left:20px;bottom:calc(var(--nav-flottante,60px) + 28px)}
+  #credits{left:20px;right:auto;width:min(420px,40vw);
+    bottom:calc(var(--nav-flottante,60px) + 64px)}
+
+  /* La fiche compacte se pose en bas au centre de la carte disponible. */
+  #ficheCompacte{left:50%;right:auto;transform:translateX(-50%);
+    width:min(460px,calc(100vw - 40px));bottom:20px}
+  body.sheet-open #ficheCompacte{
+    left:calc((100vw - var(--panneau) - 40px) / 2 + 20px)}
+
+  #bandeauGeo,#bandeauVide{left:20px;right:auto;width:min(520px,45vw)}
+  #charge{left:50%}
+  #filtresHumains{width:auto;max-width:none}
+  #btnAutourDeMoi{left:50%;top:calc(var(--safe-t) + 20px)}
 }
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
@@ -2099,6 +2131,9 @@ let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sé
 let modeNav = false;   // itinéraire plein écran : la carte n'affiche que le trajet
 
 const $=(s)=>document.querySelector(s);
+/* Déclaré ici, et pas à côté de mesurerHeader : cette fonction est appelée dès
+   le premier rendu, donc bien avant le bas du script. */
+const NAV_FLOTTANTE = matchMedia("(min-width:1100px)");
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -6853,12 +6888,29 @@ $("#btnCredits").onclick=()=>{
 /* Mesure réelle de l'en-tête et de la barre du bas : leurs hauteurs dépendent
    de la safe area, de la taille de police système et du retour à la ligne des
    pills. Les deviner faisait chevaucher la fiche compacte et la navigation. */
+/* Les hauteurs réelles sont republiées en variables CSS : deviner 58px pour
+   une barre qui en fait 70 décalait tout ce qui s'y accroche.
+   Sur desktop la navigation flotte au-dessus de la carte : sa hauteur ne doit
+   réserver aucune place (--nav-height:0), mais reste utile pour poser ce qui
+   se range juste au-dessus d'elle (--nav-flottante). Sans cette distinction,
+   la mesure en ligne l'emportait sur la règle du media query et la carte se
+   retrouvait rognée par le bas. NAV_FLOTTANTE est déclaré en haut du script. */
 function mesurerHeader(){
   const h = $("#appHeader");
-  if(h && !h.hidden) document.documentElement.style.setProperty("--header-height", h.offsetHeight+"px");
+  if(h && !h.hidden){
+    document.documentElement.style.setProperty("--header-height", h.offsetHeight+"px");
+    document.documentElement.style.setProperty("--header-bas",
+      Math.round(h.getBoundingClientRect().bottom)+"px");
+  }
   const n = $("#navBas");
-  if(n && !n.hidden) document.documentElement.style.setProperty("--nav-height", n.offsetHeight+"px");
+  if(n && !n.hidden){
+    const haut = n.offsetHeight;
+    document.documentElement.style.setProperty("--nav-flottante", haut+"px");
+    document.documentElement.style.setProperty("--nav-height",
+      NAV_FLOTTANTE.matches ? "0px" : haut+"px");
+  }
 }
+NAV_FLOTTANTE.addEventListener("change", mesurerHeader);
 addEventListener("resize", mesurerHeader);
 if(window.ResizeObserver){
   const observateur = new ResizeObserver(mesurerHeader);
