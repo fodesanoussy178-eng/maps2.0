@@ -611,6 +611,33 @@ test("la touche Retour du clavier lance réellement la recherche",()=>{
   assert.match(html,/id="btnFiltres" type="button"/);
 });
 
+test("les suggestions distinguent une destination d'une intention",()=>{
+  // en tapant un nom de commune, la liste ne proposait que des catégories et
+  // des lieux déjà chargés : aucune façon visible d'aller là-bas
+  assert.match(html,/const decoupe = parseSearchQuery\(q, \{/);
+  assert.match(html,/if\(dest && ressembleAUneZone\(dest\)\)\{/);
+  assert.match(html,/sug\.push\(\{emo:"📍", lab:dest, sous:"destination", texte:dest\}\);/);
+  assert.match(html,/sous:"intention · destination"/);
+  assert.match(html,/const SUGGESTIONS_INTENTION = \[/);
+  // une suggestion de destination emprunte le même chemin que la touche Retour
+  assert.match(html,/if\(x\.texte\)\{ \$\("#rech"\)\.value = x\.texte; lancerRecherche\(\); return; \}/);
+});
+
+test("changer de catégorie ne relance pas le réseau si les lieux sont là",()=>{
+  assert.match(html,/const manquantes = cats\.filter\(c=>!categorieEnMemoire\(c\)\);/);
+  assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
+  // le rail de besoins passe bien par ce filtre
+  assert.match(html,/const manquantes = b\.sous\.flatMap\(x=>x\.cats\)\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
+  assert.match(html,/if\(manquantes\.length\) chargerPourCats\(manquantes\);/);
+});
+
+test("le nom accessible du panneau ne porte plus l'ancien CTA",()=>{
+  // « Que faire autour de moi ? » était invisible à l'œil mais annoncé tel
+  // quel par un lecteur d'écran avant le premier rendu
+  assert.doesNotMatch(html,/id="fbTitre">Que faire autour de moi/);
+  assert.match(html,/<span class="fb-titre" id="fbTitre">Pour toi, maintenant<\/span>/);
+});
+
 test("une requête composée sépare destination et intention",()=>{
   assert.match(html,/parseSearchQuery\(q, \{/);
   assert.match(html,/isIntent:t => !!\(categorieRecherchee\(t\) \|\| cuisineRecherchee\(t\) \|\| intentionConnue\(t\)\)/);

@@ -1034,7 +1034,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button class="fb-poignee" id="fbPoignee" aria-label="Agrandir la feuille" aria-expanded="false"></button>
   <div class="fb-tete">
     <button class="fb-retour" id="fbRetour" hidden aria-label="Retour">‹</button>
-    <span class="fb-titre" id="fbTitre">Que faire autour de moi ?</span>
+    <!-- Ce texte est le nom accessible du panneau tant que rien ne l'a écrit.
+         Il portait encore « Que faire autour de moi ? », l'ancien gros CTA
+         noir supprimé depuis : invisible à l'œil, mais annoncé tel quel par un
+         lecteur d'écran avant le premier rendu. -->
+    <span class="fb-titre" id="fbTitre">Pour toi, maintenant</span>
     <button class="fb-x" id="fbFermer" aria-label="Fermer">✕</button>
   </div>
   <div class="fb-corps" id="fbCorps"></div>
@@ -3271,6 +3275,15 @@ const FILTRES_HUMAINS = [
    à côté de Manger et Sortir ; deux entrées pour une seule notion, avec deux
    états à garder d'accord. */
 const CONTRAINTES = ["ouvert","proche","gratuit","budget"];
+
+/* Ce qu'on propose de chercher DANS une destination tapée. Deux entrées, pas
+   six : la liste doit rester lisible sous le champ, et ces deux-là couvrent
+   l'essentiel de ce qu'on cherche en arrivant quelque part. Les libellés
+   viennent des besoins réels de l'application. */
+const SUGGESTIONS_INTENTION = [
+  { emoji:"🍴", label:"Manger" },
+  { emoji:"🎉", label:"Sortir" },
+];
 
 /* Timeline : la même carte, à un autre moment de la journée. */
 const CRENEAUX = [
@@ -7070,6 +7083,36 @@ function suggerer(q){
   }
 
   const vus = new Set(), sug = [];
+
+  /* Destination ou intention ? « Lille » et « cinéma » ne demandent pas la
+     même chose, et rien ne le disait : la liste ne proposait que des
+     catégories et des lieux déjà chargés, si bien qu'en tapant un nom de
+     commune on ne voyait aucune façon d'y aller.
+     On ne DÉCIDE pas ici que « Lille » est une ville — on le propose, et c'est
+     le géocodeur qui tranchera au moment de valider. */
+  const decoupe = parseSearchQuery(q, {
+    isIntent:x => !!(categorieRecherchee(x) || cuisineRecherchee(x)),
+  });
+  const dest = decoupe.destination;
+  if(dest && ressembleAUneZone(dest)){
+    sug.push({emo:"📍", lab:dest, sous:"destination", texte:dest});
+    vus.add(dest);
+    if(decoupe.intention){
+      // requête déjà composée : on la reprend telle quelle, explicitée
+      const compose = decoupe.intention+" à "+dest;
+      sug.push({emo:"🧭", lab:compose, sous:"intention · destination", texte:compose});
+      vus.add(compose);
+    }else{
+      // sinon on montre CE QU'ON PEUT y chercher, avec les intentions réelles
+      // de l'application — pas des exemples inventés
+      SUGGESTIONS_INTENTION.forEach(b=>{
+        const compose = b.label+" à "+dest;
+        sug.push({emo:b.emoji, lab:compose, sous:"intention · destination", texte:compose});
+        vus.add(compose);
+      });
+    }
+  }
+
   for(const [mot,cible] of INDEX_MOTS){
     if(sug.length >= 6) break;
     if(!mot.startsWith(t) && !mot.includes(t)) continue;
@@ -7093,8 +7136,11 @@ function suggerer(q){
   z.querySelectorAll("[data-sg]").forEach(b=>b.onclick=()=>{
     const x = sug[Number(b.dataset.sg)];
     z.hidden = true; layerManager.deactivate(NOMS_COUCHES.searchOverlay); $("#rech").blur();
-    if(x.id){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(x.id)); }
-    else appliquerPhrase(x.q);
+    if(x.id){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(x.id)); return; }
+    // une suggestion de destination emprunte exactement le même chemin que la
+    // touche Retour : un seul comportement à comprendre, un seul à maintenir
+    if(x.texte){ $("#rech").value = x.texte; lancerRecherche(); return; }
+    appliquerPhrase(x.q);
   });
   z.hidden = false;
   layerManager.activate(NOMS_COUCHES.searchOverlay);
