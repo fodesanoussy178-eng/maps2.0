@@ -252,3 +252,19 @@ test("une phrase commençant par un mot du vocabulaire est une demande", () => {
   assert.equal(parseSearchQuery("Bar-le-Duc", opts).intention, "");
   assert.equal(parseSearchQuery("Bar-le-Duc", opts).destination, "Bar-le-Duc");
 });
+
+test("un chiffre dans un nom n'est effacé que pour un transport", () => {
+  // « Quai 2 » distingue deux accès du même pôle ; « Bistrot 33 » et
+  // « Bistrot 44 » sont deux adresses différentes
+  assert.equal(normalizePlaceName("Phalempins - Quai 2", "transport"),
+               normalizePlaceName("Phalempins - Quai 3", "transport"));
+  assert.notEqual(normalizePlaceName("Bistrot 33", "autre"),
+                  normalizePlaceName("Bistrot 44", "autre"));
+
+  // et sur la carte : deux enseignes numérotées voisines restent deux lieux
+  const numerotes = [
+    lieu("a", "Restaurant 3", "resto", 0, 0),
+    lieu("b", "Restaurant 7", "resto", 0.0008, 0.0006),
+  ];
+  assert.equal(groupLogicalPlaces(numerotes, distance).length, 2);
+});

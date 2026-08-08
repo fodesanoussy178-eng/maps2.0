@@ -380,10 +380,15 @@
 
   function normalizePlaceName(value, family) {
     let text = normalizeText(value);
-    if (family === "transport") text = text.replace(TRANSPORT_ROLE_WORDS, " ");
-    // « Phalempins - Quai 2 », « Phalempins (direction CHU) » : le qualificatif
-    // de quai ou de direction distingue deux objets du MÊME lieu
-    text = text.replace(/\b\d+\b/g, " ").replace(/\bdirection\b.*$/, " ");
+    if (family === "transport") {
+      text = text.replace(TRANSPORT_ROLE_WORDS, " ");
+      /* « Phalempins - Quai 2 », « Phalempins (direction CHU) » : le numéro de
+         quai ou la direction distingue deux objets du MÊME lieu.
+         Uniquement pour un transport : ailleurs, le chiffre fait partie du nom
+         et l'effacer confondait « Bistrot 33 » avec « Bistrot 44 » — deux
+         adresses différentes réduites à un seul marqueur. */
+      text = text.replace(/\b\d+\b/g, " ").replace(/\bdirection\b.*$/, " ");
+    }
     return text.replace(NAME_NOISE, " ").replace(/\s+/g, " ").trim();
   }
 

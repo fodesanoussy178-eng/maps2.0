@@ -496,6 +496,9 @@ input{font-family:inherit;font-size:16px}
    pas une action ponctuelle. */
 .rond-flottant.actif{background:var(--violet);border-color:var(--violet);color:#fff}
 #btnTransports{bottom:calc(var(--map-control-bottom) + 56px)}
+#btnAide{bottom:calc(var(--map-control-bottom) + 108px)}
+/* actif : le rouge de l'aide, distinct du violet de la couche transport */
+#btnAide.actif{background:var(--urgence,#B82A3A);border-color:var(--urgence,#B82A3A);color:#fff}
 .rond-flottant:active{transform:scale(.94)}
 
 /* Attribution : obligatoire, donc conservée — mais repliée derrière un « ⓘ »
@@ -687,10 +690,11 @@ input{font-family:inherit;font-size:16px}
 
   /* Flottants de droite : ils se décalent seulement quand le panneau est
      ouvert, sinon ils longent le bord de la fenêtre. */
-  #btnTransports{right:20px}
-  body.sheet-open #btnTransports{
+  #btnTransports,#btnAide{right:20px}
+  body.sheet-open #btnTransports,body.sheet-open #btnAide{
     right:calc(var(--panneau) + 40px)}
   #btnTransports{bottom:44px}
+  #btnAide{bottom:96px}
   /* l'attribution se pose au-dessus de la pastille de navigation, qui occupe
      désormais le coin bas gauche */
   #btnCredits{left:20px;bottom:calc(var(--nav-flottante,60px) + 28px)}
@@ -1021,6 +1025,13 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
      Il n'y en a qu'un : la pastille ronde « revenir » faisait exactement la
      même chose, en moins clair et sans dire ce qu'elle faisait. -->
 <button id="btnAutourDeMoi" hidden>⌖ Revenir autour de moi</button>
+<!-- Trouver de l'aide : alimentaire, hébergement, santé. Ce n'est pas une
+     envie parmi d'autres, et ça n'a rien à faire derrière une loupe — quand on
+     en a besoin, ça doit être à un doigt. C'est pour ça que c'est un contrôle
+     permanent de la carte et non une pastille du rail des intentions. -->
+<button class="rond-flottant" id="btnAide" hidden aria-pressed="false" aria-label="Trouver de l’aide : alimentaire, hébergement, santé">
+  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5.2 5.2 0 0 0-7.4 0L12 7l-1.4-1.4a5.2 5.2 0 1 0-7.4 7.4l1.4 1.4L12 21.4l7.4-7.4 1.4-1.4a5.2 5.2 0 0 0 0-7.4z"/></svg>
+</button>
 <button class="rond-flottant" id="btnTransports" hidden aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
 </button>
@@ -1217,6 +1228,9 @@ async function rechercheGeographique(q){
   selectionAccueil = null;      // les recommandations se recalculent pour ici
   rendre();
   majAccueil();
+  /* En mode Aide, changer de commune doit chercher les points d'aide de LÀ.
+     Sans ça, on regardait Lille avec les adresses de son quartier de départ. */
+  if(modeAide) chargerAide(centre[0], centre[1]);
 
   // les lieux de la nouvelle zone arrivent derrière : l'interface n'attend pas
   chargerZone(centre[0], centre[1]);
@@ -1686,6 +1700,10 @@ function transportsDemandes(ctx){
   return !!(q && CATS_TRANSPORT.has(categorieRecherchee(q)));
 }
 
+/* Les endroits où manger. Une cuisine tapée sans catégorie — « indien »,
+   « pizza » — désigne d'abord l'un d'eux. */
+const CATS_MANGER = ["resto","fastfood","cafe","marche","food"];
+
 /* Ce que les gens tapent réellement dans la recherche, par catégorie. */
 const SYNONYMES = {
   resto:["restaurant","resto","manger","brasserie","diner","dejeuner"],
@@ -1947,7 +1965,15 @@ function estTermeMetier(texte){
 const REQUETES = [
   // -- aide, en premier car ce sont des sous-tags d'amenity plus génériques
   ["social_facility","food_bank","alimentaire"], ["social_facility","soup_kitchen","alimentaire"],
+  // amenity=food_bank existe aussi, sans la clé social_facility : les Restos
+  // du Cœur et les banques alimentaires sont tagués des deux façons
+  ["amenity","food_bank","alimentaire"],
   ["social_facility","shelter","hebergement"],   ["social_facility","group_home","hebergement"],
+  ["amenity","refugee_site","hebergement"],
+  // accueils de jour et permanences : ce sont eux qu'on cherche en premier
+  // quand on a besoin d'aide, et aucun tag ne les ramenait
+  ["social_facility","outreach","asso"], ["social_facility","day_centre","asso"],
+  ["social_facility","clothing_bank","asso"],
   ["amenity","social_facility","asso"],          ["amenity","social_centre","asso"],
   ["office","association","asso"], ["office","ngo","asso"], ["office","charity","asso"],
   // une maison de quartier est une asso, pas une salle de spectacle : elle
@@ -1965,6 +1991,7 @@ const REQUETES = [
   ["amenity","hospital","sante"], ["amenity","clinic","sante"],
   ["amenity","doctors","sante"],  ["amenity","pharmacy","sante"],
   ["amenity","health_post","sante"],
+  ["healthcare","centre","sante"],
 
   // -- boutiques : la friperie avant les vêtements neufs, sinon elle est absorbée
   ["shop","second_hand","friperie"], ["shop","charity","friperie"],
@@ -3179,7 +3206,7 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#appHeader","#navBas","#btnTransports","#btnCredits"]
+  ["#appHeader","#navBas","#btnAide","#btnTransports","#btnCredits"]
     .forEach(s=>$(s).hidden=false);
   PERF.jalon("ui_ready");         // l'écran est lisible et interactif
   mesurerHeader();
@@ -4141,7 +4168,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#navBas","#appHeader","#btnPartager","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
+  ["#navBas","#appHeader","#btnPartager","#btnAide","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   feuilleNiveau = null;
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
@@ -5641,12 +5668,19 @@ const RESEAUX_AIDE = [
 /* Ces adresses ne bougent quasiment jamais : on les garde une semaine plutôt
    que de relancer dix recherches facturées à chaque ouverture de l'app. */
 const cleAide = (lat,lng)=>"autour:aide:"+lat.toFixed(2)+","+lng.toFixed(2);
-let aideChargee = false;
+/* Où l'aide a déjà été cherchée. Un simple booléen suffisait tant qu'on
+   restait chez soi : dès qu'on regardait une autre commune, plus rien
+   n'était chargé et l'écran d'aide restait celui du point de départ. On
+   recharge donc quand la zone regardée s'éloigne assez pour que les points
+   trouvés ne la concernent plus. */
+let aideChargeeAutour = null;
+const AIDE_RAYON_RECHARGE = 5000;
 let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
 
 async function chargerAide(lat,lng){
-  if(aideChargee) return;
-  aideChargee = true;
+  if(aideChargeeAutour &&
+     distanceM(aideChargeeAutour[0], aideChargeeAutour[1], lat, lng) < AIDE_RAYON_RECHARGE) return;
+  aideChargeeAutour = [lat,lng];
   aideEnCours = true;
   definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
   // Laisse la feuille s'afficher avant de normaliser un éventuel cache.
@@ -6807,18 +6841,17 @@ function majRaccourcis(){
   // coup d'œil au pouce, les besoins secondaires sont à un tap de là
   const plusActif = feuilleNiveau === "plus" ||
     !!(BESOIN_DE(feuilleNiveau) || {}).secondaire;
-  // Aide passe en dernier : on cherche une sortie bien plus souvent que de
-  // l'aide, et le pouce atteint d'abord le début du rail.
-  const ordre = [...BESOINS_PRINCIPAUX.filter(b=>b.id !== "aide"),
-                 ...BESOINS_PRINCIPAUX.filter(b=>b.id === "aide")];
-  // « Gratuit » n'apparaît plus ici : c'est une CONTRAINTE, pas une intention.
-  // Il vivait à la fois comme pastille et comme filtre, avec deux états à
-  // maintenir pour une seule notion — on le laisse dans les filtres, son seul
-  // foyer, où il voisine avec « Ouvert », la distance et le budget.
+  /* Aide ne figure plus dans ce rail : elle a son bouton permanent sur la
+     carte. Elle y était enfermée derrière la loupe, alors que c'est ce qu'on
+     doit pouvoir atteindre le plus vite — et l'avoir aux deux endroits aurait
+     fait deux états à tenir d'accord pour une seule chose.
+     « Gratuit » a quitté ce rail pour la même raison : c'est une CONTRAINTE,
+     et son seul foyer est le bouton filtres. */
+  const ordre = BESOINS_PRINCIPAUX.filter(b=>b.id !== "aide");
   z.innerHTML = ordre.map(b=>{
-    const actif = b.id === "aide" ? modeAide : (feuilleNiveau === b.id && catsActives);
-    return '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
-      '<em>'+b.emoji+'</em>'+esc(b.label.replace("Trouver de l’aide","Aide").replace(" autour de moi",""))+
+    const actif = feuilleNiveau === b.id && catsActives;
+    return '<button class="rc'+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
+      '<em>'+b.emoji+'</em>'+esc(b.label.replace(" autour de moi",""))+
       '</button>';
   }).join("") +
     '<button class="rc'+(plusActif?" actif":"")+'" data-rc="plus"><em>•••</em>Plus</button>';
@@ -7039,7 +7072,13 @@ function interpreter(phrase){
   if(cuisine){ act.cuisine = cuisine; act.dit.push(cuisine); }
 
   const cat = categorieRecherchee(phrase);
-  if(cat && !cuisine){ act.cats = new Set([cat]); act.dit.push((CATS[cat]||{}).label || cat); }
+  if(cat){ act.cats = new Set([cat]); if(!cuisine) act.dit.push((CATS[cat]||{}).label || cat); }
+  /* Une cuisine sans catégorie laissait le champ des catégories VIDE : on ne
+     cherchait donc plus des restaurants du tout, seulement des fiches dont le
+     tag cuisine correspond. Or ce tag est renseigné sur une minorité de lieux
+     dans OpenStreetMap — d'où des écrans vides là où le quartier est plein de
+     restaurants. Une cuisine désigne d'abord un endroit où manger. */
+  else if(cuisine) act.cats = new Set(CATS_MANGER);
 
   // budget en chiffres ou en toutes lettres : « quinze euros » vaut « 15 € »
   const n = montantEuros(t);
@@ -7078,13 +7117,21 @@ function appliquerPhrase(phrase){
   dessinerFiltres(); majFiltres(); rendre();
 
   if(a.cuisine){
-    const trouves = lieux.filter(l=>{
+    /* La cuisine TRIE, elle n'exclut pas. Filtrer strictement dessus ne
+       laissait que les fiches dont OpenStreetMap connaît le tag — une
+       minorité — et « restaurant indien » rendait un écran vide au milieu
+       d'un quartier plein de restaurants. On montre donc tous les endroits où
+       manger, en plaçant devant ceux dont la cuisine correspond. */
+    const manger = lieux.filter(l=>[...a.cats].some(c=>correspondCategorie(l,c)));
+    const correspond = l=>{
       const c = sansAccents(l.cuisine||"");
-      return c && (c.includes(a.cuisine) || a.cuisine.includes(c));
-    });
+      return !!c && (c.includes(a.cuisine) || a.cuisine.includes(c));
+    };
+    const classes = classerLieux(manger, false);
+    const trouves = [...classes.filter(correspond), ...classes.filter(l=>!correspond(l))];
     pileEcrans = [];
     pousserEcran(()=>afficherListe("🍽", "« "+phrase+" »",
-      classerLieux(trouves, false), false, ()=>appliquerPhrase(phrase)));
+      trouves, false, ()=>appliquerPhrase(phrase)));
   }
   toast("Compris : "+a.dit.join(" · "));
 }
@@ -7506,9 +7553,12 @@ function remplirResultatsZone(nom, intention){
     radius:rayonRecherche,
     distanceBetween:distanceM,
     etaFor:l=>etaConnu(l, centre),
-    // la requête sert à la pertinence textuelle : avec une intention, c'est
-    // elle qui compte, sinon le nom de la zone n'apprend rien au classement
-    requete:intention || "",
+    /* Quand l'intention a déjà été traduite en catégories, c'est LE filtre :
+       repasser son texte ici en ajoutait un second, qui écartait tout ce dont
+       le nom ne contient pas les mots tapés. « restaurant indien » ne laissait
+       ainsi que les fiches portant le tag cuisine — une minorité — au lieu de
+       tous les restaurants de la zone. */
+    requete: catsActives ? "" : (intention || ""),
   }).slice(0, RESULTATS_RECHERCHE_INITIAUX);
 
   $("#fbTitre").textContent = nom;
@@ -7569,6 +7619,16 @@ $("#navFermer").onclick=quitterNav;
    il allume la couche des arrêts sur la carte ET ouvre les prochains départs.
    Un second appui éteint la couche. Sans cet interrupteur, les arrêts ne
    seraient plus atteignables du tout depuis Explorer. */
+/* Aide : un interrupteur, comme la couche transport. Le même geste entre et
+   sort du mode, et son état se voit sans avoir à ouvrir quoi que ce soit. */
+$("#btnAide").onclick=()=>{
+  const b = $("#btnAide");
+  if(modeAide){ basculerAide(); fermerFeuille2(); }
+  else { basculerAide(); ouvrirFeuille2("aide"); }
+  b.setAttribute("aria-pressed", modeAide ? "true" : "false");
+  b.classList.toggle("actif", modeAide);
+};
+
 $("#btnTransports").onclick=()=>{
   coucheTransport = !coucheTransport;
   $("#btnTransports").setAttribute("aria-pressed", coucheTransport ? "true" : "false");

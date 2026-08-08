@@ -840,3 +840,51 @@ test("un seul jeu de prédicats pour la barre et les suggestions",()=>{
   const n = (html.match(/parseSearchQuery\(q, DECOUPAGE\)/g) || []).length;
   assert.equal(n, 2, "la barre et les suggestions partagent le même découpage");
 });
+
+/* ---- Aide : atteignable et couvrant la zone regardée ------------------- */
+
+test("« Trouver de l'aide » est un contrôle permanent de la carte",()=>{
+  // il vivait dans le rail des intentions, donc derrière la loupe : ce n'est
+  // pas une envie parmi d'autres, ça doit être à un doigt
+  assert.match(html,/id="btnAide" hidden aria-pressed="false"/);
+  assert.match(html,/#btnAide\{bottom:calc\(var\(--map-control-bottom\) \+ 108px\)\}/);
+  assert.match(html,/#btnAide\.actif\{/);
+  assert.match(html,/\$\("#btnAide"\)\.onclick=\(\)=>\{/);
+  // affiché et masqué avec les autres contrôles de carte
+  assert.match(html,/\["#appHeader","#navBas","#btnAide","#btnTransports","#btnCredits"\]/);
+  // et il n'existe plus dans le rail : un seul foyer, un seul état
+  assert.match(html,/const ordre = BESOINS_PRINCIPAUX\.filter\(b=>b\.id !== "aide"\);/);
+  assert.doesNotMatch(html,/data-rc="aide"/);
+});
+
+test("l'aide se recharge quand on regarde une autre commune",()=>{
+  // un booléen à un coup : après un déplacement vers Lille, l'écran d'aide
+  // montrait encore les adresses du quartier de départ
+  assert.doesNotMatch(html,/let aideChargee = false;/);
+  assert.match(html,/let aideChargeeAutour = null;/);
+  assert.match(html,/const AIDE_RAYON_RECHARGE = 5000;/);
+  assert.match(html,/distanceM\(aideChargeeAutour\[0\], aideChargeeAutour\[1\], lat, lng\) < AIDE_RAYON_RECHARGE\) return;/);
+  assert.match(html,/if\(modeAide\) chargerAide\(centre\[0\], centre\[1\]\);/);
+});
+
+test("les réseaux d'aide et leurs tags couvrent ce qu'on cherche vraiment",()=>{
+  for(const reseau of ["Restos du Cœur","Banque Alimentaire","Secours Populaire",
+                       "Mission locale","France Travail","hébergement d'urgence"])
+    assert.ok(html.includes(reseau), reseau+" doit être cherché");
+  // et sans Google, OSM doit suffire : les tags réellement utilisés
+  assert.match(html,/\["amenity","food_bank","alimentaire"\]/);
+  assert.match(html,/\["social_facility","outreach","asso"\], \["social_facility","day_centre","asso"\]/);
+  assert.match(html,/\["amenity","refugee_site","hebergement"\]/);
+  assert.match(html,/\["healthcare","centre","sante"\]/);
+});
+
+test("une cuisine trie les résultats, elle ne les exclut pas",()=>{
+  // le tag cuisine n'est renseigné que sur une minorité de fiches OSM :
+  // filtrer dessus rendait un écran vide au milieu d'un quartier de restaurants
+  assert.match(html,/const CATS_MANGER = \["resto","fastfood","cafe","marche","food"\];/);
+  assert.match(html,/else if\(cuisine\) act\.cats = new Set\(CATS_MANGER\);/);
+  assert.match(html,/const manger = lieux\.filter\(l=>\[\.\.\.a\.cats\]\.some\(c=>correspondCategorie\(l,c\)\)\);/);
+  assert.match(html,/const trouves = \[\.\.\.classes\.filter\(correspond\), \.\.\.classes\.filter\(l=>!correspond\(l\)\)\];/);
+  // et le classement d'une zone ne rajoute pas un second filtre textuel
+  assert.match(html,/requete: catsActives \? "" : \(intention \|\| ""\),/);
+});
