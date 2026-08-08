@@ -124,6 +124,10 @@ input{font-family:inherit;font-size:16px}
   overflow:hidden;text-overflow:ellipsis}
 .poi-eti span.ouvre{color:#1B7F3B}
 .loin .poi-eti,.poi-eti.masquee{display:none}
+/* Basculée à gauche quand elle sortirait de l'écran à droite : la pastille ne
+   bouge pas, seule l'étiquette change de côté. */
+.poi-eti.a-gauche{order:-1;margin-left:0;margin-right:-8px;
+  padding:4px 14px 4px 10px;border-radius:9px 0 0 9px;text-align:right}
 .poi-ferme .poi-eti{background:rgba(255,255,255,.82)}
 /* Fermé : atténué et badgé. Jamais le même style qu'un lieu ouvert, jamais
    masqué non plus — hors mode « Maintenant » il reste utile pour plus tard. */
@@ -488,7 +492,9 @@ input{font-family:inherit;font-size:16px}
   font-size:18px;line-height:1;display:grid;place-items:center;
   box-shadow:0 2px 10px rgba(20,30,25,.16);
   transition:bottom .22s ease,transform .15s ease}
-#btnRevenir{bottom:calc(var(--map-control-bottom) + 108px)}
+/* Un interrupteur doit dire s'il est allumé : la couche transport est un état,
+   pas une action ponctuelle. */
+.rond-flottant.actif{background:var(--violet);border-color:var(--violet);color:#fff}
 #btnTransports{bottom:calc(var(--map-control-bottom) + 56px)}
 .rond-flottant:active{transform:scale(.94)}
 
@@ -496,10 +502,14 @@ input{font-family:inherit;font-size:16px}
    au lieu d'occuper le bas de la carte en permanence. */
 /* Retour à soi : n'apparaît que lorsqu'on s'est éloigné, sinon il ne veut
    rien dire et occupe la carte pour rien. */
+/* Compact et sur une seule ligne : sur 390 px, « ⌖ Revenir autour de moi » en
+   14 px passait à la ligne et faisait un pavé de deux étages sous l'en-tête. */
 #btnAutourDeMoi{position:absolute;left:50%;transform:translateX(-50%);
-  top:calc(var(--safe-t) + 66px);z-index:604;
-  height:40px;padding:0 16px;border:0;border-radius:99px;
-  background:var(--trait);color:#fff;font-size:14px;font-weight:700;
+  top:calc(var(--header-bas) + 10px);z-index:604;
+  height:34px;padding:0 13px;border:0;border-radius:99px;
+  background:var(--trait);color:#fff;font-size:12.5px;font-weight:700;
+  white-space:nowrap;max-width:calc(100vw - 32px);
+  overflow:hidden;text-overflow:ellipsis;
   box-shadow:0 4px 16px rgba(20,30,25,.30);animation:monteT .18s ease-out}
 #btnAutourDeMoi:active{transform:translateX(-50%) scale(.96)}
 
@@ -677,10 +687,9 @@ input{font-family:inherit;font-size:16px}
 
   /* Flottants de droite : ils se décalent seulement quand le panneau est
      ouvert, sinon ils longent le bord de la fenêtre. */
-  #btnRevenir,#btnTransports{right:20px}
-  body.sheet-open #btnRevenir,body.sheet-open #btnTransports{
+  #btnTransports{right:20px}
+  body.sheet-open #btnTransports{
     right:calc(var(--panneau) + 40px)}
-  #btnRevenir{bottom:96px}
   #btnTransports{bottom:44px}
   /* l'attribution se pose au-dessus de la pastille de navigation, qui occupe
      désormais le coin bas gauche */
@@ -697,7 +706,11 @@ input{font-family:inherit;font-size:16px}
   #bandeauGeo,#bandeauVide{left:20px;right:auto;width:min(520px,45vw)}
   #charge{left:50%}
   #filtresHumains{width:auto;max-width:none}
-  #btnAutourDeMoi{left:50%;top:calc(var(--safe-t) + 20px)}
+  /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
+     que dessous — il y a la place, et le centre appartient à la carte */
+  #btnAutourDeMoi{left:auto;right:auto;transform:none;
+    margin-left:560px;top:calc(var(--safe-t) + 26px)}
+  #btnAutourDeMoi:active{transform:scale(.96)}
 }
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
@@ -976,16 +989,21 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <!-- Recherche : superposée à la carte, jamais un écran de remplacement. -->
 <div id="rechercheOverlay" hidden role="dialog" aria-label="Rechercher">
-  <div class="ro-barre">
+  <!-- Un vrai <form> : sur iOS, c'est ce qui fait apparaître « rechercher »
+       sur le clavier et ce qui garantit que la touche Retour valide. Écouter
+       keydown seul laissait certains claviers mobiles sans action. -->
+  <form class="ro-barre" id="formRech" role="search" action="#">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
-    <input id="rech" placeholder="Une envie, un lieu, une ville…" />
-    <button class="icone-btn" id="btnFermerRech" aria-label="Fermer la recherche">
+    <input id="rech" type="search" name="q" enterkeyhint="search" inputmode="search"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+           placeholder="Une envie, un lieu, une ville…" />
+    <button class="icone-btn" id="btnFermerRech" type="button" aria-label="Fermer la recherche">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
-    <button class="hd-filtres" id="btnFiltres" aria-label="Filtres" aria-expanded="false">
+    <button class="hd-filtres" id="btnFiltres" type="button" aria-label="Filtres" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
     </button>
-  </div>
+  </form>
   <div id="raccourcis" class="pills"></div>
   <div id="filtresHumains" hidden></div>
   <div id="suggestions" hidden></div>
@@ -994,13 +1012,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <!-- Partager ne vit que sur la fiche d'un lieu : la carte n'a pas à le porter. -->
 <button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
 
-<!-- Quand une recherche déplace la carte loin de soi, un seul geste ramène
-     à sa position et à ses recommandations locales. -->
-<button id="btnAutourDeMoi" hidden>⌖ Autour de moi</button>
-<button class="rond-flottant" id="btnRevenir" hidden aria-label="Revenir à ma position">
-  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.6v3.2M12 18.2v3.2M21.4 12h-3.2M5.8 12H2.6"/></svg>
-</button>
-<button class="rond-flottant" id="btnTransports" hidden aria-label="Prochains départs à proximité">
+<!-- Quand la carte s'éloigne de soi — recherche, déplacement à la main — un
+     seul geste ramène à sa position et à ses recommandations locales.
+     Il n'y en a qu'un : la pastille ronde « revenir » faisait exactement la
+     même chose, en moins clair et sans dire ce qu'elle faisait. -->
+<button id="btnAutourDeMoi" hidden>⌖ Revenir autour de moi</button>
+<button class="rond-flottant" id="btnTransports" hidden aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
 </button>
 
@@ -1103,6 +1120,8 @@ const {
   toCommonItem,
   matchesCategory,
   dedupeItems,
+  groupLogicalPlaces,
+  parseSearchQuery,
   isAvailableNow,
   rankResults,
 } = window.AutourCore;
@@ -1117,6 +1136,12 @@ let canauxAMoi = [];
    n'affiche d'abord que trois à cinq résultats fortement pertinents. Le reste
    se charge derrière, sans bloquer. */
 let rechercheGeo = null;              // {nom, lat, lng} de la zone visée
+/* La zone dont la feuille affiche les résultats. Null = recommandations
+   habituelles. C'est ce qui permet aux résultats de survivre à l'arrivée des
+   données, qui redessine la feuille une seconde plus tard.
+   Déclaré ici, avec rechercheGeo : majFeuille2() le lit dès le premier rendu,
+   bien avant le bloc qui définit ouvrirResultatsZone. */
+let zoneAffichee = null;
 const RESULTATS_RECHERCHE_INITIAUX = 5;
 
 /* Une requête est géographique si elle ne correspond à aucune catégorie ni
@@ -1573,6 +1598,28 @@ const SANS_CLASSEMENT = new Set(["alimentaire","asso","hebergement","emploi","sa
    Ils restent donc silencieux tant qu'ils n'ont pas été demandés — par une
    recherche nommée, une catégorie choisie ou une intention qui les inclut. */
 const JAMAIS_AUTO = new Set(["ecole","mairie"]);
+
+/* ---- Les transports sont un moyen, pas une destination -------------------
+   Un arrêt de bus n'est pas une proposition de sortie. Overpass en renvoie
+   plusieurs centaines par quartier — bouches de métro, arrêts par sens,
+   stations de vélo — et ils noyaient les lieux qu'on venait chercher.
+
+   Ils continuent d'être CHARGÉS : l'ETA porte-à-porte, les prochains départs
+   et les itinéraires en dépendent, et cette passe ne retire aucune donnée.
+   Ils ne sont simplement plus DESSINÉS tant qu'on ne les a pas demandés —
+   couche transport allumée, recherche de transport, ou itinéraire en cours. */
+const CATS_TRANSPORT = new Set(["metro","bus","tram","train","velo"]);
+let coucheTransport = false;      // allumée par le bouton transports
+let itineraireOuvert = false;     // une fiche affiche un trajet
+
+function transportsDemandes(ctx){
+  if(coucheTransport || modeNav || itineraireOuvert) return true;
+  // une catégorie de transport explicitement choisie, ou tapée en toutes lettres
+  if(catsActives && [...catsActives].some(c=>CATS_TRANSPORT.has(c))) return true;
+  if(CATS_TRANSPORT.has(filtreActif)) return true;
+  const q = ctx && ctx.q;
+  return !!(q && CATS_TRANSPORT.has(categorieRecherchee(q)));
+}
 
 /* Ce que les gens tapent réellement dans la recherche, par catégorie. */
 const SYNONYMES = {
@@ -2593,14 +2640,33 @@ function majEpaisseurs(){
    pastille tout label qui empiéterait sur un précédent. La carte reste
    peuplée sans devenir un mur de texte. */
 let dernierClassement = [];
+/* Étiquettes : aucune ne doit en recouvrir une autre, ni sortir de l'écran.
+   La version précédente supposait une boîte fixe de 186 px alors que
+   l'étiquette est dimensionnée par son texte (max-width 158 px + pastille) :
+   les noms courts réservaient trop de place et s'effaçaient pour rien, les
+   noms longs en bord de carte débordaient sans que personne ne le voie.
+
+   On mesure donc la boîte réelle, et on la teste contre les bords. Une
+   étiquette qui déborde à droite bascule à gauche de sa pastille — c'est le
+   seul rattrapage possible sans déplacer le marqueur, qui lui doit rester
+   exactement sur le lieu. Si elle ne tient d'aucun côté, elle s'efface : mieux
+   vaut pas d'étiquette qu'un nom tronqué au bord de l'écran. */
+const MARGE_ECRAN = 6;
+
 function resoudreCollisions(){
   if(!map) return;
   const assezPres = map.getZoom() >= 15;
   const rang = new Map();
   dernierClassement.forEach((l,i)=>rang.set(l.id,i));
   const priorite = ([id])=>rang.has(id) ? rang.get(id) : 9999;
+  const conteneur = map.getContainer ? map.getContainer() : null;
+  const cadre = conteneur ? conteneur.getBoundingClientRect() : {left:0, top:0};
+  const taille = map.getSize ? map.getSize() : {x:innerWidth, y:innerHeight};
 
   const boites = [];
+  const chevauche = (a)=>boites.some(b=>
+    a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h);
+
   [...marqueurs.entries()]
     .filter(([id])=>!String(id).startsWith("grappe:"))
     .sort((a,b)=>priorite(a)-priorite(b))
@@ -2608,15 +2674,28 @@ function resoudreCollisions(){
       const el = m.getElement && m.getElement();
       const eti = el && el.querySelector(".poi-eti");
       if(!eti) return;
+      eti.classList.remove("masquee","a-gauche");
       if(!assezPres){ eti.classList.add("masquee"); return; }
-      const p = map.latLngToContainerPoint(m.getLatLng());
-      // boîte approximative de l'étiquette, pastille comprise
-      const boite = {x:p.x-16, y:p.y-17, w:186, h:36};
-      const heurte = boites.some(b=>
-        boite.x < b.x+b.w && b.x < boite.x+boite.w &&
-        boite.y < b.y+b.h && b.y < boite.y+boite.h);
-      eti.classList.toggle("masquee", heurte);
-      if(!heurte) boites.push(boite);
+
+      // Position réelle, mesurée : le marqueur est centré par une transformée
+      // CSS, donc recalculer sa boîte à la main donnerait un résultat faux.
+      // On lit ce que le navigateur a effectivement posé.
+      const boite = ()=>{
+        const r = eti.getBoundingClientRect();
+        return {x:r.left - cadre.left, y:r.top - cadre.top, w:r.width, h:r.height};
+      };
+      const tient = (b)=> b.w > 0 && b.h > 0
+        && b.x >= MARGE_ECRAN && b.x + b.w <= taille.x - MARGE_ECRAN
+        && b.y >= MARGE_ECRAN && b.y + b.h <= taille.y - MARGE_ECRAN;
+
+      let b = boite();
+      if(!tient(b) || chevauche(b)){
+        // seconde chance de l'autre côté de la pastille
+        eti.classList.add("a-gauche");
+        b = boite();
+        if(!tient(b) || chevauche(b)){ eti.classList.add("masquee"); return; }
+      }
+      boites.push(b);
     });
 }
 
@@ -3003,7 +3082,7 @@ async function demarrer(coords){
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   const centre = partage ? [partage.lat, partage.lng] : positionMoi;
-  ["#appHeader","#navBas","#btnRevenir","#btnTransports","#btnCredits"]
+  ["#appHeader","#navBas","#btnTransports","#btnCredits"]
     .forEach(s=>$(s).hidden=false);
   PERF.jalon("ui_ready");         // l'écran est lisible et interactif
   mesurerHeader();
@@ -3128,19 +3207,21 @@ async function demarrer(coords){
   });
 }
 
-/* Le bouton de position reste là en permanence : c'est l'un des quatre
-   repères de l'écran de départ, il ne doit pas disparaître sous les pieds
-   de quelqu'un qui le cherche. */
-/* Seuil au-delà duquel « autour de moi » ne décrit plus ce qu'on regarde. */
-const ECART_HORS_ZONE = 3000;
+/* Seuil au-delà duquel « autour de moi » ne décrit plus ce qu'on regarde.
+   1200 m, soit un quartier : au-delà, les recommandations affichées ne sont
+   plus celles de l'endroit où l'on est. Le seuil précédent (3 km) laissait le
+   bouton absent après une recherche sur une commune voisine, alors que c'est
+   exactement le moment où il sert. */
+const ECART_HORS_ZONE = 1200;
 function carteHorsPosition(){
   if(!map || !positionMoi) return false;
+  // une recherche géographique déplace la carte par définition, quelle que
+  // soit la distance parcourue
+  if(rechercheGeo) return true;
   const c = map.getCenter();
   return distanceM(positionMoi[0], positionMoi[1], c.lat, c.lng) > ECART_HORS_ZONE;
 }
 function majBoutons(){
-  const b = $("#btnRevenir");
-  if(b) b.hidden = !map || modePose || modeNav;
   const retour = $("#btnAutourDeMoi");
   if(retour) retour.hidden = !map || modePose || modeNav || !carteHorsPosition();
 }
@@ -3184,6 +3265,13 @@ const FILTRES_HUMAINS = [
   { id:"pmr",     label:"Accessible PMR",  test:l=>l.pmr === true },
 ].map(f=> f.cats ? Object.assign(f, {test:l=>f.cats.some(c=>correspondCategorie(l,c))}) : f);
 
+/* Les contraintes — par opposition aux envies. Elles n'ont qu'un seul foyer,
+   le bouton Filtres, et s'y présentent dans cet ordre : c'est celui dans
+   lequel on les cherche. « Gratuit » figurait aussi comme pastille d'intention
+   à côté de Manger et Sortir ; deux entrées pour une seule notion, avec deux
+   états à garder d'accord. */
+const CONTRAINTES = ["ouvert","proche","gratuit","budget"];
+
 /* Timeline : la même carte, à un autre moment de la journée. */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant",   de:0,          a:2*3600e3 },
@@ -3219,7 +3307,19 @@ function estVivant(l){
   return creneau === "maintenant" ? !estFerme(l) : true;
 }
 
+/* Le regroupement vit ici, dans l'unique entonnoir de ce qui peut s'afficher.
+   Le placer plus loin — au moment de poser les marqueurs — laissait la liste
+   de recommandations choisir cinq membres du même pôle avant que qui que ce
+   soit ne les replie. Ce que la carte montre et ce que la feuille propose
+   doivent voir le même monde.
+
+   Rien n'est perdu : lieux[] garde tous les objets, et chaque représentant
+   porte ses membres dans .regroupes. */
 function visibles(){
+  return groupLogicalPlaces(visiblesBruts(), distanceM);
+}
+
+function visiblesBruts(){
   const q = recherche.trim().toLowerCase();
   // au repos, la carte se limite à la poignée de lieux de la carte d'accueil.
   // Pas en mode Aide : là, on veut voir tous les points d'aide autour, la
@@ -3400,17 +3500,33 @@ function majIndexEvenements(){
    Montrer trois cents épingles revient à n'en montrer aucune. */
 let derniereSelection = [];
 let ecartesAuto = 0;          // combien de lieux la règle a écartés au dernier rendu
+let regroupesAuto = 0;        // combien d'objets le regroupement a repliés
+
+/* Au repos — pas de recherche, pas de catégorie, pas de filtre — la carte ne
+   porte qu'une poignée de recommandations. Tout le reste demeure chargé en
+   mémoire et revient dès qu'on demande quelque chose : c'est l'AFFICHAGE qu'on
+   restreint, jamais la donnée. */
+const MARQUEURS_AU_REPOS = 6;
+
+function auRepos(ctx){
+  return !ctx.q && !catsActives && filtreActif === "tout" && !filtresHumains.size
+         && !modeAide && !rechercheGeo;
+}
 
 function selectionner(){
   const t0 = performance.now();
   const ctx = contexteActuel();
   const brut = visibles();
-  const cible = ctx.large ? POIDS.PLAFOND_LARGE : POIDS.PLAFOND_SERRE;
+  const repos = auRepos(ctx);
+  const cible = repos ? MARQUEURS_AU_REPOS
+              : ctx.large ? POIDS.PLAFOND_LARGE : POIDS.PLAFOND_SERRE;
 
-  // avant de noter quoi que ce soit : écarter ce qui n'a rien à faire sur la
-  // carte tant qu'on ne l'a pas demandé — écoles, administrations, et tout ce
-  // qui est fermé à l'instant regardé
+  // écarter ce qui n'a rien à faire sur la carte tant qu'on ne l'a pas
+  // demandé — écoles, administrations, transports, et tout ce qui est fermé à
+  // l'instant regardé. Le repliement des doublons a déjà eu lieu dans
+  // visibles() : ce qui arrive ici est déjà une liste d'endroits distincts.
   const admis = brut.filter(l=>proposableAuto(l, ctx));
+  regroupesAuto = brut.reduce((n,l)=>n + ((l.nbRegroupes||1) - 1), 0);
 
   let notes = admis.map(l=>{
     const r = scoreLieu(l, ctx);
@@ -3418,7 +3534,9 @@ function selectionner(){
   });
   const avant = notes.length;
   if(modeAide && !montrerFermes) notes = ecarterFermesSiAlternative(notes);
-  // ce que la règle a retiré : sert au bandeau « rien d'ouvert · tout voir »
+  // ce que la RÈGLE a retiré : sert au bandeau « rien d'ouvert · tout voir ».
+  // Le regroupement n'en fait pas partie — replier un pôle en un marqueur ne
+  // cache rien, et le compter ici ferait proposer « tout voir » à tort.
   ecartesAuto = (brut.length - admis.length) + (avant - notes.length);
 
   // un filtre ou une recherche explicite lève le masquage du niveau C :
@@ -3431,7 +3549,7 @@ function selectionner(){
   derniereSelection = retenus;
   if(window.__autourDebug)
     console.info("[Autour] reçus", brut.length, "· écartés d'office", ecartesAuto,
-      "· retenus", retenus.length,
+      "· regroupés", regroupesAuto, "· retenus", retenus.length,
       "· niveau A", notes.filter(x=>x.niveau==="A").length,
       "· classement", (performance.now()-t0).toFixed(1)+" ms",
       "· meilleur", retenus[0] ? retenus[0].l.titre+" ("+Math.round(retenus[0].score)+", "+retenus[0].raison+")" : "—");
@@ -3600,6 +3718,9 @@ function fermerFeuille(options){
   const coucheFermee = typeFeuille === "publication" ? NOMS_COUCHES.publishModal : NOMS_COUCHES.placeDetails;
   pileEcrans = [];
   typeFeuille = null;
+  // l'itinéraire se referme avec la fiche : les arrêts n'ont plus de raison
+  // d'occuper la carte
+  if(itineraireOuvert){ itineraireOuvert = false; rendre(); }
   if(!o.preserverPublication) publicationModifiee = false;
   $("#voile").hidden=true; $("#feuille").hidden=true;
   $("#abandonVoile").hidden=true;
@@ -3900,7 +4021,7 @@ function entrerNav(option, titre){
   modeNav = true;
   document.body.classList.add("nav");
   $("#voile").hidden = true; $("#feuille").hidden = true;
-  ["#navBas","#appHeader","#btnPartager","#btnRevenir","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
+  ["#navBas","#appHeader","#btnPartager","#btnTransports","#btnCredits","#filtresHumains","#feuilleBesoins","#bandeauVide"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = true; });
   feuilleNiveau = null;
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
@@ -4020,6 +4141,10 @@ async function afficherTrajet(l){
   const panneau = $("#trajet");
   if(!panneau) return;
   const dest = [l.lat, l.lng];
+  // consulter un itinéraire rend les arrêts pertinents : c'est le moment où
+  // savoir quel métro passe où sert vraiment
+  itineraireOuvert = true;
+  rendre();
 
   const depart = positionMoi;
 
@@ -4570,7 +4695,7 @@ function ouvrirModePose(){
   modePose=true;
   $("#viseur").hidden=false; $("#poseBarre").hidden=false;
   $("#navBas").hidden=true; $("#btnTransports").hidden=true;
-  $("#btnRevenir").hidden=true; $("#btnPartager").hidden=true;
+  $("#btnPartager").hidden=true;
   $("#feuilleBesoins").hidden=true;
   $("#poseBarre .txt").textContent = retourFormulaire
     ? "Déplace la carte pour corriger l’endroit."
@@ -5807,9 +5932,14 @@ function proposableAuto(l, ctx){
   }
   if(demandeExplicite(l, ctx)) return true;
   if(JAMAIS_AUTO.has(l.cat)) return false;
+  // un arrêt n'est pas une destination : il reste chargé, mais ne se dessine
+  // que si on a allumé la couche, cherché un transport ou ouvert un itinéraire
+  if(CATS_TRANSPORT.has(l.cat) && !transportsDemandes(ctx)) return false;
   // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
-  // demain, l'information de Google ne dit plus rien du moment regardé
-  if(creneau === "maintenant" && !montrerFermes && estFerme(l)) return false;
+  // demain, l'information de Google ne dit plus rien du moment regardé.
+  // Le bouton « Maintenant » suffit désormais à déclencher ce masquage : c'est
+  // ce qu'il annonce. « Lieux fermés » dans les filtres le lève.
+  if((creneau === "maintenant" || filtreMaintenant) && !montrerFermes && estFerme(l)) return false;
   return true;
 }
 
@@ -6090,6 +6220,16 @@ function majFeuille2(){
   const corps = $("#fbCorps");
   const retour = $("#fbRetour");
   f.classList.remove("accueil");
+
+  // Une recherche de zone occupe la feuille jusqu'à ce qu'on en sorte. Sans
+  // cette branche, les lieux de la zone arrivaient d'Overpass une seconde plus
+  // tard, déclenchaient un rendu, et « Pour toi, maintenant » remplaçait les
+  // résultats de la recherche qu'on venait tout juste de lancer.
+  if(feuilleNiveau === "racine" && zoneAffichee){
+    remplirResultatsZone(zoneAffichee.nom, zoneAffichee.intention);
+    synchroniserHauteurFeuille();
+    return;
+  }
 
   if(feuilleNiveau === "racine"){
     // L'accueil ne pose plus de question : il propose. Les besoins sont dans
@@ -6432,28 +6572,21 @@ function majRaccourcis(){
   // coup d'œil au pouce, les besoins secondaires sont à un tap de là
   const plusActif = feuilleNiveau === "plus" ||
     !!(BESOIN_DE(feuilleNiveau) || {}).secondaire;
-  // Gratuit se place avant Aide, comme dans l'ordre d'usage : on cherche une
-  // sortie gratuite bien plus souvent qu'on ne cherche de l'aide.
+  // Aide passe en dernier : on cherche une sortie bien plus souvent que de
+  // l'aide, et le pouce atteint d'abord le début du rail.
   const ordre = [...BESOINS_PRINCIPAUX.filter(b=>b.id !== "aide"),
                  ...BESOINS_PRINCIPAUX.filter(b=>b.id === "aide")];
-  // « Gratuit » n'est pas une catégorie de lieu : c'est un filtre qui existe
-  // déjà. On l'expose au même niveau parce que c'est une intention courante.
-  const pillGratuit = '<button class="rc'+(filtresHumains.has("gratuit")?" actif":"")+
-    '" data-filtre="gratuit"><em>🆓</em>Gratuit</button>';
+  // « Gratuit » n'apparaît plus ici : c'est une CONTRAINTE, pas une intention.
+  // Il vivait à la fois comme pastille et comme filtre, avec deux états à
+  // maintenir pour une seule notion — on le laisse dans les filtres, son seul
+  // foyer, où il voisine avec « Ouvert », la distance et le budget.
   z.innerHTML = ordre.map(b=>{
     const actif = b.id === "aide" ? modeAide : (feuilleNiveau === b.id && catsActives);
-    const pill = '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
+    return '<button class="rc'+(b.id==="aide"?" aide":"")+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
       '<em>'+b.emoji+'</em>'+esc(b.label.replace("Trouver de l’aide","Aide").replace(" autour de moi",""))+
       '</button>';
-    return b.id === "aide" ? pillGratuit + pill : pill;
   }).join("") +
     '<button class="rc'+(plusActif?" actif":"")+'" data-rc="plus"><em>•••</em>Plus</button>';
-  z.querySelectorAll("[data-filtre]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.filtre;
-    if(filtresHumains.has(id)) filtresHumains.delete(id); else filtresHumains.add(id);
-    majRaccourcis(); majFiltres(); rendre(); majAccueil();
-    if(feuilleNiveau !== null) majFeuille2();
-  });
   z.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.rc;
     if(id === "plus"){
@@ -6496,9 +6629,12 @@ function majFiltres(){
   if(!montrer){ z.innerHTML = ""; return; }
 
   // Trois filtres au maximum sous les catégories : au-delà, la ligne
-  // redevient un mur d'options. Les filtres déjà actifs passent devant.
-  const ordonnes = FILTRES_HUMAINS.slice()
-    .sort((a,b)=>(filtresHumains.has(b.id)?1:0)-(filtresHumains.has(a.id)?1:0));
+  // redevient un mur d'options. Les filtres déjà actifs passent devant, puis
+  // les contraintes courantes — ce sont elles qu'on vient chercher ici depuis
+  // qu'elles ne sont plus exposées ailleurs.
+  const place = (id)=>{ const i = CONTRAINTES.indexOf(id); return i === -1 ? 99 : i; };
+  const rang = (f)=> (filtresHumains.has(f.id) ? 0 : 100) + place(f.id);
+  const ordonnes = FILTRES_HUMAINS.slice().sort((a,b)=>rang(a)-rang(b));
   const visibles = demande ? ordonnes : ordonnes.filter(f=>filtresHumains.has(f.id));
   z.innerHTML = visibles.slice(0,3).map(f=>
     '<button class="fh'+(filtresHumains.has(f.id)?' actif':'')+'" data-fh="'+f.id+'">'+
@@ -6975,27 +7111,81 @@ $("#rech").oninput=e=>{
   clearTimeout(minuteurSug);
   minuteurSug = setTimeout(()=>suggerer(recherche), 130);
 };
-// Entrée : on bascule du filtrage des pastilles vers un vrai classement
-$("#rech").onkeydown=async e=>{
-  if(e.key !== "Enter") return;
-  const q = e.target.value.trim();
+/* Valider la recherche : une seule entrée pour la touche Retour du clavier,
+   le bouton « rechercher » d'iOS et un éventuel appui sur la loupe. Le clavier
+   se ferme d'abord (blur), sinon il masque la carte qu'on vient de déplacer. */
+$("#formRech").addEventListener("submit", e=>{ e.preventDefault(); lancerRecherche(); });
+
+async function lancerRecherche(){
+  const champ = $("#rech");
+  const q = (champ.value || "").trim();
   if(!q) return;
-  e.target.blur();
+  champ.blur();                 // referme le clavier avant de bouger la carte
   fermerRecherche();
-  // une zone déplace la carte ; le reste passe par la compréhension habituelle
-  if(ressembleAUneZone(q) && await rechercheGeographique(q)){
-    ouvrirResultatsZone(q);
-    return;
+  zoneAffichee = null;          // une nouvelle recherche remplace la précédente
+
+  // « cinéma Lille », « restaurant Roubaix », « activité enfant Tourcoing » :
+  // on sépare avant d'interroger quoi que ce soit
+  const {intention, destination} = parseSearchQuery(q, {
+    isIntent:t => !!(categorieRecherchee(t) || cuisineRecherchee(t) || intentionConnue(t)),
+  });
+
+  // une destination plausible déplace la carte ; l'intention, s'il y en a une,
+  // devient le filtre appliqué une fois sur place
+  if(destination && ressembleAUneZone(destination)){
+    charge("Recherche de "+destination+"…");
+    const trouvee = await rechercheGeographique(destination);
+    charge(null);
+    if(trouvee){
+      if(intention) appliquerIntention(intention);
+      ouvrirResultatsZone(destination, intention);
+      return;
+    }
+    // géocodage muet : on ne prétend pas avoir trouvé la ville
+    if(!intention){ toast("Lieu introuvable : "+destination); return; }
   }
   appliquerPhrase(q);        // même compréhension que la barre « Autour IA »
-};
+}
+
+/* Une intention reconnue par l'interprète de phrases, au-delà des seules
+   catégories : « sortir », « bouger », « chiller »… */
+function intentionConnue(t){
+  const a = interpreter(String(t));
+  return !!(a && a.cats && a.cats.size);
+}
+
+/* Applique l'intention extraite d'une requête composée, sans toucher à la
+   position : la carte a déjà bougé vers la destination. */
+function appliquerIntention(intention){
+  const a = interpreter(intention);
+  if(a && a.cats && a.cats.size){ catsActives = a.cats; filtreActif = "tout"; }
+  else {
+    const cat = categorieRecherchee(intention);
+    if(cat){ catsActives = null; filtreActif = cat; }
+  }
+  selectionAccueil = false;
+  dessinerFiltres(); majFiltres();
+}
 
 /* Après un déplacement de carte : trois à cinq résultats forts, pas un mur.
    Le reste continue d'arriver et se classera derrière. */
-function ouvrirResultatsZone(nom){
+function ouvrirResultatsZone(nom, intention){
+  zoneAffichee = {nom, intention:intention || ""};
+  feuilleNiveau = "racine";
+  $("#feuilleBesoins").hidden = false;
+  if(!remplirResultatsZone(nom, intention)) return;
+  brancherFeuille2();
+  reglerEtatFeuille("moyenne");
+}
+
+function remplirResultatsZone(nom, intention){
   const centre = rechercheGeo ? [rechercheGeo.lat, rechercheGeo.lng] : positionMoi;
-  if(!centre) return;
-  const forts = rankResults(lieux.filter(nomExploitable), {
+  if(!centre) return false;
+  // une intention explicite restreint le vivier : « cinéma Lille » ne doit pas
+  // remonter des restaurants parce qu'ils sont mieux notés
+  const vivier = lieux.filter(nomExploitable).filter(l=>
+    !catsActives || correspondUneCategorie(l, catsActives));
+  const forts = rankResults(groupLogicalPlaces(vivier, distanceM), {
     intent:"sortir",
     categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []))],
     position:centre,
@@ -7004,21 +7194,25 @@ function ouvrirResultatsZone(nom){
     radius:rayonRecherche,
     distanceBetween:distanceM,
     etaFor:l=>etaConnu(l, centre),
-    requete:nom,
+    // la requête sert à la pertinence textuelle : avec une intention, c'est
+    // elle qui compte, sinon le nom de la zone n'apprend rien au classement
+    requete:intention || "",
   }).slice(0, RESULTATS_RECHERCHE_INITIAUX);
 
-  feuilleNiveau = "racine";
-  $("#feuilleBesoins").hidden = false;
+  $("#fbTitre").textContent = nom;
+  $("#fbRetour").hidden = true;
+  $("#feuilleBesoins").classList.add("accueil");
   const corps = $("#fbCorps");
+  const titre = intention ? intention+" · "+nom : nom;
   corps.innerHTML =
-    '<div class="rc-tete"><strong>'+esc(nom)+'</strong>'+
+    '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
       '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
     (forts.length
       ? '<div class="rc-piste" data-testid="primary-results">'+
           forts.map(carteRecommandation).join("")+'</div>'
       : '<p class="liste-vide">Les lieux de cette zone arrivent…</p>');
   brancherFeuille2();
-  reglerEtatFeuille("moyenne");
+  return true;
 }
 /* On pense d'abord à ce qu'on crée, ensuite à l'endroit. Demander « déplace
    la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
@@ -7039,15 +7233,12 @@ function ouvrirCreation(){
 let typeAvantPose = null;
 
 $("#btnPoseOk").onclick=validerPose;
-$("#btnRevenir").onclick=()=>{
-  if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
-  else suivreMaPosition();
-};
 /* Revenir à soi : la carte reprend sa position, la recherche est relâchée et
    l'accueil retrouve ses recommandations locales. */
 $("#btnAutourDeMoi").onclick=()=>{
   if(!positionMoi) { suivreMaPosition(); return; }
   rechercheGeo = null;
+  zoneAffichee = null;          // la feuille reprend ses recommandations locales
   recherche = ""; if($("#rech")) $("#rech").value = "";
   catsActives = null; filtreActif = "tout";
   map.flyTo(positionMoi, 16, {duration:.6});
@@ -7062,9 +7253,19 @@ $("#navFermer").onclick=quitterNav;
 
 /* Le bouton transport ouvre la feuille sur l'accueil, où vit le bandeau des
    prochains départs : une seule surface, pas un écran de plus. */
+/* Le bouton transports fait deux choses d'un seul geste, et c'est voulu :
+   il allume la couche des arrêts sur la carte ET ouvre les prochains départs.
+   Un second appui éteint la couche. Sans cet interrupteur, les arrêts ne
+   seraient plus atteignables du tout depuis Explorer. */
 $("#btnTransports").onclick=()=>{
-  if(feuilleNiveau === null) ouvrirAccueilFeuille();
-  reglerFeuilleDeplie(true);
+  coucheTransport = !coucheTransport;
+  $("#btnTransports").setAttribute("aria-pressed", coucheTransport ? "true" : "false");
+  $("#btnTransports").classList.toggle("actif", coucheTransport);
+  rendre();
+  if(coucheTransport){
+    if(feuilleNiveau === null) ouvrirAccueilFeuille();
+    reglerFeuilleDeplie(true);
+  }
 };
 
 /* ---- Navigation basse ---------------------------------------------------
