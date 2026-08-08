@@ -131,16 +131,17 @@ test("les lieux fermés ne reviennent que sur demande explicite",()=>{
 
 /* ---- Refonte de l'interface mobile ------------------------------------- */
 
-test("l'en-tête fixe porte le contexte, l'intention et les catégories",()=>{
+test("l'en-tête est une pastille flottante, la carte domine",()=>{
   assert.match(html,/<header id="appHeader"/);
-  assert.match(html,/id="btnMaintenant"/);
+  // flottant, pas une bande blanche pleine largeur qui repousse la carte
+  assert.match(html,/#appHeader\{position:absolute;top:calc\(var\(--safe-t\) \+ 10px\);left:12px;right:12px/);
+  assert.match(html,/#appHeader\{[^}]*background:none/s);
   assert.match(html,/id="hdVille"/);
-  assert.match(html,/placeholder="Que veux-tu faire maintenant/);
+  assert.match(html,/id="btnLoupe"/);
   assert.match(html,/id="btnNotifs"/);
-  assert.match(html,/id="btnFiltres"/);
-  // l'ancien gros bouton noir et la barre basse ont disparu
+  // la recherche permanente a disparu de l'en-tête
+  assert.doesNotMatch(html,/<header id="appHeader"[\s\S]{0,900}<input id="rech"/);
   assert.doesNotMatch(html,/id="btnQuoi"/);
-  assert.doesNotMatch(html,/id="barreBas"/);
 });
 
 test("la carte est un décor : ni zoom Leaflet, ni attribution posée dessus",()=>{
@@ -289,7 +290,7 @@ test("les étiquettes de la carte gèrent leurs collisions",()=>{
 });
 
 test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
-  assert.match(html,/#appHeader\{[^}]*padding:calc\(var\(--safe-t\) \+ 8px\) 16px 10px/s);
+  assert.match(html,/#rechercheOverlay\{[^}]*padding:calc\(var\(--safe-t\) \+ 10px\) 16px 14px/s);
   assert.match(html,/\.fb-corps\{[^}]*padding:0 16px/s);
   assert.match(html,/\.rond-flottant\{position:absolute;right:16px/);
 });
@@ -465,4 +466,39 @@ test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
   assert.match(html,/const parFavoris = \[\.\.\.favorisEnMemoire\.values\(\)\]/);
   assert.match(html,/window\.requestIdleCallback \|\| \(f=>setTimeout\(f, 1200\)\)/);
   assert.match(html,/prechargerCategories\(\);/);
+});
+
+/* ---- Carte dominante ---------------------------------------------------- */
+
+test("la recherche est un bouton loupe, pas une barre permanente",()=>{
+  assert.match(html,/id="btnLoupe" aria-label="Rechercher"/);
+  assert.match(html,/function ouvrirRecherche/);
+  assert.match(html,/function fermerRecherche/);
+  assert.match(html,/<div id="rechercheOverlay" hidden/);
+  // les catégories vivent dans l'overlay : l'écran de départ reste nu
+  assert.match(html,/<div id="rechercheOverlay"[\s\S]{0,900}id="raccourcis" class="pills"/);
+});
+
+test("une recherche géographique déplace la carte et montre peu de résultats",()=>{
+  assert.match(html,/function ressembleAUneZone/);
+  assert.match(html,/function rechercheGeographique/);
+  assert.match(html,/map\.flyTo\(pos, 15/);
+  assert.match(html,/const RESULTATS_RECHERCHE_INITIAUX = 5;/);
+  assert.match(html,/\.slice\(0, RESULTATS_RECHERCHE_INITIAUX\)/);
+  // on ne géocode pas « pizza »
+  assert.match(html,/if\(categorieRecherchee\(texte\) \|\| cuisineRecherchee\(texte\)\) return false;/);
+});
+
+test("« Autour de moi » n'apparaît que lorsqu'on s'est éloigné",()=>{
+  assert.match(html,/id="btnAutourDeMoi"/);
+  assert.match(html,/const ECART_HORS_ZONE = 3000;/);
+  assert.match(html,/function carteHorsPosition/);
+  assert.match(html,/retour\.hidden = !map \|\| modePose \|\| modeNav \|\| !carteHorsPosition\(\)/);
+});
+
+test("la navigation nomme le produit",()=>{
+  for(const t of ["explorer","maintenant","creer","favoris","profil"])
+    assert.match(html,new RegExp('data-nb="'+t+'"'), t);
+  assert.match(html,/Autour de moi\n  <\/button>/);
+  assert.match(html,/Pour toi\n  <\/button>/);
 });
