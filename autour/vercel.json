@@ -7,14 +7,12 @@
       ]
     },
     {
-      "comment": "Jeux de démarrage par zone : c'est ce qui s'affiche au tout premier lancement, avant toute API. Un jour dans le navigateur, une semaine au CDN, et une version périmée vaut mieux qu'un écran vide pendant qu'elle se rafraîchit.",
       "source": "/zones/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000" }
       ]
     },
     {
-      "comment": "Les fonctions posent elles-mêmes leur Cache-Control (s-maxage + stale-while-revalidate) : on ne l'écrase pas ici, sinon le relais Overpass perdrait tout l'intérêt d'être mutualisé.",
       "source": "/manifest.json",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }

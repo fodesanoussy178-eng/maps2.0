@@ -59,6 +59,11 @@ du réseau, avec un cache CDN par zone :
 | `/api/lieux` | `s-maxage=86400` (un jour) | `stale-while-revalidate=604800` (une semaine) |
 | `/api/commune` | `s-maxage=2592000` (un mois) | un mois |
 
+> `vercel.json` est validé par un schéma au déploiement : aucune clé hors
+> schéma n'y est acceptée, pas même un `comment`. C'est pourquoi les règles de
+> cache y figurent nues, et pourquoi elles sont expliquées ici. Un test
+> (`tests/cache.test.mjs`) vérifie qu'aucune clé étrangère ne s'y glisse.
+
 La clé de cache est l'URL, donc la requête, donc la zone. **La première
 personne d'un quartier paie l'attente une fois, côté serveur, pour tout le
 monde et pour la semaine.** Les suivantes reçoivent la réponse en un

@@ -40,6 +40,28 @@ test("le HTML se revalide, les modules sont immuables", () => {
     "la règle .js doit passer avant la règle générale");
 });
 
+/* `vercel.json` est validé par un schéma au déploiement : une clé inconnue —
+   un `comment` bien intentionné, par exemple — fait échouer le build entier.
+   Le raisonnement derrière chaque règle vit donc dans docs/demarrage-a-froid.md,
+   et ce test garde la porte. */
+test("vercel.json ne porte aucune clé hors schéma", () => {
+  const clesRegle = new Set(["source", "headers", "has", "missing"]);
+  vercel.headers.forEach((regle, i) => {
+    Object.keys(regle).forEach((k) => assert.ok(clesRegle.has(k),
+      "headers[" + i + "] : « " + k + " » n'existe pas dans le schéma Vercel"));
+    regle.headers.forEach((h) => {
+      assert.deepEqual(Object.keys(h).sort(), ["key", "value"]);
+    });
+  });
+  vercel.rewrites.forEach((regle, i) => {
+    Object.keys(regle).forEach((k) => assert.ok(
+      ["source", "destination", "has", "missing"].includes(k),
+      "rewrites[" + i + "] : « " + k + " » n'existe pas dans le schéma Vercel"));
+  });
+  // et rien d'autre à la racine que ce que ce fichier déclare volontairement
+  assert.deepEqual(Object.keys(vercel).sort(), ["headers", "rewrites"]);
+});
+
 test("chaque module est appelé avec l’empreinte de son contenu", async () => {
   // sans ça, le cache immuable garderait indéfiniment l'ancien fichier :
   // c'est exactement le problème Safari qu'on ne veut pas réintroduire
