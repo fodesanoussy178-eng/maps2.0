@@ -327,6 +327,70 @@ input{font-family:inherit;font-size:16px}
   padding:2px 0 12px}
 .rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
 
+/* ---- Aide : partir du problème -------------------------------------------
+   Une identité reconnaissable, mais pas une seconde application : mêmes
+   pastilles, mêmes cartes, mêmes règles. Ce qui change, c'est l'ordre —
+   la question d'abord, les structures ensuite. */
+.ab{display:block}
+.ab-titre{margin:0 0 14px;font-size:20px;font-weight:800;letter-spacing:-.02em}
+.ab-grille{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.ab-besoin{min-height:60px;display:flex;align-items:center;gap:10px;
+  padding:12px 13px;border:1px solid var(--bord);border-radius:14px;background:#fff;
+  text-align:left;font-size:14.5px;font-weight:700;color:var(--ink)}
+.ab-besoin em{font-style:normal;font-size:21px;line-height:1}
+.ab-besoin b{font-weight:700;min-width:0}
+.ab-urgence{width:100%;min-height:60px;margin-top:10px;display:flex;flex-wrap:wrap;
+  align-items:center;gap:10px;padding:12px 14px;border:1.5px solid #B82A3A;
+  border-radius:14px;background:#fff;text-align:left;color:#B82A3A}
+.ab-urgence em{font-style:normal;font-size:21px;line-height:1}
+.ab-urgence b{font-size:15px;font-weight:800}
+.ab-urgence span{flex-basis:100%;font-size:12.5px;font-weight:600;color:var(--ink2)}
+.ab-sous{margin:18px 0 8px;font-size:14px;font-weight:650;color:var(--ink)}
+.ab-form{display:flex;gap:8px}
+.ab-form input{flex:1;min-width:0;min-height:48px;padding:12px 14px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:15px;color:var(--ink)}
+.ab-form input::placeholder{color:#939D96}
+.ab-ok{flex-shrink:0;min-height:48px;padding:0 16px;border:0;border-radius:12px;
+  background:var(--ink);color:#fff;font-size:14.5px;font-weight:700}
+.ab-vie{margin:10px 0 0;font-size:12px;line-height:1.4;color:var(--ink2)}
+
+.as-tete{padding:2px 0 10px}
+.as-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.as-liste{display:flex;flex-direction:column;gap:10px}
+.ac-aide{padding:13px 14px;border:1px solid var(--bord);border-radius:16px;background:#fff}
+.aa-tete{display:flex;align-items:center;gap:9px}
+.aa-emoji{font-size:19px;line-height:1}
+.aa-nom{flex:1;min-width:0;font-size:15.5px;font-weight:750;line-height:1.25}
+.aa-quoi{margin:7px 0 0;font-size:13.5px;line-height:1.45;color:var(--ink)}
+.aa-quand{margin:7px 0 0;font-size:13.5px;font-weight:750;color:var(--ink2)}
+.aa-quand.chaud{color:#1B7F4C}
+.aa-pourquoi{margin:8px 0 0;padding:8px 10px;border-radius:10px;
+  background:rgba(124,58,237,.07);font-size:13px;line-height:1.45;color:var(--ink)}
+.aa-pourquoi b{font-weight:750}
+.aa-cond{margin:7px 0 0;font-size:12.5px;line-height:1.4;color:var(--ink2)}
+.aa-cond i{display:block;margin-top:2px;font-style:normal;font-size:11px;
+  letter-spacing:.03em;text-transform:uppercase;color:var(--ink2);opacity:.8}
+.aa-hors{margin:7px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+.aa-bas{margin:8px 0 0;font-size:12.5px;color:var(--ink2)}
+.aa-verif{margin:6px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+.as-plus{width:100%;min-height:48px;margin-top:12px;border:1px solid var(--bord);
+  border-radius:12px;background:#fff;font-size:14.5px;font-weight:700;color:var(--ink)}
+.as-vide-titre{margin:0 0 4px;font-size:16px;font-weight:750;line-height:1.35}
+.as-vide-sous{margin:0 0 14px;font-size:13.5px;color:var(--ink2)}
+.as-vide-actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Le bloc discret de l'accueil : présent, jamais envahissant. */
+.aide-bloc{display:flex;align-items:center;gap:11px;width:100%;margin:0 0 12px;
+  padding:12px 13px;border:1px solid var(--bord);border-radius:14px;
+  background:rgba(184,42,58,.05);text-align:left}
+.aide-bloc em{font-style:normal;font-size:20px;line-height:1}
+.aide-bloc span{flex:1;min-width:0}
+.aide-bloc b{display:block;font-size:14.5px;font-weight:750;color:var(--ink)}
+.aide-bloc i{display:block;font-style:normal;font-size:12.5px;color:var(--ink2)}
+.aide-bloc u{flex-shrink:0;text-decoration:none;font-size:13px;font-weight:700;color:#B82A3A}
+@media (min-width:768px){ .ab-grille{grid-template-columns:repeat(3,1fr)} }
+
 /* ---- Ce qu'Autour a compris d'une phrase --------------------------------
    Des puces retirables : une interprétation fausse doit pouvoir être défaite
    d'un geste, sans reformuler toute la phrase. */
@@ -1203,6 +1267,16 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
     Explorer
   </button>
+  <!-- Aide n'est plus un cœur flottant sur la carte : c'est l'une des deux
+       questions auxquelles Autour répond. « Qu'est-ce qui se passe autour de
+       moi » et « qu'est-ce qui peut m'aider autour de moi » méritent la même
+       place. Icône de soutien (deux mains), et le mot écrit. -->
+  <button class="nb nb-aide" data-nb="aide">
+    <!-- Une bouée, pas un cœur : « Favoris » en porte déjà un, et deux cœurs
+         côte à côte ne se distinguent pas. Une bouée dit « secours ». -->
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6"/><path d="M5.6 5.6l3.9 3.9M18.4 5.6l-3.9 3.9M5.6 18.4l3.9-3.9M18.4 18.4l-3.9-3.9"/></svg>
+    Aide
+  </button>
   <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
     <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
     Créer
@@ -1253,7 +1327,9 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="availability.js?v=fefb49c1"></script>
-<script src="comprendre.js?v=634a6599"></script>
+<script src="comprendre.js?v=674ea341"></script>
+<script src="donnees.js?v=9024fc47"></script>
+<script src="aide.js"></script>
 <script src="signaux.js?v=25f652d6"></script>
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=4f3ec1ed"></script>
@@ -1275,6 +1351,8 @@ const TEMPS = window.AutourTemps;
 const EXPLIQUE = window.AutourExplications;
 const COMPRENDRE = window.AutourComprendre;
 const SIGNAUX = window.AutourSignaux;
+const DONNEES = window.AutourDonnees;
+const AIDE = window.AutourAide;
 
 const journal = {
   info(...a){ if(window.__autourDebug) console.info(...a); },
@@ -5780,6 +5858,71 @@ async function descriptifGoogle(idGoogle){
   }catch(e){ console.error("Descriptif Google:", e); return ""; }
 }
 
+/* ---- Enrichir, mais seulement ce qui va être montré ----------------------
+   Demander le prix et les horaires de Google pour tous les lieux d'une zone,
+   c'est payer vingt fiches pour en afficher cinq — et facturer une formule
+   chère à chaque déplacement de carte. On n'enrichit donc que les MEILLEURS
+   candidats d'un classement, et seulement quand ce qui manque change vraiment
+   la réponse : inutile d'aller chercher un prix si personne n'a parlé de
+   budget.
+
+   Chaque lieu n'est demandé qu'une fois, et le résultat est conservé. */
+const CHAMPS_ENRICHI = "id,priceLevel,priceRange,regularOpeningHours,currentOpeningHours";
+const enrichis = new Map();
+const MAX_ENRICHIS = 5;
+
+async function enrichirGoogle(idGoogle){
+  if(!CLE_GOOGLE || !idGoogle) return null;
+  if(enrichis.has(idGoogle)) return enrichis.get(idGoogle);
+  try{
+    const r = await fetch("https://places.googleapis.com/v1/places/"+
+      encodeURIComponent(idGoogle)+"?languageCode=fr",
+      {headers:{"X-Goog-Api-Key":CLE_GOOGLE, "X-Goog-FieldMask":CHAMPS_ENRICHI}});
+    if(!r.ok){
+      journal.warn("Enrichissement Google: HTTP", r.status);
+      if(r.status < 500) enrichis.set(idGoogle, null);   // inutile de réessayer
+      return null;
+    }
+    const j = await r.json();
+    const vu = DONNEES ? DONNEES.maintenant() : new Date().toISOString();
+    const fiche = {
+      prixN: NIVEAU_PRIX[j.priceLevel],
+      prixMin: j.priceRange && j.priceRange.startPrice ? Number(j.priceRange.startPrice.units) : null,
+      prixMax: j.priceRange && j.priceRange.endPrice ? Number(j.priceRange.endPrice.units) : null,
+      horaires: (j.regularOpeningHours||{}).weekdayDescriptions || null,
+      ouvert: j.currentOpeningHours ? j.currentOpeningHours.openNow : undefined,
+      vuLe: vu,
+    };
+    enrichis.set(idGoogle, fiche);
+    return fiche;
+  }catch(e){ console.error("Enrichissement Google:", e); return null; }
+}
+
+/* Complète les premiers résultats d'un classement, puis redessine. Rien
+   n'attend : la liste est déjà à l'écran quand les compléments arrivent. */
+function enrichirCandidats(classement, intention, redessiner){
+  if(!CLE_GOOGLE || !DONNEES || !Array.isArray(classement)) return;
+  const aDemander = [];
+  for(const l of classement){
+    if(aDemander.length >= MAX_ENRICHIS) break;
+    if(!l.idGoogle || enrichis.has(l.idGoogle)) continue;
+    // ce qui manque ET qui a été demandé : rien d'autre ne justifie un appel
+    if(!DONNEES.manque(l, intention, {disponibilite:(x,t)=>dispoDe(x, null, t)}).length) continue;
+    aDemander.push(l);
+  }
+  if(!aDemander.length) return;
+  journal.info("Enrichissement Google :", aDemander.length, "candidat(s) sur", classement.length);
+  Promise.all(aDemander.map(l=>enrichirGoogle(l.idGoogle).then(f=>{
+    if(!f) return;
+    const cible = lieux.find(x=>x.id === l.id) || l;
+    if(f.prixN != null) cible.prixN = f.prixN;
+    if(f.prixMin != null && cible.prix == null) cible.prix = f.prixMin;
+    if(f.horaires && !cible.horaires) cible.horaires = f.horaires;
+    if(f.ouvert !== undefined) cible.ouvert = f.ouvert;
+    cible.prixVuLe = f.vuLe; cible.horairesVusLe = f.vuLe;
+  }))).then(()=>{ if(typeof redessiner === "function") redessiner(); });
+}
+
 /* Recherche libre chez Google. OpenStreetMap ignore beaucoup d'équipements
    publics (une mission locale y est rarement cartographiée) alors que Google
    sait où ils sont : on l'interroge quand notre propre base ne suffit pas. */
@@ -6570,16 +6713,29 @@ const SET_AIDE  = new Set(CATS_AIDE);
    alimentaire » est un intitulé d'administration ; « manger gratuitement ou
    à petit prix » est ce que la personne cherche. Le second se comprend sans
    avoir jamais utilisé l'app. */
-const SOUS_AIDE = [
-  { id:"manger",    emoji:"🍽", label:"Manger gratuitement",  cats:["alimentaire","collecte","food"] },
-  { id:"dormir",    emoji:"🛏", label:"Trouver un hébergement", cats:["hebergement"] },
-  { id:"asso",      emoji:"🤝", label:"Parler à une association", cats:["asso"] },
-  { id:"sante",     emoji:"🏥", label:"Santé",                cats:["sante"] },
-  { id:"emploi",    emoji:"💼", label:"Emploi et droits",     cats:["emploi","asso","mairie"] },
-  { id:"urgence",   emoji:"🚨", label:"Urgence",              cats:["hebergement","sante","asso"],
-    urgentSeul:true },
-];
-let sousAide = null;          // id du sous-filtre actif, ou null
+/* Les besoins, dans les mots de tout le monde. Ils viennent de `aide.js` :
+   une seule table, partagée par l'écran, la recherche libre et les tests.
+   L'ancienne liste posait la question autrement — « Parler à une association »,
+   « Emploi et droits » — c'est-à-dire par l'organigramme plutôt que par le
+   problème. On demande maintenant « de quoi as-tu besoin ? ». */
+const SOUS_AIDE = (AIDE ? AIDE.BESOINS : []).map(b=>({
+  id:b.id, emoji:b.emoji, label:b.label, cats:b.cats,
+}));
+/* L'urgence n'est pas un besoin de plus : c'est une gravité. Elle traverse
+   tous les besoins et remonte ce qui accueille sans rendez-vous. Elle garde
+   donc sa place, à part et au-dessus. */
+const AIDE_URGENCE = {id:"urgence", emoji:"🚨", label:"Urgence", urgentSeul:true,
+  cats:["hebergement","sante","asso","alimentaire"]};
+let sousAide = null;          // id du besoin actif, ou null
+/* Les besoins reconnus dans une phrase libre, et l'âge si la personne l'a dit
+   d'elle-même. Rien de plus n'est retenu : pas de profil, pas de phrase. */
+let besoinsAide = [];
+let ageDeclare = null;
+
+function sousAideChoisi(){
+  if(sousAide === "urgence") return AIDE_URGENCE;
+  return sousAide ? SOUS_AIDE.find(x=>x.id===sousAide) : null;
+}          // id du sous-filtre actif, ou null
 
 /* Ce qu'on risque à ne pas trouver. Dormir dehors ou renoncer à des soins ne
    se compare pas à récupérer un vêtement : à distance égale, l'urgent passe. */
@@ -6845,7 +7001,7 @@ function typeEditorial(sousChoix){
 
 function categoriesClassementFeuille(){
   if(feuilleNiveau === "aide"){
-    const choix = sousAide && SOUS_AIDE.find(x=>x.id===sousAide);
+    const choix = sousAideChoisi();
     return choix ? choix.cats : CATS_AIDE;
   }
   const besoin = BESOIN_DE(feuilleNiveau);
@@ -6859,7 +7015,7 @@ function classementFeuille(){
   const centre = positionMoi || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
   let candidats = lieux.filter(nomExploitable);
   if(feuilleNiveau === "aide"){
-    const choix = sousAide && SOUS_AIDE.find(x=>x.id===sousAide);
+    const choix = sousAideChoisi();
     if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
   }
   const classement = rankResults(candidats,{
@@ -7006,6 +7162,7 @@ function majFeuille2(){
       blocOuRegarder()+
       chipsHTML()+
       ongletsTemps()+
+      blocAideAccueil()+
       (reco.length
         ? '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
             '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
@@ -7021,12 +7178,13 @@ function majFeuille2(){
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
     ).join("");
   }else if(feuilleNiveau === "aide"){
-    $("#fbTitre").textContent = "❤️ Trouver de l’aide";
-    retour.hidden = false;
-    corps.innerHTML = blocResultats()+'<p class="fb-section">Préciser mon besoin</p>'+SOUS_AIDE.map((x,i)=>
-      '<button class="bn'+(sousAide===x.id?" actif":"")+'" data-sa="'+x.id+'">'+
-      '<em>'+x.emoji+'</em><b>'+esc(x.label)+'</b></button>'
-    ).join("");
+    $("#fbTitre").textContent = "Aide";
+    retour.hidden = !sousAide;
+    /* On ne commence PAS par une carte de structures. Tant qu'aucun besoin
+       n'est choisi, l'écran pose une seule question — « de quoi as-tu
+       besoin ? » — et propose de l'écrire en toutes lettres. Les solutions
+       viennent après, jamais avant. */
+    corps.innerHTML = sousAide ? ecranSolutionsAide() : ecranBesoinsAide();
   }else{
     const b = BESOIN_DE(feuilleNiveau);
     if(!b){ fermerFeuille2(); return; }
@@ -7057,9 +7215,12 @@ function piedFeuille(){
     '</div>';
 }
 
+/* « Aucun résultat » est une impasse : ça dit à quelqu'un qu'il n'y a rien,
+   alors que ça veut dire qu'on n'a rien trouvé. La nuance compte, et les
+   sorties doivent être là. */
 function messageVide(type){
   return '<div class="fb-vide" data-vide="'+esc(type||"autre")+'">'+
-    'Aucun résultat trouvé à proximité.'+
+    'Je n’ai rien trouvé dans cette zone. Ça ne veut pas dire qu’il n’y a rien.'+
     '<div class="etat-vide-actions">'+
       '<button data-vide-action="5km">Élargir à 5 km</button>'+
       '<button data-vide-action="tout">Voir toutes les catégories</button>'+
@@ -7174,6 +7335,262 @@ function recommandationsAccueil(limite){
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
   return classement.slice(0, limite || 12);
+}
+
+/* ==================================================================== */
+/*  Aide : partir du problème                                            */
+/* ==================================================================== */
+
+/* Une phrase libre devient un ou plusieurs besoins normalisés, plus l'âge si
+   la personne l'a donné d'elle-même. La phrase, elle, n'est conservée nulle
+   part : ni journal, ni profil. C'est la seule façon honnête de traiter
+   « j'ai plus assez pour manger ». */
+function lancerBesoinAide(phrase){
+  if(!AIDE) return;
+  const trouves = AIDE.besoinsDepuisPhrase(phrase);
+  const age = AIDE.ageDepuisPhrase(phrase);
+  if(age != null) ageDeclare = age;
+  if(AIDE.estUrgent(phrase) && !trouves.length){
+    sousAide = "urgence"; besoinsAide = [];
+  }else if(trouves.length){
+    besoinsAide = trouves.slice(0,3).map(x=>x.id);
+    sousAide = besoinsAide[0];
+  }else{
+    // rien de reconnu : on ne devine pas, on montre les structures générales
+    besoinsAide = []; sousAide = "autre";
+    toast("Je n’ai pas bien compris. Voici les structures qui orientent.");
+  }
+  chargerAideSiBesoin();
+  majFeuille2(); reinitialiserScrollFeuille(); rendre();
+}
+
+function chargerAideSiBesoin(force){
+  if(!positionMoi) return;
+  if(force) aideChargeeAutour = null;
+  chargerAide(positionMoi[0], positionMoi[1]).then(()=>{
+    if(feuilleNiveau === "aide") majFeuille2();
+  }).catch(()=>{});
+}
+
+
+/* Un rappel discret sur l'accueil : Aide existe, et elle parle de problèmes
+   concrets. Une ligne, jamais un panneau — et seulement dans « Maintenant »,
+   là où l'on cherche ce qui est faisable tout de suite. */
+function blocAideAccueil(){
+  if(creneau !== "maintenant" || modeAide) return "";
+  return '<button class="aide-bloc" data-aide-accueil="1">'+
+    '<em>🤝</em><span><b>Besoin d’un coup de main&nbsp;?</b>'+
+    '<i>Manger, logement, travail, papiers, santé…</i></span>'+
+    '<u>Voir →</u></button>';
+}
+
+/* Écran 1 — la question, et rien d'autre. Dix besoins écrits comme on les
+   dit, plus l'urgence à part, plus un champ pour expliquer avec ses mots.
+   Aucune structure n'est nommée à ce stade : « CCAS » ne veut rien dire tant
+   qu'on n'a pas eu besoin d'un CCAS. */
+function ecranBesoinsAide(){
+  return '<section class="ab" data-testid="aide-besoins">'+
+    '<p class="ab-titre">De quoi as-tu besoin&nbsp;?</p>'+
+    '<div class="ab-grille">'+SOUS_AIDE.map(b=>
+      '<button class="ab-besoin" data-sa="'+esc(b.id)+'">'+
+        '<em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>').join("")+
+    '</div>'+
+    '<button class="ab-urgence" data-sa="urgence">'+
+      '<em>'+AIDE_URGENCE.emoji+'</em><b>C’est urgent</b>'+
+      '<span>Hébergement, santé, mise à l’abri</span></button>'+
+    '<p class="ab-sous">Ou explique-le simplement&nbsp;:</p>'+
+    '<form class="ab-form" id="formBesoin">'+
+      '<input id="champBesoin" type="search" enterkeyhint="search" autocomplete="off" '+
+        'placeholder="« j’ai 20 ans et je trouve pas de travail »" '+
+        'aria-label="Explique ce dont tu as besoin">'+
+      '<button type="submit" class="ab-ok">Chercher</button>'+
+    '</form>'+
+    '<p class="ab-vie">Ce que tu écris ici reste sur ton téléphone. '+
+      'Autour n’en garde que le besoin (« manger », « travail »), jamais ta phrase.</p>'+
+    '</section>';
+}
+
+/* Écran 2 — les solutions. Permanentes ET temporaires dans la même liste :
+   une distribution ce soir vaut mieux qu'un guichet ouvert demain, et c'est
+   le moteur temporel existant qui les date, pas un second moteur. */
+function ecranSolutionsAide(){
+  const besoin = sousAideChoisi();
+  const liste = solutionsAide();
+  const titre = besoin ? besoin.emoji+" "+besoin.label : "Aide";
+  if(!liste.length) return enteteBesoinAide(titre)+aucuneSolutionHTML();
+  return enteteBesoinAide(titre)+
+    '<div class="as-liste" data-testid="primary-results">'+
+      liste.map(carteAide).join("")+'</div>'+
+    (liste.length >= 3 ? '<button class="as-plus" data-as-plus="1">Voir plus loin</button>' : "");
+}
+
+function enteteBesoinAide(titre){
+  const besoins = besoinsAide.length ? besoinsAide : (sousAide ? [sousAide] : []);
+  const puces = besoins.map(id=>{
+    const b = AIDE && AIDE.BESOIN_DE(id);
+    return b ? '<button class="cp" data-besoin-off="'+esc(id)+'">'+esc(b.label)+
+      '<i aria-hidden="true">✕</i></button>' : "";
+  }).join("")+(ageDeclare != null
+    ? '<button class="cp" data-besoin-off="age">'+ageDeclare+' ans<i aria-hidden="true">✕</i></button>' : "");
+  return '<div class="as-tete"><strong>'+esc(titre)+'</strong></div>'+
+    (puces ? '<div class="cps"><span class="cps-titre">Compris&nbsp;:</span>'+puces+'</div>' : "");
+}
+
+/* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
+   contraintes dures, distance — plus la pertinence du besoin. */
+function solutionsAide(limite){
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!centre || !AIDE) return [];
+  const besoins = besoinsAide.length ? besoinsAide : (sousAide && sousAide !== "urgence" ? [sousAide] : []);
+  const choix = sousAideChoisi();
+  let candidats = lieux.filter(nomExploitable);
+  if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
+
+  const classement = rankResults(candidats, {
+    intent:"aide",
+    intention:intentionCourante,
+    categories:categoriesClassementFeuille(),
+    position:centre,
+    now:Date.now(),
+    // en aide, on ne cache jamais ce qui est fermé : savoir qu'un guichet
+    // ouvre demain à 9 h est une information, pas un déchet
+    nowOnly:false,
+    radius:Math.max(rayonRecherche, 6000),
+    distanceBetween:distanceM,
+    etaFor:l=>etaConnu(l, centre),
+  });
+
+  // pertinence du besoin : elle passe devant tout le reste du tri
+  const notes = classement.map(l=>{
+    /* À poids égal, la raison la plus précise gagne : « tu cherches du
+       travail » explique mieux la présence d'une Mission locale que « tu es
+       jeune ». On note donc chaque besoin, et on garde le meilleur couple
+       (poids, précision). */
+    const vus = besoins.map(id=>{
+      const p = AIDE.pertinence(l, id, {large:true});
+      return {poids:p.poids, raison:p.raison, sur:!!p.sur,
+              precis: p.sur || (id !== "jeunes" && id !== "autre")};
+    }).filter(x=>x.poids > 0)
+      .sort((a,b)=> b.poids - a.poids || (b.precis?1:0) - (a.precis?1:0));
+    const meilleur = vus[0];
+    if(!besoins.length) return {l, poids: SET_AIDE.has(l.cat) ? .5 : 0, raison:"", sur:false};
+    return {l, poids: meilleur ? meilleur.poids : 0,
+            raison: meilleur ? meilleur.raison : "", sur: !!(meilleur && meilleur.sur)};
+  }).filter(x=>x.poids > 0);
+
+  notes.sort((a,b)=>
+    b.poids - a.poids ||
+    // une opportunité qui a lieu maintenant passe devant un guichet fermé ;
+    // un rendez-vous dans trois mois passe derrière tout le monde
+    rangTemporelAide(b.l) - rangTemporelAide(a.l) ||
+    (a.l.rankDistance||0) - (b.l.rankDistance||0));
+
+  return notes.slice(0, limite || 5)
+    .map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
+}
+
+/* Le rang temporel d'une solution d'aide, du plus utile au moins utile :
+     3 — ça a lieu maintenant, ou c'est ouvert ;
+     2 — c'est un lieu permanent qui rouvrira ;
+     1 — c'est un événement à venir dans les jours qui viennent ;
+     0 — c'est un événement lointain, ou on ne sait rien.
+   Un forum emploi dans trois mois ne doit pas passer devant une permanence
+   qui ouvre demain matin. */
+function rangTemporelAide(l){
+  if(estTemporaire(l)){
+    const etat = statutTemps(l);
+    if(TEMPS.estMaintenant(etat.statut)) return 3;
+    const section = TEMPS.sectionTemporelle(etat, Date.now());
+    return section === "a_venir" ? 0 : 1;
+  }
+  const d = dispoDe(l);
+  if(d && d.isOpenNow) return 3;
+  if(d && d.status !== "unknown") return 2;
+  return 2;                       // horaires inconnus : un lieu reste un lieu
+}
+
+function ouvertOuImminent(l){
+  if(estTemporaire(l)) return TEMPS.estMaintenant(statutTemps(l).statut);
+  const d = dispoDe(l);
+  return !!(d && d.isOpenNow);
+}
+
+/* Une carte d'aide répond à sept questions d'un coup d'œil : c'est quoi,
+   pourquoi c'est proposé, est-ce ouvert, est-ce pour moi, où, gratuit,
+   et à quelle condition. Rien n'y est inventé : ce qui n'est pas connu est
+   annoncé comme tel. */
+function carteAide(l){
+  favorisEnMemoire.set(cleFavori(l), l);
+  const c = CATS[l.cat] || {emoji:"🤝"};
+  const eph = estTemporaire(l);
+  const quand = eph
+    ? TEMPS.libelleTemporel(l, Date.now(), {disponibilite:(x,t)=>dispoDe(x, null, t)})
+    : libelleOuverture(l);
+  const etat = eph ? statutTemps(l).statut : null;
+  const chaud = eph ? TEMPS.estMaintenant(etat) : ouvertOuImminent(l);
+
+  const expl = EXPLIQUE ? EXPLIQUE.explication(l) : null;
+  const cond = AIDE.conditionDe(l);
+  const pour = AIDE.convient(l, {age:ageDeclare});
+  const dist = positionMoi ? formatDist(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng)) : "";
+  const eta = l.rankEta && Number.isFinite(l.rankEta.minutes) ? l.rankEta.minutes+" min" : "";
+
+  return '<div class="ac-aide" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
+    '<div class="aa-tete"><span class="aa-emoji">'+c.emoji+'</span>'+
+      '<span class="aa-nom">'+esc(l.titre)+'</span>'+boutonCoeur(l)+'</div>'+
+    (expl && expl.texte
+      ? '<p class="aa-quoi">'+esc(EXPLIQUE.resumeCourt(l, 150))+'</p>' : '')+
+    '<p class="aa-quand'+(chaud?' chaud':'')+'">'+esc(quand)+
+      (dist ? ' · '+esc(eta || dist) : '')+'</p>'+
+    /* Une correspondance de réseau est une certitude ; une simple parenté de
+       catégorie n'en est pas une, et la phrase doit le dire. Sans cette
+       nuance, « ce lieu répond à ton besoin » se lit comme une promesse. */
+    (l.aideRaison
+      ? '<p class="aa-pourquoi"><b>'+(l.aideSur
+          ? 'Pourquoi c’est proposé&nbsp;:' : 'Peut aider, à vérifier&nbsp;:')+'</b> '+esc(l.aideRaison)+
+        (AIDE.pourquoi(l, besoinsAide, {age:ageDeclare}).includes("ans")
+          ? " " + esc(AIDE.pourquoi(l, besoinsAide, {age:ageDeclare}).split(". ").pop()) : "")+'</p>' : '')+
+    (cond ? '<p class="aa-cond">'+esc(cond.texte)+
+      '<i>'+(cond.source === "reseau" ? "En général, dans ce réseau" : "Source : "+cond.source)+'</i></p>' : '')+
+    (pour === false ? '<p class="aa-hors">Ce réseau ne correspond pas à l’âge que tu as indiqué.</p>' : '')+
+    '<p class="aa-bas">'+(l.gratuit !== false ? 'Gratuit · ' : '')+esc(l.adresse||"")+
+      (l.tel ? ' · <a href="tel:'+esc(String(l.tel).replace(/\s/g,""))+'">Appeler</a>' : '')+'</p>'+
+    (fiableAide(l) ? '' : '<p class="aa-verif">À vérifier avant de se déplacer.</p>')+
+    '</div>';
+}
+
+/* Ce qu'on sait vraiment de l'ouverture d'un lieu permanent. */
+function libelleOuverture(l){
+  const d = dispoDe(l);
+  if(!d || d.status === "unknown") return "Horaires non renseignés";
+  if(d.status === "permanently_closed") return "Définitivement fermé";
+  if(d.isOpenNow) return d.closesAtTime ? "Ouvert jusqu’à "+d.closesAtTime : "Ouvert";
+  if(d.opensAtTime) return d.reason || ("Ouvre à "+d.opensAtTime);
+  return "Fermé";
+}
+
+/* Une information est fiable quand elle vient d'une source datée et sûre.
+   À défaut, on le dit — plutôt que d'envoyer quelqu'un devant une porte
+   close avec l'assurance du contraire. */
+function fiableAide(l){
+  if(!DONNEES) return true;
+  const h = DONNEES.normaliserHoraires(l, Date.now(), (x,t)=>dispoDe(x, null, t));
+  return h.confidence >= .8;
+}
+
+/* Aucun résultat n'est jamais « aucun résultat » : c'est une impasse. On dit
+   ce qu'on n'a pas trouvé, et on propose quatre sorties réelles. */
+function aucuneSolutionHTML(){
+  return '<div class="as-vide" data-testid="aide-vide">'+
+    '<p class="as-vide-titre">Je n’ai pas trouvé de solution suffisamment fiable '+
+      'autour de cette zone.</p>'+
+    '<p class="as-vide-sous">Ça ne veut pas dire qu’il n’y en a pas.</p>'+
+    '<div class="as-vide-actions">'+
+      '<button class="pdep-btn pdep-fort" data-as-plus="1">Chercher plus loin</button>'+
+      '<button class="pdep-btn" data-as="ville">Changer de ville</button>'+
+      '<button class="pdep-btn" data-as="general">Voir les structures générales</button>'+
+      '<button class="pdep-btn" data-as="reformuler">Reformuler mon besoin</button>'+
+    '</div></div>';
 }
 
 /* ---- Ce qu'Autour a compris ---------------------------------------------
@@ -7384,6 +7801,46 @@ function brancherFeuille2(){
   });
 
   corps.querySelectorAll("[data-chip]").forEach(b=>b.onclick=()=>retirerChip(b.dataset.chip));
+
+  corps.querySelectorAll("[data-aide-accueil]").forEach(b=>b.onclick=()=>{
+    if(!modeAide) basculerAide();
+    ouvrirFeuille2("aide");
+  });
+
+  /* ---- Aide : le besoin d'abord ---- */
+  corps.querySelectorAll("[data-sa]").forEach(b=>b.onclick=()=>{
+    sousAide = b.dataset.sa;
+    besoinsAide = sousAide === "urgence" ? [] : [sousAide];
+    chargerAideSiBesoin();
+    majFeuille2(); reinitialiserScrollFeuille(); rendre();
+  });
+  const form = $("#formBesoin");
+  if(form) form.onsubmit = (e)=>{
+    e.preventDefault();
+    const champ = $("#champBesoin");
+    const phrase = (champ && champ.value || "").trim();
+    if(!phrase) return;
+    if(champ) champ.blur();
+    lancerBesoinAide(phrase);
+  };
+  corps.querySelectorAll("[data-besoin-off]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.besoinOff;
+    if(id === "age"){ ageDeclare = null; }
+    else {
+      besoinsAide = besoinsAide.filter(x=>x !== id);
+      if(sousAide === id) sousAide = besoinsAide[0] || null;
+    }
+    majFeuille2();
+  });
+  corps.querySelectorAll("[data-as-plus]").forEach(b=>b.onclick=()=>{
+    elargirZone(); chargerAideSiBesoin(true); majFeuille2();
+  });
+  corps.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{
+    const quoi = b.dataset.as;
+    if(quoi === "ville"){ ouvrirRecherche(); const c=$("#rech"); if(c) c.placeholder = "Dans quelle ville ?"; return; }
+    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; majFeuille2(); return; }
+    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; majFeuille2(); return; }
+  });
 
   // les quatre groupes de temps : un seul geste, aucune page de plus
   corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
@@ -7605,7 +8062,9 @@ function majFiltres(){
    mode n'est pas demandé : l'ouverture de l'app ne paie pas ce mode. */
 function basculerAide(){
   modeAide = !modeAide;
+  // on repart toujours de la question : « de quoi as-tu besoin ? »
   sousAide = null;
+  besoinsAide = [];
   document.body.classList.toggle("aide", modeAide);
 
   // on sort de toute sélection en cours : le mode Aide repart d'une page nette
@@ -7794,6 +8253,13 @@ function interpreter(phrase){
 
   act.creneau = st.horaire.creneau;
   act.dit = st.chips.filter(c=>c.type !== "zone").map(c=>c.label);
+  /* Ce que personne n'a compris : on le compte, localement, pour savoir quels
+     synonymes ajouter. Seul le résidu est noté — jamais la phrase.
+
+     Et jamais en mode Aide : « j'ai plus assez pour manger » décrit une
+     situation personnelle, pas une requête à optimiser. Le besoin normalisé
+     (`alimentation`) suffit à faire le travail, et il ne s'écrit nulle part. */
+  if(st.reste && !modeAide) COMPRENDRE.noterReste(st.reste);
   return act;
 }
 
@@ -8415,7 +8881,12 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
     return;
   }
   $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
-  if(id === "explorer"){ fermerFeuille2(); ouvrirAccueilFeuille(); return; }
+  if(id === "explorer"){ if(modeAide) basculerAide(); fermerFeuille2(); ouvrirAccueilFeuille(); return; }
+  if(id === "aide"){
+    // on repart toujours de la question, jamais d'une liste de structures
+    if(!modeAide) basculerAide(); else { sousAide = null; besoinsAide = []; }
+    ouvrirFeuille2("aide"); return;
+  }
   if(id === "creer"){ retourFormulaire=false; ouvrirCreation(); return; }
   if(id === "favoris"){ ouvrirFavoris(); return; }
   if(id === "profil"){ ouvrirCanaux(); return; }

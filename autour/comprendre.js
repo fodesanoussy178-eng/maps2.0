@@ -467,9 +467,75 @@
     return copie;
   }
 
+  /* ---- Le journal de ce qui n'est pas compris -----------------------------
+     Pour savoir quels synonymes ajouter, il faut savoir ce que les gens
+     écrivent et que l'ontologie rate. On ne journalise donc QUE `reste` —
+     le résidu, une fois retirés les mots compris et les mots outils — et
+     jamais la phrase entière.
+
+     Trois garde-fous, parce qu'un résidu peut contenir un nom propre :
+       · rien ne quitte l'appareil. Le journal vit en localStorage, il n'est
+         envoyé nulle part, et il n'y a pas de serveur pour le recevoir ;
+       · on compte les occurrences, on ne garde pas d'horodatage précis ni
+         d'ordre — un journal n'est pas un historique de navigation ;
+       · un fragment qui ressemble à un identifiant (chiffres, arobase,
+         adresse) n'est pas retenu du tout.
+
+     Ce qu'on en fait : `AutourComprendre.journalReste()` rend le décompte,
+     trié. C'est la mesure qui dira si le parser suffit ou non. */
+  const CLE_JOURNAL = "autour.restes";
+  const JOURNAL_MAX = 200;                 // entrées distinctes conservées
+  const RESTE_MAX = 40;                    // caractères par fragment
+
+  // ce qui ne doit jamais entrer dans le journal
+  const SENSIBLE = /\d|@|https?:|\brue\b|\bavenue\b|\bboulevard\b|\bimpasse\b|\bplace\b/;
+
+  function lireJournal() {
+    try {
+      const brut = root.localStorage && root.localStorage.getItem(CLE_JOURNAL);
+      const j = brut ? JSON.parse(brut) : null;
+      return j && typeof j === "object" ? j : {};
+    } catch (e) { return {}; }
+  }
+
+  function noterReste(reste) {
+    const brut = String(reste == null ? "" : reste);
+    // on regarde le texte AVANT normalisation : `sansAccents` retire « @ » et
+    // les points, ce qui aurait laissé passer une adresse électronique
+    if (SENSIBLE.test(brut.toLowerCase())) return false;
+    const t = sansAccents(brut);
+    if (!t || t.length < 3 || t.length > RESTE_MAX) return false;
+    if (SENSIBLE.test(t)) return false;
+    const journal = lireJournal();
+    journal[t] = (journal[t] || 0) + 1;
+    const cles = Object.keys(journal);
+    if (cles.length > JOURNAL_MAX) {
+      // on garde les plus fréquents : ce sont eux qui méritent un synonyme
+      const tries = cles.sort((a, b) => journal[b] - journal[a]).slice(0, JOURNAL_MAX);
+      const reduit = {};
+      tries.forEach((c) => { reduit[c] = journal[c]; });
+      try { root.localStorage.setItem(CLE_JOURNAL, JSON.stringify(reduit)); } catch (e) {}
+      return true;
+    }
+    try { root.localStorage.setItem(CLE_JOURNAL, JSON.stringify(journal)); } catch (e) {}
+    return true;
+  }
+
+  function journalReste() {
+    const journal = lireJournal();
+    return Object.entries(journal)
+      .map(([fragment, n]) => ({ fragment, n }))
+      .sort((a, b) => b.n - a.n || a.fragment.localeCompare(b.fragment));
+  }
+
+  function viderJournalReste() {
+    try { root.localStorage.removeItem(CLE_JOURNAL); } catch (e) {}
+  }
+
   root.AutourComprendre = Object.freeze({
     SIGNAUX, ONTOLOGIE, INTENTIONS,
     sansAccents, montant, contient,
     analyser, estExploitable, estVocabulaire, sansChip,
+    noterReste, journalReste, viderJournalReste,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

@@ -7,6 +7,8 @@ const temporel = await readFile(new URL("../temporel.js",import.meta.url),"utf8"
 const core = await readFile(new URL("../core.js",import.meta.url),"utf8");
 const comprendre = await readFile(new URL("../comprendre.js",import.meta.url),"utf8");
 const signaux = await readFile(new URL("../signaux.js",import.meta.url),"utf8");
+const aide = await readFile(new URL("../aide.js",import.meta.url),"utf8");
+const donnees = await readFile(new URL("../donnees.js",import.meta.url),"utf8");
 const explications = await readFile(new URL("../explications.js",import.meta.url),"utf8");
 
 test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",()=>{
@@ -29,11 +31,13 @@ test("la bottom sheet possède les trois layouts et des hauteurs dynamiques",()=
 });
 
 test("les résultats sont rendus avant la demande de précision",()=>{
-  const aide = html.indexOf('corps.innerHTML = blocResultats()+\'<p class="fb-section">Préciser mon besoin');
-  const standard = html.indexOf('corps.innerHTML = blocResultats()+\'<p class="fb-section">Préciser mon besoin',aide+1);
-  assert.ok(aide>0,"ordre Aide");
-  assert.ok(standard>aide,"ordre des autres intentions");
+  // pour les intentions ordinaires : les résultats, puis le choix de préciser
+  const standard = html.indexOf('corps.innerHTML = blocResultats()+\'<p class="fb-section">Préciser mon besoin');
+  assert.ok(standard>0,"ordre des intentions");
   assert.match(html,/data-testid="primary-results"/);
+  // l'aide, elle, fait exactement l'inverse et c'est voulu : on ne commence
+  // pas par des structures, on commence par la question
+  assert.match(html,/corps\.innerHTML = sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
 });
 
 test("les couches et actions tactiles essentielles ont un contrat central",()=>{
@@ -1230,4 +1234,82 @@ test("un signal ne s'invente jamais",()=>{
   assert.doesNotMatch(signaux,/PAR_CATEGORIE = Object\.freeze\(\{[^}]*wifi/);
   // une donnée publiée l'emporte sur une inférence
   assert.match(signaux,/une donnée publiée l'emporte toujours sur une inférence/);
+});
+
+/* ---- Aide : un pilier, pas une fonction secondaire ---------------------- */
+
+test("Aide est une entrée principale, nommée et distincte du cœur",()=>{
+  assert.match(html,/<button class="nb nb-aide" data-nb="aide">/);
+  // le mot est écrit : une icône seule ne dit pas ce que c'est
+  assert.match(html,/<\/svg>\s*\n\s*Aide\s*\n\s*<\/button>/);
+  // et ce n'est pas un cœur : Favoris en porte déjà un
+  assert.match(html,/Une bouée, pas un cœur/);
+  for(const t of ["explorer","aide","creer","favoris","profil"])
+    assert.match(html,new RegExp('data-nb="'+t+'"'), t);
+  // un rappel discret sur l'accueil, une ligne et pas un panneau
+  assert.match(html,/function blocAideAccueil\(\)\{/);
+  assert.match(html,/Besoin d’un coup de main/);
+  assert.match(html,/if\(creneau !== "maintenant" \|\| modeAide\) return "";/);
+});
+
+test("Aide commence par la question, jamais par des structures",()=>{
+  assert.match(html,/corps\.innerHTML = sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
+  assert.match(html,/<p class="ab-titre">De quoi as-tu besoin&nbsp;\?<\/p>/);
+  // entrer dans l'aide repart toujours de la question
+  assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsAide = \[\]; \}/);
+  assert.match(html,/\/\/ on repart toujours de la question/);
+  // dix besoins, dans les mots de tout le monde, plus l'urgence à part
+  assert.match(html,/const AIDE_URGENCE = \{id:"urgence"/);
+  assert.match(aide,/BESOINS = Object\.freeze\(\[/);
+});
+
+test("l'aide mélange structures permanentes et opportunités temporaires",()=>{
+  assert.match(html,/function rangTemporelAide\(l\)\{/);
+  // le moteur temporel existant date les deux : pas de second moteur
+  assert.match(html,/TEMPS\.estMaintenant\(etat\.statut\)\) return 3;/);
+  assert.match(html,/return section === "a_venir" \? 0 : 1;/);
+  assert.match(html,/rangTemporelAide\(b\.l\) - rangTemporelAide\(a\.l\)/);
+  // et la carte d'aide affiche la date réelle d'un événement
+  assert.match(html,/TEMPS\.libelleTemporel\(l, Date\.now\(\)/);
+});
+
+test("une carte d'aide dit pourquoi, à quelle condition, et ce qu'on ignore",()=>{
+  assert.match(html,/Pourquoi c’est proposé&nbsp;:/);
+  // une parenté de catégorie n'est pas une certitude, et la phrase le dit
+  assert.match(html,/'Peut aider, à vérifier&nbsp;:'/);
+  assert.match(html,/const cond = AIDE\.conditionDe\(l\);/);
+  assert.match(html,/En général, dans ce réseau/);
+  assert.match(html,/function fiableAide\(l\)\{/);
+  assert.match(html,/À vérifier avant de se déplacer\./);
+});
+
+test("aucune solution trouvée n'est jamais une impasse",()=>{
+  assert.match(html,/function aucuneSolutionHTML\(\)\{/);
+  assert.match(html,/Je n’ai pas trouvé de solution suffisamment fiable/);
+  for(const sortie of ["Chercher plus loin","Changer de ville",
+                       "Voir les structures générales","Reformuler mon besoin"])
+    assert.match(html,new RegExp(sortie), sortie);
+  // et le message générique ne dit plus « aucun résultat » non plus
+  assert.doesNotMatch(html,/'Aucun résultat trouvé à proximité\.'/);
+});
+
+test("le mode Aide ne journalise aucune phrase",()=>{
+  assert.match(html,/if\(st\.reste && !modeAide\) COMPRENDRE\.noterReste\(st\.reste\);/);
+  assert.match(html,/jamais en mode Aide/);
+  // la phrase d'aide ne produit que des besoins normalisés
+  assert.match(html,/const trouves = AIDE\.besoinsDepuisPhrase\(phrase\);/);
+  assert.match(html,/Ce que tu écris ici reste sur ton téléphone/);
+  // le journal filtre ce qui ressemble à une donnée personnelle
+  assert.match(comprendre,/const SENSIBLE = /);
+  assert.match(comprendre,/if \(SENSIBLE\.test\(brut\.toLowerCase\(\)\)\) return false;/);
+});
+
+test("on n'enrichit que les meilleurs candidats, jamais une zone",()=>{
+  assert.match(html,/const MAX_ENRICHIS = 5;/);
+  assert.match(html,/if\(aDemander\.length >= MAX_ENRICHIS\) break;/);
+  assert.match(html,/if\(!DONNEES\.manque\(l, intention, \{disponibilite:\(x,t\)=>dispoDe\(x, null, t\)\}\)\.length\) continue;/);
+  // le modèle normalisé porte source, confiance et date
+  assert.match(donnees,/source: null, confidence: 0, updated_at: null,/);
+  assert.match(donnees,/function depassePlafond\(prix, plafond\)/);
+  assert.match(donnees,/if \(!prix \|\| prix\.confidence <= 0\) return null;/);
 });
