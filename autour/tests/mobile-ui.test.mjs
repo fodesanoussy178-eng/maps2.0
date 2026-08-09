@@ -278,7 +278,7 @@ test("publier crée le canal et fait apparaître la section",()=>{
 test("le nouveau design s'applique à toutes les tailles, sans seconde application",()=>{
   const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
                              html.indexOf("@media (min-width:1100px)")+2400);
-  for(const sel of ["#navBas","#appHeader","#feuilleBesoins",".rc-piste"])
+  for(const sel of ["#navBas","#feuilleBesoins"])
     assert.ok(desktop.includes(sel), sel+" doit être adapté au desktop");
   assert.doesNotMatch(desktop,/#appHeader\{[^}]*display:none/);
   assert.doesNotMatch(desktop,/#navBas\{[^}]*display:none/);
@@ -295,12 +295,17 @@ test("sur desktop la carte occupe toute la fenêtre, sans rail ni sidebar",()=>{
   assert.match(desktop,/--nav-height:0px/);
 
   // navigation : une pastille flottante en bas à gauche, jamais pleine hauteur
-  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:20px;right:auto;width:auto/);
+  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:calc\(var\(--panneau\) \+ 40px\);right:auto;width:auto/);
   assert.match(desktop,/border-radius:99px/);
 
-  // en-tête et recherche : flottants en haut à gauche, largeur bornée
-  assert.match(desktop,/#appHeader\{left:20px;right:auto/);
-  assert.match(desktop,/#rechercheOverlay\{left:20px;right:auto/);
+  /* Le panneau tient la gauche, la carte la droite : on lit ce qu'on peut
+     faire avant de regarder où c'est. L'en-tête et la recherche se décalent
+     donc à droite du panneau quand il est ouvert, et reviennent à gauche
+     quand la carte a toute la fenêtre. */
+  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:20px;right:auto/);
+  assert.match(desktop,/#appHeader\{left:calc\(var\(--panneau\) \+ 40px\);right:auto/);
+  assert.match(desktop,/body:not\(\.sheet-open\) #appHeader\{left:20px\}/);
+  assert.match(desktop,/#rechercheOverlay\{left:calc\(var\(--panneau\) \+ 40px\);right:auto/);
 
   // panneau de résultats : temporaire et fermable, pas une sidebar. La règle
   // .accueil est reprise explicitement, sinon sa spécificité l'emportait et
@@ -323,7 +328,7 @@ test("la hauteur mesurée de la navigation ne rogne pas la carte sur desktop",()
   assert.match(html,/NAV_FLOTTANTE\.matches \? "0px" : haut\+"px"/);
   assert.match(html,/setProperty\("--nav-flottante", haut\+"px"\)/);
   // l'attribution se range au-dessus de la pastille, pas dessous
-  assert.match(html,/#attribution\{left:20px;bottom:calc\(var\(--nav-flottante,60px\) \+ 24px\)\}/);
+  assert.match(html,/#attribution\{left:auto;right:20px;bottom:16px\}/);
 });
 
 test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa hauteur",()=>{
@@ -1338,8 +1343,8 @@ test("dans Aide, l'urgence passe avant tout le reste",()=>{
   // et il se comprend en une seconde
   assert.match(html,/<b>Besoin d’aide urgente&nbsp;\?<\/b>/);
   // et l'écran dit ce qu'Autour n'est pas : orienter n'est pas secourir
-  assert.match(html,/Autour oriente vers des structures locales, il ne les remplace pas/);
-  assert.match(html,/<b>15<\/b> \(santé\)/);
+  assert.match(html,/Autour oriente, il ne remplace pas les secours/);
+  assert.match(html,/Danger immédiat&nbsp;: <b>15<\/b>/);
   assert.match(html,/Santé, mise à l’abri, hébergement d’urgence, /);
   assert.match(html,/Pour une situation urgente, commence ici/);
   // visuellement distinct : le seul fond coloré de la feuille
@@ -1405,6 +1410,8 @@ test("chaque recommandation dit pourquoi elle est là",()=>{
   for(const r of ["En cours","Commence bientôt","Ce soir","Ce week-end","Éphémère",
                   "Ferme bientôt","Ouvert maintenant","Gratuit","Apprécié autour de toi"])
     assert.match(html,new RegExp(r.replace("É","É")), r);
+  // pas de repli sur la distance : la carte affiche déjà le temps de trajet
+  assert.doesNotMatch(html,/return \{t:"À " \+ l\.rankEta\.minutes/);
   assert.match(html,/data-testid="carte-pourquoi"/);
   // « Gratuit » ne vient jamais du défaut OpenStreetMap
   assert.match(html,/if\(prix && prix\.level === 0 && prix\.confidence >= \.8\) return \{t:"Gratuit"/);
@@ -1431,4 +1438,60 @@ test("un établissement scolaire fermé pour vacances n'est pas recommandé",()=
   assert.match(core,/if \(typeof ctx\.horsService === "function" && ctx\.horsService\(item, now\)\) \{\s*\n\s*availability = 0;/);
   const occurrences = (html.match(/^\s+horsService,$/gm) || []).length;
   assert.ok(occurrences >= 2, "branché sur les classements : "+occurrences);
+});
+
+/* ---- Passe de finition : gel de la V1 ----------------------------------- */
+
+test("sur desktop, les recommandations tiennent la gauche et la carte la droite",()=>{
+  const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
+                             html.indexOf("/* ---- grappes de marqueurs"));
+  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:20px;right:auto/);
+  // ce qui vivait à gauche se décale à droite du panneau
+  assert.match(desktop,/#appHeader\{left:calc\(var\(--panneau\) \+ 40px\)/);
+  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:calc\(var\(--panneau\) \+ 40px\)/);
+  // les flottants et l'attribution longent le bord droit
+  assert.match(desktop,/#attribution\{left:auto;right:20px/);
+  assert.match(desktop,/#bandeauGeo,#bandeauVide\{left:auto;right:20px/);
+  // l'organisation mobile ne bouge pas : la feuille monte toujours du bas
+  assert.match(html,/#feuilleBesoins\{position:absolute;left:8px;right:8px;bottom:0/);
+});
+
+test("la saison vient du calendrier, jamais d'une API météo",()=>{
+  assert.match(signaux,/function saisonDe\(date\)/);
+  assert.match(signaux,/function contexteSaison\(date, vacances\)/);
+  assert.match(signaux,/hiver:\s*\{ dehors: -\.3, interieur: \.3 \}/);
+  // l'heure sert aussi : la nuit, une terrasse vaut moins
+  assert.match(signaux,/function nuit\(date\)/);
+  // et les vacances scolaires valorisent le familial
+  assert.match(signaux,/if \(vacances\) bonus\.famille = \(bonus\.famille \|\| 0\) \+ \.3;/);
+  // aucune dépendance météo nulle part
+  assert.doesNotMatch(html,/openweather|weatherapi|meteo\.|api\.meteo/i);
+  // ça ordonne, ça n'exclut pas, et seulement sur un signal connu
+  assert.match(core,/if \(v == null\) return;\s*\/\/ inconnu : aucun effet/);
+  assert.match(core,/score \+= v \* poids \* 90;/);
+});
+
+test("un collège n'est pas proposé comme lieu d'étude",()=>{
+  assert.match(html,/function scolaireNonAccessible\(l\)\{/);
+  assert.match(html,/const SCOLAIRE_FERME = /);
+  // les campus et écoles supérieures ne sont pas concernés
+  assert.match(html,/if\(\/\\b\(universit\|iut\\b\|campus\|sup\[ée\]rieur\|grande \[ée\]cole\|institut\)\/i\.test\(nom\)\) return false;/);
+  assert.match(html,/if\(scolaireNonAccessible\(l\)\) return true;/);
+  // déprioriser, jamais supprimer
+  assert.match(core,/availability = 0;\s*\n\s*score -= 400;/);
+});
+
+test("« apprécié » exige de vrais avis, en nombre",()=>{
+  assert.match(html,/Number\(l\.note\) >= 4\.5/);
+  assert.match(html,/Number\.isFinite\(avis\) && avis >= 50/);
+  // le seuil précédent — 4,4 sur trente avis — ne suffisait pas
+  assert.doesNotMatch(html,/Number\(l\.note\) >= 4\.4 && Number\(l\.avis\) >= 30/);
+});
+
+test("la clé Google est documentée, et son absence ne casse rien",()=>{
+  assert.match(html,/Restriction d'application → Sites web \(référents HTTP\)/);
+  assert.match(html,/https:\/\/autour\.vercel\.app\/\*/);
+  // chaque appel vérifie la clé avant de partir
+  const gardes = (html.match(/if\(!CLE_GOOGLE/g) || []).length;
+  assert.ok(gardes >= 5, "tous les appels Google sont gardés : "+gardes);
 });

@@ -334,14 +334,14 @@ input{font-family:inherit;font-size:16px}
 .ab{display:block}
 
 /* L'en-tête d'Aide : ce que c'est, en deux lignes. */
-.ab-entete{margin:0 0 14px}
+.ab-entete{margin:0 0 12px}
 .ab-entete b{display:block;font-size:19px;font-weight:800;letter-spacing:-.02em}
 .ab-entete i{display:block;margin-top:4px;font-style:normal;font-size:13.5px;
   line-height:1.4;color:var(--ink2)}
 
 /* La distinction que l'application doit tenir : orienter n'est pas secourir. */
-.ab-secours{margin:-8px 0 16px;padding:9px 11px;border-radius:10px;
-  background:rgba(20,30,25,.05);font-size:12.5px;line-height:1.45;color:var(--ink2)}
+.ab-secours{margin:-10px 0 12px;padding:7px 10px;border-radius:9px;
+  background:rgba(20,30,25,.05);font-size:12px;line-height:1.35;color:var(--ink2)}
 .ab-secours b{font-weight:800;color:var(--ink)}
 
 /* ---- L'urgence, en tête et impossible à manquer -------------------------
@@ -362,7 +362,7 @@ input{font-family:inherit;font-size:16px}
 
 /* ---- La promesse, avant la grille ---------------------------------------
    Sans elle, l'écran se lit comme dix cases sans raison d'être. */
-.ab-promesse{margin:0 0 16px;font-size:14.5px;line-height:1.45;color:var(--ink)}
+.ab-promesse{margin:0 0 12px;font-size:14px;line-height:1.4;color:var(--ink)}
 
 .ab-titre{margin:0 0 12px;font-size:20px;font-weight:800;letter-spacing:-.02em}
 /* Le nombre de colonnes suit la largeur RÉELLE du conteneur, pas celle de la
@@ -465,7 +465,8 @@ input{font-family:inherit;font-size:16px}
 
 /* ---- Pourquoi cette recommandation --------------------------------------
    Une étiquette, la plus décisive, et rien de plus. */
-.rc-pourquoi{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:99px;
+.rc-pourquoi{display:inline-block;align-self:flex-start;
+  margin-top:4px;padding:2px 8px;border-radius:99px;
   background:rgba(20,30,25,.06);font-size:11.5px;font-weight:700;color:var(--ink2)}
 .rc-pourquoi.ouvert{background:rgba(27,127,76,.10);color:#1B7F4C}
 .rc-pourquoi.chaud{background:rgba(240,90,20,.12);color:#C24A08}
@@ -904,33 +905,39 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 
   /* Navigation : une pastille flottante en bas à gauche, pas un rail
      pleine hauteur. Même produit qu'en mobile, autre disposition. */
-  #navBas{top:auto;bottom:20px;left:20px;right:auto;width:auto;
+  #navBas{top:auto;bottom:20px;left:calc(var(--panneau) + 40px);right:auto;width:auto;
     flex-direction:row;gap:2px;padding:6px;
     border-top:0;border-radius:99px;
     box-shadow:0 6px 26px rgba(20,30,25,.20)}
   .nb{flex:0 0 auto;gap:4px;padding:8px 14px;border-radius:99px;font-size:12px}
   .nb.actif{background:var(--violet-doux)}
 
-  /* L'en-tête reste la même pastille flottante, simplement plus large. */
-  #appHeader{left:20px;right:auto;top:calc(var(--safe-t) + 20px);
-    width:auto;max-width:520px}
-  #btnLieu{flex:0 0 auto;max-width:340px}
-
-  /* La recherche se pose en haut à gauche, sous l'en-tête, au lieu de
-     recouvrir toute la largeur. */
-  #rechercheOverlay{left:20px;right:auto;top:calc(var(--safe-t) + 20px);
-    width:min(520px,calc(100vw - 40px));
-    border-radius:22px;padding:16px}
-
-  /* Panneau de résultats : temporaire, fermable, jamais une sidebar. Il
-     n'apparaît que si la feuille est ouverte, et la croix le referme pour
-     rendre toute la fenêtre à la carte. */
+  /* ---- Lecture de gauche à droite ---------------------------------------
+     Le panneau des recommandations tient la GAUCHE, la carte la droite. On
+     lit de gauche à droite : ce qu'on peut faire d'abord, où c'est ensuite.
+     Le panneau était à droite, ce qui donnait l'ordre inverse — la carte
+     d'abord, la réponse après. L'organisation mobile ne bouge pas : là-bas
+     la feuille monte du bas, et c'est la bonne géométrie pour un pouce. */
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
   #feuilleBesoins.reduite{
-    left:auto;right:20px;top:calc(var(--safe-t) + 20px);bottom:20px;
+    left:20px;right:auto;top:calc(var(--safe-t) + 20px);bottom:20px;
     width:var(--panneau);height:auto;max-height:none;transform:none;
     border:1px solid var(--bord);border-radius:22px;
     box-shadow:0 8px 34px rgba(20,30,25,.18)}
+
+  /* L'en-tête et la recherche passent donc à droite du panneau : ils étaient
+     à gauche, exactement là où il se trouve maintenant. */
+  #appHeader{left:calc(var(--panneau) + 40px);right:auto;top:calc(var(--safe-t) + 20px);
+    width:auto;max-width:520px}
+  body:not(.sheet-open) #appHeader{left:20px}
+  #btnLieu{flex:0 0 auto;max-width:340px}
+
+  #rechercheOverlay{left:calc(var(--panneau) + 40px);right:auto;
+    top:calc(var(--safe-t) + 20px);
+    width:min(520px,calc(100vw - var(--panneau) - 60px));
+    border-radius:22px;padding:16px}
+  body:not(.sheet-open) #rechercheOverlay{left:20px;
+    width:min(520px,calc(100vw - 40px))}
   .fb-poignee{display:none}
   .fb-tete{padding-top:10px;border-radius:22px 22px 0 0}
   /* la croix doit rester visible même sur l'accueil : c'est elle qui rend
@@ -946,32 +953,28 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   .rc-corps{flex:1;min-width:0}
   .rc-nom{min-height:0}
 
-  /* Flottants de droite : ils se décalent seulement quand le panneau est
-     ouvert, sinon ils longent le bord de la fenêtre. */
+  /* Les flottants longent le bord droit : le panneau est à gauche, ils n'ont
+     plus à s'écarter pour lui. */
   #btnTransports,#btnAide{right:20px}
-  body.sheet-open #btnTransports,body.sheet-open #btnAide{
-    right:calc(var(--panneau) + 40px)}
   #btnTransports{bottom:44px}
   #btnAide{bottom:96px}
-  /* l'attribution se pose au-dessus de la pastille de navigation, qui occupe
-     désormais le coin bas gauche */
-  #attribution{left:20px;bottom:calc(var(--nav-flottante,60px) + 24px)}
-  #credits{left:20px;right:auto;width:min(420px,40vw);
-    bottom:calc(var(--nav-flottante,60px) + 64px)}
+  /* l'attribution se pose sous le panneau, dans le coin bas droit de la carte */
+  #attribution{left:auto;right:20px;bottom:16px}
+  #credits{left:auto;right:20px;width:min(420px,40vw);bottom:56px}
 
   /* La fiche compacte se pose en bas au centre de la carte disponible. */
   #ficheCompacte{left:50%;right:auto;transform:translateX(-50%);
     width:min(460px,calc(100vw - 40px));bottom:20px}
   body.sheet-open #ficheCompacte{
-    left:calc((100vw - var(--panneau) - 40px) / 2 + 20px)}
+    left:calc((100vw + var(--panneau) + 40px) / 2);}
 
-  #bandeauGeo,#bandeauVide{left:20px;right:auto;width:min(520px,45vw)}
+  #bandeauGeo,#bandeauVide{left:auto;right:20px;width:min(520px,45vw)}
   #charge{left:50%}
   #filtresHumains{width:auto;max-width:none}
   /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
      que dessous — il y a la place, et le centre appartient à la carte */
-  #btnAutourDeMoi{left:auto;right:auto;transform:none;
-    margin-left:560px;top:calc(var(--safe-t) + 26px)}
+  #btnAutourDeMoi{left:auto;right:20px;transform:none;
+    margin-left:0;top:calc(var(--safe-t) + 26px)}
   #btnAutourDeMoi:active{transform:scale(.96)}
 }
 
@@ -1420,11 +1423,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=9024fc47"></script>
 <script src="aide.js"></script>
-<script src="signaux.js?v=25f652d6"></script>
+<script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=4f3ec1ed"></script>
 <script src="events.js?v=6c291809"></script>
-<script src="core.js?v=9dc124b2"></script>
+<script src="core.js?v=fcb497c1"></script>
 <script src="transit.js?v=17e44189"></script>
 <script>
 function panne(titre, corps){
@@ -3882,11 +3885,37 @@ function instantCreneau(){
   return d;
 }
 
+/* Le contexte saisonnier du moment : mois, heure et vacances scolaires. Trois
+   informations certaines, tirées du calendrier — aucune API météo, donc
+   aucune dépendance de plus et aucune prévision qui se trompe. */
+function contexteSaison(quand){
+  if(!SIGNAUX) return null;
+  const d = new Date(quand == null ? Date.now() : quand);
+  return SIGNAUX.contexteSaison(d, !!vacancesScolaires(d));
+}
+
 /* Fermé pour une raison que les horaires ne disent pas. Aujourd'hui un seul
    cas, et il est réel : un établissement scolaire pendant les vacances. OSM
    n'y publie pas de calendrier, et la fiche reste « ouverte » tout l'été. */
+/* Établissements dont les locaux ne sont pas ouverts au public : on ne va pas
+   réviser dans un collège. Une université ou une médiathèque, si — d'où la
+   distinction, qui porte sur le type et non sur le mot « école ». */
+const SCOLAIRE_FERME = /\b(college|coll[èe]ge|lyc[ée]e|[ée]cole|groupe scolaire|primaire|maternelle|cr[èe]che)\b/i;
+
+function scolaireNonAccessible(l){
+  if(!l || l.cat !== "ecole") return false;
+  const nom = String(l.titre || "");
+  // universités, IUT, écoles supérieures : des campus, souvent traversables
+  if(/\b(universit|iut\b|campus|sup[ée]rieur|grande [ée]cole|institut)/i.test(nom)) return false;
+  return SCOLAIRE_FERME.test(nom) || !nom;
+}
+
 function horsService(l, quand){
   if(!l || l.cat !== "ecole") return false;
+  // un collège n'est jamais un lieu où l'on va étudier : ses locaux ne sont
+  // pas publics, vacances ou pas. Déprioriser, jamais supprimer — il reste
+  // une information sur la carte et dans la recherche par nom.
+  if(scolaireNonAccessible(l)) return true;
   return !!vacancesScolaires(new Date(quand == null ? Date.now() : quand));
 }
 
@@ -5844,10 +5873,21 @@ async function publier(){
 /*  Classement d'une catégorie                                        */
 /* ================================================================== */
 
-/* Pour afficher de vraies notes, il faut l'API Places de Google :
-   une clé + un compte de facturation. Colle-la ici et les notes
-   apparaîtront automatiquement dans les listes. Laissée vide, l'app
-   classe par distance — ce qui est honnête et déjà utile. */
+/* ---- Clé Google Places -------------------------------------------------
+   Elle est publique, et elle ne peut pas ne pas l'être : le navigateur doit
+   l'envoyer à chaque appel, et elle voyage aussi dans l'URL des photos. Aucune
+   obfuscation ne change ça — la seule protection réelle est une restriction
+   posée côté Google Cloud, sur le domaine appelant.
+
+   À configurer une fois, dans la console Google Cloud (voir docs/cle-google.md) :
+     · Restriction d'application → Sites web (référents HTTP)
+       https://autour.vercel.app/*  et  https://*.vercel.app/*  (préproductions)
+     · Restriction d'API → Places API (New) uniquement
+     · Quota journalier plafonné, pour qu'un abus reste borné
+
+   Sans clé, l'application reste entièrement utilisable : pas de notes, pas de
+   photos, pas de descriptif Google — le classement se fait sur la distance,
+   les horaires et les événements, ce qui est honnête et déjà utile. */
 const CLE_GOOGLE = "AIzaSyAFjDL4NtNNaTFhD-tbN4escj8xQ9Mpio4";
 
 const TYPES_RESTO = ["restaurant","cafe","bar","bakery","meal_takeaway"];
@@ -7154,6 +7194,7 @@ function classementFeuille(){
     radius:feuilleNiveau === "aide" ? Math.max(rayonRecherche,6000) : rayonRecherche,
     distanceBetween:distanceM,
     horsService,
+    saison:contexteSaison(),
     // l'ETA réel pilote l'ordre ET l'exclusion : un lieu fermé à l'arrivée
     // n'est pas un résultat, même s'il est le plus proche
     etaFor:l=>etaConnu(l, centre),
@@ -7462,6 +7503,7 @@ function recommandationsAccueil(limite){
     radius:rayonRecherche,
     distanceBetween:distanceM,
     horsService,
+    saison:contexteSaison(),
     etaFor:l=>etaConnu(l, centre),
   });
 
@@ -7555,10 +7597,11 @@ function ecranBesoinsAide(){
         'danger immédiat</span>'+
       '<span class="abu-cta">Pour une situation urgente, commence ici →</span>'+
     '</button>'+
-    '<p class="ab-secours">En cas de danger immédiat, appelle les secours&nbsp;: '+
-      '<b>15</b> (santé) · <b>17</b> (police) · <b>18</b> (pompiers) · '+
-      '<b>112</b> · <b>115</b> (hébergement). '+
-      'Autour oriente vers des structures locales, il ne les remplace pas.</p>'+
+    /* Une note de bas de bloc, pas un paragraphe : elle doit être lue, sans
+       repousser la question sous le pli. */
+    '<p class="ab-secours">Danger immédiat&nbsp;: <b>15</b> · <b>17</b> · '+
+      '<b>18</b> · <b>112</b> · <b>115</b>. '+
+      'Autour oriente, il ne remplace pas les secours.</p>'+
 
     // 2 · ce que fait Aide, en une phrase et sans mot d'administration
     '<p class="ab-promesse">Explique ton besoin&nbsp;: Autour te propose les '+
@@ -7912,10 +7955,18 @@ function raisonCourte(l){
      « Gratuit » sur des restaurants. On ne le dit que si une source le dit. */
   const prix = DONNEES ? DONNEES.normaliserPrix(l) : null;
   if(prix && prix.level === 0 && prix.confidence >= .8) return {t:"Gratuit", c:""};
-  if(Number.isFinite(Number(l.note)) && Number(l.note) >= 4.4 && Number(l.avis) >= 30)
+  /* « Apprécié » est une affirmation sur ce que pensent les gens : elle exige
+     de vrais avis, en nombre. Trente suffisaient à faire d'une note de 4,4 une
+     réputation ; on demande cinquante avis et 4,5, et surtout que la note
+     vienne d'une source qui compte réellement des avis (Google). Sans ça,
+     l'étiquette dit quelque chose que la donnée ne dit pas. */
+  const avis = Number(l.avis);
+  if(Number.isFinite(Number(l.note)) && Number(l.note) >= 4.5
+     && Number.isFinite(avis) && avis >= 50)
     return {t:"Apprécié autour de toi", c:""};
-  if(l.rankEta && Number.isFinite(l.rankEta.minutes) && l.rankEta.minutes <= 5)
-    return {t:"À " + l.rankEta.minutes + " min", c:""};
+  /* Pas de repli sur la distance : la carte affiche déjà le temps de trajet,
+     et « À 4 min » juste au-dessus de « 4 min » ne dit rien de plus. Mieux
+     vaut aucune étiquette qu'une étiquette qui répète. */
   return null;
 }
 

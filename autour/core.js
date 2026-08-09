@@ -965,7 +965,11 @@
       /* Les contraintes dures : elles excluent, et elles s'appliquent avant
          qu'on ait calculé le moindre point de pertinence. La proximité ne
          doit jamais rattraper un lieu qui coûte trois fois le budget. */
-      const profil = intention ? profilDe(item) : null;
+      /* Le profil de signaux sert à deux choses : l'adéquation à ce qui a été
+         demandé, et la saison. Il n'était calculé que pour la première, si
+         bien qu'un classement sans intention ignorait complètement le
+         contexte saisonnier. */
+      const profil = (intention || ctx.saison) ? profilDe(item) : null;
       if (intention && intention.contraintes.length) {
         const dispo = disponibiliteDe(item, now);
         const refuse = intention.contraintes.some((c) => contrainteRefusee(item, c, profil, dispo));
@@ -1027,6 +1031,17 @@
            bar à cinquante mètres, et doit passer devant. */
         adequation = total > 0 ? obtenu / total : 0;
         score += adequation * 520;
+      }
+
+      /* La saison et l'heure, sans météo : le calendrier suffit à savoir qu'on
+         ne cherche pas une terrasse un 15 janvier à 22 h. Ça ORDONNE, ça
+         n'exclut pas — et seulement si le lieu porte réellement le signal. */
+      if (signaux && profil && ctx.saison) {
+        Object.entries(ctx.saison).forEach(([id, poids]) => {
+          const v = signaux.force(profil, id);
+          if (v == null) return;                  // inconnu : aucun effet
+          score += v * poids * 90;
+        });
       }
 
       // le nombre d'avis conforte la note au lieu de la remplacer

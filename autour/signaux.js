@@ -163,9 +163,57 @@
     return v > 0;
   }
 
+  /* ---- Ce que la date seule permet d'affirmer -----------------------------
+     Pas de météo : une API de plus, une dépendance de plus, et une prévision
+     qui se trompe. Le calendrier, lui, est certain — on sait qu'un 15 janvier
+     à Lille on ne cherche pas une terrasse, et qu'un 20 juillet les familles
+     ont les enfants à la maison toute la journée.
+
+     Ces poids ORDONNENT, ils n'excluent jamais : une terrasse en janvier
+     reste proposable, elle passe simplement derrière un lieu couvert. */
+  function saisonDe(date) {
+    const d = date instanceof Date ? date : new Date(date == null ? Date.now() : date);
+    const m = d.getMonth() + 1;
+    if (m >= 6 && m <= 8) return "ete";
+    if (m === 12 || m <= 2) return "hiver";
+    return m >= 3 && m <= 5 ? "printemps" : "automne";
+  }
+
+  /* Bonus saisonnier par signal, entre -1 et 1. Volontairement modeste : la
+     saison est un indice, pas une règle. */
+  const SAISON = Object.freeze({
+    ete:       { dehors: .35, interieur: -.15 },
+    printemps: { dehors: .2 },
+    automne:   { interieur: .15 },
+    hiver:     { dehors: -.3, interieur: .3 },
+  });
+
+  /* La nuit, une terrasse ou un parc valent moins qu'un lieu couvert : ce
+     n'est pas la météo, c'est l'obscurité, et l'heure la donne exactement. */
+  function nuit(date) {
+    const d = date instanceof Date ? date : new Date(date == null ? Date.now() : date);
+    const h = d.getHours();
+    const m = d.getMonth() + 1;
+    const coucher = (m >= 5 && m <= 8) ? 21 : (m === 4 || m === 9) ? 20 : 18;
+    return h >= coucher || h < 7;
+  }
+
+  function contexteSaison(date, vacances) {
+    const bonus = Object.assign({}, SAISON[saisonDe(date)] || {});
+    if (nuit(date)) {
+      bonus.dehors = (bonus.dehors || 0) - .3;
+      bonus.interieur = (bonus.interieur || 0) + .2;
+    }
+    // vacances scolaires : les propositions familiales valent davantage, et
+    // ça se sait par le calendrier, sans rien demander à personne
+    if (vacances) bonus.famille = (bonus.famille || 0) + .3;
+    return bonus;
+  }
+
   root.AutourSignaux = Object.freeze({
     SOURCES, PLAFOND_INFERENCE,
     PAR_CATEGORIE, PAR_CATEGORIE_TRANSVERSE,
     signauxDe, force, satisfait,
+    saisonDe, nuit, contexteSaison, SAISON,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

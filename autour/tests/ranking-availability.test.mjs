@@ -264,3 +264,70 @@ test("« gratuit » n’écarte que ce qu’on sait payant", () => {
   assert.ok(vus.includes("libre"));
   assert.ok(vus.includes("inconnu"));
 });
+
+/* ---- Finition : l'éphémère, la saison, les établissements fermés --------- */
+
+test("un événement en cours passe devant un lieu permanent mieux noté", () => {
+  // c'est la différence avec une carte classique : ce qui a lieu maintenant
+  // vaut plus qu'un très bon endroit ouvert toute l'année
+  const permanent = {id: "bar", titre: "Le Bar Étoilé", cat: "bar",
+    lat: 50.6305, lng: 3.0605, quand: "Mo-Su 08:00-02:00", note: 4.8, avis: 900};
+  const enCours = {id: "concert", titre: "Concert", cat: "concert", isTemporary: true,
+    lat: 50.635, lng: 3.065,               // plus loin
+    startsAt: MERCREDI_MIDI - 3600000, endsAt: MERCREDI_MIDI + 3600000};
+  const vus = rankResults([permanent, enCours], {
+    intent: "sortir", position: POSITION, now: MERCREDI_MIDI, distanceBetween: distance,
+    etaFor: () => ({minutes: 8, mode: "walk"}),
+  });
+  assert.equal(vus[0].id, "concert", "l’éphémère en cours passe devant");
+});
+
+test("un événement de ce soir passe devant un permanent, hors mode Maintenant", () => {
+  const permanent = {id: "bar", titre: "Le Bar", cat: "bar", lat: 50.6305, lng: 3.0605,
+    quand: "Mo-Su 08:00-02:00", note: 4.7, avis: 500};
+  const ceSoir = {id: "soir", titre: "Concert de ce soir", cat: "concert", isTemporary: true,
+    lat: 50.632, lng: 3.062,
+    startsAt: paris(2026, 7, 15, 20, 0), endsAt: paris(2026, 7, 15, 23, 30)};
+  const vus = rankResults([permanent, ceSoir], {
+    intent: "sortir", position: POSITION, now: paris(2026, 7, 15, 18, 30),
+    distanceBetween: distance, etaFor: () => ({minutes: 6, mode: "walk"}),
+  });
+  assert.equal(vus[0].id, "soir");
+});
+
+test("la saison ordonne sans exclure, et n’agit que sur ce qui est connu", () => {
+  const terrasse = {id: "terrasse", titre: "Café des Arbres", cat: "cafe",
+    lat: 50.631, lng: 3.061, quand: "Mo-Su 08:00-23:00", tags: {outdoor_seating: "yes"}};
+  const couvert = {id: "couvert", titre: "Salon de thé", cat: "cafe",
+    lat: 50.631, lng: 3.061, quand: "Mo-Su 08:00-23:00", tags: {indoor_seating: "yes"}};
+  const classer2 = (saison) => rankResults([terrasse, couvert], {
+    intent: "manger", position: POSITION, now: MERCREDI_MIDI, distanceBetween: distance,
+    categories: ["cafe"], saison,
+  }).map((l) => l.id);
+
+  assert.equal(classer2({dehors: .35, interieur: -.15})[0], "terrasse", "été");
+  assert.equal(classer2({dehors: -.3, interieur: .3})[0], "couvert", "hiver");
+  // aucun n’est exclu, dans les deux cas
+  assert.equal(classer2({dehors: -.3, interieur: .3}).length, 2);
+  // un lieu sans signal connu n’est ni favorisé ni pénalisé
+  const neutre = {id: "neutre", titre: "Snack", cat: "fastfood", lat: 50.631, lng: 3.061};
+  const avec = rankResults([neutre], {intent: "manger", position: POSITION,
+    now: MERCREDI_MIDI, distanceBetween: distance, saison: {dehors: -.3}});
+  const sans = rankResults([neutre], {intent: "manger", position: POSITION,
+    now: MERCREDI_MIDI, distanceBetween: distance});
+  assert.equal(avec[0].rankScore, sans[0].rankScore, "aucun effet sans donnée");
+});
+
+test("un lieu hors service est relégué, jamais supprimé", () => {
+  const college = {id: "college", titre: "Collège Victor Hugo", cat: "ecole",
+    lat: 50.631, lng: 3.061, quand: "Mo-Fr 08:00-18:00"};
+  const biblio = {id: "biblio", titre: "Médiathèque", cat: "biblio",
+    lat: 50.640, lng: 3.070, quand: "Mo-Sa 10:00-19:00"};
+  const vus = rankResults([college, biblio], {
+    intent: "etudier", categories: ["ecole", "biblio", "study"],
+    position: POSITION, now: MERCREDI_MIDI, distanceBetween: distance,
+    horsService: (l) => l.cat === "ecole",
+  });
+  assert.equal(vus.length, 2, "il reste dans les résultats");
+  assert.equal(vus[0].id, "biblio", "mais derrière ce qui est réellement ouvert");
+});
