@@ -327,6 +327,22 @@ input{font-family:inherit;font-size:16px}
   padding:2px 0 12px}
 .rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
 
+/* ---- Ce qu'Autour a compris d'une phrase --------------------------------
+   Des puces retirables : une interprétation fausse doit pouvoir être défaite
+   d'un geste, sans reformuler toute la phrase. */
+/* préfixe `cp` : `.chip` désigne déjà les pastilles du formulaire de
+   publication, et deux classes de même nom se marchent dessus */
+.cps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 0 12px}
+.cps-titre{font-size:12px;color:var(--ink2)}
+.cp{min-height:36px;padding:7px 11px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13px;font-weight:650;color:var(--ink);
+  display:inline-flex;align-items:center;gap:6px}
+.cp i{font-style:normal;font-size:11px;color:var(--ink2)}
+/* une contrainte exclut des résultats : elle ne se lit pas comme une envie */
+.cp.dure{background:var(--ink);border-color:var(--ink);color:#fff}
+.cp.dure i{color:rgba(255,255,255,.75)}
+.cp.zone{border-color:var(--violet);color:var(--violet)}
+
 /* ---- Les quatre groupes de temps ----------------------------------------
    Une seule rangée, en tête de la feuille : c'est la première question qu'on
    se pose (« maintenant ou plus tard ? ») et elle mérite d'être visible sans
@@ -1237,10 +1253,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="availability.js?v=fefb49c1"></script>
+<script src="comprendre.js?v=634a6599"></script>
+<script src="signaux.js?v=25f652d6"></script>
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=4f3ec1ed"></script>
 <script src="events.js?v=6c291809"></script>
-<script src="core.js?v=72c83089"></script>
+<script src="core.js?v=c2f5aba6"></script>
 <script src="transit.js?v=17e44189"></script>
 <script>
 function panne(titre, corps){
@@ -1255,6 +1273,8 @@ function panne(titre, corps){
    rallume. Les vraies erreurs, elles, passent toujours par console.error. */
 const TEMPS = window.AutourTemps;
 const EXPLIQUE = window.AutourExplications;
+const COMPRENDRE = window.AutourComprendre;
+const SIGNAUX = window.AutourSignaux;
 
 const journal = {
   info(...a){ if(window.__autourDebug) console.info(...a); },
@@ -1301,6 +1321,14 @@ function ressembleAUneZone(q){
   const texte = (q||"").trim();
   if(texte.length < 3) return false;
   if(estTermeMetier(texte)) return false;
+  /* Et surtout : ce morceau n'est pas du vocabulaire de l'application. Sans
+     cette question, « un endroit calme où travailler » partait géocoder la
+     commune « où travailler », et « ouvert tard après 20h » la commune
+     « 20h ». Une ville, elle, n'est comprise par personne ici — c'est
+     exactement ce qui la distingue. */
+  if(COMPRENDRE && COMPRENDRE.estVocabulaire(texte, {
+    cuisineDe: cuisineRecherchee, categorieDe: categorieRecherchee,
+  })) return false;
   return /^[\p{L}\d\s'’-]+$/u.test(texte);
 }
 
@@ -6776,6 +6804,11 @@ function nomExploitable(l){
 /* Rayon de travail. « Élargir » le double au lieu d'inventer des résultats. */
 let rayonRecherche = 2500;
 
+/* L'intention structurée de la recherche en cours, telle que `comprendre.js`
+   l'a lue. Elle voyage jusqu'au classement (contraintes dures / préférences)
+   et jusqu'aux puces affichées, qui permettent d'en retirer un morceau. */
+let intentionCourante = null;
+
 function elargirZone(){
   rayonRecherche = Math.min(rayonRecherche * 2, 20000);
   if(map) map.setZoom(Math.max(12, map.getZoom() - 1));
@@ -6831,6 +6864,7 @@ function classementFeuille(){
   }
   const classement = rankResults(candidats,{
     intent:feuilleNiveau,
+    intention:intentionCourante,
     categories:categoriesClassementFeuille(),
     position:centre,
     now:instantCreneau().getTime(),
@@ -6970,6 +7004,7 @@ function majFeuille2(){
   if(reco.length) PERF.jalon("cached_pois_visible");
     corps.innerHTML =
       blocOuRegarder()+
+      chipsHTML()+
       ongletsTemps()+
       (reco.length
         ? '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
@@ -7110,9 +7145,13 @@ function recommandationsAccueil(limite){
 
   const classement = rankResults(candidats,{
     intent:"sortir",
-    // toutes les catégories des besoins principaux : l'accueil ne présélectionne
-    // pas une intention, il montre ce qui est réellement faisable
-    categories:CATS_ACCUEIL(),
+    intention:intentionCourante,
+    /* Une recherche qui a posé des catégories les impose ici aussi : sans ça,
+       « un endroit calme où travailler » reposait le filtre puis affichait les
+       recommandations génériques, catégories comprises. À défaut, toutes les
+       catégories des besoins principaux — l'accueil ne présélectionne pas une
+       intention, il montre ce qui est réellement faisable. */
+    categories: catsActives && catsActives.size ? [...catsActives] : CATS_ACCUEIL(),
     position:centre,
     now:Date.now(),
     // le filtre « maintenant » n'a de sens que dans le groupe « maintenant » :
@@ -7135,6 +7174,50 @@ function recommandationsAccueil(limite){
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
   return classement.slice(0, limite || 12);
+}
+
+/* ---- Ce qu'Autour a compris ---------------------------------------------
+   Une phrase comme « un endroit calme pour bosser ce soir moins de 15 € à
+   Lille » déclenche cinq décisions. Les garder invisibles, c'est laisser
+   quelqu'un devant une liste inexplicable quand l'une d'elles est fausse.
+   Chaque interprétation est donc une puce, et chaque puce se retire. */
+function puceCouleur(type){
+  return type === "contrainte" ? "dure" : type === "zone" ? "zone" : "";
+}
+
+function chipsHTML(){
+  const st = intentionCourante;
+  if(!st || !st.chips || !st.chips.length) return "";
+  return '<div class="cps" data-testid="chips-comprises">'+
+    '<span class="cps-titre">Compris&nbsp;:</span>'+
+    st.chips.map(c=>
+      '<button class="cp '+puceCouleur(c.type)+'" data-chip="'+esc(c.id)+'" '+
+        'aria-label="Retirer : '+esc(c.label)+'">'+
+        esc(c.label)+'<i aria-hidden="true">✕</i></button>').join("")+
+    '</div>';
+}
+
+/* Retirer une interprétation : on ampute l'intention et on rejoue le
+   classement, sans repasser par l'analyse du texte — sinon le mot retiré
+   reviendrait aussitôt. */
+function retirerChip(id){
+  if(!intentionCourante || !COMPRENDRE) return;
+  intentionCourante = COMPRENDRE.sansChip(intentionCourante, id);
+  const [type, valeur] = String(id).split(":");
+  if(type === "cat" && catsActives){
+    catsActives.delete(valeur);
+    if(!catsActives.size) catsActives = null;
+  }
+  if(type === "intention" || type === "cuisine"){ catsActives = null; filtreActif = "tout"; }
+  if(type === "creneau"){ creneau = "maintenant"; filtreMaintenant = true; }
+  if(type === "budget"){ filtresHumains.delete("budget"); filtresHumains.delete("gratuit"); }
+  if(type === "proche") filtresHumains.delete("proche");
+  if(type === "signal"){
+    const f = FILTRE_DU_SIGNAL[valeur];
+    if(f) filtresHumains.delete(f);
+  }
+  if(type === "zone"){ revenirAutourDeMoi(); return; }
+  dessinerFiltres(); majFiltres(); rendre(); majFeuille2();
 }
 
 /* ---- Les quatre groupes de temps, en tête de l'accueil -------------------
@@ -7299,6 +7382,8 @@ function brancherFeuille2(){
       creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label,
       tout, false, ()=>b.click()));
   });
+
+  corps.querySelectorAll("[data-chip]").forEach(b=>b.onclick=()=>retirerChip(b.dataset.chip));
 
   // les quatre groupes de temps : un seul geste, aucune page de plus
   corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
@@ -7653,42 +7738,62 @@ function surprendre(){
 }
 
 /* « Autour IA » : aucune génération, aucun résultat inventé. La phrase est
-   traduite en filtres existants — cuisine, catégorie, budget, créneau — et
-   c'est l'app qui fait le reste. */
+   traduite en intention structurée par `comprendre.js`, puis en filtres
+   existants — cuisine, catégorie, budget, créneau — et c'est l'app qui fait
+   le reste.
+
+   Cette fonction garde la forme que tout le code attend d'elle
+   (`{cats, filtres, creneau, cuisine, dit}`) et y ajoute `structure` :
+   l'intention complète, avec sa séparation entre contraintes et préférences.
+   L'ancienne version reconnaissait une douzaine de mots par expressions
+   régulières et perdait le montant d'un budget en route — « moins de 30
+   euros » posait le filtre « gratuit ». */
+
+/* Correspondance entre les signaux de l'ontologie et les filtres humains qui
+   existaient déjà. Un seul endroit, pour que les deux ne divergent pas. */
+const FILTRE_DU_SIGNAL = Object.freeze({
+  travail:"etudier", etude:"etudier", calme:"etudier",
+  famille:"famille", accessible:"pmr",
+  adapte_groupes:"monde", festif:"monde",
+  pas_cher:"budget",
+});
+
 function interpreter(phrase){
-  const t = sansAccents(phrase);
-  const act = {cats:null, filtres:new Set(), creneau:null, cuisine:null, dit:[]};
+  const act = {cats:null, filtres:new Set(), creneau:null, cuisine:null, dit:[], structure:null};
+  if(!COMPRENDRE) return act;
 
-  const cuisine = cuisineRecherchee(phrase);
-  if(cuisine){ act.cuisine = cuisine; act.dit.push(cuisine); }
+  const st = COMPRENDRE.analyser(phrase, {
+    cuisineDe: cuisineRecherchee,
+    categorieDe: categorieRecherchee,
+    libelleCategorie: (c)=>(CATS[c]||{}).label || c,
+  });
+  act.structure = st;
+  act.cuisine = st.cuisine;
 
-  const cat = categorieRecherchee(phrase);
-  if(cat){ act.cats = new Set([cat]); if(!cuisine) act.dit.push((CATS[cat]||{}).label || cat); }
+  const cats = new Set(st.categories);
   /* Une cuisine sans catégorie laissait le champ des catégories VIDE : on ne
      cherchait donc plus des restaurants du tout, seulement des fiches dont le
      tag cuisine correspond. Or ce tag est renseigné sur une minorité de lieux
      dans OpenStreetMap — d'où des écrans vides là où le quartier est plein de
      restaurants. Une cuisine désigne d'abord un endroit où manger. */
-  else if(cuisine) act.cats = new Set(CATS_MANGER);
+  if(st.cuisine) CATS_MANGER.forEach(c=>cats.add(c));
+  if(cats.size) act.cats = cats;
 
-  // budget en chiffres ou en toutes lettres : « quinze euros » vaut « 15 € »
-  const n = montantEuros(t);
-  if(n != null){
-    act.filtres.add(n <= 20 ? "budget" : "gratuit");
-    act.dit.push(n+" €");
-  }
-  if(/gratuit|sans argent|rien depenser|fauche/.test(t)){ act.filtres.add("gratuit"); act.dit.push("gratuit"); }
-  if(/rencontrer|du monde|des gens|seul|amis/.test(t)){ act.filtres.add("monde"); act.dit.push("rencontrer"); }
-  if(/famille|enfant|gosse|petits/.test(t)){ act.filtres.add("famille"); act.dit.push("en famille"); }
-  if(/etudier|reviser|travailler|calme|bosser/.test(t)){ act.filtres.add("etudier"); act.dit.push("étudier"); }
-  if(/pmr|fauteuil|handicap|accessible/.test(t)){ act.filtres.add("pmr"); act.dit.push("accessible"); }
-  if(/pres|proche|a cote|pas loin/.test(t)){ act.filtres.add("proche"); act.dit.push("tout près"); }
+  // les filtres humains restent la mécanique d'affichage : on y traduit ce
+  // que l'intention a compris, sans perdre le détail (il vit dans `structure`)
+  st.ambiance.forEach(a=>{ const f = FILTRE_DU_SIGNAL[a.id]; if(f) act.filtres.add(f); });
+  st.contraintes.forEach(c=>{
+    if(c.type === "signal"){ const f = FILTRE_DU_SIGNAL[c.id]; if(f) act.filtres.add(f); }
+  });
+  /* Le budget ne passe PLUS par les filtres humains. Leur test est binaire
+     (`l.prixN != null && l.prixN <= 1`) : un lieu dont on ignore le prix y
+     échoue, si bien que « manger pour moins de 15 € » rendait un écran vide.
+     La contrainte structurée, elle, n'exclut que ce qu'on sait trop cher. */
+  if(st.preferences.some(p=>p.type === "proche")) act.filtres.add("proche");
+  if(st.groupe === "famille") act.filtres.add("famille");
 
-  if(/ce soir|soiree|tantot/.test(t)){ act.creneau = "soir"; act.dit.push("ce soir"); }
-  else if(/week[- ]?end|samedi|dimanche/.test(t)){ act.creneau = "weekend"; act.dit.push("ce week-end"); }
-  else if(/demain|prochain|plus tard|a venir/.test(t)){ act.creneau = "avenir"; act.dit.push("à venir"); }
-  else if(/maintenant|tout de suite|la|now/.test(t)){ act.creneau = "maintenant"; act.dit.push("maintenant"); }
-
+  act.creneau = st.horaire.creneau;
+  act.dit = st.chips.filter(c=>c.type !== "zone").map(c=>c.label);
   return act;
 }
 
@@ -7697,7 +7802,10 @@ function appliquerPhrase(phrase){
   const ville = villeRecherchee(phrase);
   if(ville){ rechercherAilleurs(phrase, ville); return; }
   const a = interpreter(phrase);
+  // l'intention structurée voyage jusqu'au classement ET jusqu'aux puces
+  intentionCourante = a.structure;
   if(!a.dit.length){
+    intentionCourante = null;
     ouvrirResultats(phrase);            // rien de compris : recherche classique
     return;
   }
@@ -7724,7 +7832,24 @@ function appliquerPhrase(phrase){
     pileEcrans = [];
     pousserEcran(()=>afficherListe("🍽", "« "+phrase+" »",
       trouves, false, ()=>appliquerPhrase(phrase)));
+    toast("Compris : "+a.dit.join(" · "));
+    return;
   }
+
+  /* Et surtout : montrer le résultat. La fonction posait les filtres, dessinait
+     la carte et affichait un toast — mais laissait la feuille sur ce qu'elle
+     contenait avant la recherche. Les catégories demandées sont aussi allées
+     chercher : « où bosser » ne peut pas trouver de bibliothèque si aucune
+     n'a été chargée. */
+  if(catsActives && catsActives.size) chargerPourCats([...catsActives]);
+  /* `ouvrirAccueilFeuille` remet les catégories à zéro — c'est ce qu'on veut
+     quand on revient à l'accueil, pas après une recherche qui vient justement
+     d'en poser. On ouvre donc la feuille sans effacer ce qu'on a compris. */
+  const garde = catsActives;
+  ouvrirAccueilFeuille();
+  catsActives = garde;
+  rendre();
+  majFeuille2();
   toast("Compris : "+a.dit.join(" · "));
 }
 
@@ -8038,6 +8163,7 @@ async function lancerRecherche(){
   champ.blur();                 // referme le clavier avant de bouger la carte
   fermerRecherche();
   zoneAffichee = null;          // une nouvelle recherche remplace la précédente
+  intentionCourante = null;     // et son interprétation avec elle
 
   // « cinéma Lille », « restaurant Roubaix », « activité enfant Tourcoing » :
   // on sépare avant d'interroger quoi que ce soit
@@ -8050,7 +8176,8 @@ async function lancerRecherche(){
     const trouvee = await rechercheGeographique(destination);
     charge(null);
     if(trouvee){
-      if(intention) appliquerIntention(intention);
+      if(intention) appliquerIntention(intention, destination);
+      else intentionCourante = null;
       ouvrirResultatsZone(destination, intention);
       return;
     }
@@ -8101,8 +8228,14 @@ function intentionConnue(t){
 
 /* Applique l'intention extraite d'une requête composée, sans toucher à la
    position : la carte a déjà bougé vers la destination. */
-function appliquerIntention(intention){
+function appliquerIntention(intention, zone){
   const a = interpreter(intention);
+  intentionCourante = a.structure;
+  if(intentionCourante && zone){
+    intentionCourante.zone = zone;
+    if(!intentionCourante.chips.some(c=>c.type === "zone"))
+      intentionCourante.chips.unshift({id:"zone", type:"zone", label:zone});
+  }
   if(a && a.cats && a.cats.size){ catsActives = a.cats; filtreActif = "tout"; }
   else {
     // un besoin (« sortir », « chiller ») porte plusieurs catégories : elles
@@ -8153,6 +8286,7 @@ function remplirResultatsZone(nom, intention){
     !catsActives || correspondUneCategorie(l, catsActives));
   const forts = rankResults(groupLogicalPlaces(vivier, distanceM), {
     intent:"sortir",
+    intention:intentionCourante,
     categories:[...new Set(BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []))],
     position:centre,
     now:instantCreneau().getTime(),
@@ -8174,6 +8308,7 @@ function remplirResultatsZone(nom, intention){
   const corps = $("#fbCorps");
   const titre = intention ? intention+" · "+nom : nom;
   corps.innerHTML =
+    chipsHTML()+
     '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
       '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
     (forts.length
@@ -8209,6 +8344,7 @@ $("#btnPoseOk").onclick=validerPose;
 function revenirAutourDeMoi(){
   if(!positionMoi || !positionConnue()) { suivreMaPosition(); return; }
   rechercheGeo = null;
+  intentionCourante = null;
   zoneAffichee = null;          // la feuille reprend ses recommandations locales
   recherche = ""; if($("#rech")) $("#rech").value = "";
   catsActives = null; filtreActif = "tout";

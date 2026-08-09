@@ -5,6 +5,8 @@ import test from "node:test";
 const html = await readFile(new URL("../index.html",import.meta.url),"utf8");
 const temporel = await readFile(new URL("../temporel.js",import.meta.url),"utf8");
 const core = await readFile(new URL("../core.js",import.meta.url),"utf8");
+const comprendre = await readFile(new URL("../comprendre.js",import.meta.url),"utf8");
+const signaux = await readFile(new URL("../signaux.js",import.meta.url),"utf8");
 const explications = await readFile(new URL("../explications.js",import.meta.url),"utf8");
 
 test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",()=>{
@@ -677,7 +679,8 @@ test("une requête composée sépare destination et intention",()=>{
   // indien » visait la destination « indien »
   assert.match(html,/isDestination: \(t\)=>ressembleAUneZone\(t\),/);
   assert.match(html,/if\(destination && ressembleAUneZone\(destination\)\)\{/);
-  assert.match(html,/if\(intention\) appliquerIntention\(intention\);/);
+  // la zone accompagne l'intention : c'est ce qui produit la puce [Lille]
+  assert.match(html,/if\(intention\) appliquerIntention\(intention, destination\);/);
   assert.match(html,/ouvrirResultatsZone\(destination, intention\);/);
   // un géocodage muet ne se fait pas passer pour un succès
   assert.match(html,/toast\("Lieu introuvable : "\+destination\)/);
@@ -893,7 +896,7 @@ test("une cuisine trie les résultats, elle ne les exclut pas",()=>{
   // le tag cuisine n'est renseigné que sur une minorité de fiches OSM :
   // filtrer dessus rendait un écran vide au milieu d'un quartier de restaurants
   assert.match(html,/const CATS_MANGER = \["resto","fastfood","cafe","marche","food"\];/);
-  assert.match(html,/else if\(cuisine\) act\.cats = new Set\(CATS_MANGER\);/);
+  assert.match(html,/if\(st\.cuisine\) CATS_MANGER\.forEach\(c=>cats\.add\(c\)\);/);
   assert.match(html,/const manger = lieux\.filter\(l=>\[\.\.\.a\.cats\]\.some\(c=>correspondCategorie\(l,c\)\)\);/);
   assert.match(html,/const trouves = \[\.\.\.classes\.filter\(correspond\), \.\.\.classes\.filter\(l=>!correspond\(l\)\)\];/);
   // et le classement d'une zone ne rajoute pas un second filtre textuel
@@ -1150,4 +1153,81 @@ test("plus aucun texte sous 11 px, et les cibles font 44 px",()=>{
   assert.match(html,/\.ong\{flex:0 0 auto;min-height:44px/);
   assert.match(html,/\.rc-haut \.coeur\{width:44px;height:44px/);
   assert.match(html,/\.rc-tout\{[^}]*min-height:44px/);
+});
+
+/* ---- Comprendre une phrase ---------------------------------------------- */
+
+test("la compréhension des phrases est branchée sur la recherche",()=>{
+  assert.match(html,/<script src="comprendre\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="signaux\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/const COMPRENDRE = window\.AutourComprendre;/);
+  // `interpreter` délègue au module au lieu de refaire des expressions
+  assert.match(html,/const st = COMPRENDRE\.analyser\(phrase, \{/);
+  assert.match(html,/cuisineDe: cuisineRecherchee,/);
+  assert.match(html,/categorieDe: categorieRecherchee,/);
+  // et l'intention structurée voyage jusqu'au classement
+  assert.match(html,/let intentionCourante = null;/);
+  const occurrences = (html.match(/intention:intentionCourante,/g) || []).length;
+  assert.ok(occurrences >= 3, "les trois classements reçoivent l'intention : "+occurrences);
+});
+
+test("le budget ne passe plus par un filtre qui traite l'inconnu comme un refus",()=>{
+  // `l.prixN != null && l.prixN <= 1` écartait tout lieu sans prix connu :
+  // « manger pour moins de 15 € » rendait un écran vide
+  assert.doesNotMatch(html,/if\(st\.budget\.max != null && st\.budget\.max <= 20\) act\.filtres\.add\("budget"\);/);
+  assert.match(html,/Le budget ne passe PLUS par les filtres humains/);
+  assert.match(core,/if \(contrainte\.type === "budget"\)/);
+  assert.match(core,/return false;\s*\/\/ prix inconnu : on ne tranche pas/);
+});
+
+test("un mot de vocabulaire n'est jamais géocodé comme une ville",()=>{
+  // « un endroit calme où travailler » partait chercher la commune
+  // « où travailler » ; « après 20h » la commune « 20h »
+  assert.match(html,/if\(COMPRENDRE && COMPRENDRE\.estVocabulaire\(texte, \{/);
+  assert.match(comprendre,/function estVocabulaire\(fragment, options\) \{/);
+  assert.match(comprendre,/const MOTS_OUTILS = new RegExp/);
+  assert.match(comprendre,/if \(HEURE_SEULE\.test\(t\)\) return true;/);
+});
+
+test("ce qu'Autour a compris s'affiche en puces retirables",()=>{
+  assert.match(html,/function chipsHTML\(\)\{/);
+  assert.match(html,/data-testid="chips-comprises"/);
+  assert.match(html,/function retirerChip\(id\)\{/);
+  assert.match(html,/intentionCourante = COMPRENDRE\.sansChip\(intentionCourante, id\);/);
+  assert.match(html,/corps\.querySelectorAll\("\[data-chip\]"\)\.forEach\(b=>b\.onclick=\(\)=>retirerChip\(b\.dataset\.chip\)\);/);
+  // une contrainte ne se lit pas comme une envie
+  assert.match(html,/\.cp\.dure\{background:var\(--ink\)/);
+  // `.chip` désignait déjà les pastilles du formulaire : pas de collision
+  assert.match(html,/préfixe `cp`/);
+});
+
+test("les contraintes dures sont appliquées avant tout calcul de pertinence",()=>{
+  assert.match(core,/function contrainteRefusee\(item, contrainte, profil, dispo\)/);
+  assert.match(core,/const refuse = intention\.contraintes\.some\(\(c\) => contrainteRefusee\(item, c, profil, dispo\)\);/);
+  assert.ok(core.indexOf("const refuse = intention.contraintes.some") <
+            core.indexOf("const categoryFit = bestCategoryWeight(item, categories);"),
+    "les contraintes passent avant la pertinence de catégorie");
+  // une donnée inconnue n'est jamais un « non »
+  assert.match(core,/return ok === false;\s*\/\/ inconnu : on laisse passer/);
+  assert.match(core,/if \(v == null\) return;\s*\/\/ inconnu : neutre, ni bonus ni malus/);
+});
+
+test("l'adéquation passe devant la distance dans le tri",()=>{
+  // le tri regardait la distance bien avant le score : « où bosser » plaçait
+  // le bar d'en face devant la bibliothèque
+  assert.match(core,/fit: Math\.round\(adequation \* 4\) \/ 4\},/);
+  assert.match(core,/\(b\.rankBreakdown\.fit \|\| 0\) - \(a\.rankBreakdown\.fit \|\| 0\) \|\|/);
+  const tri = core.indexOf("}).filter(Boolean).sort((a, b) =>");
+  const fit = core.indexOf("(b.rankBreakdown.fit || 0)", tri);
+  const eta = core.indexOf("compareEta(a, b)", tri);
+  assert.ok(fit > 0 && eta > 0 && fit < eta, "l'adéquation est comparée avant le trajet");
+});
+
+test("un signal ne s'invente jamais",()=>{
+  assert.match(signaux,/const PLAFOND_INFERENCE = 0\.75;/);
+  // le wifi ne vient que d'un tag, jamais d'une catégorie
+  assert.match(signaux,/\["internet_access", \(v\) =>/);
+  assert.doesNotMatch(signaux,/PAR_CATEGORIE = Object\.freeze\(\{[^}]*wifi/);
+  // une donnée publiée l'emporte sur une inférence
+  assert.match(signaux,/une donnée publiée l'emporte toujours sur une inférence/);
 });

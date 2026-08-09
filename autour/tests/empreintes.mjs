@@ -9,8 +9,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-export const MODULES = ["availability.js", "temporel.js", "explications.js",
-                        "events.js", "core.js", "transit.js"];
+export const MODULES = ["availability.js", "comprendre.js", "signaux.js", "temporel.js",
+                        "explications.js", "events.js", "core.js", "transit.js"];
 
 export async function empreinte(fichier, base) {
   const contenu = await readFile(new URL("../" + fichier, base), "utf8");

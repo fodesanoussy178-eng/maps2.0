@@ -892,6 +892,58 @@
       survivants.push({ item, startsAt, endsAt, temporary, etat });
     });
 
+    /* ---- Contraintes dures, avant tout calcul de pertinence --------------
+       Une contrainte exclut ; une préférence ordonne. Les mélanger donne soit
+       des écrans vides (« moins de 15 € » appliqué comme un tri), soit des
+       résultats hors sujet (« accessible » traité comme un simple bonus).
+       Et une donnée INCONNUE ne vaut jamais « non » : un lieu dont on ignore
+       le prix n'est pas un lieu trop cher. */
+    const intention = ctx.intention || null;
+    const signaux = root.AutourSignaux;
+    const profilDe = (item) => {
+      if (!signaux) return null;
+      if (!item.__signaux) {
+        try { Object.defineProperty(item, "__signaux", { value: signaux.signauxDe(item), enumerable: false }); }
+        catch (e) { return signaux.signauxDe(item); }
+      }
+      return item.__signaux;
+    };
+
+    function contrainteRefusee(item, contrainte, profil, dispo) {
+      if (contrainte.type === "budget") {
+        const max = Number(contrainte.max);
+        if (max === 0) {
+          // gratuit demandé : on n'exclut que ce qu'on SAIT payant
+          if (item.gratuit === true) return false;
+          if (item.gratuit === false) return true;
+          return Number(item.prix) > 0;
+        }
+        const prix = Number(item.prix);
+        if (Number.isFinite(prix) && prix > 0) return prix > max;
+        // le niveau de prix Google : 1 ≈ 10 €, 2 ≈ 20 €, 3 ≈ 40 €, 4 ≈ 70 €
+        const paliers = [0, 12, 25, 45, 80];
+        const n = Number(item.prixN);
+        if (Number.isFinite(n) && paliers[n] != null) return paliers[n] > max;
+        return false;                       // prix inconnu : on ne tranche pas
+      }
+      if (contrainte.type === "signal") {
+        const ok = signaux ? signaux.satisfait(profil, contrainte.id) : null;
+        return ok === false;                // inconnu : on laisse passer
+      }
+      if (contrainte.type === "ouvertApres") {
+        if (!dispo || dispo.status === "unknown" || !dispo.closesAtTime) return false;
+        const [h, m] = String(dispo.closesAtTime).split(":").map(Number);
+        if (!Number.isFinite(h)) return false;
+        /* Une fermeture à 02:00 est PLUS TARD que 21:00, pas plus tôt : c'est
+           le lendemain. Sans ce report, « ouvert tard » écartait précisément
+           les lieux qui ferment le plus tard. */
+        let fin = h * 60 + (m || 0);
+        if (fin <= 6 * 60) fin += 24 * 60;
+        return fin < contrainte.minutes;
+      }
+      return false;
+    }
+
     /* Un arrêt de métro ou une station de vélos sert à ALLER quelque part ;
        ce n'est pas un endroit où l'on va. Ces objets remontaient pourtant en
        tête de « Sortir » : ouverts 24 h/24, tout près, et rattachés à `sport`
@@ -910,6 +962,16 @@
           categories.filter((c) => !TRANSPORT_CATEGORIES.includes(c)));
         if (forceDemandee < forceTransport) return null;
       }
+      /* Les contraintes dures : elles excluent, et elles s'appliquent avant
+         qu'on ait calculé le moindre point de pertinence. La proximité ne
+         doit jamais rattraper un lieu qui coûte trois fois le budget. */
+      const profil = intention ? profilDe(item) : null;
+      if (intention && intention.contraintes.length) {
+        const dispo = disponibiliteDe(item, now);
+        const refuse = intention.contraintes.some((c) => contrainteRefusee(item, c, profil, dispo));
+        if (refuse) return null;
+      }
+
       // un lieu entre dans un besoin s'il y a une appartenance, même
       // secondaire — c'est ce qui fait qu'un parc sort dans Famille ET Sortir
       const categoryFit = bestCategoryWeight(item, categories);
@@ -936,9 +998,42 @@
         if (relevance <= 0) return null;      // hors sujet : on ne le montre pas
         score += relevance * 220;
       }
+      /* Les préférences : elles ordonnent sans exclure. Une caractéristique
+         demandée et VÉRIFIÉE vaut beaucoup ; inconnue, elle ne vaut ni bonus
+         ni malus — sinon demander « calme » écarterait tout OpenStreetMap. */
+      let adequation = 0;
+      let signauxTenus = [];
+      if (intention && signaux && profil) {
+        const demandes = intention.preferences.filter((p) => p.type === "signal")
+          .concat(intention.ambiance.map((a) => ({ type: "signal", id: a.id, poids: a.poids })))
+          .concat(intention.contraintes.filter((c) => c.type === "signal"));
+        const vus = new Set();
+        let total = 0;
+        let obtenu = 0;
+        demandes.forEach((d) => {
+          if (vus.has(d.id)) return;
+          vus.add(d.id);
+          const poids = d.poids == null ? 1 : d.poids;
+          total += poids;
+          const v = signaux.force(profil, d.id);
+          if (v == null) return;                    // inconnu : neutre, ni bonus ni malus
+          obtenu += v * poids;
+          if (v >= .5) signauxTenus.push(d.id);
+        });
+        /* Normalisée : « à quel point ce lieu répond à ce qui a été demandé »,
+           entre 0 et 1. Le poids qui suit doit dominer la distance — c'est
+           l'ordre voulu : d'abord l'adéquation, la proximité ensuite. Une
+           bibliothèque à deux kilomètres répond mieux à « où bosser » qu'un
+           bar à cinquante mètres, et doit passer devant. */
+        adequation = total > 0 ? obtenu / total : 0;
+        score += adequation * 520;
+      }
+
       // le nombre d'avis conforte la note au lieu de la remplacer
       score += reviewWeight(item.avis) * 18;
-      score += profile.distance * Math.exp(-distance / profile.distanceScale);
+      const poidsDistance = intention && intention.preferences.some((p) => p.type === "proche")
+        ? profile.distance * 1.6 : profile.distance;
+      score += poidsDistance * Math.exp(-distance / profile.distanceScale);
 
       let availability = 2;
       let temporalReason = "";
@@ -1054,15 +1149,28 @@
         rankAvailability: outlook.dispo || null,
         // statut temporel déjà calculé : l'interface s'en sert pour classer en
         // sections sans refaire le travail ni risquer une réponse différente
+        rankSignals: profil || null,
+        rankMatched: signauxTenus,
+        rankFit: Math.round(adequation * 100) / 100,
         rankTemporal: etat ? etat.statut : null,
         rankSection: etat && temps ? temps.sectionTemporelle(etat, now) : null,
         rankStart: etat && etat.debut != null ? etat.debut : startsAt,
         rankRelevance: relevance,
         rankBreakdown: {availability, intentMatch, distance, startsAt, quality,
-          categoryFit, etaMinutes: minutes, relevance},
+          categoryFit, etaMinutes: minutes, relevance,
+          /* L'adéquation aux caractéristiques demandées, par quarts. Le tri
+             regardait la distance bien avant le score : « où bosser » plaçait
+             donc le bar d'en face devant la bibliothèque, parce qu'il est plus
+             près et qu'il compte comme « sortie » dans le profil générique.
+             L'ordre voulu est : ce qui est faisable, ce qui correspond à ce
+             qui a été demandé, PUIS la distance. Par quarts, pour ne pas
+             réordonner sur du bruit — et à zéro partout quand la requête ne
+             demande aucune caractéristique, donc sans effet. */
+          fit: Math.round(adequation * 4) / 4},
       });
     }).filter(Boolean).sort((a, b) =>
       b.rankBreakdown.availability - a.rankBreakdown.availability ||
+      (b.rankBreakdown.fit || 0) - (a.rankBreakdown.fit || 0) ||
       b.rankBreakdown.intentMatch - a.rankBreakdown.intentMatch ||
       (b.rankBreakdown.relevance || 0) - (a.rankBreakdown.relevance || 0) ||
       // « le plus proche » se juge en temps de trajet réel, pas à vol d'oiseau :

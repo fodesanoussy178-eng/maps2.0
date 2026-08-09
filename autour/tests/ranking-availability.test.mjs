@@ -5,6 +5,7 @@ import test from "node:test";
 // s'ils sont présents — comme dans la page, où les deux le précèdent
 await import("../availability.js");
 await import("../temporel.js");
+await import("../signaux.js");
 await import("../core.js");
 
 const {rankResults} = globalThis.AutourCore;
@@ -170,4 +171,96 @@ test("un événement récurrent est daté sur sa prochaine occurrence", () => {
   assert.equal(vus[0].rankTemporal, "starting_soon");
   // l'arrivée se juge sur l'occurrence, pas sur la première séance de la série
   assert.match(vus[0].rankReason, /avant le début/);
+});
+
+/* ---- Contraintes dures et préférences ------------------------------------
+   Une contrainte exclut, une préférence ordonne, et une donnée inconnue n'est
+   jamais un « non ». */
+
+const lieuSignal = (id, extra) => Object.assign({
+  id, titre: "Lieu " + id, cat: "cafe", lat: 50.631, lng: 3.061, quand: "Mo-Su 08:00-23:00",
+}, extra);
+
+const classerAvec = (items, intention, options) => rankResults(items, Object.assign({
+  intent: "sortir", intention,
+  categories: ["cafe", "biblio", "resto", "parc", "bar", "coworking"],
+  position: POSITION, now: MERCREDI_MIDI, distanceBetween: distance,
+}, options));
+
+const intentionVide = () => ({ categories: [], intentions: [], ambiance: [],
+  budget: { max: null, gratuit: false, pasCher: false },
+  horaire: { creneau: null, tard: false, apres: null, avant: null },
+  groupe: null, contraintes: [], preferences: [], cuisine: null, chips: [] });
+
+test("un budget demandé exclut ce qu’on sait trop cher, pas ce qu’on ignore", () => {
+  const cher = lieuSignal("cher", { cat: "resto", prixN: 4 });     // ≈ 80 €
+  const abordable = lieuSignal("abordable", { cat: "resto", prixN: 1 });
+  const inconnu = lieuSignal("inconnu", { cat: "resto" });
+  const intention = Object.assign(intentionVide(),
+    { contraintes: [{ type: "budget", max: 15 }] });
+  const vus = classerAvec([cher, abordable, inconnu], intention).map((l) => l.id);
+  assert.ok(!vus.includes("cher"), "le trop cher est écarté");
+  assert.ok(vus.includes("abordable"));
+  assert.ok(vus.includes("inconnu"), "prix inconnu : on ne tranche pas");
+});
+
+test("une caractéristique inconnue n’écarte jamais un lieu", () => {
+  const avec = lieuSignal("avec", { tags: { internet_access: "wlan" } });
+  const sans = lieuSignal("sans");
+  const intention = Object.assign(intentionVide(),
+    { contraintes: [{ type: "signal", id: "wifi", poids: 1 }] });
+  const vus = classerAvec([avec, sans], intention);
+  assert.equal(vus.length, 2, "aucun n’est exclu : personne ne dit « pas de wifi »");
+  // mais celui qui le prouve passe devant
+  assert.equal(vus[0].id, "avec");
+  assert.ok(vus[0].rankMatched.includes("wifi"));
+});
+
+test("la proximité ne fait jamais gagner un lieu hors sujet", () => {
+  // une bibliothèque à 2 km bat un bar à 50 m quand on demande à travailler
+  const bar = lieuSignal("bar", { cat: "bar", lat: 50.6301, lng: 3.0601 });
+  const biblio = lieuSignal("biblio", { cat: "biblio", categories: ["biblio", "library", "study"],
+    lat: 50.648, lng: 3.061 });
+  const intention = Object.assign(intentionVide(), {
+    ambiance: [{ id: "travail", poids: 1 }, { id: "calme", poids: .6 }],
+    preferences: [{ type: "signal", id: "travail", poids: 1 }],
+  });
+  const vus = classerAvec([bar, biblio], intention);
+  assert.equal(vus[0].id, "biblio", "l’adéquation passe devant la distance");
+  assert.ok(vus[0].rankFit > 0);
+});
+
+test("les préférences ordonnent sans exclure", () => {
+  const calme = lieuSignal("calme", { cat: "biblio", categories: ["biblio", "library"] });
+  const bruyant = lieuSignal("bruyant", { cat: "bar" });
+  const intention = Object.assign(intentionVide(),
+    { ambiance: [{ id: "calme", poids: 1 }], preferences: [{ type: "signal", id: "calme", poids: 1 }] });
+  const vus = classerAvec([calme, bruyant], intention);
+  assert.equal(vus.length, 2, "rien n’est exclu par une préférence");
+  assert.equal(vus[0].id, "calme");
+});
+
+test("« ouvert tard » écarte ce qui ferme tôt, et garde l’horaire inconnu", () => {
+  const tard = lieuSignal("tard", { quand: "Mo-Su 08:00-02:00" });
+  const tot = lieuSignal("tot", { quand: "Mo-Su 08:00-18:00" });
+  const inconnu = lieuSignal("inconnu", { quand: null });
+  const intention = Object.assign(intentionVide(),
+    { contraintes: [{ type: "ouvertApres", minutes: 21 * 60 }] });
+  const vus = classerAvec([tard, tot, inconnu], intention).map((l) => l.id);
+  assert.ok(!vus.includes("tot"), "ferme à 18 h : écarté");
+  assert.ok(vus.includes("tard"));
+  assert.ok(vus.includes("inconnu"), "horaire inconnu : on ne tranche pas");
+});
+
+test("« gratuit » n’écarte que ce qu’on sait payant", () => {
+  const libre = lieuSignal("libre", { cat: "parc", gratuit: true });
+  const payant = lieuSignal("payant", { cat: "musee", gratuit: false, prix: 12 });
+  const inconnu = lieuSignal("inconnu", { cat: "parc" });
+  const intention = Object.assign(intentionVide(),
+    { contraintes: [{ type: "budget", max: 0 }] });
+  const vus = classerAvec([libre, payant, inconnu],
+    Object.assign(intention, {}), { categories: ["parc", "musee", "cafe"] }).map((l) => l.id);
+  assert.ok(!vus.includes("payant"));
+  assert.ok(vus.includes("libre"));
+  assert.ok(vus.includes("inconnu"));
 });
