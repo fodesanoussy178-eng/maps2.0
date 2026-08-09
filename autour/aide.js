@@ -52,12 +52,17 @@
       pourquoi: "Tu cherches un hébergement ou une aide au logement.",
     },
     {
-      id: "travail", emoji: "💼", label: "Travail / formation",
+      id: "travail", emoji: "💼", label: "Travail / argent",
       mots: ["travail", "emploi", "boulot", "job", "trouver du travail",
              "pas de travail", "chomage", "licencie", "formation", "me former",
              "apprentissage", "alternance", "stage", "cv", "recrutement",
-             "entretien", "reconversion", "chercher un emploi", "sans emploi"],
-      cats: ["emploi", "asso"],
+             "entretien", "reconversion", "chercher un emploi", "sans emploi",
+             // l'argent et le travail se cherchent ensemble : un même guichet
+             // instruit souvent les deux
+             "argent", "pas d argent", "dettes", "dette", "surendettement",
+             "aide financiere", "fin de mois", "rsa", "allocation", "allocations",
+             "sans ressources", "je n arrive plus a payer"],
+      cats: ["emploi", "asso", "mairie"],
       reseaux: [/mission locale/i, /france travail|p[oô]le emploi/i, /cap emploi/i,
                 /maison de l['’\s]?emploi/i, /\bepide\b/i, /garantie jeunes/i],
       pourquoi: "Tu cherches du travail ou une formation.",
@@ -73,17 +78,6 @@
       reseaux: [/maison\s*(?:france\s*services|de services au public)/i, /\bccas\b/i,
                 /mairie/i, /prefecture/i, /mission locale/i, /point d['’\s]?acces au droit/i],
       pourquoi: "Tu cherches de l’aide pour des démarches.",
-    },
-    {
-      id: "argent", emoji: "💶", label: "Argent",
-      mots: ["argent", "pas d argent", "fauche", "dettes", "dette", "surendettement",
-             "facture", "factures", "impaye", "aide financiere", "budget",
-             "fin de mois", "rsa", "allocation", "allocations", "prime",
-             "je n arrive plus a payer", "sans ressources"],
-      cats: ["asso", "mairie", "emploi"],
-      reseaux: [/\bccas\b/i, /\bcaf\b/i, /secours catholique/i, /secours populaire/i,
-                /point conseil budget/i, /\bcrous\b/i],
-      pourquoi: "Tu as des difficultés financières.",
     },
     {
       id: "sante", emoji: "🩺", label: "Santé",
@@ -109,8 +103,13 @@
                 /point information jeunesse/i, /\bbij\b/i],
       pourquoi: "Tu es jeune ou étudiant.",
     },
+    /* Hygiène et vêtements ne sont plus des cases à l'écran — dix cases, pas
+       douze — mais restent des besoins à part entière : reconnus dans une
+       phrase libre, et atteignables par « Autre aide », dont les catégories
+       les incluent. Les retirer du modèle aurait fait perdre des douches et
+       des vestiaires à ceux qui les cherchent. */
     {
-      id: "hygiene", emoji: "🚿", label: "Hygiène",
+      id: "hygiene", emoji: "🚿", label: "Hygiène", horsGrille: true,
       mots: ["douche", "me laver", "laver", "hygiene", "toilettes", "wc",
              "laverie", "linge", "lessive", "propre", "sanitaire"],
       cats: ["toilettes", "asso", "hebergement"],
@@ -118,7 +117,7 @@
       pourquoi: "Tu cherches un endroit pour te laver ou laver ton linge.",
     },
     {
-      id: "vetements", emoji: "👕", label: "Vêtements",
+      id: "vetements", emoji: "👕", label: "Vêtements", horsGrille: true,
       mots: ["vetement", "vetements", "habits", "s habiller", "vestiaire",
              "chaussures", "manteau", "friperie solidaire", "habiller mes enfants"],
       cats: ["collecte", "asso", "friperie"],
@@ -127,11 +126,46 @@
       pourquoi: "Tu cherches des vêtements.",
     },
     {
-      id: "autre", emoji: "🤝", label: "Autre aide",
+      id: "parler", emoji: "🧠", label: "Parler à quelqu’un",
+      mots: ["parler", "parler a quelqu un", "ecoute", "seul", "solitude",
+             "isole", "isolement", "mal dans ma tete", "deprime", "depression",
+             "anxiete", "angoisse", "ca va pas", "moral", "psy", "psychologue",
+             "soutien moral", "j en peux plus", "besoin de parler"],
+      cats: ["sante", "asso"],
+      reseaux: [/\bcmp\b/i, /point [ée]coute/i, /maison des adolescents/i,
+                /planning familial/i, /sos amiti[ée]/i, /centre social/i],
+      pourquoi: "Tu cherches quelqu’un à qui parler.",
+    },
+    {
+      id: "famille", emoji: "👨‍👩‍👧", label: "Famille",
+      mots: ["famille", "mes enfants", "garde", "creche", "nounou", "parent",
+             "parents", "separation", "divorce", "pension", "scolarite",
+             "cantine", "aide aux devoirs", "parentalite", "grossesse",
+             "je suis enceinte", "bebe"],
+      cats: ["asso", "mairie", "sante"],
+      reseaux: [/\bcaf\b/i, /\bpmi\b|protection maternelle/i, /centre social/i,
+                /maison de quartier/i, /\bccas\b/i, /planning familial/i],
+      pourquoi: "Tu cherches de l’aide pour ta famille.",
+    },
+    {
+      id: "securite", emoji: "🛡", label: "Sécurité",
+      mots: ["violence", "violences", "frappe", "menace", "menacee", "peur",
+             "harcelement", "harcele", "danger", "agression", "agressee",
+             "je ne me sens pas en securite", "porter plainte", "protection",
+             "victime"],
+      cats: ["asso", "sante", "mairie", "hebergement"],
+      reseaux: [/\b3919\b/i, /france victimes/i, /planning familial/i,
+                /point d['’\s]?acces au droit/i, /commissariat|gendarmerie/i],
+      pourquoi: "Tu cherches de la protection ou du soutien.",
+    },
+    {
+      id: "autre", emoji: "➕", label: "Autre aide",
       mots: ["aide", "aider", "coup de main", "soutien", "accompagnement",
              "je sais pas ou aller", "je viens d arriver", "perdu", "orienter",
              "conseil", "quelqu un a qui parler"],
-      cats: ["asso", "mairie", "alimentaire", "hebergement", "sante", "emploi"],
+      // « Autre » couvre aussi ce qui n'a plus de case : douches, vestiaires
+      cats: ["asso", "mairie", "alimentaire", "hebergement", "sante", "emploi",
+             "toilettes", "collecte", "friperie"],
       reseaux: [/maison\s*france\s*services/i, /centre social/i, /maison de quartier/i,
                 /\bccas\b/i],
       pourquoi: "Tu cherches de l’aide, sans savoir par où commencer.",
@@ -139,6 +173,9 @@
   ]);
 
   const BESOIN_DE = (id) => BESOINS.find((b) => b.id === id) || null;
+  /* Ce qui s'affiche en cases. Dix, pas plus : au-delà, la grille redevient
+     un formulaire administratif. Les autres besoins restent reconnus. */
+  const BESOINS_GRILLE = Object.freeze(BESOINS.filter((b) => !b.horsGrille));
 
   /* ---- Urgence -----------------------------------------------------------
      Ce n'est pas un besoin de plus : c'est une gravité. Elle traverse les
@@ -290,7 +327,7 @@
   const estUrgent = (phrase) => URGENCE.test(String(phrase || ""));
 
   root.AutourAide = Object.freeze({
-    BESOINS, BESOIN_DE, CONDITIONS,
+    BESOINS, BESOINS_GRILLE, BESOIN_DE, CONDITIONS,
     besoinsDepuisPhrase, ageDepuisPhrase, pertinence, pourquoi,
     conditionDe, convient, estUrgent,
   });

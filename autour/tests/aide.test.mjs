@@ -54,7 +54,14 @@ test("l'urgence est une gravité, pas un besoin de plus", () => {
 });
 
 test("les dix besoins sont écrits sans vocabulaire administratif", () => {
-  assert.equal(A.BESOINS.length, 10);
+  // dix cases à l'écran ; le modèle en garde douze — hygiène et vêtements
+  // restent reconnus dans une phrase et atteignables par « Autre aide »
+  assert.equal(A.BESOINS_GRILLE.length, 10);
+  assert.deepEqual(A.BESOINS.filter((b) => b.horsGrille).map((b) => b.id),
+    ["hygiene", "vetements"]);
+  const autre = A.BESOIN_DE("autre");
+  assert.ok(autre.cats.includes("toilettes") && autre.cats.includes("friperie"),
+    "« Autre aide » couvre ce qui n'a plus de case");
   const libelles = A.BESOINS.map((b) => b.label.toLowerCase()).join(" ");
   for (const jargon of ["ccas", "mission locale", "france services", "pass", "insertion"])
     assert.ok(!libelles.includes(jargon), jargon + " ne doit pas figurer dans un libellé");

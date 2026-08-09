@@ -1109,6 +1109,15 @@
       // qualité de donnée
       if (outlook.state === "permanentlyClosed") return null;
 
+      /* Hors service pour une raison que les horaires ne portent pas : un
+         collège pendant les vacances scolaires est « ouvert » au sens d'OSM
+         et pourtant fermé. On le relègue plutôt que de le supprimer — il
+         reste une information, mais jamais une recommandation. */
+      if (typeof ctx.horsService === "function" && ctx.horsService(item, now)) {
+        availability = 0;
+        score -= 400;
+      }
+
       if (outlook.state === "missed" || outlook.state === "closedOnArrival" ||
           outlook.state === "closedNow") {
         // hors résultats en mode « maintenant », sinon relégué en fin de liste

@@ -192,8 +192,11 @@ test("le bottom sheet propose au lieu de poser une question",()=>{
   assert.match(html,/function recommandationsAccueil/);
   assert.match(html,/class="rc-piste"/);
   assert.match(html,/data-rc-tout/);
-  // l'accueil s'ouvre tout seul dès que des lieux existent
-  assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose && lieux\.length\) ouvrirAccueilFeuille\(\);/);
+  // l'accueil s'ouvre tout seul — et sans attendre que des lieux existent :
+  // il montre son squelette pendant que les sources répondent
+  assert.equal((html.match(/if\(feuilleNiveau === null && !modeNav && !modePose\) ouvrirAccueilFeuille\(\);/g)||[]).length, 2,
+    "à l'ouverture de la carte, puis une fois les lieux arrivés");
+  assert.doesNotMatch(html,/!modePose && lieux\.length\) ouvrirAccueilFeuille/);
 });
 
 test("les prochains départs n'inventent jamais d'horaire",()=>{
@@ -1242,8 +1245,10 @@ test("Aide est une entrée principale, nommée et distincte du cœur",()=>{
   assert.match(html,/<button class="nb nb-aide" data-nb="aide">/);
   // le mot est écrit : une icône seule ne dit pas ce que c'est
   assert.match(html,/<\/svg>\s*\n\s*Aide\s*\n\s*<\/button>/);
-  // et ce n'est pas un cœur : Favoris en porte déjà un
-  assert.match(html,/Une bouée, pas un cœur/);
+  // le cœur revient à Aide — c'est là qu'il dit quelque chose — et Favoris
+  // passe au signet pour que les deux se distinguent
+  assert.match(html,/Le cœur revient à Aide/);
+  assert.match(html,/<button class="nb" data-nb="favoris">\s*\n\s*<svg[^>]*><path d="M6\.5 3\.5h11/);
   for(const t of ["explorer","aide","creer","favoris","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
   // un rappel discret sur l'accueil, une ligne et pas un panneau
@@ -1331,7 +1336,10 @@ test("dans Aide, l'urgence passe avant tout le reste",()=>{
   assert.ok(question < grille, "question avant les catégories");
   assert.ok(grille < champ, "catégories avant le champ libre");
   // et il se comprend en une seconde
-  assert.match(html,/<b>Besoin urgent&nbsp;\?<\/b>/);
+  assert.match(html,/<b>Besoin d’aide urgente&nbsp;\?<\/b>/);
+  // et l'écran dit ce qu'Autour n'est pas : orienter n'est pas secourir
+  assert.match(html,/Autour oriente vers des structures locales, il ne les remplace pas/);
+  assert.match(html,/<b>15<\/b> \(santé\)/);
   assert.match(html,/Santé, mise à l’abri, hébergement d’urgence, /);
   assert.match(html,/Pour une situation urgente, commence ici/);
   // visuellement distinct : le seul fond coloré de la feuille
@@ -1363,4 +1371,64 @@ test("le bouton flottant dit « Aide » sans qu'on ait à cliquer",()=>{
   // compact, à droite, et la cible reste visable au pouce
   assert.match(html,/\.capsule-flottante\{[^}]*right:16px/);
   assert.match(html,/\.capsule-flottante\{[^}]*min-height:44px/);
+});
+
+/* ---- Passe produit : comprendre en cinq secondes ------------------------ */
+
+test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
+  assert.match(html,/function squeletteHTML\(n\)\{/);
+  assert.match(html,/data-testid="squelette"/);
+  assert.match(html,/On cherche ce qui vaut le détour autour de toi…/);
+  // le squelette passe AVANT tout message d'état, y compris « aucun résultat »
+  assert.match(html,/if\(rechercheEnCours\(\)\) return squeletteHTML\(3\);/);
+  const statut = html.indexOf("function statutRechercheHTML(");
+  const enCours = html.indexOf("if(rechercheEnCours()) return squeletteHTML(3);", statut);
+  const rien = html.indexOf("Rien d’ouvert à proximité", statut);
+  assert.ok(enCours > 0 && rien > 0 && enCours < rien,
+    "le chargement se dit avant le vide");
+  // le groupe temporel aussi : on ne parle pas de vide pendant qu'on charge
+  assert.match(html,/if\(rechercheEnCours\(\)\) return squeletteHTML\(3\);\s*\n\s*if\(!positionConnue\(\)\)/);
+  // et l'accueil s'ouvre sans attendre Overpass
+  assert.match(html,/L'accueil s'ouvre TOUT DE SUITE, avec son squelette/);
+});
+
+test("l'accueil propose quatre besoins rapides",()=>{
+  assert.match(html,/const BESOINS_RAPIDES = \[/);
+  for(const l of ["Manger","Sortir","Maintenant","Aide"])
+    assert.match(html,new RegExp('label:"'+l+'"'), l);
+  assert.match(html,/data-testid="besoins-rapides"/);
+  assert.match(html,/besoinsRapidesHTML\(\)\+\s*\n\s*ongletsTemps\(\)/);
+});
+
+test("chaque recommandation dit pourquoi elle est là",()=>{
+  assert.match(html,/function raisonCourte\(l\)\{/);
+  for(const r of ["En cours","Commence bientôt","Ce soir","Ce week-end","Éphémère",
+                  "Ferme bientôt","Ouvert maintenant","Gratuit","Apprécié autour de toi"])
+    assert.match(html,new RegExp(r.replace("É","É")), r);
+  assert.match(html,/data-testid="carte-pourquoi"/);
+  // « Gratuit » ne vient jamais du défaut OpenStreetMap
+  assert.match(html,/if\(prix && prix\.level === 0 && prix\.confidence >= \.8\) return \{t:"Gratuit"/);
+  // sur un événement, la date dit déjà pourquoi : pas deux étiquettes
+  assert.match(html,/return r && !quand/);
+});
+
+test("sélectionner un lieu concentre la carte sur lui",()=>{
+  assert.match(html,/function mettreEnAvant\(id\)\{/);
+  assert.match(html,/document\.body\.classList\.toggle\("focus-lieu", !!lieuEnAvant\);/);
+  assert.match(html,/body\.focus-lieu \.leaflet-marker-icon\{opacity:\.35/);
+  assert.match(html,/body\.focus-lieu \.leaflet-marker-icon\.en-avant\{opacity:1/);
+  // la mise en avant survit à un redessin
+  assert.match(html,/if\(lieuEnAvant\) mettreEnAvant\(lieuEnAvant\);/);
+  // et se relâche quand on referme la fiche
+  assert.match(html,/if\(f\)\{ f\.hidden = true; f\.innerHTML = ""; \}\s*\n\s*mettreEnAvant\(null\);/);
+});
+
+test("un établissement scolaire fermé pour vacances n'est pas recommandé",()=>{
+  assert.match(html,/function horsService\(l, quand\)\{/);
+  assert.match(html,/if\(!l \|\| l\.cat !== "ecole"\) return false;/);
+  assert.match(html,/return !!vacancesScolaires\(new Date\(quand == null \? Date\.now\(\) : quand\)\);/);
+  // relégué, pas supprimé : ça reste une information
+  assert.match(core,/if \(typeof ctx\.horsService === "function" && ctx\.horsService\(item, now\)\) \{\s*\n\s*availability = 0;/);
+  const occurrences = (html.match(/^\s+horsService,$/gm) || []).length;
+  assert.ok(occurrences >= 2, "branché sur les classements : "+occurrences);
 });

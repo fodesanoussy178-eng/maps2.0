@@ -333,6 +333,17 @@ input{font-family:inherit;font-size:16px}
    la question d'abord, les structures ensuite. */
 .ab{display:block}
 
+/* L'en-tête d'Aide : ce que c'est, en deux lignes. */
+.ab-entete{margin:0 0 14px}
+.ab-entete b{display:block;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.ab-entete i{display:block;margin-top:4px;font-style:normal;font-size:13.5px;
+  line-height:1.4;color:var(--ink2)}
+
+/* La distinction que l'application doit tenir : orienter n'est pas secourir. */
+.ab-secours{margin:-8px 0 16px;padding:9px 11px;border-radius:10px;
+  background:rgba(20,30,25,.05);font-size:12.5px;line-height:1.45;color:var(--ink2)}
+.ab-secours b{font-weight:800;color:var(--ink)}
+
 /* ---- L'urgence, en tête et impossible à manquer -------------------------
    Elle était sous les dix besoins : il fallait descendre pour la trouver,
    ce qui est exactement l'inverse de ce qu'il faut quand c'est urgent.
@@ -423,6 +434,51 @@ input{font-family:inherit;font-size:16px}
 .cp.dure{background:var(--ink);border-color:var(--ink);color:#fff}
 .cp.dure i{color:rgba(255,255,255,.75)}
 .cp.zone{border-color:var(--violet);color:var(--violet)}
+
+/* ---- Le squelette de chargement -----------------------------------------
+   Ce qui arrive, pas ce qui manque. Une phrase seule se lit comme un aveu de
+   vide ; trois formes grises disent « ça vient ». */
+.sq{display:flex;flex-direction:column;gap:8px;padding:2px 0 10px}
+.sq-dit{font-size:14px;color:var(--ink2);padding-bottom:4px}
+.sq-carte{display:flex;gap:12px;align-items:center;padding:11px 12px;
+  border:1px solid var(--bord);border-radius:16px;background:#fff}
+.sq-img{width:64px;height:64px;border-radius:12px;flex-shrink:0}
+.sq-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.sq-txt i{display:block;height:12px;border-radius:6px}
+.sq-txt i.court{width:45%}
+.sq-img,.sq-txt i{background:linear-gradient(90deg,
+  rgba(20,30,25,.06) 25%, rgba(20,30,25,.11) 37%, rgba(20,30,25,.06) 63%);
+  background-size:400% 100%;animation:sq-onde 1.4s ease-in-out infinite}
+@keyframes sq-onde{0%{background-position:100% 0}100%{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){ .sq-img,.sq-txt i{animation:none} }
+
+/* ---- Les besoins rapides ------------------------------------------------ */
+.br{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:0 0 10px}
+.br::-webkit-scrollbar{display:none}
+.br-b{flex:0 0 auto;min-height:44px;padding:9px 14px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);
+  font-size:14px;font-weight:700;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:6px}
+.br-b em{font-style:normal;font-size:16px;line-height:1}
+.br-b.actif{background:var(--violet-doux);border-color:var(--violet);color:var(--violet)}
+.br-b[data-br="aide"].actif{background:rgba(184,42,58,.10);border-color:#B82A3A;color:#B82A3A}
+
+/* ---- Pourquoi cette recommandation --------------------------------------
+   Une étiquette, la plus décisive, et rien de plus. */
+.rc-pourquoi{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:99px;
+  background:rgba(20,30,25,.06);font-size:11.5px;font-weight:700;color:var(--ink2)}
+.rc-pourquoi.ouvert{background:rgba(27,127,76,.10);color:#1B7F4C}
+.rc-pourquoi.chaud{background:rgba(240,90,20,.12);color:#C24A08}
+.rc-pourquoi.tiede{background:rgba(184,92,0,.12);color:#B85C00}
+
+/* ---- La carte s'efface derrière le lieu regardé -------------------------
+   Sélectionner une recommandation ne doit pas laisser vingt pastilles de même
+   poids à l'écran : celle qu'on regarde grossit, les autres reculent. */
+body.focus-lieu .leaflet-marker-icon{opacity:.35;transition:opacity .18s ease}
+body.focus-lieu .leaflet-marker-icon.en-avant{opacity:1;z-index:500!important}
+body.focus-lieu .leaflet-marker-icon.en-avant .poi-rond{transform:scale(1.25);
+  box-shadow:0 3px 12px rgba(20,30,25,.34)}
+body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 
 /* ---- Les quatre groupes de temps ----------------------------------------
    Une seule rangée, en tête de la feuille : c'est la première question qu'on
@@ -1251,7 +1307,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <!-- Une capsule, pas un rond : un cœur seul se lit « favoris », « santé »,
      « j'aime » — tout sauf « aide ». Le mot est donc écrit, sans clic. -->
 <button class="capsule-flottante" id="btnAide" hidden aria-pressed="false" aria-label="Trouver de l’aide : manger, logement, santé, papiers">
-  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6"/><path d="M5.6 5.6l3.9 3.9M18.4 5.6l-3.9 3.9M5.6 18.4l3.9-3.9M18.4 18.4l-3.9-3.9"/></svg>
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
   <b>Aide</b>
 </button>
 <button class="rond-flottant" id="btnTransports" hidden aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
@@ -1304,10 +1360,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
        questions auxquelles Autour répond. « Qu'est-ce qui se passe autour de
        moi » et « qu'est-ce qui peut m'aider autour de moi » méritent la même
        place. Icône de soutien (deux mains), et le mot écrit. -->
+  <!-- Le cœur revient à Aide : c'est lui qui dit « soutien », et c'est là que
+       ça compte. Favoris passe donc au signet — deux cœurs côte à côte ne se
+       distinguaient pas, et le plus important des deux devait garder le sien. -->
   <button class="nb nb-aide" data-nb="aide">
-    <!-- Une bouée, pas un cœur : « Favoris » en porte déjà un, et deux cœurs
-         côte à côte ne se distinguent pas. Une bouée dit « secours ». -->
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6"/><path d="M5.6 5.6l3.9 3.9M18.4 5.6l-3.9 3.9M5.6 18.4l3.9-3.9M18.4 18.4l-3.9-3.9"/></svg>
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
     Aide
   </button>
   <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
@@ -1315,7 +1372,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
     Créer
   </button>
   <button class="nb" data-nb="favoris">
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 5.6a5 5 0 0 0-7.1 0L12 6.9l-1.3-1.3a5 5 0 1 0-7.1 7.1L12 21l8.4-8.3a5 5 0 0 0 0-7.1z"/></svg>
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1z"/></svg>
     Favoris
   </button>
   <button class="nb" data-nb="profil">
@@ -1367,7 +1424,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=4f3ec1ed"></script>
 <script src="events.js?v=6c291809"></script>
-<script src="core.js?v=c2f5aba6"></script>
+<script src="core.js?v=9dc124b2"></script>
 <script src="transit.js?v=17e44189"></script>
 <script>
 function panne(titre, corps){
@@ -3629,6 +3686,12 @@ async function demarrer(coords){
 
   dessinerFiltres();
   majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
+
+  /* L'accueil s'ouvre TOUT DE SUITE, avec son squelette. Il attendait la
+     réponse d'Overpass — une à trois secondes de carte nue devant quelqu'un
+     qui vient d'arriver, ce qui se lit comme une application vide. Les
+     recommandations remplacent le squelette dès qu'elles existent. */
+  if(feuilleNiveau === null && !modeNav && !modePose) ouvrirAccueilFeuille();
   // toucher la carte referme la feuille : la carte reprend tout l'écran
   map.on("click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
 
@@ -3682,10 +3745,8 @@ async function demarrer(coords){
     // les canaux décident de l'existence de la section Messages
     rafraichirCanaux();
     chargerFavoris();
-    // Contexte → suggestions → carte → lieux → action : dès que les lieux
-    // sont là, l'accueil propose au lieu d'attendre une question. La carte
-    // n'est jamais vide devant quelqu'un qui vient d'arriver.
-    if(feuilleNiveau === null && !modeNav && !modePose && lieux.length) ouvrirAccueilFeuille();
+    // l'accueil est déjà ouvert (avec son squelette) : il se remplit ici
+    if(feuilleNiveau === null && !modeNav && !modePose) ouvrirAccueilFeuille();
     // ce qu'on ouvrira ensuite se charge pendant qu'on regarde l'accueil
     prechargerCategories();
   });
@@ -3821,6 +3882,14 @@ function instantCreneau(){
   return d;
 }
 
+/* Fermé pour une raison que les horaires ne disent pas. Aujourd'hui un seul
+   cas, et il est réel : un établissement scolaire pendant les vacances. OSM
+   n'y publie pas de calendrier, et la fiche reste « ouverte » tout l'été. */
+function horsService(l, quand){
+  if(!l || l.cat !== "ecole") return false;
+  return !!vacancesScolaires(new Date(quand == null ? Date.now() : quand));
+}
+
 /* La section temporelle d'un objet, telle que le moteur la calcule. */
 function sectionDe(l, quand){
   const t = quand == null ? Date.now() : quand;
@@ -3909,8 +3978,29 @@ function heureLocale(ts, l){
    Un tap sur un marqueur n'ouvre plus un panneau plein écran : il pose une
    petite fiche au-dessus de la carte, qu'on lit sans perdre le contexte.
    « Voir » seulement ensuite ouvre le détail complet. */
+/* Le lieu regardé. Quand il y en a un, la carte cesse d'être une liste de
+   pastilles équivalentes : celle-là est mise en avant, les autres s'effacent.
+   C'est ce qui fait de la carte un support de décision plutôt qu'un fond. */
+let lieuEnAvant = null;
+
+function mettreEnAvant(id){
+  lieuEnAvant = id || null;
+  document.body.classList.toggle("focus-lieu", !!lieuEnAvant);
+  marqueurs.forEach((m, cle)=>{
+    const el = m && m.getElement && m.getElement();
+    if(el) el.classList.toggle("en-avant", !!lieuEnAvant && cle === lieuEnAvant);
+  });
+}
+
 function ouvrirFicheCompacte(l){
   if(!l) return;
+  mettreEnAvant(l.id);
+  /* Sur téléphone, la feuille occupe 58 % de l'écran : une fiche posée sur la
+     carte s'y superposait, illisible. On réduit donc la feuille le temps de
+     lire la fiche — la décision est prise, la carte reprend la main. Elle se
+     redéplie d'un geste sur la poignée. */
+  if(!responsiveLayoutState.isDesktop && feuilleNiveau !== null)
+    reglerEtatFeuille("reduite");
   favorisEnMemoire.set(cleFavori(l), l);
   const d = dispoDe(l);
   const centre = positionMoi;
@@ -3968,6 +4058,7 @@ function ouvrirFicheCompacte(l){
 function fermerFicheCompacte(){
   const f = $("#ficheCompacte");
   if(f){ f.hidden = true; f.innerHTML = ""; }
+  mettreEnAvant(null);
 }
 
 /* La deuxième ligne d'une étiquette doit trancher : l'heure qui décide
@@ -4244,6 +4335,8 @@ function rendre(){
     marqueurs.set(id,m);
   });
   marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
+  // un redessin ne doit pas effacer la mise en avant du lieu regardé
+  if(lieuEnAvant) mettreEnAvant(lieuEnAvant);
 }
 
 /* ================================================================== */
@@ -6751,7 +6844,7 @@ const SET_AIDE  = new Set(CATS_AIDE);
    L'ancienne liste posait la question autrement — « Parler à une association »,
    « Emploi et droits » — c'est-à-dire par l'organigramme plutôt que par le
    problème. On demande maintenant « de quoi as-tu besoin ? ». */
-const SOUS_AIDE = (AIDE ? AIDE.BESOINS : []).map(b=>({
+const SOUS_AIDE = (AIDE ? AIDE.BESOINS_GRILLE : []).map(b=>({
   id:b.id, emoji:b.emoji, label:b.label, cats:b.cats,
 }));
 /* L'urgence n'est pas un besoin de plus : c'est une gravité. Elle traverse
@@ -7060,6 +7153,7 @@ function classementFeuille(){
     nowOnly:filtreMaintenant && !montrerFermes,
     radius:feuilleNiveau === "aide" ? Math.max(rayonRecherche,6000) : rayonRecherche,
     distanceBetween:distanceM,
+    horsService,
     // l'ETA réel pilote l'ordre ET l'exclusion : un lieu fermé à l'arrivée
     // n'est pas un résultat, même s'il est le plus proche
     etaFor:l=>etaConnu(l, centre),
@@ -7194,6 +7288,7 @@ function majFeuille2(){
     corps.innerHTML =
       blocOuRegarder()+
       chipsHTML()+
+      besoinsRapidesHTML()+
       ongletsTemps()+
       blocAideAccueil()+
       (reco.length
@@ -7261,8 +7356,21 @@ function messageVide(type){
     '</div></div>';
 }
 
+/* Trois lignes grises à la forme d'une recommandation. Une phrase seule
+   (« Recherche autour de toi… ») se lit comme un écran vide qui s'excuse ;
+   un squelette montre ce qui arrive et fait patienter sans mentir. */
+function squeletteHTML(n){
+  return '<div class="sq" data-testid="squelette" role="status" aria-live="polite">'+
+    '<span class="sq-dit">On cherche ce qui vaut le détour autour de toi…</span>'+
+    Array.from({length:n||3}, ()=>
+      '<span class="sq-carte"><span class="sq-img"></span>'+
+        '<span class="sq-txt"><i></i><i class="court"></i></span></span>').join("")+
+    '</div>';
+}
+
 function statutRechercheHTML(nombreResultats){
-  if(rechercheEnCours()) return '<div class="fb-statut" role="status">Recherche autour de toi…</div>';
+  // tant que ça charge, on ne dit jamais qu'il n'y a rien : on ne le sait pas
+  if(rechercheEnCours()) return squeletteHTML(3);
   if(rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED && !positionMoi)
     return '<div class="fb-statut">Active ta position ou choisis un endroit sur la carte.</div>';
   if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE || rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE)
@@ -7353,6 +7461,7 @@ function recommandationsAccueil(limite){
     nowOnly:groupe && filtreMaintenant && !montrerFermes,
     radius:rayonRecherche,
     distanceBetween:distanceM,
+    horsService,
     etaFor:l=>etaConnu(l, centre),
   });
 
@@ -7431,14 +7540,25 @@ function ecranBesoinsAide(){
      aucune case. */
   return '<section class="ab" data-testid="aide-besoins">'+
 
-    // 1 · l'urgence, en premier et impossible à manquer
+    // 0 · ce qu'est cet écran, en deux lignes
+    '<p class="ab-entete"><b>❤️ Aide autour de toi</b>'+
+      '<i>Trouve rapidement les structures et services qui peuvent t’aider '+
+      'près de chez toi.</i></p>'+
+
+    // 1 · l'urgence, en premier et impossible à manquer. Elle dit aussi ce
+    //     qu'Autour n'est pas : une application d'orientation ne remplace pas
+    //     un service d'urgence, et le laisser croire serait dangereux.
     '<button class="ab-urgence" data-sa="urgence" data-testid="aide-urgence">'+
       '<span class="abu-haut"><em>'+AIDE_URGENCE.emoji+'</em>'+
-        '<b>Besoin urgent&nbsp;?</b></span>'+
+        '<b>Besoin d’aide urgente&nbsp;?</b></span>'+
       '<span class="abu-quoi">Santé, mise à l’abri, hébergement d’urgence, '+
         'danger immédiat</span>'+
       '<span class="abu-cta">Pour une situation urgente, commence ici →</span>'+
     '</button>'+
+    '<p class="ab-secours">En cas de danger immédiat, appelle les secours&nbsp;: '+
+      '<b>15</b> (santé) · <b>17</b> (police) · <b>18</b> (pompiers) · '+
+      '<b>112</b> · <b>115</b> (hébergement). '+
+      'Autour oriente vers des structures locales, il ne les remplace pas.</p>'+
 
     // 2 · ce que fait Aide, en une phrase et sans mot d'administration
     '<p class="ab-promesse">Explique ton besoin&nbsp;: Autour te propose les '+
@@ -7693,6 +7813,29 @@ function retirerChip(id){
   dessinerFiltres(); majFiltres(); rendre(); majFeuille2();
 }
 
+/* ---- Les besoins rapides ------------------------------------------------
+   Quatre entrées, pas dix : les trois envies les plus fréquentes et l'aide.
+   Elles vivaient dans la loupe, c'est-à-dire nulle part pour qui n'ouvre pas
+   la recherche. Ici, elles disent en une ligne ce que l'application sait
+   faire — ce qui est la première chose à comprendre. */
+const BESOINS_RAPIDES = [
+  {id:"manger", emoji:"🍜", label:"Manger"},
+  {id:"sortir", emoji:"🎉", label:"Sortir"},
+  {id:"maintenant", emoji:"⚡", label:"Maintenant"},
+  {id:"aide", emoji:"❤️", label:"Aide"},
+];
+
+function besoinsRapidesHTML(){
+  return '<div class="br" data-testid="besoins-rapides">'+
+    BESOINS_RAPIDES.map(b=>{
+      const actif = b.id === "maintenant" ? creneau === "maintenant"
+        : b.id === "aide" ? modeAide
+        : !!(catsActives && feuilleNiveau === b.id);
+      return '<button class="br-b'+(actif?" actif":"")+'" data-br="'+b.id+'">'+
+        '<em>'+b.emoji+'</em>'+esc(b.label)+'</button>';
+    }).join("")+'</div>';
+}
+
 /* ---- Les quatre groupes de temps, en tête de l'accueil -------------------
    « Maintenant », « Autour de moi », « Pour toi » et « Explorer » disaient à
    peu près la même chose par quatre portes différentes. Il n'en reste qu'une :
@@ -7709,6 +7852,10 @@ function ongletsTemps(){
 /* Ce qu'on écrit quand un groupe est vide. Jamais « rien autour de toi »
    quand on ignore où est « toi ». */
 function statutGroupeHTML(){
+  /* Tant que la recherche tourne, on montre ce qui arrive — pas un état.
+     Dire « choisis un point de départ » ou « rien autour » pendant qu'une API
+     répond encore, c'est décrire un vide qu'on n'a pas constaté. */
+  if(rechercheEnCours()) return squeletteHTML(3);
   if(!positionConnue())
     return '<p class="fb-statut">Choisis un point de départ pour voir ce qui '+
            'se passe autour.</p>';
@@ -7738,6 +7885,48 @@ function blocOuRegarder(){
       '<button class="pdep-envie" data-ou-besoin="'+esc(i.id)+'">'+
       '<em>'+i.emoji+'</em>'+esc(i.label)+'</button>').join("")+'</div>'+
     '</section>';
+}
+
+/* ---- « Pourquoi celui-là ? » --------------------------------------------
+   Une recommandation sans raison se lit comme un résultat au hasard. Une
+   seule étiquette, la plus décisive, tirée de ce qu'on sait réellement du
+   lieu — jamais d'un classement interne qu'on ne peut pas expliquer. */
+function raisonCourte(l){
+  if(l.annule) return null;
+  if(estTemporaire(l)){
+    const etat = statutTemps(l);
+    if(etat.statut === TEMPS.STATUTS.EN_COURS) return {t:"⚡ En cours", c:"chaud"};
+    if(etat.statut === TEMPS.STATUTS.IMMINENT) return {t:"⚡ Commence bientôt", c:"chaud"};
+    const section = TEMPS.sectionTemporelle(etat, Date.now());
+    if(section === "ce_soir") return {t:"Ce soir", c:""};
+    if(section === "ce_week_end") return {t:"Ce week-end", c:""};
+    return {t:"Éphémère", c:""};
+  }
+  const d = dispoDe(l);
+  // « ferme bientôt » avant « ouvert » : c'est l'information qui fait partir
+  if(d && d.isOpenNow && d.closesAtTime && fermeDansMoinsDUneHeure(d))
+    return {t:"Ferme bientôt", c:"tiede"};
+  if(d && d.isOpenNow) return {t:"Ouvert maintenant", c:"ouvert"};
+  /* `gratuit` vaut `true` par défaut sur tout lieu OpenStreetMap sans tag
+     `fee` — c'est-à-dire sur presque tous. L'afficher tel quel collait
+     « Gratuit » sur des restaurants. On ne le dit que si une source le dit. */
+  const prix = DONNEES ? DONNEES.normaliserPrix(l) : null;
+  if(prix && prix.level === 0 && prix.confidence >= .8) return {t:"Gratuit", c:""};
+  if(Number.isFinite(Number(l.note)) && Number(l.note) >= 4.4 && Number(l.avis) >= 30)
+    return {t:"Apprécié autour de toi", c:""};
+  if(l.rankEta && Number.isFinite(l.rankEta.minutes) && l.rankEta.minutes <= 5)
+    return {t:"À " + l.rankEta.minutes + " min", c:""};
+  return null;
+}
+
+function fermeDansMoinsDUneHeure(d){
+  if(!d || !d.closesAtTime) return false;
+  const [h,m] = String(d.closesAtTime).split(":").map(Number);
+  if(!Number.isFinite(h)) return false;
+  const n = new Date();
+  let reste = (h*60 + (m||0)) - (n.getHours()*60 + n.getMinutes());
+  if(reste < -12*60) reste += 24*60;          // fermeture après minuit
+  return reste > 0 && reste <= 60;
 }
 
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
@@ -7804,6 +7993,10 @@ function carteRecommandation(l){
         (l.annule ? '<b class="rc-annule">Annulé</b>' : esc(cats))+'</span>'+boutonCoeur(l)+'</span>'+
       '<span class="rc-nom">'+esc(l.titre)+'</span>'+
       (quand ? '<span class="rc-quand'+classeQuand+'" data-testid="carte-quand">'+esc(quand)+'</span>' : '')+
+      (()=>{ const r = raisonCourte(l);
+        // sur un événement, la date dit déjà pourquoi : pas deux fois
+        return r && !quand
+          ? '<span class="rc-pourquoi '+r.c+'" data-testid="carte-pourquoi">'+esc(r.t)+'</span>' : ''; })()+
       '<span class="rc-ligne">'+
         (l.note ? '<span class="rc-note">★ '+l.note.toFixed(1).replace(".",",")+
           (l.avis?' <i>('+l.avis+')</i>':'')+'</span>' : '<span class="rc-note"></span>')+
@@ -7857,6 +8050,17 @@ function brancherFeuille2(){
   });
 
   corps.querySelectorAll("[data-chip]").forEach(b=>b.onclick=()=>retirerChip(b.dataset.chip));
+
+  corps.querySelectorAll("[data-br]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.br;
+    if(id === "aide"){ if(!modeAide) basculerAide(); ouvrirFeuille2("aide"); return; }
+    if(id === "maintenant"){
+      creneau = "maintenant"; filtreMaintenant = true;
+      majFeuille2(); rendre(); majFiltres(); return;
+    }
+    if(modeAide) basculerAide();
+    ouvrirFeuille2(id);
+  });
 
   corps.querySelectorAll("[data-aide-accueil]").forEach(b=>b.onclick=()=>{
     if(!modeAide) basculerAide();
