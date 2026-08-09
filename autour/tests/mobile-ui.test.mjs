@@ -3,6 +3,13 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 
 const html = await readFile(new URL("../index.html",import.meta.url),"utf8");
+/* Le démarrage à froid ne tient pas qu'au client : la ville vient du bord du
+   réseau, les lieux d'un relais mis en cache, et le tout premier lancement
+   d'un jeu pré-calculé. Ces fichiers font partie du chemin critique. */
+const middleware = await readFile(new URL("../middleware.js",import.meta.url),"utf8");
+const apiLieux = await readFile(new URL("../api/lieux.js",import.meta.url),"utf8");
+const apiCommune = await readFile(new URL("../api/commune.js",import.meta.url),"utf8");
+const zones = await readFile(new URL("../outils/zones.mjs",import.meta.url),"utf8");
 const temporel = await readFile(new URL("../temporel.js",import.meta.url),"utf8");
 const core = await readFile(new URL("../core.js",import.meta.url),"utf8");
 const comprendre = await readFile(new URL("../comprendre.js",import.meta.url),"utf8");
@@ -879,7 +886,10 @@ test("un seul jeu de prédicats pour la barre et les suggestions",()=>{
 test("« Trouver de l'aide » est un contrôle permanent de la carte",()=>{
   // il vivait dans le rail des intentions, donc derrière la loupe : ce n'est
   // pas une envie parmi d'autres, ça doit être à un doigt
-  assert.match(html,/id="btnAide" hidden aria-pressed="false"/);
+  // plus de `hidden` : la coquille est peinte par le navigateur, pas révélée
+  // par le script — c'est ce qui fait apparaître l'écran avant l'analyse du JS
+  assert.match(html,/id="btnAide" aria-pressed="false"/);
+  assert.doesNotMatch(html,/id="btnAide" hidden/);
   assert.match(html,/#btnAide\{bottom:calc\(var\(--map-control-bottom\) \+ 108px\)\}/);
   assert.match(html,/#btnAide\.actif\{/);
   assert.match(html,/\$\("#btnAide"\)\.onclick=\(\)=>\{/);
@@ -1085,7 +1095,11 @@ test("sans position connue, l'application ne prétend pas savoir où on est",()=
   // autour de toi » : deux affirmations fausses d'affilée
   assert.match(html,/let originePosition = null;/);
   assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
-  assert.match(html,/originePosition = coords \? "memoire" : null;/);
+  // trois provenances, aucune ne devine : mémoire, ville déduite par le
+  // serveur, ou rien du tout
+  assert.match(html,/if\(coords\)\{ originePosition = "memoire"; originePrecision = "point";/);
+  assert.match(html,/originePosition = "serveur"; originePrecision = "ville";/);
+  assert.match(html,/else \{ originePosition = null; originePrecision = null;/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
   assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
@@ -1151,7 +1165,7 @@ test("les liens partagés ont une adresse propre, sans casser les anciens",()=>{
 
 test("l'attribution cartographique est lisible sur la carte",()=>{
   // elle vivait entièrement derrière le « ⓘ », c'est-à-dire nulle part
-  assert.match(html,/<div id="attribution" hidden>/);
+  assert.match(html,/<div id="attribution">/);
   assert.match(html,/openstreetmap\.org\/copyright[^>]*>OSM<\/a>/);
   assert.match(html,/carto\.com\/attributions[^>]*>CARTO<\/a>/);
   assert.match(html,/#attribution\{position:absolute/);
@@ -1640,4 +1654,101 @@ test("ce qu'on vient de publier reste à l'écran",()=>{
   // déclarés avant leur premier usage
   assert.ok(html.indexOf("const publicationsEpinglees") < html.indexOf("function visiblesBruts"),
     "publicationsEpinglees doit précéder visiblesBruts");
+});
+
+/* ==========================================================================
+   Démarrage à froid : aucune première suggestion ne doit dépendre d'un tiers
+   ======================================================================== */
+
+test("la ville est connue avant que la page ne s'exécute",()=>{
+  // le cookie est posé par le bord du réseau, sur la réponse du document
+  assert.match(middleware,/x-vercel-ip-latitude/);
+  assert.match(middleware,/x-vercel-ip-city/);
+  assert.match(middleware,/set-cookie/);
+  assert.match(middleware,/autour_geo=/);
+  // lisible par le script de la page : le cookie posé ne porte pas HttpOnly
+  const pose = /"autour_geo=" \+[\s\S]*?\);/.exec(middleware);
+  assert.ok(pose, "le cookie doit être posé");
+  assert.doesNotMatch(pose[0],/HttpOnly/i);
+  assert.match(middleware,/SameSite=Lax/);
+  // rien de plus que deux nombres et un nom : pas d'identifiant, pas de trace
+  assert.doesNotMatch(middleware,/x-vercel-ip-(?!latitude|longitude|city|country)/);
+  assert.match(middleware,/runtime: "edge"/);
+  // et le client le lit
+  assert.match(html,/function positionServeur\(\)\{/);
+  assert.match(html,/document\.cookie\.match\(\/\(\?:\^\|;\\s\*\)autour_geo=/);
+});
+
+test("une position de ville ne se fait pas passer pour un point GPS",()=>{
+  assert.match(html,/let originePrecision = null;/);
+  assert.match(html,/const positionPrecise = \(\)=>originePrecision === "point";/);
+  // aucun temps de trajet tant qu'on n'a que la ville
+  assert.match(html,/if\(!TRANSIT \|\| !positionMoi \|\| !positionPrecise\(\)\) return;/);
+  // la vraie géolocalisation, elle, débloque la précision
+  assert.match(html,/originePrecision = "point";\s+\/\/ désormais on peut parler en minutes/);
+  // déclaré avant son premier usage
+  assert.ok(html.indexOf("let originePrecision") < html.indexOf("positionPrecise()"),
+    "originePrecision doit précéder son premier usage");
+});
+
+test("Overpass et Nominatim passent par notre propre origine",()=>{
+  assert.match(html,/async function overpassRelaye\(q, msMax, signal\)\{/);
+  assert.match(html,/fetch\("\/api\/lieux\?q="\+encodeURIComponent\(q\)/);
+  assert.match(html,/async function communeRelayee\(lat,lng\)\{/);
+  assert.match(html,/fetch\("\/api\/commune\?lat="\+lat\+"&lng="\+lng\)/);
+  // une route absente n'est demandée qu'une fois, puis on passe en direct
+  assert.match(html,/if\(r\.status === 404 \|\| r\.status === 405\)\{ relaisLieux = false; return undefined; \}/);
+  assert.match(html,/if\(relaisCommune === false\) return undefined;/);
+  // une seule requête de commune en vol à la fois
+  assert.match(html,/if\(communesEnVol\.has\(cle\)\) return communesEnVol\.get\(cle\);/);
+  // seules les requêtes de lieux passent par le relais : le décor a une autre forme
+  assert.match(html,/async function overpass\(q, msMax, signal, viaRelais\)\{/);
+  assert.match(html,/if\(viaRelais\)\{/);
+});
+
+test("le relais Overpass n'est pas un relais ouvert",()=>{
+  assert.match(apiLieux,/const FORME = \//);
+  assert.match(apiLieux,/if \(!FORME\.test\(q\)\) return refus/);
+  assert.match(apiLieux,/if \(q\.length > LONGUEUR_MAX\)/);
+  assert.match(apiLieux,/if \(!sortie \|\| sortie > SORTIE_MAX\)/);
+  // et il mutualise : c'est tout l'intérêt
+  assert.match(apiLieux,/s-maxage=86400, stale-while-revalidate=604800/);
+  // plusieurs instances : une muette ne fait pas tomber la route
+  assert.ok((apiLieux.match(/api\/interpreter/g)||[]).length >= 3);
+  assert.match(apiCommune,/s-maxage=2592000/);
+  assert.match(apiCommune,/user-agent/i, "la politique de Nominatim demande de s'identifier");
+});
+
+test("au tout premier démarrage, une source qui ne dépend de personne",()=>{
+  assert.match(html,/async function lieuxDeZone\(lat,lng\)\{/);
+  assert.match(html,/fetch\("zones\/"\+cleZoneStatique\(lat,lng\)\+"\.json"\)/);
+  assert.match(html,/if\(!rapide && positionMoi\) demarrerSurZonePrecalculee/);
+  // 404 : on note et on ne redemande plus
+  assert.match(html,/if\(r\.status === 404\) zonesDisponibles = false;/);
+  // et surtout : rien n'est inventé quand la zone n'existe pas
+  assert.match(html,/if\(!depart \|\| !depart\.length\) return;/);
+  // le générateur existe et n'écrit rien qu'il n'ait reçu
+  assert.match(zones,/if \(!lieux\.length\) \{ console\.log\("aucun lieu exploitable/);
+  assert.match(zones,/if \(!p\.lat \|\| !p\.lon \|\| !t\.name\) return null;/);
+});
+
+test("la coquille est peinte par le navigateur, pas par le script",()=>{
+  for(const id of ["appHeader","navBas","btnAide","btnTransports","attribution"])
+    assert.doesNotMatch(html, new RegExp('id="'+id+'"[^>]*\\shidden'),
+      id+" ne doit plus attendre JavaScript pour exister");
+  // la ligne qui les révélait reste : elle sert au retour de navigation
+  assert.match(html,/\["#appHeader","#navBas","#btnAide","#btnTransports","#attribution"\]\s*\n\s*\.forEach\(s=>\$\(s\)\.hidden=false\);/);
+});
+
+test("la chaîne du démarrage est lisible maillon par maillon",()=>{
+  for(const [nom] of [["boot UI"],["position"],["cache local"],["1re source locale"],
+                      ["Overpass"],["Nominatim"],["Supabase"],["classement"],["1re suggestion"]])
+    assert.ok(html.includes('"'+nom+'"'), "la chaîne doit nommer « "+nom+" »");
+  assert.match(html,/chaine\(\)\{/);
+  assert.match(html,/PERF\.jalon\("cache_lu"\)/);
+  assert.match(html,/PERF\.jalon\("source_locale"\)/);
+  assert.match(html,/PERF\.jalon\("scoring_fait"\)/);
+  assert.match(html,/PERF\.jalon\("nominatim_done"\)/);
+  // l'objectif de coquille est celui qu'on s'est donné
+  assert.match(html,/ui_ready:300/);
 });
