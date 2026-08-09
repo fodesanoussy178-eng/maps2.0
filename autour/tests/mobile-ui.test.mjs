@@ -1313,3 +1313,54 @@ test("on n'enrichit que les meilleurs candidats, jamais une zone",()=>{
   assert.match(donnees,/function depassePlafond\(prix, plafond\)/);
   assert.match(donnees,/if \(!prix \|\| prix\.confidence <= 0\) return null;/);
 });
+
+test("dans Aide, l'urgence passe avant tout le reste",()=>{
+  // elle était sous les dix besoins : il fallait descendre pour la trouver,
+  // exactement l'inverse de ce qu'il faut quand c'est urgent
+  const corps = html.slice(html.indexOf("function ecranBesoinsAide()"),
+                           html.indexOf("function ecranSolutionsAide()"));
+  const rang = (motif)=>corps.search(motif);
+  const urgence  = rang(/data-testid="aide-urgence"/);
+  const promesse = rang(/class="ab-promesse"/);
+  const question = rang(/class="ab-titre">De quoi as-tu besoin/);
+  const grille   = rang(/class="ab-grille"/);
+  const champ    = rang(/id="formBesoin"/);
+  assert.ok(urgence > 0, "le bloc urgence existe");
+  assert.ok(urgence < promesse, "urgence avant la promesse");
+  assert.ok(promesse < question, "promesse avant la question");
+  assert.ok(question < grille, "question avant les catégories");
+  assert.ok(grille < champ, "catégories avant le champ libre");
+  // et il se comprend en une seconde
+  assert.match(html,/<b>Besoin urgent&nbsp;\?<\/b>/);
+  assert.match(html,/Santé, mise à l’abri, hébergement d’urgence, /);
+  assert.match(html,/Pour une situation urgente, commence ici/);
+  // visuellement distinct : le seul fond coloré de la feuille
+  assert.match(html,/\.ab-urgence\{[^}]*border:2px solid #B82A3A/);
+  // la grille suit la largeur du conteneur, pas celle de la fenêtre : une
+  // règle en `min-width:768px` posait trois colonnes dans un panneau de 500 px
+  assert.match(html,/\.ab-grille\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(148px,1fr\)\)/);
+  assert.doesNotMatch(html,/@media \(min-width:768px\)\{ \.ab-grille/);
+});
+
+test("Aide dit ce qu'elle fait avant de poser ses cases",()=>{
+  assert.match(html,/Explique ton besoin&nbsp;: Autour te propose les/);
+  assert.match(html,/aides et les structures utiles autour de toi\./);
+  // une phrase, pas un pavé, et sans mot d'administration
+  const promesse = /'<p class="ab-promesse">([^']*)'\+\s*\n\s*'([^']*)'/.exec(html);
+  assert.ok(promesse, "la promesse est écrite");
+  const texte = (promesse[1]+promesse[2]).replace(/&nbsp;/g," ");
+  assert.ok(texte.length < 140, "courte : "+texte.length+" caractères");
+  for(const jargon of ["dispositif","bénéficiaire","orientation","prestation"])
+    assert.ok(!texte.toLowerCase().includes(jargon), jargon);
+});
+
+test("le bouton flottant dit « Aide » sans qu'on ait à cliquer",()=>{
+  assert.match(html,/<button class="capsule-flottante" id="btnAide"/);
+  assert.match(html,/<b>Aide<\/b>\s*\n<\/button>/);
+  // un cœur seul se lit « favoris » — et Favoris en porte un dans la barre
+  assert.match(html,/Une capsule, pas un rond/);
+  assert.doesNotMatch(html,/<button class="rond-flottant" id="btnAide"/);
+  // compact, à droite, et la cible reste visable au pouce
+  assert.match(html,/\.capsule-flottante\{[^}]*right:16px/);
+  assert.match(html,/\.capsule-flottante\{[^}]*min-height:44px/);
+});
