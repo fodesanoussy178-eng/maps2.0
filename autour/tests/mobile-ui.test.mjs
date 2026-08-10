@@ -677,6 +677,61 @@ test("un CDN muet coûte le style, jamais la carte",()=>{
   assert.match(html,/lien\.media = "all";/);
 });
 
+/* ---- À distance un aperçu, sur place la découverte ------------------------
+   Une ville qu'on regarde de loin et une ville où l'on est ne méritent pas la
+   même réponse — ni le même coût. La graduation se fait par kilomètres et non
+   par frontière communale : quelqu'un à trois cents mètres du panneau vit la
+   même ville que celui qui est trois cents mètres après. */
+
+test("quatre régimes gradués par distance, pas une frontière",()=>{
+  assert.match(html,/const REGIMES = \{/);
+  for(const [nom, n] of [["local",10],["proche",5],["voisine",4],["loin",3]])
+    assert.match(html, new RegExp(nom+":\\s*\\{ resultats:\\s*"+n),
+      "le régime "+nom+" doit montrer "+n+" résultats");
+  assert.match(html,/const SEUIL_LOCAL_M   = 8000;/);
+  assert.match(html,/const SEUIL_PROCHE_M  = 30000;/);
+  assert.match(html,/const SEUIL_VOISINE_M = 120000;/);
+  // l'emprise reconnaît qu'on est DANS la ville, elle n'exclut jamais un riverain
+  assert.match(html,/dansEmprise\(positionMoi, zone\.emprise\) \|\| d <= SEUIL_LOCAL_M/);
+});
+
+test("seul le GPS ouvre le régime local",()=>{
+  // une ville choisie à la main ou déduite de l'IP n'est pas une présence
+  assert.match(html,/const mesuree = positionPrecise\(\);/);
+  assert.match(html,/if\(mesuree && \(dansEmprise/);
+  assert.match(html,/if\(!positionMoi\) return "loin";/);
+});
+
+test("une ville lointaine n'est pas interrogée comme une ville où l'on est",()=>{
+  // le rayon et le plafond suivent le régime…
+  assert.match(html,/const regl = o\.reglages \|\| REGIMES\[regimePoint\(lat, lng\)\];/);
+  assert.match(html,/rayon:regl\.rayon, limite:regl\.limite/);
+  // …et l'emprise entière n'est demandée qu'en local
+  assert.match(html,/large \? bornesVisibles\(\) : null/);
+  // Google non plus : ses notes ne serviront à personne, et chaque appel est facturé
+  assert.match(html,/if\(!o\.cats && large\) travaux\.push\(/);
+  /* `regimePoint` protège aussi les rechargements déclenchés par la carte :
+     sans lui, un déplacement vers Marseille repartait en pleine charge par la
+     porte de derrière. */
+  assert.match(html,/function regimePoint\(lat, lng\)\{/);
+});
+
+test("arriver dans la ville regardée fait basculer en mode local, tout seul",()=>{
+  assert.match(html,/const regimeAvant = regimeZone\(rechercheGeo\);/);
+  assert.match(html,/if\(regimeAvant !== "local" && regimeZone\(rechercheGeo\) === "local"\)\{/);
+  // et on redemande le quartier pour de bon, cette fois
+  assert.match(html,/\{force:true, reglages:REGIMES\.local\}\);/);
+  assert.match(html,/planifierRendu\(\{accueil:true, feuille:true, carte:true\}\);/);
+});
+
+test("une liste courte dit qu'elle est courte exprès",()=>{
+  assert.match(html,/function noteApercu\(nom\)\{/);
+  assert.match(html,/if\(r === "local"\) return "";/);
+  // aucun bouton, aucun réglage : la promesse est tenue par la géolocalisation
+  assert.doesNotMatch(html,/rc-apercu[^"]*"><button/);
+  assert.match(html,/\.rc-apercu\{/);
+});
+
 /* ---- Chercher un foyer ---------------------------------------------------
    « J'ai tapé foyer à Lille, il n'a rien trouvé. » La famille Hébergement ne
    demandait que `social_facility=shelter|group_home` et `amenity=refugee_site`
@@ -799,8 +854,7 @@ test("une requête composée sépare destination et intention",()=>{
 test("une recherche géographique déplace la carte et montre peu de résultats",()=>{
   assert.match(html,/function ressembleAUneZone/);
   assert.match(html,/function rechercheGeographique/);
-  assert.match(html,/const RESULTATS_RECHERCHE_INITIAUX = 5;/);
-  assert.match(html,/\.slice\(0, RESULTATS_RECHERCHE_INITIAUX\)/);
+  assert.match(html,/\.slice\(0, plafondResultats\(\)\)/);
   // on ne géocode pas « pizza », mais on géocode « Bar-le-Duc » : la
   // comparaison est exacte, plus par sous-chaîne
   assert.match(html,/if\(estTermeMetier\(texte\)\) return false;/);
@@ -858,8 +912,8 @@ test("un seul point de référence après un déplacement : celui de la carte",(
   // classer depuis l'autre mettait tous les lieux hors du rayon de recherche.
   assert.match(html,/const c = map\.getCenter\(\);/);
   assert.match(html,/const centre = c \? \[c\.lat, c\.lng\] : \[zone\.lat, zone\.lng\];/);
-  assert.match(html,/rechercheGeo = \{nom:q, lat:centre\[0\], lng:centre\[1\]\};/);
-  assert.match(html,/chargerZone\(centre\[0\], centre\[1\]\);/);
+  assert.match(html,/rechercheGeo = \{nom:q, lat:centre\[0\], lng:centre\[1\], emprise:zone\.emprise \|\| null\};/);
+  assert.match(html,/chargerZone\(centre\[0\], centre\[1\], \{reglages: reglagesZone\(rechercheGeo\)\}\);/);
   // et il est fixé APRÈS le cadrage, sinon il décrit l'ancienne vue
   assert.ok(html.indexOf("map.fitBounds(zone.emprise") <
             html.indexOf("rechercheGeo = {nom:q, lat:centre[0]"),

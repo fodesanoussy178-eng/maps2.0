@@ -540,6 +540,10 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   color:var(--violet);font-size:14.5px;font-weight:700}
 .rc-piste{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;
   padding:0 0 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+/* Une liste courte doit dire qu'elle est courte exprès, sinon elle passe pour
+   une base de données pauvre. Une ligne, discrète, sans bouton : rien n'est
+   demandé à la personne. */
+.rc-apercu{margin:2px 0 0;font-size:13px;line-height:1.5;color:var(--ink2)}
 .rc-piste::-webkit-scrollbar{display:none}
 /* Le bloc principal se lit en colonne, y compris sur téléphone : deux cartes
    côte à côte, c'était deux recommandations visibles sur douze. En rangée on
@@ -1546,7 +1550,76 @@ let rechercheGeo = null;              // {nom, lat, lng} de la zone visée
    Déclaré ici, avec rechercheGeo : majFeuille2() le lit dès le premier rendu,
    bien avant le bloc qui définit ouvrirResultatsZone. */
 let zoneAffichee = null;
-const RESULTATS_RECHERCHE_INITIAUX = 5;
+/* ---- À distance un aperçu, sur place la découverte ------------------------
+   Chercher « restaurant Lille » depuis Tourcoing et y être vraiment ne
+   demandent pas la même réponse. De loin on se renseigne : quelques
+   propositions suffisent, et en montrer trente serait promettre une
+   connaissance du terrain qu'on n'a pas — ce qui a fermé, ce qui est plein,
+   ce qui vaut le détour à cette heure-ci. Sur place, c'est l'inverse : il faut
+   du choix, tout de suite.
+
+   LA DISTANCE DÉCIDE, PAS LA FRONTIÈRE. Une limite communale ne se sent pas
+   sous les pieds : quelqu'un à trois cents mètres du panneau « Lille » vit la
+   même ville que celui qui est trois cents mètres après. Un seuil administratif
+   lui donnerait pourtant deux expériences opposées. On gradue donc par
+   kilomètres, et l'emprise ne sert qu'à reconnaître qu'on est DANS la ville —
+   jamais à exclure quelqu'un qui la borde.
+
+   Quatre régimes, du plus proche au plus lointain. Les seuils viennent de la
+   métropole lilloise, qui est le terrain d'origine : Tourcoing→Roubaix fait
+   cinq kilomètres et doit rester ouvert, Tourcoing→Lille en fait douze et
+   devient un aperçu, Tourcoing→Paris deux cents et se réduit à l'essentiel. */
+const REGIMES = {
+  local:   { resultats: 10, rayon: 1500, limite: 300 },   // ici, ou tout contre
+  proche:  { resultats:  5, rayon: 1200, limite: 120 },   // l'agglomération
+  voisine: { resultats:  4, rayon: 1000, limite:  80 },   // la même région
+  loin:    { resultats:  3, rayon:  800, limite:  50 },   // l'autre bout du pays
+};
+const SEUIL_LOCAL_M   = 8000;      // au-delà de Roubaix depuis Tourcoing
+const SEUIL_PROCHE_M  = 30000;     // l'agglomération et ce qui la touche
+const SEUIL_VOISINE_M = 120000;    // la région
+
+function dansEmprise(coords, emprise){
+  if(!coords || !Array.isArray(emprise) || emprise.length !== 2) return false;
+  const [[sud, ouest], [nord, est]] = emprise;
+  return coords[0] >= sud && coords[0] <= nord
+      && coords[1] >= ouest && coords[1] <= est;
+}
+
+/* À quelle distance de la zone regardée sommes-nous, vraiment ?
+   Sans zone visée, on est chez soi. Sans position mesurée par le navigateur,
+   on ne peut pas AFFIRMER qu'on y est : une ville choisie à la main ou déduite
+   de l'adresse IP n'est pas une présence, et n'ouvre donc jamais le régime
+   local — c'est la même règle que pour la pastille de lieu. */
+function regimeZone(zone){
+  if(!zone) return "local";                    // pas de recherche : on est ici
+  if(!positionMoi) return "loin";
+  const mesuree = positionPrecise();
+  const d = distanceM(positionMoi[0], positionMoi[1], zone.lat, zone.lng);
+  if(mesuree && (dansEmprise(positionMoi, zone.emprise) || d <= SEUIL_LOCAL_M))
+    return "local";
+  if(d <= SEUIL_PROCHE_M)  return "proche";
+  if(d <= SEUIL_VOISINE_M) return "voisine";
+  return "loin";
+}
+/* Le même barème, mais à partir d'un point plutôt que d'une zone nommée.
+   C'est ce qui protège les requêtes : la carte se recharge aussi toute seule
+   quand elle bouge, et sans cela un déplacement vers Marseille repartait en
+   pleine charge — la ville lointaine était interrogée par la porte de derrière.
+   Ici la distance suffit : il ne s'agit pas de dire à quelqu'un où il est,
+   seulement de décider combien on va demander. */
+function regimePoint(lat, lng){
+  if(!positionMoi) return "local";   // on ne charge que là où l'on se croit
+  const d = distanceM(positionMoi[0], positionMoi[1], lat, lng);
+  if(d <= SEUIL_LOCAL_M)   return "local";
+  if(d <= SEUIL_PROCHE_M)  return "proche";
+  if(d <= SEUIL_VOISINE_M) return "voisine";
+  return "loin";
+}
+const reglagesZone = (zone)=> REGIMES[regimeZone(zone)];
+const plafondPour = (zone)=> reglagesZone(zone).resultats;
+const plafondResultats = ()=> plafondPour(rechercheGeo);
+const surPlace = ()=> regimeZone(rechercheGeo) === "local";
 
 /* Une requête est géographique si elle n'est pas, EXACTEMENT, un mot du
    vocabulaire de l'application : on ne géocode pas « pizza », mais on géocode
@@ -1610,7 +1683,9 @@ async function rechercheGeographique(q){
      recherche. Zéro résultat sur une ville pleine de lieux. */
   const c = map.getCenter();
   const centre = c ? [c.lat, c.lng] : [zone.lat, zone.lng];
-  rechercheGeo = {nom:q, lat:centre[0], lng:centre[1]};
+  /* L'emprise est retenue avec la zone : c'est elle qui dira ensuite si la
+     personne est vraiment dans cette ville ou si elle la regarde de loin. */
+  rechercheGeo = {nom:q, lat:centre[0], lng:centre[1], emprise:zone.emprise || null};
   /* Choisir une ville à la main, c'est dire soi-même où l'on regarde : c'est
      donc une position, et une position VOULUE — mais à l'échelle d'une ville,
      pas d'un point. On l'enregistre comme telle quand on n'avait rien, sans
@@ -1633,7 +1708,9 @@ async function rechercheGeographique(q){
   if(modeAide) chargerAide(centre[0], centre[1]);
 
   // les lieux de la nouvelle zone arrivent derrière : l'interface n'attend pas
-  chargerZone(centre[0], centre[1]);
+  /* La profondeur de la requête suit la distance : une ville où l'on n'est pas
+     n'est interrogée que le nécessaire (voir REGIMES). */
+  chargerZone(centre[0], centre[1], {reglages: reglagesZone(rechercheGeo)});
   majBoutons();
   return true;
 }
@@ -3968,8 +4045,17 @@ function chargerZone(lat, lng, opts){
   }
 
   // allSettled : une source lente ou en panne ne retient pas les autres
+  /* UNE VILLE LOINTAINE NE COÛTE PAS UNE VILLE ENTIÈRE.
+     Quelqu'un à Lille qui tape « Marseille » déclenchait la même requête que
+     s'il y était : toute l'emprise affichée, trois cents objets, et Google
+     par-dessus — pour cinq cartes qu'il regardera dix secondes. On demande donc
+     un rayon autour du centre plutôt que l'emprise entière, et beaucoup moins
+     d'objets. La profondeur est réservée à l'endroit où l'on est vraiment. */
+  const regl = o.reglages || REGIMES[regimePoint(lat, lng)];
+  const large = regl === REGIMES.local;
   const travaux = [
-    vraisLieux(lat,lng,bornesVisibles(),{signal, cats:o.cats, delai:o.delai}).then(r=>{
+    vraisLieux(lat, lng, large ? bornesVisibles() : null,
+      {signal, cats:o.cats, delai:o.delai, rayon:regl.rayon, limite:regl.limite}).then(r=>{
       if(signal.aborted) return;
       if(r && r.length){ fusionner(r); if(!o.cats) ecrireCacheLieux(lat,lng,r); PERF.jalon("fresh_pois_ready"); }
       PERF.jalon("overpass_done");
@@ -3977,9 +4063,11 @@ function chargerZone(lat, lng, opts){
       performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
     })
   ];
-  // Google ne sert qu'à enrichir les lieux courants : inutile de le relancer
-  // quand on va simplement chercher les toilettes ou les écoles
-  if(!o.cats) travaux.push(
+  /* Google ne sert qu'à enrichir les lieux courants : inutile de le relancer
+     quand on va simplement chercher les toilettes ou les écoles — ni pour une
+     ville qu'on regarde de loin, où ses notes et ses horaires ne serviront à
+     personne et où chaque appel est facturé. */
+  if(!o.cats && large) travaux.push(
     notesGoogle(lat,lng,{signal}).then(f=>{
       if(signal.aborted || !f) return;
       greffeNotes(lieux, f);
@@ -7526,10 +7614,16 @@ async function rechercherAilleurs(phrase, ville){
   const classes = classerLieux(trouves, false);
   positionMoi = vrai;
 
+  /* Même règle que pour les résultats de zone : « restaurant à Lille » tapé
+     depuis Tourcoing est une question posée de loin, et on y répond par un
+     aperçu. Ce chemin-ci affiche une liste plein écran — sans ce plafond, la
+     même recherche donnait cinq résultats par une porte et trente par l'autre. */
+  const montres = classes.slice(0, plafondPour(zone));
+
   selectionAccueil = false;
   fermerFeuille2();
   pileEcrans = [];
-  pousserEcran(()=>afficherListe("📍", esc(ville), classes, false,
+  pousserEcran(()=>afficherListe("📍", esc(ville), montres, false,
     ()=>rechercherAilleurs(phrase, ville)));
 }
 
@@ -9726,6 +9820,8 @@ function suivreMaPosition(){
          la carte doivent tous être refaits, pas seulement rafraîchis. */
       const venaitDeLApproximation = positionApprochee();
       const premiereFois = !positionConnue();
+      // le régime AVANT que cette mesure ne change la donne
+      const regimeAvant = regimeZone(rechercheGeo);
       const bouge = premiereFois || venaitDeLApproximation || !positionMoi
         || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
       positionMoi = c;
@@ -9760,9 +9856,21 @@ function suivreMaPosition(){
           nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
         }
       }
+      /* ARRIVER DANS LA VILLE QU'ON REGARDAIT.
+         On consultait Lille depuis Tourcoing : cinq propositions, une requête
+         légère. Si le GPS dit maintenant qu'on y est, la promesse doit être
+         tenue sans que personne n'ait rien à faire — l'aperçu devient la
+         découverte, et cette fois on interroge le quartier pour de bon. */
+      if(regimeAvant !== "local" && regimeZone(rechercheGeo) === "local"){
+        journal.info("Arrivée dans la zone regardée : passage en mode local");
+        chargerZone(rechercheGeo.lat, rechercheGeo.lng,
+          {force:true, reglages:REGIMES.local});
+        planifierRendu({accueil:true, feuille:true, carte:true});
+        toast("Tu es à "+rechercheGeo.nom+" · voici ce qu’il y a vraiment autour");
+      }
       // on ne le dit qu'au premier coup, et seulement si l'écran ne savait pas
       // vraiment où l'on est : sinon c'est une notification pour rien
-      if(premiereFois || venaitDeLApproximation) toast("Position trouvée · autour de toi");
+      else if(premiereFois || venaitDeLApproximation) toast("Position trouvée · autour de toi");
       definirEtatRecherche("location",SEARCH_STATES.SUCCESS);
     },
     (err)=>{
@@ -10120,6 +10228,22 @@ function ouvrirResultatsZone(nom, intention){
   reglerEtatFeuille("moyenne");
 }
 
+/* Une liste courte sans explication passe pour une base de données pauvre.
+   On dit donc ce qui se passe, en une ligne : c'est un aperçu, et il s'ouvrira
+   tout seul une fois sur place. Rien à faire, aucun bouton — la promesse est
+   tenue par la géolocalisation, pas par un réglage. */
+function noteApercu(nom){
+  const r = regimeZone(rechercheGeo);
+  if(r === "local") return "";
+  /* On dit la distance dans les mots, pas en kilomètres : « un peu plus loin »
+     se comprend sans calcul, et c'est bien de cela qu'il s'agit. */
+  const ou = r === "proche" ? "Tu n’y es pas encore"
+           : r === "voisine" ? "C’est à quelques dizaines de kilomètres"
+           : "C’est loin d’ici";
+  return '<p class="rc-apercu">'+ou+' : voici un aperçu de '+esc(nom)+'. '+
+    'Sur place, Autour montre tout ce qu’il connaît du quartier.</p>';
+}
+
 function remplirResultatsZone(nom, intention){
   const centre = rechercheGeo ? [rechercheGeo.lat, rechercheGeo.lng] : positionMoi;
   if(!centre) return false;
@@ -10143,7 +10267,7 @@ function remplirResultatsZone(nom, intention){
        ainsi que les fiches portant le tag cuisine — une minorité — au lieu de
        tous les restaurants de la zone. */
     requete: catsActives ? "" : (intention || ""),
-  }).slice(0, RESULTATS_RECHERCHE_INITIAUX);
+  }).slice(0, plafondResultats());
 
   $("#fbTitre").textContent = nom;
   $("#fbRetour").hidden = true;
@@ -10156,7 +10280,7 @@ function remplirResultatsZone(nom, intention){
       '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
     (forts.length
       ? '<div class="rc-piste" data-testid="primary-results">'+
-          forts.map(carteRecommandation).join("")+'</div>'
+          forts.map(carteRecommandation).join("")+'</div>'+ noteApercu(nom)
       : '<p class="liste-vide">Les lieux de cette zone arrivent…</p>');
   brancherFeuille2();
   return true;
