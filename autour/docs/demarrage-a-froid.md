@@ -83,24 +83,57 @@ Le tout premier visiteur d'une zone que personne n'a jamais ouverte reste
 devant Overpass. C'est le seul cas qui ne se résout pas par un cache, puisque
 le cache est vide par définition.
 
-`outils/zones.mjs` produit `zones/<lat>,<lng>.json` : les lieux du centre
-d'une agglomération, sous la forme que l'application fusionne directement. Un
-fichier statique, servi par le CDN, une requête vers notre propre origine.
+`outils/zones.mjs` produit `zones/<lat>,<lng>.json` — un fichier par tuile de
+0,1°, la clé exacte que le client calcule, pour qu'une seule requête suffise à
+la trouver sans index à télécharger d'abord.
+
+Une tuile fait onze kilomètres sur sept, et le classement n'accepte que
+2,5 km : interroger son centre laisserait sans rien quiconque se trouve à
+l'autre bout. Le générateur interroge donc la tuile **entière** d'une seule
+requête, puis éclaircit le résultat sur une grille de 6×6 cellules, en gardant
+d'abord les lieux dont on sait le plus de choses — ceux qu'on saura classer.
+La couverture est régulière au lieu d'être un tas au centre.
+
+Le client, lui, ne fusionne pas le fichier entier : normaliser, dédupliquer et
+regrouper cent soixante-dix lieux coûte près de trois secondes de fil principal
+sur un téléphone, pour en afficher cinq. Il ne garde que les vingt-cinq plus
+proches (`RAPIDE_VOISINAGE`). Le reste de la tuile ne sert que si l'on se
+déplace — et alors les vraies sources auront répondu depuis longtemps.
 
 ```sh
-node outils/zones.mjs                    # les villes de outils/villes.json
-node outils/zones.mjs 50.7176,3.1611     # une zone précise
+node outils/zones.mjs                    # les tuiles de outils/villes.json
+node outils/zones.mjs 50.7176,3.1611     # la tuile qui contient ce point
 node outils/zones.mjs --liste mes-villes.json
 ```
 
-Ce script **a besoin d'un accès réseau à Overpass**. Il n'a pas pu être
-exécuté depuis l'environnement de développement de cette passe : le dossier
-`zones/` est donc absent du dépôt, et il faut le générer une fois avant le
-déploiement pour que ce niveau existe. Son absence n'est pas une panne — la
-fonction rend `null` et le démarrage suit son chemin habituel.
+Ce script a besoin d'un accès réseau à Overpass. Il tourne donc là où ce
+réseau existe : `.github/workflows/zones-autour.yml`, déclenché à la main, à
+chaque modification du générateur ou de la liste, et le 1er de chaque mois.
+Le travail vérifie ce qu'il a reçu avant de pousser quoi que ce soit — clés de
+fichier conformes, lieux nommés, situés, et dans les bornes de leur tuile — et
+Vercel déploie le résultat comme des statiques.
 
-À relancer environ une fois par mois : ces données vieillissent lentement, et
-les sources fraîches les remplacent silencieusement à chaque ouverture.
+Son absence n'est pas une panne : la fonction rend `null` et le démarrage suit
+son chemin habituel.
+
+Les tuiles couvertes aujourd'hui :
+
+| tuile | ce qu'elle couvre |
+|---|---|
+| `50.6,3.0` | Lille sud-ouest · Loos · Haubourdin |
+| `50.6,3.1` | Lille centre · Villeneuve-d'Ascq |
+| `50.6,3.2` | Hem · Villeneuve-d'Ascq est |
+| `50.7,3.1` | Marcq · La Madeleine · Croix |
+| `50.7,3.2` | Roubaix · Tourcoing · Wattrelos |
+| `48.8,2.2` | Paris 15e ouest · Issy |
+| `48.8,2.3` | Paris 5e · 6e · 7e · 14e · 15e |
+| `48.8,2.4` | Paris 12e · 13e |
+| `48.9,2.2` | Paris 16e · Boulogne · Neuilly |
+| `48.9,2.3` | Paris 8e · 9e · 17e · 18e |
+| `48.9,2.4` | Paris 2e · 10e · 11e · 19e · 20e · Montreuil |
+
+Pour en ajouter : une ligne dans `outils/villes.json`, et le travail se
+relance tout seul au push.
 
 ### 4. La coquille peinte sans attendre le script
 

@@ -62,12 +62,16 @@ const CATEGORIE = {
 };
 
 const DEMI_TUILE = 0.05;            // une tuile de 0,1° : [k-0,05 ; k+0,05[
-const SORTIE_OVERPASS = 900;        // ce qu'on demande à Overpass, borné
+const SORTIE_OVERPASS = 500;        // ce qu'on demande à Overpass, borné
 const GRILLE = 6;                   // 6×6 cellules pour éclaircir régulièrement
 const PAR_CELLULE = 5;
-const PLAFOND = 120;               // couvre la tuile ; le client n en fusionne que le voisinage
-const ATTENTE_ENTRE_TUILES = Number(process.env.ATTENTE_TUILES || 5000);  // on reste poli avec les instances publiques
-const DELAI_MS = 180000;
+const PLAFOND = 120;                // couvre la tuile ; le client n'en fusionne que le voisinage
+const ATTENTE_ENTRE_TUILES = Number(process.env.ATTENTE_TUILES || 4000);
+/* Soixante-quinze secondes par instance, pas cent quatre-vingts. Une instance
+   qui n'a pas répondu en une minute et quart est saturée : insister coûte le
+   quadruple du temps pour le même silence, alors que la suivante répondra
+   peut-être tout de suite. */
+const DELAI_MS = 75000;
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -81,16 +85,30 @@ function bornesTuile(cle) {
            o: lng - DEMI_TUILE, e: lng + DEMI_TUILE, lat, lng };
 }
 
+/* `nw` et non `nwr`. Une tuile de 0,1° de Paris contient des dizaines de
+   milliers d'objets correspondants ; ce qui coûte cher n'est pas ce qu'Overpass
+   renvoie — c'est borné par `out center` — mais ce qu'il doit parcourir pour le
+   trouver. Les relations sont la partie la plus lourde de ce parcours et
+   n'apportent presque aucun commerce : un restaurant est un nœud, un parc est
+   un chemin. On les laisse de côté. */
 function requete(b) {
   const zone = `(${b.s.toFixed(4)},${b.o.toFixed(4)},${b.n.toFixed(4)},${b.e.toFixed(4)})`;
   const bloc = REQUETES
-    .map(([cle, valeurs]) => `nwr${zone}["${cle}"~"^(${valeurs})$"];`)
+    .map(([cle, valeurs]) => `nw${zone}["${cle}"~"^(${valeurs})$"];`)
     .join("");
-  return `[out:json][timeout:170];(${bloc});out center ${SORTIE_OVERPASS};`;
+  return `[out:json][timeout:70];(${bloc});out center ${SORTIE_OVERPASS};`;
 }
 
+/* Chaque tuile commence par une instance différente : douze requêtes de suite
+   sur la même l'aurait fait basculer en limitation, et c'est précisément ce
+   qu'on cherche à éviter. */
+let tourServeur = 0;
 async function interroger(b) {
-  for (const serveur of SERVEURS) {
+  const ordre = SERVEURS.slice(tourServeur % SERVEURS.length)
+    .concat(SERVEURS.slice(0, tourServeur % SERVEURS.length));
+  tourServeur += 1;
+  for (const serveur of ordre) {
+    const debut = Date.now();
     try {
       const r = await fetch(serveur, {
         method: "POST",
@@ -99,13 +117,18 @@ async function interroger(b) {
         body: "data=" + encodeURIComponent(requete(b)),
         signal: AbortSignal.timeout(DELAI_MS),
       });
-      if (!r.ok) { console.warn("   ", serveur, "→ HTTP", r.status); continue; }
+      const duree = ((Date.now() - debut) / 1000).toFixed(1) + " s";
+      const nom = serveur.replace(/https:\/\/|\/api.*/g, "");
+      if (!r.ok) { console.warn("    ", nom, "→ HTTP", r.status, "après", duree); continue; }
       const j = await r.json();
       if (j && Array.isArray(j.elements)) {
-        console.log("   ", serveur.replace(/https:\/\/|\/api.*/g, ""), "→", j.elements.length, "objets");
+        console.log("    ", nom, "→", j.elements.length, "objets en", duree);
         return j.elements;
       }
-    } catch (e) { console.warn("   ", serveur, "→", e.message); }
+    } catch (e) {
+      console.warn("    ", serveur.replace(/https:\/\/|\/api.*/g, ""), "→", e.message,
+        "après", ((Date.now() - debut) / 1000).toFixed(1) + " s");
+    }
   }
   return null;
 }
