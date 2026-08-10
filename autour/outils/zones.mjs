@@ -46,15 +46,53 @@ const SERVEURS = process.env.OVERPASS_URL ? [process.env.OVERPASS_URL] : [
 
 /* Les mêmes familles que l'application demande au démarrage. Volontairement
    restreint : ce fichier sert à remplir cinq lignes, pas à embarquer une ville
-   entière dans le CDN. */
-const REQUETES = [
+   entière dans le CDN.
+
+   L'AIDE EST ICI DÉLIBÉRÉMENT PRÉSENTE. La première version ne demandait que
+   des commerces et des loisirs : sur les 1055 lieux récoltés pour Lille et
+   Paris, il n'y avait pas une seule banque alimentaire, pas un hébergement,
+   pas un service d'emploi. Or ces zones sont la seule source disponible au
+   tout premier démarrage, avant Overpass et avant la géolocalisation —
+   c'est-à-dire exactement le moment où quelqu'un qui cherche un foyer ou un
+   repas ne peut pas se permettre d'attendre. Ces lieux passent donc en
+   premier, et l'éclaircissage ne les touche pas. */
+/* DEUX REQUÊTES PAR TUILE, ET L'AIDE EN PREMIER.
+
+   Tout demander d'un coup a fait tomber les tuiles denses : huit `nw` sur une
+   bbox parisienne, et les trois instances répondent 504. Or ces deux moitiés
+   n'ont pas la même valeur. L'aide est rare — quelques dizaines d'objets par
+   tuile — donc sa requête est légère et passe partout ; les commerces sont
+   des milliers, et c'est eux qui saturent.
+
+   Les séparer fait qu'une tuile dense perd au pire ses restaurants, jamais ses
+   banques alimentaires. C'est exactement le compromis qu'on veut : le fichier
+   existe, avec ce qui compte dedans. */
+const REQUETES_AIDE = [
+  ["amenity", "social_facility|food_bank|refugee_site|dormitory"],
+  ["social_facility", "food_bank|soup_kitchen|shelter|group_home|homeless_shelter|emergency_shelter|assisted_living|outreach|day_centre|clothing_bank"],
+  ["office", "employment_agency|association|ngo|charity"],
+  ["healthcare", "centre"],
+  ["amenity", "social_centre|hospital|clinic|doctors|pharmacy|townhall"],
+];
+const REQUETES_RESTE = [
   ["amenity", "restaurant|fast_food|cafe|bar|pub|ice_cream|marketplace|cinema|theatre|library|arts_centre|community_centre"],
-  ["shop", "bakery|pastry|greengrocer|butcher|clothes|second_hand|books|convenience"],
+  ["shop", "bakery|pastry|greengrocer|butcher|clothes|second_hand|books|convenience|charity"],
   ["leisure", "park|garden|pitch|sports_centre|playground"],
   ["tourism", "museum|gallery|artwork|viewpoint"],
 ];
+const REQUETES = [...REQUETES_AIDE, ...REQUETES_RESTE];
 
 const CATEGORIE = {
+  // -- aide
+  social_facility:"asso", food_bank:"alimentaire", soup_kitchen:"alimentaire",
+  refugee_site:"hebergement", dormitory:"hebergement", shelter:"hebergement",
+  group_home:"hebergement", homeless_shelter:"hebergement",
+  emergency_shelter:"hebergement", assisted_living:"hebergement",
+  outreach:"asso", day_centre:"asso", clothing_bank:"asso", social_centre:"asso",
+  employment_agency:"emploi", association:"asso", ngo:"asso", charity:"asso",
+  hospital:"sante", clinic:"sante", doctors:"sante", pharmacy:"sante", centre:"sante",
+  townhall:"mairie",
+  // -- le reste
   restaurant:"resto", fast_food:"fastfood", cafe:"cafe", bar:"bar", pub:"bar",
   ice_cream:"cafe", marketplace:"marche", cinema:"cinema", theatre:"spectacle",
   library:"biblio", arts_centre:"musee", community_centre:"asso",
@@ -64,11 +102,27 @@ const CATEGORIE = {
   museum:"musee", gallery:"musee", artwork:"musee", viewpoint:"parc",
 };
 
+/* Les familles d'aide, nommées une seule fois. */
+const AIDE = new Set(["alimentaire","hebergement","asso","emploi","sante","mairie"]);
+
+/* Ce que le nom dit d'une structure sociale quand le tag reste vague. Même
+   raisonnement que dans l'application (`affinerCategorie`) : les deux doivent
+   rester d'accord, sinon la zone pré-calculée range un foyer ailleurs que la
+   recherche ne le cherche. */
+const NOM_HEBERGEMENT = /foyer|chrs|\bcada\b|\bhuda\b|residence sociale|maison relais|pension de famille|abri de nuit|halte de nuit|hebergement|dortoir|sans[- ]abri/;
+const NOM_ALIMENTAIRE = /epicerie solidaire|banque alimentaire|restos? du c(o|oe)ur|soupe populaire|distribution alimentaire|aide alimentaire/;
+const sansAccents = (s) =>
+  (s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
 const DEMI_TUILE = 0.05;            // une tuile de 0,1° : [k-0,05 ; k+0,05[
-const SORTIE_OVERPASS = 500;        // ce qu'on demande à Overpass, borné
+const SORTIE_OVERPASS = 700;        // ce qu'on demande à Overpass, borné
 const GRILLE = 6;                   // 6×6 cellules pour éclaircir régulièrement
 const PAR_CELLULE = 5;
-const PLAFOND = 120;                // couvre la tuile ; le client n'en fusionne que le voisinage
+const PLAFOND = 150;                // couvre la tuile ; le client n'en fusionne que le voisinage
+/* L'aide échappe à l'éclaircissage, mais pas à toute borne : une tuile du
+   centre de Paris ne doit pas remplir le fichier avec ses seules pharmacies.
+   Elle garde une part réservée, et confortable. */
+const PLAFOND_AIDE = 70;
 const ATTENTE_ENTRE_TUILES = Number(process.env.ATTENTE_TUILES || 4000);
 /* Soixante-quinze secondes par instance, pas cent quatre-vingts. Une instance
    qui n'a pas répondu en une minute et quart est saturée : insister coûte le
@@ -94,19 +148,19 @@ function bornesTuile(cle) {
    trouver. Les relations sont la partie la plus lourde de ce parcours et
    n'apportent presque aucun commerce : un restaurant est un nœud, un parc est
    un chemin. On les laisse de côté. */
-function requete(b) {
+function requete(b, groupe, sortie) {
   const zone = `(${b.s.toFixed(4)},${b.o.toFixed(4)},${b.n.toFixed(4)},${b.e.toFixed(4)})`;
-  const bloc = REQUETES
+  const bloc = groupe
     .map(([cle, valeurs]) => `nw${zone}["${cle}"~"^(${valeurs})$"];`)
     .join("");
-  return `[out:json][timeout:70];(${bloc});out center ${SORTIE_OVERPASS};`;
+  return `[out:json][timeout:70];(${bloc});out center ${sortie};`;
 }
 
 /* Chaque tuile commence par une instance différente : douze requêtes de suite
    sur la même l'aurait fait basculer en limitation, et c'est précisément ce
    qu'on cherche à éviter. */
 let tourServeur = 0;
-async function interroger(b) {
+async function interroger(b, groupe, sortie) {
   const ordre = SERVEURS.slice(tourServeur % SERVEURS.length)
     .concat(SERVEURS.slice(0, tourServeur % SERVEURS.length));
   tourServeur += 1;
@@ -117,7 +171,7 @@ async function interroger(b) {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded",
                    "user-agent": "Autour/1.0 (https://autour.eu) generation-zones" },
-        body: "data=" + encodeURIComponent(requete(b)),
+        body: "data=" + encodeURIComponent(requete(b, groupe, sortie)),
         signal: AbortSignal.timeout(DELAI_MS),
       });
       const duree = ((Date.now() - debut) / 1000).toFixed(1) + " s";
@@ -154,9 +208,25 @@ function versLieu(e) {
   const t = e.tags || {};
   const p = e.center || e;
   if (!p.lat || !p.lon || !t.name) return null;      // sans nom, aucun intérêt
-  const type = t.amenity || t.shop || t.leisure || t.tourism || "";
-  const cat = CATEGORIE[type];
+  /* `CATEGORIE` est indexée par VALEUR, pas par couple clé/valeur : deux clés
+     qui partagent une valeur se confondent. `shelter` en est le cas :
+     `social_facility=shelter` est un hébergement d'urgence, `amenity=shelter`
+     est un abribus. On écarte donc explicitement les valeurs ambiguës portées
+     par la mauvaise clé, avant toute lecture. */
+  if (t.amenity === "shelter" && !t.social_facility) return null;
+  /* Le sous-tag social passe AVANT `amenity` : `amenity=social_facility` +
+     `social_facility=food_bank` est une banque alimentaire, pas une asso.
+     Lire `amenity` d'abord aurait rangé toute l'aide dans un même tas. */
+  const type = t.social_facility || t.healthcare || t.office
+            || t.amenity || t.shop || t.leisure || t.tourism || "";
+  let cat = CATEGORIE[type];
   if (!cat) return null;
+  /* `amenity=social_facility` sans sous-tag : c'est le nom qui tranche. */
+  if (cat === "asso" && t.amenity === "social_facility" && !t.social_facility) {
+    const n = sansAccents(t.name);
+    if (NOM_ALIMENTAIRE.test(n)) cat = "alimentaire";
+    else if (NOM_HEBERGEMENT.test(n)) cat = "hebergement";
+  }
   const tags = {};
   for (const k of TAGS_UTILES) if (t[k]) tags[k] = t[k];
   return {
@@ -185,8 +255,16 @@ function richesse(l) {
 }
 
 function eclaircir(lieux, b) {
+  /* L'aide ne passe pas par l'éclaircissage. Un quartier a cent restaurants
+     et deux banques alimentaires : les répartir « équitablement » par cellule
+     revient à laisser tomber l'aide, puisqu'elle perd toujours au nombre.
+     Elle est donc gardée en entier et retirée du tirage — ce sont quelques
+     dizaines de lieux par tuile, et ce sont ceux qui comptent le plus. */
+  const aide = lieux.filter((l) => AIDE.has(l.cat))
+    .sort((x, y) => richesse(y) - richesse(x)).slice(0, PLAFOND_AIDE);
+  const reste = lieux.filter((l) => !AIDE.has(l.cat));
   const cellules = new Map();
-  lieux.forEach((l) => {
+  reste.forEach((l) => {
     const i = Math.min(GRILLE - 1, Math.max(0,
       Math.floor(((l.lat - b.s) / (b.n - b.s)) * GRILLE)));
     const j = Math.min(GRILLE - 1, Math.max(0,
@@ -196,7 +274,8 @@ function eclaircir(lieux, b) {
     cellules.get(cle).push(l);
   });
 
-  const retenus = [];
+  // l'aide d'abord, en entier : le plafond ne s'applique qu'au reste
+  const retenus = aide.slice();
   // on fait plusieurs tours : un tour prend le meilleur de chaque cellule, ce
   // qui répartit avant d'approfondir
   for (let tour = 0; tour < PAR_CELLULE && retenus.length < PLAFOND; tour += 1) {
@@ -215,9 +294,25 @@ function eclaircir(lieux, b) {
 async function fabriquer(cle, noms) {
   const b = bornesTuile(cle);
   console.log("tuile " + cle + (noms.length ? " (" + noms.join(", ") + ")" : ""));
-  const elements = await interroger(b);
-  if (!elements) { console.log("    aucune réponse — tuile ignorée\n"); return false; }
-  const lieux = elements.map(versLieu).filter(Boolean);
+  /* L'aide d'abord, seule, et sa requête est légère : c'est celle qui doit
+     aboutir même sur une tuile où le reste ne passe pas. */
+  console.log("    · aide");
+  const elAide = await interroger(b, REQUETES_AIDE, 400);
+  await attendre(1500);                    // on ne martèle pas l'instance suivante
+  console.log("    · commerces et loisirs");
+  const elReste = await interroger(b, REQUETES_RESTE, SORTIE_OVERPASS);
+
+  if (!elAide && !elReste) { console.log("    aucune réponse — tuile ignorée\n"); return false; }
+  if (!elReste) console.warn("    (le reste n'a pas répondu : la tuile n'aura que l'aide)");
+  if (!elAide) console.warn("    (l'aide n'a pas répondu : tuile incomplète)");
+
+  // deux requêtes, donc deux occasions de ramener le même objet
+  const parId = new Map();
+  for (const e of [...(elAide || []), ...(elReste || [])]) {
+    const l = versLieu(e);
+    if (l && !parId.has(l.id)) parId.set(l.id, l);
+  }
+  const lieux = [...parId.values()];
   if (!lieux.length) { console.log("    aucun lieu exploitable — tuile ignorée\n"); return false; }
 
   const { retenus, cellules, parCat } = eclaircir(lieux, b);
@@ -236,7 +331,17 @@ async function fabriquer(cle, noms) {
   return true;
 }
 
+/* Le classement est la seule chose testable sans réseau — et c'est aussi la
+   seule qui décide si l'aide finit dans le fichier ou non. On l'expose pour
+   que `tests/zones.test.mjs` la vérifie, sans lancer la récolte. */
+export { versLieu, eclaircir, CATEGORIE, AIDE, REQUETES, REQUETES_AIDE,
+         REQUETES_RESTE, cleTuile };
+
 /* ---- Entrée ------------------------------------------------------------- */
+/* Importé par un test : on s'arrête ici, rien ne doit partir sur le réseau. */
+if (process.argv[1] !== fileURLToPath(import.meta.url)) {
+  // rien : le module sert de bibliothèque
+} else {
 const args = process.argv.slice(2);
 let cibles = [];
 
@@ -274,3 +379,4 @@ for (const [i, [cle, noms]] of liste.entries()) {
 }
 console.log(faites + "/" + tuiles.size + " tuile(s) écrite(s) dans " + SORTIE);
 if (!faites) process.exit(2);
+}

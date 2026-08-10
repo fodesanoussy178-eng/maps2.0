@@ -677,6 +677,56 @@ test("un CDN muet coûte le style, jamais la carte",()=>{
   assert.match(html,/lien\.media = "all";/);
 });
 
+/* ---- Chercher un foyer ---------------------------------------------------
+   « J'ai tapé foyer à Lille, il n'a rien trouvé. » La famille Hébergement ne
+   demandait que `social_facility=shelter|group_home` et `amenity=refugee_site`
+   — trois valeurs, quand le parc social français en utilise une dizaine. Et
+   `amenity=social_facility`, le tag le plus répandu du secteur, était rangé
+   dans « asso » : une recherche d'hébergement ne le DEMANDAIT même pas. */
+
+test("l'hébergement couvre les tags qui portent réellement le parc social",()=>{
+  for(const v of ["homeless_shelter","emergency_shelter","assisted_living","nursing_home"])
+    assert.match(html, new RegExp('\\["social_facility","'+v+'","hebergement"\\]'),
+      v+" n'est pas demandé");
+  assert.match(html,/\["amenity","dormitory","hebergement"\]/);
+});
+
+test("un abribus n'entre jamais dans l'hébergement",()=>{
+  // `amenity=shelter` est un abri de bus : il n'a rien à faire ici
+  assert.doesNotMatch(html,/\["amenity","shelter","hebergement"\]/);
+});
+
+test("un tag vague est demandé pour toutes les familles qu'il peut servir",()=>{
+  assert.match(html,/const TAGS_PARTAGES = \[/);
+  assert.match(html,/\["amenity","social_facility", \["asso","hebergement","alimentaire"\]\]/);
+  // et le constructeur de requête les ajoute vraiment
+  assert.match(html,/TAGS_PARTAGES\.forEach\(\(\[k,v,cats\]\)=>\{/);
+  assert.match(html,/if\(garder && !cats\.some\(c=>garder\.has\(c\)\)\) return;/);
+});
+
+test("ouvrir Aide charge réellement les catégories d'aide",()=>{
+  /* Le besoin « aide » n'a pas de `sous` — c'est un mode entier, pas une
+     liste de cases. La branche de chargement testait `b.sous` : ouvrir Aide
+     ne demandait donc AUCUNE catégorie, et `CATS_DEPART` n'en contient pas
+     davantage. Mesuré : zéro requête, zéro lieu, dans toutes les villes. */
+  assert.match(html,/const cats = \(niveau === "aide" \|\| \(b && b\.aide\)\) \? CATS_AIDE/);
+  assert.match(html,/: \(b && b\.sous\) \? b\.sous\.flatMap\(x=>x\.cats\)/);
+  assert.match(html,/if\(cats\)\{\s*\n\s*const manquantes = cats\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
+  // et le besoin « aide » est bien celui qui n'a pas de sous-catégories
+  assert.match(html,/\{ id:"aide", emoji:"❤️", label:"Trouver de l’aide", aide:true \}/);
+});
+
+test("un social_facility sans sous-tag est classé par son nom",()=>{
+  assert.match(html,/const NOM_HEBERGEMENT = /);
+  assert.match(html,/const NOM_ALIMENTAIRE = /);
+  assert.match(html,/function affinerCategorie\(cat, nom, tags\)\{/);
+  assert.match(html,/tags\.amenity === "social_facility" && !tags\.social_facility/);
+  // et le classifieur lui passe bien les tags, sinon la règle ne sert à rien
+  assert.match(html,/affinerCategorie\(regle\[2\], t\.name, t\)/);
+  // « foyer » doit rester le mot qui mène à l'hébergement
+  assert.match(html,/hebergement:\["hebergement","dormir","abri","foyer"/);
+});
+
 /* ---- Carte dominante ---------------------------------------------------- */
 
 test("la recherche est un bouton loupe, pas une barre permanente",()=>{
@@ -717,8 +767,8 @@ test("les suggestions distinguent une destination d'une intention",()=>{
 test("changer de catégorie ne relance pas le réseau si les lieux sont là",()=>{
   assert.match(html,/const manquantes = cats\.filter\(c=>!categorieEnMemoire\(c\)\);/);
   assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
-  // le rail de besoins passe bien par ce filtre
-  assert.match(html,/const manquantes = b\.sous\.flatMap\(x=>x\.cats\)\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
+  // le rail de besoins passe bien par ce filtre — Aide comprise, désormais
+  assert.match(html,/const manquantes = cats\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
   assert.match(html,/if\(manquantes\.length\) chargerPourCats\(manquantes\);/);
 });
 
@@ -1803,8 +1853,10 @@ test("la chaîne du démarrage est lisible maillon par maillon",()=>{
 
 test("un jeu de zone couvre la tuile, le démarrage n'en paie que le voisinage",()=>{
   // le fichier décrit onze kilomètres sur sept…
-  assert.match(zones,/const PLAFOND = 120;/);
+  assert.match(zones,/const PLAFOND = 150;/);
   assert.match(zones,/const GRILLE = 6;/);
+  // dont une part réservée à l'aide, qui perdrait sinon toujours au nombre
+  assert.match(zones,/const PLAFOND_AIDE = 70;/);
   // …mais fusionner cent lieux coûte des secondes de fil principal pour en
   // afficher cinq : on ne prend que les plus proches
   assert.match(html,/const RAPIDE_VOISINAGE = 25;/);

@@ -53,5 +53,155 @@
     "nom": "Paris 12e · 13e",
     "lat": 48.83,
     "lng": 2.37
+  },
+  {
+    "nom": "Angers centre",
+    "lat": 47.47,
+    "lng": -0.55
+  },
+  {
+    "nom": "Rouen centre · rive droite",
+    "lat": 49.44,
+    "lng": 1.09
+  },
+  {
+    "nom": "Nantes centre",
+    "lat": 47.22,
+    "lng": -1.55
+  },
+  {
+    "nom": "Bordeaux centre",
+    "lat": 44.84,
+    "lng": -0.58
+  },
+  {
+    "nom": "Toulouse centre",
+    "lat": 43.6,
+    "lng": 1.44
+  },
+  {
+    "nom": "Lyon centre · Presqu'île",
+    "lat": 45.76,
+    "lng": 4.84
+  },
+  {
+    "nom": "Marseille centre · Vieux-Port",
+    "lat": 43.3,
+    "lng": 5.38
+  },
+  {
+    "nom": "Strasbourg centre",
+    "lat": 48.58,
+    "lng": 7.75
+  },
+  {
+    "nom": "Montpellier centre",
+    "lat": 43.61,
+    "lng": 3.88
+  },
+  {
+    "nom": "Rennes centre",
+    "lat": 48.11,
+    "lng": -1.68
+  },
+  {
+    "nom": "Nice centre",
+    "lat": 43.7,
+    "lng": 7.27
+  },
+  {
+    "nom": "Grenoble centre",
+    "lat": 45.19,
+    "lng": 5.72
+  },
+  {
+    "nom": "Amiens centre",
+    "lat": 49.89,
+    "lng": 2.3
+  },
+  {
+    "nom": "Reims centre",
+    "lat": 49.26,
+    "lng": 4.03
+  },
+  {
+    "nom": "Le Havre centre",
+    "lat": 49.49,
+    "lng": 0.11
+  },
+  {
+    "nom": "Dijon centre",
+    "lat": 47.32,
+    "lng": 5.04
+  },
+  {
+    "nom": "Saint-Étienne centre",
+    "lat": 45.44,
+    "lng": 4.39
+  },
+  {
+    "nom": "Tours centre",
+    "lat": 47.39,
+    "lng": 0.69
+  },
+  {
+    "nom": "Clermont-Ferrand centre",
+    "lat": 45.78,
+    "lng": 3.09
+  },
+  {
+    "nom": "Brest centre",
+    "lat": 48.39,
+    "lng": -4.49
+  },
+  {
+    "nom": "Nancy centre",
+    "lat": 48.69,
+    "lng": 6.18
+  },
+  {
+    "nom": "Metz centre",
+    "lat": 49.12,
+    "lng": 6.18
+  },
+  {
+    "nom": "Caen centre",
+    "lat": 49.18,
+    "lng": -0.37
+  },
+  {
+    "nom": "Limoges centre",
+    "lat": 45.83,
+    "lng": 1.26
+  },
+  {
+    "nom": "Perpignan centre",
+    "lat": 42.7,
+    "lng": 2.9
+  },
+  {
+    "nom": "Besançon centre",
+    "lat": 47.24,
+    "lng": 6.02
+  },
+  {
+    "nom": "Orléans centre",
+    "lat": 47.9,
+    "lng": 1.9
+  },
+  {
+    "nom": "Mulhouse centre",
+    "lat": 47.75,
+    "lng": 7.34
+  },
+  {
+    "nom": "Valenciennes · Denain",
+    "lat": 50.36,
+    "lng": 3.52
+  },
+  {
+    "nom": "Dunkerque centre",
+    "lat": 51.03,
+    "lng": 2.38
   }
 ]

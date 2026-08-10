@@ -2165,7 +2165,22 @@ const SERVICES = [
 const CHAINES_FASTFOOD = /mc\s?do|burger\s?king|\bkfc\b|\bquick\b|subway|domino|pizza\s?hut|o'?tacos|five\s?guys|tacos|kebab|snack|friterie|frit|chicken|tender|nachos|sushi\s?shop|pok[eé]\b/i;
 const CHAINES_CAFE     = /starbucks|paul\b|brioche\s?dor|columbus|costa\s?coffee|boulangerie|patisserie|maison\s?kayser|pain\s?quotidien/i;
 
-function affinerCategorie(cat, nom){
+/* Ce qu'un nom de structure sociale annonce. `amenity=social_facility` sans
+   sous-tag ne dit pas ce qu'on y trouve — mais l'enseigne, elle, le dit
+   presque toujours. « Foyer Notre-Dame », « CHRS Le Relais », « Résidence
+   sociale Wazemmes » : personne n'hésite en lisant ça. */
+const NOM_HEBERGEMENT = /foyer|chrs|\bcada\b|\bhuda\b|\bchu\b|residence sociale|maison relais|pension de famille|abri de nuit|halte de nuit|hebergement|dortoir|sans[- ]abri|\bsdf\b/;
+const NOM_ALIMENTAIRE = /epicerie solidaire|banque alimentaire|restos? du c(o|oe)ur|soupe populaire|distribution alimentaire|aide alimentaire|colis alimentaire/;
+
+function affinerCategorie(cat, nom, tags){
+  /* Un tag partagé et sans sous-tag : c'est le nom qui décide. On le fait
+     avant tout le reste, parce qu'un foyer rangé dans « asso » est un foyer
+     qu'aucune recherche d'hébergement ne retrouvera. */
+  if(cat === "asso" && tags && tags.amenity === "social_facility" && !tags.social_facility){
+    const n = sansAccents(nom || "");
+    if(NOM_ALIMENTAIRE.test(n)) return "alimentaire";
+    if(NOM_HEBERGEMENT.test(n)) return "hebergement";
+  }
   if(!nom) return cat;
   if(classifyPlace({cat, title:nom}).includes("cinema")) return "cinema";
   if(cat === "resto" || cat === "fastfood" || cat === "cafe"){
@@ -2505,8 +2520,20 @@ const REQUETES = [
   // amenity=food_bank existe aussi, sans la clé social_facility : les Restos
   // du Cœur et les banques alimentaires sont tagués des deux façons
   ["amenity","food_bank","alimentaire"],
+  /* Un « foyer », en France, c'est presque tout sauf `social_facility=shelter`.
+     Cette famille ne demandait que `shelter`, `group_home` et `refugee_site` :
+     sur huit foyers lillois tagués comme ils le sont réellement dans OSM, six
+     n'étaient même pas demandés. On couvre donc les valeurs qui portent le
+     parc social français — CHRS, résidence sociale, maison relais, pension de
+     famille, abri de nuit, foyer de jeunes travailleurs.
+     `amenity=shelter` reste EXCLU à dessein : dans OSM c'est un abribus ou un
+     abri de pique-nique, pas un hébergement. */
   ["social_facility","shelter","hebergement"],   ["social_facility","group_home","hebergement"],
-  ["amenity","refugee_site","hebergement"],
+  ["social_facility","homeless_shelter","hebergement"],
+  ["social_facility","emergency_shelter","hebergement"],
+  ["social_facility","assisted_living","hebergement"],
+  ["social_facility","nursing_home","hebergement"],
+  ["amenity","refugee_site","hebergement"], ["amenity","dormitory","hebergement"],
   // accueils de jour et permanences : ce sont eux qu'on cherche en premier
   // quand on a besoin d'aide, et aucun tag ne les ramenait
   ["social_facility","outreach","asso"], ["social_facility","day_centre","asso"],
@@ -2573,6 +2600,22 @@ const REQUETES = [
   // mode, sinon on envoie quelqu'un chercher un arrêt qui n'existe pas
   ["railway","station","train"], ["railway","halt","train"],
   ["railway","tram_stop","tram"], ["highway","bus_stop","bus"], ["amenity","bus_station","bus"],
+];
+
+/* ---- Les tags trop vagues pour n'appartenir qu'à une famille -------------
+   `amenity=social_facility` sans sous-tag est, en France, le tag le plus
+   répandu du secteur social : c'est aussi bien un foyer qu'une permanence,
+   une épicerie solidaire ou un service social de secteur. REQUETES le range
+   dans « asso », ce qui est le moins faux — mais avait une conséquence que
+   personne ne voyait : une recherche « foyer », qui vise l'hébergement, ne le
+   DEMANDAIT même pas à Overpass. Les foyers existaient, l'application ne les
+   réclamait jamais.
+
+   Ces tags-là sont donc demandés pour plusieurs familles à la fois. C'est le
+   nom qui tranche ensuite (voir `affinerCategorie`) : mieux vaut ramener un
+   lieu et le classer approximativement que ne jamais aller le chercher. */
+const TAGS_PARTAGES = [
+  ["amenity","social_facility", ["asso","hebergement","alimentaire"]],
 ];
 
 
@@ -3071,6 +3114,13 @@ async function vraisLieux(lat,lng,bornes,opts){
     if(garder && !garder.has(cat)) return;
     (parCle[k] = parCle[k] || []).push(v);
   });
+  // les tags vagues appartiennent à plusieurs familles : on les demande dès
+  // que l'une d'elles est cherchée, sans quoi « foyer » ne les voyait jamais
+  TAGS_PARTAGES.forEach(([k,v,cats])=>{
+    if(garder && !cats.some(c=>garder.has(c))) return;
+    const liste = (parCle[k] = parCle[k] || []);
+    if(!liste.includes(v)) liste.push(v);
+  });
   if(!Object.keys(parCle).length) return [];
   // On interroge la zone effectivement affichée plutôt qu'un rayon fixe :
   // en vue serrée on ramène beaucoup moins, en vue large on couvre vraiment
@@ -3105,7 +3155,7 @@ async function vraisLieux(lat,lng,bornes,opts){
     if(!p.lat||!p.lon) return null;
     const regle = REQUETES.find(([k,v])=>t[k]===v);
     if(!regle) return null;
-    const cat = affinerCategorie(regle[2], t.name);
+    const cat = affinerCategorie(regle[2], t.name, t);
     return normaliserItem({
       id:"osm"+e.type+e.id, cat,
       titre: t.name || CATS[cat].label,
@@ -8139,8 +8189,18 @@ function ouvrirFeuille2(niveau){
   }
   // ouvrir un besoin déclenche sa recherche : c'est le moment où elle sert
   const b = BESOIN_DE(niveau);
-  if(b && b.sous){
-    const manquantes = b.sous.flatMap(x=>x.cats).filter(c=>!CATS_DEPART.has(c));
+  /* Aide n'a pas de `sous` — c'est un mode entier, pas une liste de cases.
+     Cette branche testait `b.sous`, si bien qu'ouvrir Aide ne chargeait
+     AUCUNE catégorie d'aide. Et comme `CATS_DEPART` n'en contient aucune non
+     plus — au démarrage on ramène des commerces et des loisirs — l'écran
+     d'aide n'avait à afficher que ce qui avait pu arriver là par hasard.
+     C'est la raison principale pour laquelle « il n'y a aucun lieu d'aide » :
+     ils n'étaient jamais demandés, dans aucune ville. */
+  const cats = (niveau === "aide" || (b && b.aide)) ? CATS_AIDE
+             : (b && b.sous) ? b.sous.flatMap(x=>x.cats)
+             : null;
+  if(cats){
+    const manquantes = cats.filter(c=>!CATS_DEPART.has(c));
     if(manquantes.length) chargerPourCats(manquantes);
     if(niveau === "manger") completerRestauration();
     if(niveau === "famille") chargerEditorial("family");
