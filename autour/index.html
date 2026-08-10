@@ -2788,10 +2788,43 @@ function versLieu(p){
 /* Passe par une fonction en base plutôt que par un select * : seules les
    colonnes affichées reviennent, la zone est filtrée côté serveur et les
    événements terminés sont écartés avant d'être transmis. */
+/* CE QUE L'ON DEMANDE N'EST PAS CE QUE L'ON VOIT.
+
+   Cette fonction interrogeait la base sur l'emprise VISIBLE. Sur un téléphone
+   au zoom 16, cette emprise fait 590 mètres de large — un écran de 390 points
+   à 1,5 mètre le point. Deux événements publiés à 380 et 560 mètres à l'ouest,
+   soit sept minutes à pied, tombaient hors du rectangle et n'étaient donc
+   jamais demandés. Sur un écran d'ordinateur, ou pendant le court moment où la
+   carte n'est pas encore installée (l'ancien repli valait ±0,06°, soit huit
+   kilomètres), les mêmes événements apparaissaient. D'où un défaut qui semblait
+   capricieux : il dépendait de la largeur de l'écran.
+
+   Les publications sont rares — quelques dizaines par ville, plafonnées à 120
+   par requête. Les demander sur un rayon confortable ne coûte rien, et c'est
+   le classement, pas la base, qui décide ensuite de ce qui mérite l'écran. */
+const RAYON_PUBLICATIONS_M = 5000;
+
+function emprisePublications(lat, lng){
+  let dLat = RAYON_PUBLICATIONS_M / 111320;
+  let dLng = RAYON_PUBLICATIONS_M /
+    (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+  /* On élargit jusqu'à la vue quand elle est plus grande — explorer une région
+     entière continue de ramener ce qu'on y voit — mais on reste CENTRÉ sur le
+     point demandé. Faire l'union des deux rectangles produisait, le temps que
+     la carte rattrape la position, une emprise allant de Paris à Tourcoing :
+     une boîte de deux cents kilomètres pour chercher ce qui est à côté. */
+  const vue = bornesVisibles();
+  if(vue){
+    const c = { lat:(Number(vue.s)+Number(vue.n))/2, lng:(Number(vue.o)+Number(vue.e))/2 };
+    dLat = Math.max(dLat, Number(vue.n) - c.lat);
+    dLng = Math.max(dLng, Number(vue.e) - c.lng);
+  }
+  return { s:lat-dLat, n:lat+dLat, o:lng-dLng, e:lng+dLng };
+}
+
 async function chargerPublications(lat,lng){
   if(!sb) return [];
-  const b = bornesVisibles() ||
-    { s:lat-0.06, n:lat+0.06, o:lng-0.06, e:lng+0.06 };
+  const b = emprisePublications(lat, lng);
   const { data, error } = await sb.rpc("publications_proches", {
     p_sud:Number(b.s), p_ouest:Number(b.o),
     p_nord:Number(b.n), p_est:Number(b.e), p_limite:120

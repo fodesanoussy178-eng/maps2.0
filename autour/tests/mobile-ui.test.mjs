@@ -677,6 +677,29 @@ test("un CDN muet coûte le style, jamais la carte",()=>{
   assert.match(html,/lien\.media = "all";/);
 });
 
+/* ---- Retrouver ce qu'on a publié ----------------------------------------- */
+
+test("les publications ne sont pas demandées sur le seul rectangle visible",()=>{
+  /* `chargerPublications` interrogeait la base sur l'emprise VISIBLE. Sur un
+     téléphone au zoom 16 elle fait 589 m de large (390 points à 1,5 m). Deux
+     événements publiés à 380 et 560 m tombaient dehors et n'étaient jamais
+     demandés — alors qu'ils s'affichaient sur un écran large. Un défaut qui
+     dépendait de la largeur de l'écran, donc invisible en développement. */
+  assert.match(html,/const RAYON_PUBLICATIONS_M = 5000;/);
+  assert.match(html,/function emprisePublications\(lat, lng\)\{/);
+  assert.match(html,/const b = emprisePublications\(lat, lng\);/);
+  // l'ancien repli ±0,06° ne doit pas revenir déguisé
+  assert.doesNotMatch(html,/const b = bornesVisibles\(\) \|\|/);
+});
+
+test("l'emprise des publications reste centrée sur le point demandé",()=>{
+  /* Faire l'union avec la vue produisait, le temps que la carte rattrape la
+     position, une boîte allant de Paris à Tourcoing. */
+  assert.match(html,/dLat = Math\.max\(dLat, Number\(vue\.n\) - c\.lat\);/);
+  assert.match(html,/dLng = Math\.max\(dLng, Number\(vue\.e\) - c\.lng\);/);
+  assert.match(html,/return \{ s:lat-dLat, n:lat\+dLat, o:lng-dLng, e:lng\+dLng \};/);
+});
+
 /* ---- À distance un aperçu, sur place la découverte ------------------------
    Une ville qu'on regarde de loin et une ville où l'on est ne méritent pas la
    même réponse — ni le même coût. La graduation se fait par kilomètres et non
