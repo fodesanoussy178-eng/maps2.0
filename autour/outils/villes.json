@@ -1,29 +1,57 @@
 [
-  { "nom": "Lille",           "lat": 50.6292, "lng": 3.0573 },
-  { "nom": "Tourcoing",       "lat": 50.7236, "lng": 3.1611 },
-  { "nom": "Roubaix",         "lat": 50.6942, "lng": 3.1746 },
-  { "nom": "Villeneuve-d'Ascq","lat": 50.6222, "lng": 3.1400 },
-  { "nom": "Paris",           "lat": 48.8566, "lng": 2.3522 },
-  { "nom": "Paris nord",      "lat": 48.8900, "lng": 2.3500 },
-  { "nom": "Paris est",       "lat": 48.8560, "lng": 2.4000 },
-  { "nom": "Lyon",            "lat": 45.7640, "lng": 4.8357 },
-  { "nom": "Marseille",       "lat": 43.2965, "lng": 5.3698 },
-  { "nom": "Toulouse",        "lat": 43.6047, "lng": 1.4442 },
-  { "nom": "Bordeaux",        "lat": 44.8378, "lng": -0.5792 },
-  { "nom": "Nantes",          "lat": 47.2184, "lng": -1.5536 },
-  { "nom": "Strasbourg",      "lat": 48.5734, "lng": 7.7521 },
-  { "nom": "Montpellier",     "lat": 43.6108, "lng": 3.8767 },
-  { "nom": "Rennes",          "lat": 48.1173, "lng": -1.6778 },
-  { "nom": "Nice",            "lat": 43.7102, "lng": 7.2620 },
-  { "nom": "Grenoble",        "lat": 45.1885, "lng": 5.7245 },
-  { "nom": "Rouen",           "lat": 49.4432, "lng": 1.0999 },
-  { "nom": "Reims",           "lat": 49.2583, "lng": 4.0317 },
-  { "nom": "Amiens",          "lat": 49.8941, "lng": 2.2958 },
-  { "nom": "Dunkerque",       "lat": 51.0344, "lng": 2.3768 },
-  { "nom": "Arras",           "lat": 50.2910, "lng": 2.7778 },
-  { "nom": "Valenciennes",    "lat": 50.3580, "lng": 3.5233 },
-  { "nom": "Douai",           "lat": 50.3714, "lng": 3.0800 },
-  { "nom": "Lens",            "lat": 50.4292, "lng": 2.8318 },
-  { "nom": "Bruxelles",       "lat": 50.8503, "lng": 4.3517 },
-  { "nom": "Genève",          "lat": 46.2044, "lng": 6.1432 }
+  {
+    "nom": "Lille sud-ouest · Loos · Haubourdin",
+    "lat": 50.61,
+    "lng": 3.02
+  },
+  {
+    "nom": "Lille centre · Villeneuve-d'Ascq",
+    "lat": 50.63,
+    "lng": 3.08
+  },
+  {
+    "nom": "Hem · Villeneuve-d'Ascq est",
+    "lat": 50.64,
+    "lng": 3.17
+  },
+  {
+    "nom": "Marcq · La Madeleine · Croix",
+    "lat": 50.68,
+    "lng": 3.12
+  },
+  {
+    "nom": "Roubaix · Tourcoing · Wattrelos",
+    "lat": 50.71,
+    "lng": 3.18
+  },
+  {
+    "nom": "Paris 16e · Boulogne · Neuilly",
+    "lat": 48.86,
+    "lng": 2.24
+  },
+  {
+    "nom": "Paris 15e ouest · Issy",
+    "lat": 48.83,
+    "lng": 2.24
+  },
+  {
+    "nom": "Paris 8e · 9e · 17e · 18e",
+    "lat": 48.88,
+    "lng": 2.32
+  },
+  {
+    "nom": "Paris 5e · 6e · 7e · 14e · 15e",
+    "lat": 48.84,
+    "lng": 2.32
+  },
+  {
+    "nom": "Paris 2e · 10e · 11e · 19e · 20e · Montreuil",
+    "lat": 48.87,
+    "lng": 2.37
+  },
+  {
+    "nom": "Paris 12e · 13e",
+    "lat": 48.83,
+    "lng": 2.37
+  }
 ]

@@ -1,9 +1,9 @@
 /* ===========================================================================
    Fabrique les jeux de démarrage par zone
 
-   Ce que ça produit : `zones/<lat>,<lng>.json`, un fichier par carré de 0,1°
-   (environ une agglomération), contenant les lieux du centre de la zone sous
-   la forme que l'application sait fusionner directement.
+   Ce que ça produit : `zones/<lat>,<lng>.json`, un fichier par tuile de 0,1°
+   — la clé exacte que le client calcule (`lat.toFixed(1)`), pour qu'une seule
+   requête suffise à la trouver, sans index à télécharger d'abord.
 
    À quoi ça sert : au TOUT premier démarrage, sur un téléphone qui n'a rien en
    mémoire, c'est la seule source qui ne dépende ni d'Overpass, ni de
@@ -11,18 +11,19 @@
    comme un statique par le CDN : une requête vers notre propre origine, et
    l'écran a ses cinq propositions.
 
-   Quand le relancer : ces données vieillissent lentement (un commerce ouvre,
-   un autre ferme). Une fois par mois suffit largement, et rien ne casse si on
-   l'oublie — le fichier reste valable, et les sources fraîches le remplacent
-   silencieusement à chaque ouverture.
+   Une tuile de 0,1° fait environ 11 km sur 7. On ne peut donc pas se contenter
+   d'interroger son centre : quelqu'un à l'autre bout n'aurait que des lieux à
+   cinq kilomètres, que le classement écarte (rayon 2,5 km). On interroge donc
+   la tuile ENTIÈRE d'une seule requête, puis on éclaircit le résultat sur une
+   grille pour que la couverture soit régulière au lieu d'être un tas au centre.
 
    Usage :
      node outils/zones.mjs                      # les villes de villes.json
-     node outils/zones.mjs 50.7176,3.1611       # une zone précise
+     node outils/zones.mjs 50.7176,3.1611       # la tuile qui contient ce point
      node outils/zones.mjs --liste mes-villes.json
 
    Ce script a besoin d'un accès réseau à Overpass. Il n'invente rien : si une
-   zone ne rend aucun lieu, aucun fichier n'est écrit pour elle.
+   tuile ne rend aucun lieu exploitable, aucun fichier n'est écrit pour elle.
    ======================================================================== */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -33,15 +34,16 @@ const ICI = dirname(fileURLToPath(import.meta.url));
 const RACINE = join(ICI, "..");
 const SORTIE = join(RACINE, "zones");
 
-const SERVEURS = [
+const SERVEURS = process.env.OVERPASS_URL ? [process.env.OVERPASS_URL] : [
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://overpass.osm.ch/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 
-/* Les mêmes clés que l'application demande au démarrage. Volontairement
-   restreint : ce fichier sert à remplir cinq lignes, pas à embarquer une
-   ville entière dans le CDN. */
+/* Les mêmes familles que l'application demande au démarrage. Volontairement
+   restreint : ce fichier sert à remplir cinq lignes, pas à embarquer une ville
+   entière dans le CDN. */
 const REQUETES = [
   ["amenity", "restaurant|fast_food|cafe|bar|pub|ice_cream|marketplace|cinema|theatre|library|arts_centre|community_centre"],
   ["shop", "bakery|pastry|greengrocer|butcher|clothes|second_hand|books|convenience"],
@@ -59,31 +61,51 @@ const CATEGORIE = {
   museum:"musee", gallery:"musee", artwork:"musee", viewpoint:"parc",
 };
 
-const RAYON_M = 1200;
-const PLAFOND = 60;                 // de quoi classer, pas de quoi tout charger
-const ATTENTE_ENTRE_ZONES = 4000;   // on reste poli avec les instances publiques
+const DEMI_TUILE = 0.05;            // une tuile de 0,1° : [k-0,05 ; k+0,05[
+const SORTIE_OVERPASS = 900;        // ce qu'on demande à Overpass, borné
+const GRILLE = 6;                   // 6×6 cellules pour éclaircir régulièrement
+const PAR_CELLULE = 5;
+const PLAFOND = 120;               // couvre la tuile ; le client n en fusionne que le voisinage
+const ATTENTE_ENTRE_TUILES = Number(process.env.ATTENTE_TUILES || 5000);  // on reste poli avec les instances publiques
+const DELAI_MS = 180000;
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function requete(lat, lng) {
-  const bloc = REQUETES
-    .map(([cle, valeurs]) => `nwr(around:${RAYON_M},${lat},${lng})["${cle}"~"^(${valeurs})$"];`)
-    .join("");
-  return `[out:json][timeout:60];(${bloc});out center ${PLAFOND};`;
+/* La clé EXACTE que calcule le client (`cleZoneStatique`). Toute divergence
+   ici produirait des fichiers que personne ne demandera jamais. */
+const cleTuile = (lat, lng) => lat.toFixed(1) + "," + lng.toFixed(1);
+
+function bornesTuile(cle) {
+  const [lat, lng] = cle.split(",").map(Number);
+  return { s: lat - DEMI_TUILE, n: lat + DEMI_TUILE,
+           o: lng - DEMI_TUILE, e: lng + DEMI_TUILE, lat, lng };
 }
 
-async function interroger(lat, lng) {
+function requete(b) {
+  const zone = `(${b.s.toFixed(4)},${b.o.toFixed(4)},${b.n.toFixed(4)},${b.e.toFixed(4)})`;
+  const bloc = REQUETES
+    .map(([cle, valeurs]) => `nwr${zone}["${cle}"~"^(${valeurs})$"];`)
+    .join("");
+  return `[out:json][timeout:170];(${bloc});out center ${SORTIE_OVERPASS};`;
+}
+
+async function interroger(b) {
   for (const serveur of SERVEURS) {
     try {
       const r = await fetch(serveur, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: "data=" + encodeURIComponent(requete(lat, lng)),
+        headers: { "content-type": "application/x-www-form-urlencoded",
+                   "user-agent": "Autour/1.0 (https://autour.eu) generation-zones" },
+        body: "data=" + encodeURIComponent(requete(b)),
+        signal: AbortSignal.timeout(DELAI_MS),
       });
-      if (!r.ok) { console.warn("  ", serveur, "→ HTTP", r.status); continue; }
+      if (!r.ok) { console.warn("   ", serveur, "→ HTTP", r.status); continue; }
       const j = await r.json();
-      if (j && Array.isArray(j.elements)) return j.elements;
-    } catch (e) { console.warn("  ", serveur, "→", e.message); }
+      if (j && Array.isArray(j.elements)) {
+        console.log("   ", serveur.replace(/https:\/\/|\/api.*/g, ""), "→", j.elements.length, "objets");
+        return j.elements;
+      }
+    } catch (e) { console.warn("   ", serveur, "→", e.message); }
   }
   return null;
 }
@@ -92,6 +114,9 @@ async function interroger(lat, lng) {
    à dessiner une carte et à la reclasser : pas de description, pas de
    géométrie, pas de tags décoratifs. Un fichier de zone doit rester petit —
    c'est tout son intérêt. */
+const TAGS_UTILES = ["opening_hours","internet_access","outdoor_seating","indoor_seating",
+  "wheelchair","fee","cuisine","phone","website","access","playground","power_supply"];
+
 function versLieu(e) {
   const t = e.tags || {};
   const p = e.center || e;
@@ -100,9 +125,7 @@ function versLieu(e) {
   const cat = CATEGORIE[type];
   if (!cat) return null;
   const tags = {};
-  for (const k of ["opening_hours","internet_access","outdoor_seating","wheelchair",
-                   "fee","cuisine","phone","website","access","playground"])
-    if (t[k]) tags[k] = t[k];
+  for (const k of TAGS_UTILES) if (t[k]) tags[k] = t[k];
   return {
     id: "osm" + e.type + e.id, cat, titre: t.name,
     adresse: [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" ") || t.name,
@@ -116,24 +139,71 @@ function versLieu(e) {
   };
 }
 
-async function fabriquer(lat, lng, nom) {
-  const cle = lat.toFixed(1) + "," + lng.toFixed(1);
-  process.stdout.write("zone " + cle + (nom ? " (" + nom + ")" : "") + " … ");
-  const elements = await interroger(lat, lng);
-  if (!elements) { console.log("aucune réponse — zone ignorée"); return false; }
+/* Éclaircir sans concentrer. Overpass rend ce qu'il trouve dans l'ordre de sa
+   base : garder les 170 premiers donnerait 170 lieux d'un même quartier. On
+   découpe donc la tuile en cellules et on prend les meilleurs de chacune —
+   « meilleur » voulant seulement dire ici : celui dont on sait le plus de
+   choses, donc celui qu'on saura classer. */
+function richesse(l) {
+  return Object.keys(l.tags).length
+       + (l.adresse && l.adresse !== l.titre ? 2 : 0)
+       + (l.quand !== "Voir sur place" ? 3 : 0)
+       + (l.cp ? 1 : 0);
+}
+
+function eclaircir(lieux, b) {
+  const cellules = new Map();
+  lieux.forEach((l) => {
+    const i = Math.min(GRILLE - 1, Math.max(0,
+      Math.floor(((l.lat - b.s) / (b.n - b.s)) * GRILLE)));
+    const j = Math.min(GRILLE - 1, Math.max(0,
+      Math.floor(((l.lng - b.o) / (b.e - b.o)) * GRILLE)));
+    const cle = i + ":" + j;
+    if (!cellules.has(cle)) cellules.set(cle, []);
+    cellules.get(cle).push(l);
+  });
+
+  const retenus = [];
+  // on fait plusieurs tours : un tour prend le meilleur de chaque cellule, ce
+  // qui répartit avant d'approfondir
+  for (let tour = 0; tour < PAR_CELLULE && retenus.length < PLAFOND; tour += 1) {
+    for (const [, liste] of cellules) {
+      if (retenus.length >= PLAFOND) break;
+      if (tour === 0) liste.sort((x, y) => richesse(y) - richesse(x));
+      if (liste[tour]) retenus.push(liste[tour]);
+    }
+  }
+  // variété : pas cinquante restaurants d'affilée dans le fichier
+  const parCat = new Map();
+  retenus.forEach((l) => parCat.set(l.cat, (parCat.get(l.cat) || 0) + 1));
+  return { retenus, cellules: cellules.size, parCat: Object.fromEntries(parCat) };
+}
+
+async function fabriquer(cle, noms) {
+  const b = bornesTuile(cle);
+  console.log("tuile " + cle + (noms.length ? " (" + noms.join(", ") + ")" : ""));
+  const elements = await interroger(b);
+  if (!elements) { console.log("    aucune réponse — tuile ignorée\n"); return false; }
   const lieux = elements.map(versLieu).filter(Boolean);
-  if (!lieux.length) { console.log("aucun lieu exploitable — zone ignorée"); return false; }
+  if (!lieux.length) { console.log("    aucun lieu exploitable — tuile ignorée\n"); return false; }
+
+  const { retenus, cellules, parCat } = eclaircir(lieux, b);
   mkdirSync(SORTIE, { recursive: true });
-  const fichier = join(SORTIE, cle + ".json");
-  writeFileSync(fichier, JSON.stringify({
-    zone: cle, centre: [Number(lat.toFixed(4)), Number(lng.toFixed(4))],
-    nom: nom || "", genere_le: new Date().toISOString(),
-    source: "OpenStreetMap via Overpass", lieux,
+  writeFileSync(join(SORTIE, cle + ".json"), JSON.stringify({
+    zone: cle, centre: [b.lat, b.lng],
+    bornes: [Number(b.s.toFixed(4)), Number(b.o.toFixed(4)),
+             Number(b.n.toFixed(4)), Number(b.e.toFixed(4))],
+    noms, genere_le: new Date().toISOString(),
+    source: "OpenStreetMap via Overpass · ODbL",
+    lieux: retenus,
   }));
-  console.log(lieux.length + " lieux");
+  console.log("    " + lieux.length + " exploitables → " + retenus.length +
+    " retenus sur " + cellules + " cellules");
+  console.log("    " + Object.entries(parCat).map(([c, n]) => c + ":" + n).join(" ") + "\n");
   return true;
 }
 
+/* ---- Entrée ------------------------------------------------------------- */
 const args = process.argv.slice(2);
 let cibles = [];
 
@@ -142,7 +212,7 @@ if (iListe >= 0 && args[iListe + 1]) {
   cibles = JSON.parse(readFileSync(args[iListe + 1], "utf8"));
 } else if (args[0] && /^-?\d/.test(args[0])) {
   const [lat, lng] = args[0].split(",").map(Number);
-  cibles = [{ lat, lng }];
+  cibles = [{ lat, lng, nom: args[0] }];
 } else {
   const parDefaut = join(ICI, "villes.json");
   if (!existsSync(parDefaut)) {
@@ -152,11 +222,22 @@ if (iListe >= 0 && args[iListe + 1]) {
   cibles = JSON.parse(readFileSync(parDefaut, "utf8"));
 }
 
-let faites = 0;
-for (const [i, c] of cibles.entries()) {
+/* Plusieurs villes tombent dans la même tuile — Roubaix et Tourcoing, par
+   exemple. On les fusionne : une tuile, un fichier, une requête. */
+const tuiles = new Map();
+for (const c of cibles) {
   if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue;
-  if (await fabriquer(c.lat, c.lng, c.nom)) faites += 1;
-  if (i < cibles.length - 1) await attendre(ATTENTE_ENTRE_ZONES);
+  const cle = cleTuile(c.lat, c.lng);
+  if (!tuiles.has(cle)) tuiles.set(cle, []);
+  if (c.nom) tuiles.get(cle).push(c.nom);
 }
-console.log("\n" + faites + " zone(s) écrite(s) dans " + SORTIE);
+
+console.log(cibles.length + " point(s) → " + tuiles.size + " tuile(s)\n");
+let faites = 0;
+const liste = [...tuiles.entries()];
+for (const [i, [cle, noms]] of liste.entries()) {
+  if (await fabriquer(cle, noms)) faites += 1;
+  if (i < liste.length - 1) await attendre(ATTENTE_ENTRE_TUILES);
+}
+console.log(faites + "/" + tuiles.size + " tuile(s) écrite(s) dans " + SORTIE);
 if (!faites) process.exit(2);

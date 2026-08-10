@@ -1728,8 +1728,16 @@ test("au tout premier démarrage, une source qui ne dépend de personne",()=>{
   // et surtout : rien n'est inventé quand la zone n'existe pas
   assert.match(html,/if\(!depart \|\| !depart\.length\) return;/);
   // le générateur existe et n'écrit rien qu'il n'ait reçu
-  assert.match(zones,/if \(!lieux\.length\) \{ console\.log\("aucun lieu exploitable/);
+  assert.match(zones,/aucun lieu exploitable — tuile ignorée/);
   assert.match(zones,/if \(!p\.lat \|\| !p\.lon \|\| !t\.name\) return null;/);
+  // il écrit sous la clé EXACTE que le client calcule, sinon les fichiers
+  // produits ne seraient jamais demandés
+  assert.match(zones,/const cleTuile = \(lat, lng\) => lat\.toFixed\(1\) \+ "," \+ lng\.toFixed\(1\);/);
+  assert.match(html,/const cleZoneStatique = \(lat,lng\)=> lat\.toFixed\(1\)\+","\+lng\.toFixed\(1\);/);
+  // et il couvre la tuile entière, pas seulement son centre : 0,1° font
+  // onze kilomètres sur sept, le classement n'en garde que 2,5
+  assert.match(zones,/const DEMI_TUILE = 0\.05;/);
+  assert.match(zones,/function eclaircir\(lieux, b\)/);
 });
 
 test("la coquille est peinte par le navigateur, pas par le script",()=>{
@@ -1751,4 +1759,16 @@ test("la chaîne du démarrage est lisible maillon par maillon",()=>{
   assert.match(html,/PERF\.jalon\("nominatim_done"\)/);
   // l'objectif de coquille est celui qu'on s'est donné
   assert.match(html,/ui_ready:300/);
+});
+
+test("un jeu de zone couvre la tuile, le démarrage n'en paie que le voisinage",()=>{
+  // le fichier décrit onze kilomètres sur sept…
+  assert.match(zones,/const PLAFOND = 120;/);
+  assert.match(zones,/const GRILLE = 6;/);
+  // …mais fusionner cent lieux coûte des secondes de fil principal pour en
+  // afficher cinq : on ne prend que les plus proches
+  assert.match(html,/const RAPIDE_VOISINAGE = 25;/);
+  assert.match(html,/\.sort\(\(a,b\)=>a\._d - b\._d\)\s*\n\s*\.slice\(0, RAPIDE_VOISINAGE\)/);
+  // et la marque de distance ne survit pas au tri
+  assert.match(html,/\.map\(l=>\{ delete l\._d; return l; \}\)/);
 });

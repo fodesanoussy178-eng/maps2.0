@@ -3728,6 +3728,14 @@ function memoriserJeuRapide(choisis, reserve){
 let zonesDisponibles = null;         // null = pas encore su, false = absentes
 const cleZoneStatique = (lat,lng)=> lat.toFixed(1)+","+lng.toFixed(1);
 
+/* Le fichier couvre la tuile entière — onze kilomètres sur sept — pour que
+   n'importe qui dedans y trouve son quartier. Mais on n'en fusionne que le
+   voisinage immédiat : normaliser, dédupliquer et regrouper cent soixante-dix
+   lieux coûte près de trois secondes de fil principal sur un téléphone, pour
+   en afficher cinq. Le reste de la tuile ne sert à rien tant qu'on n'a pas
+   bougé — et si on bouge, les vraies sources auront répondu depuis longtemps. */
+const RAPIDE_VOISINAGE = 25;
+
 async function lieuxDeZone(lat,lng){
   if(zonesDisponibles === false) return null;
   try{
@@ -3736,7 +3744,11 @@ async function lieuxDeZone(lat,lng){
     const j = await r.json();
     if(!j || !Array.isArray(j.lieux) || !j.lieux.length) return null;
     zonesDisponibles = true;
-    return j.lieux;
+    return j.lieux
+      .map(l=>Object.assign({}, l, {_d:distanceM(lat,lng,l.lat,l.lng)}))
+      .sort((a,b)=>a._d - b._d)
+      .slice(0, RAPIDE_VOISINAGE)
+      .map(l=>{ delete l._d; return l; });
   }catch(e){ return null; }
 }
 
