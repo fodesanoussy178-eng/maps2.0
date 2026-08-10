@@ -34,10 +34,13 @@ const ICI = dirname(fileURLToPath(import.meta.url));
 const RACINE = join(ICI, "..");
 const SORTIE = join(RACINE, "zones");
 
+/* Uniquement des instances qui portent la planète entière. `overpass.osm.ch`
+   figurait ici : c'est l'instance SUISSE, elle ne contient que la Suisse. Elle
+   répondait donc « zéro objet » en huit dixièmes de seconde à toute requête
+   française — une réponse valide, rapide, et complètement fausse. */
 const SERVEURS = process.env.OVERPASS_URL ? [process.env.OVERPASS_URL] : [
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ];
 
@@ -122,6 +125,13 @@ async function interroger(b) {
       if (!r.ok) { console.warn("    ", nom, "→ HTTP", r.status, "après", duree); continue; }
       const j = await r.json();
       if (j && Array.isArray(j.elements)) {
+        /* Zéro objet sur une tuile d'agglomération n'est pas une réponse :
+           c'est une instance qui ne couvre pas ce territoire, ou qui a tronqué.
+           On passe à la suivante plutôt que de conclure qu'il n'y a rien. */
+        if (!j.elements.length) {
+          console.warn("    ", nom, "→ 0 objet en", duree, "— instance ignorée");
+          continue;
+        }
         console.log("    ", nom, "→", j.elements.length, "objets en", duree);
         return j.elements;
       }

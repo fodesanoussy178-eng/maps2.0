@@ -1772,3 +1772,19 @@ test("un jeu de zone couvre la tuile, le démarrage n'en paie que le voisinage",
   // et la marque de distance ne survit pas au tri
   assert.match(html,/\.map\(l=>\{ delete l\._d; return l; \}\)/);
 });
+
+test("une instance régionale ne décide pas qu'un quartier est vide",()=>{
+  // `overpass.osm.ch` ne contient que la Suisse : elle répondait « zéro objet »
+  // en huit dixièmes de seconde à toute requête française, et les trois chemins
+  // acceptaient cette réponse. Constaté en produisant les zones de Lille.
+  for (const [nom, source] of [["le client", html], ["le relais", apiLieux], ["le générateur", zones]])
+    assert.doesNotMatch(source, /"https:\/\/overpass\.osm\.ch/, nom+" ne doit plus l'interroger");
+  // et une réponse vide n'est plus une réponse, où qu'elle arrive
+  assert.match(apiLieux,/if \(!j\.elements\.length\) continue;/);
+  assert.match(zones,/if \(!j\.elements\.length\) \{/);
+  // surtout, le relais ne met jamais un quartier vide en cache pour la journée
+  const avantCache = apiLieux.indexOf("if (!j.elements.length) continue;");
+  const cache = apiLieux.indexOf('"cache-control": "public, s-maxage=86400');
+  assert.ok(avantCache > 0 && avantCache < cache,
+    "le garde-fou doit précéder la mise en cache");
+});

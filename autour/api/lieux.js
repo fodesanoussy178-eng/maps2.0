@@ -25,10 +25,14 @@
 
 export const config = { runtime: "edge" };
 
+/* Uniquement des instances qui portent la planète entière. `overpass.osm.ch`
+   figurait ici : c'est l'instance SUISSE. Elle répondait « zéro objet » en huit
+   dixièmes de seconde à toute requête française, et cette réponse vide partait
+   au CDN avec vingt-quatre heures de fraîcheur — un quartier entier servi vide
+   à tout le monde pendant une journée. */
 const SERVEURS = [
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ];
 
@@ -72,6 +76,12 @@ export default async function handler(requete) {
       if (!r.ok) continue;                       // 429, 504 : au suivant
       const j = await r.json();
       if (!j || !Array.isArray(j.elements)) continue;
+      /* Une réponse vide n'est jamais mise en cache. Elle peut être vraie — un
+         hameau sans commerce — mais elle peut aussi venir d'une instance
+         incomplète ou tronquée, et la garder un jour coûterait un quartier
+         entier. On essaie la suivante ; si toutes disent vide, on répond 503
+         avec une minute de cache, et le client garde ce qu'il a. */
+      if (!j.elements.length) continue;
       return new Response(JSON.stringify({ elements: j.elements }), {
         headers: {
           "content-type": "application/json; charset=utf-8",
