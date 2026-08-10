@@ -56,18 +56,31 @@ const SERVEURS = process.env.OVERPASS_URL ? [process.env.OVERPASS_URL] : [
    c'est-à-dire exactement le moment où quelqu'un qui cherche un foyer ou un
    repas ne peut pas se permettre d'attendre. Ces lieux passent donc en
    premier, et l'éclaircissage ne les touche pas. */
-const REQUETES = [
-  // -- aide : la raison d'être de ces jeux de données
+/* DEUX REQUÊTES PAR TUILE, ET L'AIDE EN PREMIER.
+
+   Tout demander d'un coup a fait tomber les tuiles denses : huit `nw` sur une
+   bbox parisienne, et les trois instances répondent 504. Or ces deux moitiés
+   n'ont pas la même valeur. L'aide est rare — quelques dizaines d'objets par
+   tuile — donc sa requête est légère et passe partout ; les commerces sont
+   des milliers, et c'est eux qui saturent.
+
+   Les séparer fait qu'une tuile dense perd au pire ses restaurants, jamais ses
+   banques alimentaires. C'est exactement le compromis qu'on veut : le fichier
+   existe, avec ce qui compte dedans. */
+const REQUETES_AIDE = [
   ["amenity", "social_facility|food_bank|refugee_site|dormitory"],
   ["social_facility", "food_bank|soup_kitchen|shelter|group_home|homeless_shelter|emergency_shelter|assisted_living|outreach|day_centre|clothing_bank"],
   ["office", "employment_agency|association|ngo|charity"],
   ["healthcare", "centre"],
-  // -- le reste
-  ["amenity", "restaurant|fast_food|cafe|bar|pub|ice_cream|marketplace|cinema|theatre|library|arts_centre|community_centre|social_centre|hospital|clinic|doctors|pharmacy|townhall"],
+  ["amenity", "social_centre|hospital|clinic|doctors|pharmacy|townhall"],
+];
+const REQUETES_RESTE = [
+  ["amenity", "restaurant|fast_food|cafe|bar|pub|ice_cream|marketplace|cinema|theatre|library|arts_centre|community_centre"],
   ["shop", "bakery|pastry|greengrocer|butcher|clothes|second_hand|books|convenience|charity"],
   ["leisure", "park|garden|pitch|sports_centre|playground"],
   ["tourism", "museum|gallery|artwork|viewpoint"],
 ];
+const REQUETES = [...REQUETES_AIDE, ...REQUETES_RESTE];
 
 const CATEGORIE = {
   // -- aide
@@ -135,19 +148,19 @@ function bornesTuile(cle) {
    trouver. Les relations sont la partie la plus lourde de ce parcours et
    n'apportent presque aucun commerce : un restaurant est un nœud, un parc est
    un chemin. On les laisse de côté. */
-function requete(b) {
+function requete(b, groupe, sortie) {
   const zone = `(${b.s.toFixed(4)},${b.o.toFixed(4)},${b.n.toFixed(4)},${b.e.toFixed(4)})`;
-  const bloc = REQUETES
+  const bloc = groupe
     .map(([cle, valeurs]) => `nw${zone}["${cle}"~"^(${valeurs})$"];`)
     .join("");
-  return `[out:json][timeout:70];(${bloc});out center ${SORTIE_OVERPASS};`;
+  return `[out:json][timeout:70];(${bloc});out center ${sortie};`;
 }
 
 /* Chaque tuile commence par une instance différente : douze requêtes de suite
    sur la même l'aurait fait basculer en limitation, et c'est précisément ce
    qu'on cherche à éviter. */
 let tourServeur = 0;
-async function interroger(b) {
+async function interroger(b, groupe, sortie) {
   const ordre = SERVEURS.slice(tourServeur % SERVEURS.length)
     .concat(SERVEURS.slice(0, tourServeur % SERVEURS.length));
   tourServeur += 1;
@@ -158,7 +171,7 @@ async function interroger(b) {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded",
                    "user-agent": "Autour/1.0 (https://autour.eu) generation-zones" },
-        body: "data=" + encodeURIComponent(requete(b)),
+        body: "data=" + encodeURIComponent(requete(b, groupe, sortie)),
         signal: AbortSignal.timeout(DELAI_MS),
       });
       const duree = ((Date.now() - debut) / 1000).toFixed(1) + " s";
@@ -281,9 +294,25 @@ function eclaircir(lieux, b) {
 async function fabriquer(cle, noms) {
   const b = bornesTuile(cle);
   console.log("tuile " + cle + (noms.length ? " (" + noms.join(", ") + ")" : ""));
-  const elements = await interroger(b);
-  if (!elements) { console.log("    aucune réponse — tuile ignorée\n"); return false; }
-  const lieux = elements.map(versLieu).filter(Boolean);
+  /* L'aide d'abord, seule, et sa requête est légère : c'est celle qui doit
+     aboutir même sur une tuile où le reste ne passe pas. */
+  console.log("    · aide");
+  const elAide = await interroger(b, REQUETES_AIDE, 400);
+  await attendre(1500);                    // on ne martèle pas l'instance suivante
+  console.log("    · commerces et loisirs");
+  const elReste = await interroger(b, REQUETES_RESTE, SORTIE_OVERPASS);
+
+  if (!elAide && !elReste) { console.log("    aucune réponse — tuile ignorée\n"); return false; }
+  if (!elReste) console.warn("    (le reste n'a pas répondu : la tuile n'aura que l'aide)");
+  if (!elAide) console.warn("    (l'aide n'a pas répondu : tuile incomplète)");
+
+  // deux requêtes, donc deux occasions de ramener le même objet
+  const parId = new Map();
+  for (const e of [...(elAide || []), ...(elReste || [])]) {
+    const l = versLieu(e);
+    if (l && !parId.has(l.id)) parId.set(l.id, l);
+  }
+  const lieux = [...parId.values()];
   if (!lieux.length) { console.log("    aucun lieu exploitable — tuile ignorée\n"); return false; }
 
   const { retenus, cellules, parCat } = eclaircir(lieux, b);
@@ -305,7 +334,8 @@ async function fabriquer(cle, noms) {
 /* Le classement est la seule chose testable sans réseau — et c'est aussi la
    seule qui décide si l'aide finit dans le fichier ou non. On l'expose pour
    que `tests/zones.test.mjs` la vérifie, sans lancer la récolte. */
-export { versLieu, eclaircir, CATEGORIE, AIDE, REQUETES, cleTuile };
+export { versLieu, eclaircir, CATEGORIE, AIDE, REQUETES, REQUETES_AIDE,
+         REQUETES_RESTE, cleTuile };
 
 /* ---- Entrée ------------------------------------------------------------- */
 /* Importé par un test : on s'arrête ici, rien ne doit partir sur le réseau. */

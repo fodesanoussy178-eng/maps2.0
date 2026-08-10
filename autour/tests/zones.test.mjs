@@ -12,7 +12,8 @@
    dans quelle famille chaque lieu atterrit. */
 import test from "node:test";
 import assert from "node:assert";
-import { versLieu, eclaircir, AIDE, REQUETES, cleTuile } from "../outils/zones.mjs";
+import { versLieu, eclaircir, AIDE, REQUETES, REQUETES_AIDE, REQUETES_RESTE,
+         cleTuile } from "../outils/zones.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -31,6 +32,26 @@ test("les tags d'aide sont réellement demandés à Overpass", () => {
   assert.match(demande, /soup_kitchen/);
   assert.match(demande, /shelter/);
   assert.match(demande, /employment_agency/);
+});
+
+test("l'aide et le reste sont demandés séparément, et l'aide reste légère", () => {
+  /* Tout demander d'un coup a fait répondre 504 aux trois instances sur les
+     tuiles denses (Paris, Lille nord). Séparé, une tuile qui sature perd ses
+     restaurants, jamais ses banques alimentaires. */
+  const aide = REQUETES_AIDE.map(([k, v]) => k + "=" + v).join(" ");
+  const reste = REQUETES_RESTE.map(([k, v]) => k + "=" + v).join(" ");
+  assert.match(aide, /social_facility/);
+  assert.match(aide, /employment_agency/);
+  assert.doesNotMatch(aide, /restaurant/, "l'aide ne doit pas porter le poids des commerces");
+  assert.match(reste, /restaurant/);
+  assert.doesNotMatch(reste, /social_facility/);
+  // et rien ne doit se retrouver dans les deux : on paierait deux fois
+  const cles = (g) => new Set(g.flatMap(([k, v]) => v.split("|").map((x) => k + "=" + x)));
+  const a = cles(REQUETES_AIDE), r = cles(REQUETES_RESTE);
+  const communs = [...a].filter((x) => r.has(x));
+  assert.deepEqual(communs, [], "tags demandés deux fois : " + communs.join(", "));
+  // REQUETES reste l'union des deux, pour le classement
+  assert.equal(REQUETES.length, REQUETES_AIDE.length + REQUETES_RESTE.length);
 });
 
 test("un foyer est un hébergement, quel que soit son tag", () => {
