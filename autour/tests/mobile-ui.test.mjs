@@ -692,14 +692,14 @@ test("quatre régimes gradués par distance, pas une frontière",()=>{
   assert.match(html,/const SEUIL_PROCHE_M  = 30000;/);
   assert.match(html,/const SEUIL_VOISINE_M = 120000;/);
   // l'emprise reconnaît qu'on est DANS la ville, elle n'exclut jamais un riverain
-  assert.match(html,/dansEmprise\(positionMoi, zone\.emprise\) \|\| d <= SEUIL_LOCAL_M/);
+  assert.match(html,/dansEmprise\(pos, zone\.emprise\) \|\| d <= SEUIL_LOCAL_M/);
 });
 
 test("seul le GPS ouvre le régime local",()=>{
   // une ville choisie à la main ou déduite de l'IP n'est pas une présence
-  assert.match(html,/const mesuree = positionPrecise\(\);/);
-  assert.match(html,/if\(mesuree && \(dansEmprise/);
-  assert.match(html,/if\(!positionMoi\) return "loin";/);
+  assert.match(html,/const sure = mesuree === undefined \? positionPrecise\(\) : !!mesuree;/);
+  assert.match(html,/if\(sure && \(dansEmprise/);
+  assert.match(html,/if\(!pos\) return "loin";/);
 });
 
 test("une ville lointaine n'est pas interrogée comme une ville où l'on est",()=>{
@@ -714,6 +714,39 @@ test("une ville lointaine n'est pas interrogée comme une ville où l'on est",()
      sans lui, un déplacement vers Marseille repartait en pleine charge par la
      porte de derrière. */
   assert.match(html,/function regimePoint\(lat, lng\)\{/);
+});
+
+test("la position est veillée, pas seulement demandée",()=>{
+  /* Il n'y avait qu'un `getCurrentPosition`, à la demande, acceptant un relevé
+     vieux de DEUX MINUTES. Pire : une fois obtenue au démarrage, la position
+     n'était plus jamais mise à jour. Traverser la ville ne changeait rien tant
+     qu'on n'appuyait pas sur le bouton. Mesuré : jamais remarqué. */
+  assert.match(html,/navigator\.geolocation\.watchPosition\(/);
+  assert.match(html,/function veillerSurLaPosition\(\)\{/);
+  assert.match(html,/function arreterLaVeille\(\)\{/);
+  // la veille lit toujours frais ; la demande ponctuelle tolère 30 s, pas 120
+  assert.match(html,/\{enableHighAccuracy:true, maximumAge:0, timeout:20000\}/);
+  assert.match(html,/\{enableHighAccuracy:true, timeout:8000, maximumAge:30000\}/);
+  assert.doesNotMatch(html,/maximumAge:120000/);
+});
+
+test("la veille s'arrête quand personne ne regarde",()=>{
+  // suivre quelqu'un dont l'écran est éteint coûterait sa batterie pour rien
+  assert.match(html,/document\.addEventListener\("visibilitychange"/);
+  assert.match(html,/if\(document\.visibilityState === "hidden"\)\{ arreterLaVeille\(\); return; \}/);
+  // et au retour on redemande tout de suite : la personne a pu faire dix km
+  assert.match(html,/veillerSurLaPosition\(\); suivreMaPosition\(\{silencieux:true\}\);/);
+});
+
+test("la veille ne vole pas la carte à qui la regarde",()=>{
+  // un recentrage pendant qu'on fait glisser la carte du doigt serait odieux
+  assert.match(html,/if\(bouge && !o\.discret\) allerVers\(c, 16/);
+  assert.match(html,/appliquerPosition\(p, \{discret:true\}\);/);
+  // un franchissement de régime passe devant les garde-fous : c'est l'instant attendu
+  assert.match(html,/const bascule = regimeZone\(rechercheGeo, c, true\) !== regimeZone\(rechercheGeo\);/);
+  assert.match(html,/if\(!bascule\)\{/);
+  assert.match(html,/const VEILLE_MIN_M = 120;/);
+  assert.match(html,/const VEILLE_MIN_MS = 20000;/);
 });
 
 test("arriver dans la ville regardée fait basculer en mode local, tout seul",()=>{
@@ -1749,7 +1782,7 @@ test("la géolocalisation part avec l'interface et se voit à l'arrivée",()=>{
   assert.match(html,/\$\("#bandeauGeo"\)\.hidden = true;/);
   assert.match(html,/majEnteteLieu\(\);\s*\n\s*detecterVille\(c\[0\], c\[1\]\);/);
   assert.match(html,/planifierRendu\(\{accueil:true, carte:true, feuille:true, filtres:true\}\);/);
-  assert.match(html,/if\(premiereFois \|\| venaitDeLApproximation\) toast\("Position trouvée · autour de toi"\);/);
+  assert.match(html,/else if\(!o\.discret && \(premiereFois \|\| venaitDeLApproximation\)\)\s*\n\s*toast\("Position trouvée · autour de toi"\);/);
   // et le quartier réel se charge
   assert.match(html,/chargerZone\(c\[0\], c\[1\], \{delai:OVERPASS_DELAI_BOOT\}\);/);
 });

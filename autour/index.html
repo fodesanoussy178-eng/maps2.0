@@ -1591,12 +1591,16 @@ function dansEmprise(coords, emprise){
    on ne peut pas AFFIRMER qu'on y est : une ville choisie à la main ou déduite
    de l'adresse IP n'est pas une présence, et n'ouvre donc jamais le régime
    local — c'est la même règle que pour la pastille de lieu. */
-function regimeZone(zone){
+/* `depuis` et `mesuree` permettent de poser la question pour une position
+   qu'on vient de recevoir mais pas encore adoptée : c'est ce qui laisse la
+   veille reconnaître une arrivée AVANT de l'appliquer. */
+function regimeZone(zone, depuis, mesuree){
   if(!zone) return "local";                    // pas de recherche : on est ici
-  if(!positionMoi) return "loin";
-  const mesuree = positionPrecise();
-  const d = distanceM(positionMoi[0], positionMoi[1], zone.lat, zone.lng);
-  if(mesuree && (dansEmprise(positionMoi, zone.emprise) || d <= SEUIL_LOCAL_M))
+  const pos = depuis || positionMoi;
+  if(!pos) return "loin";
+  const sure = mesuree === undefined ? positionPrecise() : !!mesuree;
+  const d = distanceM(pos[0], pos[1], zone.lat, zone.lng);
+  if(sure && (dansEmprise(pos, zone.emprise) || d <= SEUIL_LOCAL_M))
     return "local";
   if(d <= SEUIL_PROCHE_M)  return "proche";
   if(d <= SEUIL_VOISINE_M) return "voisine";
@@ -9797,7 +9801,140 @@ function dessinerFiltres(){ majRaccourcis(); }
    la carte s'affiche tout de suite à la dernière position connue, et glisse
    vers l'utilisateur dès que la géolocalisation répond. Un refus ou un échec
    laisse une application parfaitement utilisable. */
-function suivreMaPosition(){
+/* Ce que fait une mesure du navigateur quand elle arrive. Écrit une fois, et
+   utilisé par les deux chemins : la demande explicite (bouton, démarrage) et
+   la veille continue. `discret` distingue les deux — une veille qui recentre
+   la carte pendant qu'on la fait glisser du doigt serait insupportable. */
+function appliquerPosition(p, opts){
+  const o = opts || {};
+  const c = [p.coords.latitude, p.coords.longitude];
+  noterAutorisationGeo(true);
+  memoriserPosition(c, "gps");
+
+  /* Le GPS REMPLACE tout ce qui précède, il ne le complète pas. Venir
+     d'une ville déduite d'une adresse IP et arriver sur le vrai point,
+     c'est potentiellement un saut de plusieurs dizaines de kilomètres :
+     la ville, les distances, les temps de trajet, les recommandations et
+     la carte doivent tous être refaits, pas seulement rafraîchis. */
+  const venaitDeLApproximation = positionApprochee();
+  const premiereFois = !positionConnue();
+  // le régime AVANT que cette mesure ne change la donne
+  const regimeAvant = regimeZone(rechercheGeo);
+  const bouge = premiereFois || venaitDeLApproximation || !positionMoi
+    || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
+  positionMoi = c;
+  originePosition = "gps";
+  precisionPosition = "point";     // désormais on peut parler en minutes
+
+  $("#bandeauGeo").hidden = true;
+  if(venaitDeLApproximation){
+    // tout ce qui avait été déduit de l'IP est faux jusqu'à preuve du
+    // contraire : on efface, on ne corrige pas
+    villeDetectee = null;
+    commune = "ton quartier";
+    etaParLieu.clear();
+    $("#hdVille").textContent = "Autour de toi";
+  }
+  majEnteteLieu();
+  detecterVille(c[0], c[1]);
+  if(moi) moi.setLatLng(c);          // la pastille bleue suit toujours, elle
+  /* La carte ne se recentre que si on l'a demandé. Pendant une veille, elle
+     appartient à la personne qui la regarde. */
+  if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
+  planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
+
+  if(bouge){
+    // le quartier réel se charge — court délai : on est encore au
+    // démarrage, et l'écran montre déjà quelque chose
+    chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
+    chargerDonneesTemporaires(c[0], c[1]);
+    // le nom de commune n'est redemandé que si on a réellement changé de
+    // coin : deux appels au démarrage pour la même ville, c'est un de trop
+    if(venaitDeLApproximation ||
+       distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
+      dernierNom = c;
+      nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
+    }
+  }
+  /* ARRIVER DANS LA VILLE QU'ON REGARDAIT.
+     On consultait Lille depuis Tourcoing : cinq propositions, une requête
+     légère. Si le GPS dit maintenant qu'on y est, la promesse doit être
+     tenue sans que personne n'ait rien à faire — l'aperçu devient la
+     découverte, et cette fois on interroge le quartier pour de bon. */
+  if(regimeAvant !== "local" && regimeZone(rechercheGeo) === "local"){
+    journal.info("Arrivée dans la zone regardée : passage en mode local");
+    chargerZone(rechercheGeo.lat, rechercheGeo.lng,
+      {force:true, reglages:REGIMES.local});
+    planifierRendu({accueil:true, feuille:true, carte:true});
+    toast("Tu es à "+rechercheGeo.nom+" · voici ce qu’il y a vraiment autour");
+  }
+  // on ne le dit qu'au premier coup, et seulement si l'écran ne savait pas
+  // vraiment où l'on est : sinon c'est une notification pour rien
+  else if(!o.discret && (premiereFois || venaitDeLApproximation))
+    toast("Position trouvée · autour de toi");
+  definirEtatRecherche("location",SEARCH_STATES.SUCCESS);
+}
+
+/* ---- La veille ------------------------------------------------------------
+   Il n'y avait qu'un seul appel de géolocalisation, à la demande, et il
+   acceptait un relevé vieux de DEUX MINUTES. Deux conséquences, et la seconde
+   est la pire : une position obtenue au démarrage n'était plus jamais mise à
+   jour. Traverser la ville, entrer dans celle qu'on regardait, sortir du
+   quartier — Autour ne s'en apercevait pas. Il fallait penser à appuyer sur un
+   bouton pour que l'application redevienne juste, ce qui est exactement
+   l'inverse de ce qu'elle promet.
+
+   On veille donc en continu, tant que l'écran est allumé et regardé. La veille
+   s'arrête dès que l'onglet passe en arrière-plan : suivre quelqu'un qui ne
+   nous regarde pas coûterait sa batterie pour rien. */
+const VEILLE_MIN_M = 120;        // en deçà, c'est du bruit de capteur
+const VEILLE_MIN_MS = 20000;     // et on ne refait pas le quartier plus souvent
+let veilleId = null;
+let dernierePriseEnCompte = 0;
+
+function veillerSurLaPosition(){
+  if(veilleId !== null) return;
+  if(!navigator.geolocation || !navigator.geolocation.watchPosition) return;
+  if(document.visibilityState === "hidden") return;
+  try{
+    veilleId = navigator.geolocation.watchPosition(
+      p=>{
+        const c = [p.coords.latitude, p.coords.longitude];
+        const d = positionMoi
+          ? distanceM(positionMoi[0], positionMoi[1], c[0], c[1]) : Infinity;
+        /* Franchir la limite d'un régime prime sur tout le reste : c'est
+           précisément l'instant qu'on attendait, et le faire attendre vingt
+           secondes de plus serait reproduire le défaut qu'on corrige. */
+        const bascule = regimeZone(rechercheGeo, c, true) !== regimeZone(rechercheGeo);
+        if(!bascule){
+          if(d < VEILLE_MIN_M) return;
+          if(Date.now() - dernierePriseEnCompte < VEILLE_MIN_MS) return;
+        }
+        dernierePriseEnCompte = Date.now();
+        appliquerPosition(p, {discret:true});
+      },
+      ()=>{ /* une veille qui échoue n'est pas un refus : on garde ce qu'on a */ },
+      {enableHighAccuracy:true, maximumAge:0, timeout:20000}
+    );
+  }catch(e){ console.error("Autour · veille de position :", e); }
+}
+
+function arreterLaVeille(){
+  if(veilleId === null) return;
+  try{ navigator.geolocation.clearWatch(veilleId); }catch(e){}
+  veilleId = null;
+}
+
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "hidden"){ arreterLaVeille(); return; }
+  /* Au retour, on ne se contente pas de reprendre la veille : entre-temps la
+     personne a pu faire dix kilomètres, et le premier relevé de la veille peut
+     tarder. On redemande donc tout de suite. */
+  if(geoDejaAutorisee()){ veillerSurLaPosition(); suivreMaPosition({silencieux:true}); }
+});
+
+function suivreMaPosition(opts){
+  const o = opts || {};
   if(!navigator.geolocation){
     definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
     etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
@@ -9807,79 +9944,23 @@ function suivreMaPosition(){
   PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
     p=>{
-      const c = [p.coords.latitude, p.coords.longitude];
       PERF.jalon("geolocation_ready");
       PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
-      noterAutorisationGeo(true);
-      memoriserPosition(c, "gps");
-
-      /* Le GPS REMPLACE tout ce qui précède, il ne le complète pas. Venir
-         d'une ville déduite d'une adresse IP et arriver sur le vrai point,
-         c'est potentiellement un saut de plusieurs dizaines de kilomètres :
-         la ville, les distances, les temps de trajet, les recommandations et
-         la carte doivent tous être refaits, pas seulement rafraîchis. */
-      const venaitDeLApproximation = positionApprochee();
-      const premiereFois = !positionConnue();
-      // le régime AVANT que cette mesure ne change la donne
-      const regimeAvant = regimeZone(rechercheGeo);
-      const bouge = premiereFois || venaitDeLApproximation || !positionMoi
-        || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
-      positionMoi = c;
-      originePosition = "gps";
-      precisionPosition = "point";     // désormais on peut parler en minutes
-
-      $("#bandeauGeo").hidden = true;
-      if(venaitDeLApproximation){
-        // tout ce qui avait été déduit de l'IP est faux jusqu'à preuve du
-        // contraire : on efface, on ne corrige pas
-        villeDetectee = null;
-        commune = "ton quartier";
-        etaParLieu.clear();
-        $("#hdVille").textContent = "Autour de toi";
-      }
-      majEnteteLieu();
-      detecterVille(c[0], c[1]);
-      if(moi) moi.setLatLng(c);
-      if(bouge) allerVers(c, 16, {duration:.9});
-      planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
-
-      if(bouge){
-        // le quartier réel se charge — court délai : on est encore au
-        // démarrage, et l'écran montre déjà quelque chose
-        chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
-        chargerDonneesTemporaires(c[0], c[1]);
-        // le nom de commune n'est redemandé que si on a réellement changé de
-        // coin : deux appels au démarrage pour la même ville, c'est un de trop
-        if(venaitDeLApproximation ||
-           distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
-          dernierNom = c;
-          nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
-        }
-      }
-      /* ARRIVER DANS LA VILLE QU'ON REGARDAIT.
-         On consultait Lille depuis Tourcoing : cinq propositions, une requête
-         légère. Si le GPS dit maintenant qu'on y est, la promesse doit être
-         tenue sans que personne n'ait rien à faire — l'aperçu devient la
-         découverte, et cette fois on interroge le quartier pour de bon. */
-      if(regimeAvant !== "local" && regimeZone(rechercheGeo) === "local"){
-        journal.info("Arrivée dans la zone regardée : passage en mode local");
-        chargerZone(rechercheGeo.lat, rechercheGeo.lng,
-          {force:true, reglages:REGIMES.local});
-        planifierRendu({accueil:true, feuille:true, carte:true});
-        toast("Tu es à "+rechercheGeo.nom+" · voici ce qu’il y a vraiment autour");
-      }
-      // on ne le dit qu'au premier coup, et seulement si l'écran ne savait pas
-      // vraiment où l'on est : sinon c'est une notification pour rien
-      else if(premiereFois || venaitDeLApproximation) toast("Position trouvée · autour de toi");
-      definirEtatRecherche("location",SEARCH_STATES.SUCCESS);
+      appliquerPosition(p, {discret: !!o.silencieux});
+      // une fois la permission acquise, on ne la redemande plus : on veille
+      veillerSurLaPosition();
     },
     (err)=>{
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
       if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-      proposerPosition();
+      if(!o.silencieux) proposerPosition();
     },
-    {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
+    /* Trente secondes, pas deux minutes. Un relevé récent rend la réponse
+       instantanée — c'est tout l'intérêt du cache — mais au-delà d'une demi-
+       minute il décrit un endroit où l'on n'est peut-être plus. La veille
+       prend le relais derrière, avec `maximumAge:0`. */
+    {enableHighAccuracy:true, timeout:8000, maximumAge:30000}
   );
 }
 
