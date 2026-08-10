@@ -640,7 +640,41 @@ test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
   assert.match(html,/PROFIL\.categories/);
   assert.match(html,/const parFavoris = \[\.\.\.favorisEnMemoire\.values\(\)\]/);
   assert.match(html,/window\.requestIdleCallback \|\| \(f=>setTimeout\(f, 1200\)\)/);
-  assert.match(html,/prechargerCategories\(\);/);
+  assert.match(html,/quandLibre\(\(\)=>prechargerCategories\(\)\);/);
+});
+
+/* ---- Le fond de carte ---------------------------------------------------
+   Deux régressions de la passe « instant-first » avaient rendu la carte
+   vide : le fond confié à un `requestIdleCallback` sans échéance, et la
+   carte construite avant la feuille de style qui place ses tuiles. Ces
+   quatre contrôles tiennent les deux fermées. */
+
+test("le fond de carte est demandé dans la foulée de L.map, pas au repos",()=>{
+  const debut = html.indexOf('map = L.map("map"');
+  const fin   = html.indexOf("function attendreLeaflet");
+  assert.ok(debut > 0 && fin > debut);
+  const corps = html.slice(debut, fin);
+  // poserFond() est appelé directement, jamais derrière un différé
+  assert.match(corps,/\n  poserFond\(\)\.then\(fond=>\{/);
+  assert.doesNotMatch(corps,/quandLibre\(\(\)=>\{[\s\S]*poserFond\(\)/);
+});
+
+test("rien de différé n'attend un temps mort qui peut ne jamais venir",()=>{
+  // sans `timeout`, requestIdleCallback n'a aucune échéance : au démarrage,
+  // le fil principal ne se tait pas, et le rappel n'arrive jamais
+  assert.match(html,/window\.requestIdleCallback\s*\n?\s*\?\s*window\.requestIdleCallback\(f, \{timeout: 1500\}\)/);
+});
+
+test("la carte n'est pas construite avant la feuille de style de Leaflet",()=>{
+  assert.match(html,/function styleCartePret\(\)/);
+  assert.match(html,/if\(!styleCartePret\(\)\) return false;/);
+  // et l'arrivée de la feuille installe la carte restée en attente
+  assert.match(html,/else installerCarte\(\);/);
+});
+
+test("un CDN muet coûte le style, jamais la carte",()=>{
+  assert.match(html,/const CSS_CARTE_ATTENTE_MAX = 3000;/);
+  assert.match(html,/lien\.media = "all";/);
 });
 
 /* ---- Carte dominante ---------------------------------------------------- */
@@ -745,10 +779,10 @@ test("le cadrage suit l'emprise réelle de la zone, bornée des deux côtés",()
   assert.ok(html.indexOf("const ZOOM_MIN_CHARGEMENT = 13;") <
             html.indexOf("const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;"),
     "ZOOM_MIN_CHARGEMENT doit précéder ZOOM_ZONE_MIN");
-  assert.match(html,/map\.fitBounds\(zone\.emprise, \{maxZoom:ZOOM_ZONE_MAX/);
-  assert.match(html,/if\(map\.getZoom\(\) < ZOOM_ZONE_MIN\) map\.setZoom\(ZOOM_ZONE_MIN\);/);
+  assert.match(html,/cadrerSur\(zone\.emprise, \{maxZoom:ZOOM_ZONE_MAX/);
+  assert.match(html,/if\(m\.getZoom\(\) < ZOOM_ZONE_MIN\) m\.setZoom\(ZOOM_ZONE_MIN\);/);
   // repli si le géocodeur ne fournit pas d'emprise
-  assert.match(html,/map\.flyTo\(\[zone\.lat, zone\.lng\], ZOOM_ZONE_MAX/);
+  assert.match(html,/allerVers\(\[zone\.lat, zone\.lng\], ZOOM_ZONE_MAX/);
 });
 
 test("le géocodeur départage les homonymes sans privilégier un pays",()=>{
@@ -1870,4 +1904,57 @@ test("l'heure d'arrivée est un temps de trajet, elle obéit à la même règle"
   assert.match(html,/const arrivee = l\.rankArrival && !dejaEnCours && positionPrecise\(\)/);
   // l'heure de fermeture, elle, ne dépend pas d'où l'on est
   assert.match(html,/dispo && dispo\.closesAtTime \? "Ferme à "\+dispo\.closesAtTime/);
+});
+
+/* ==========================================================================
+   La carte n'est jamais appelée avant d'exister
+   ======================================================================== */
+
+test("aucun déplacement de carte n'appelle Leaflet directement",()=>{
+  /* Leaflet s'installe APRÈS le contenu essentiel : entre l'ouverture et son
+     arrivée, `map` n'existe pas. Sur mobile Safari, un `map.flyTo` dans cette
+     fenêtre levait « undefined is not an object » — et l'exception remontait
+     jusqu'à l'écran. Tout passe désormais par une porte unique. */
+  for(const methode of ["flyTo","setView","panTo","fitBounds"]){
+    const directs = (html.match(new RegExp("\\bmap\\." + methode + "\\(", "g")) || []);
+    assert.equal(directs.length, 0,
+      "map." + methode + "() est appelé directement " + directs.length + " fois");
+  }
+  assert.match(html,/function surLaCarte\(action, cle\)\{/);
+  assert.match(html,/function allerVers\(coords, zoom, opts\)\{/);
+  assert.match(html,/function cadrerSur\(bornes, opts\)\{/);
+  // une action demandée sans carte est mise de côté, pas perdue
+  assert.match(html,/enAttenteDeCarte\.push\(\{action, cle\}\);/);
+  assert.match(html,/function rejouerSurLaCarte\(\)\{/);
+  // et rejouée dès l'installation
+  const install = html.indexOf("function installerCarte()");
+  const rejoue = html.indexOf("rejouerSurLaCarte();", install);
+  assert.ok(rejoue > install && rejoue < html.indexOf("function attendreLeaflet"),
+    "la file doit être rejouée à l'installation de la carte");
+});
+
+test("aucune lecture de carte ne suppose que la carte existe",()=>{
+  // les points d'entrée qui lisaient `map.getCenter()` sans garde
+  assert.match(html,/function pointCarte\(\)\{\s*\n\s*if\(map\) return map\.getCenter\(\);/);
+  assert.match(html,/function zoomCarte\(defaut\)\{ return map \?/);
+  assert.match(html,/function effacerLignes\(\)\{/);
+  // le regroupement des marqueurs a besoin d'une projection : sans carte,
+  // chaque lieu reste seul plutôt que de faire planter le rendu
+  assert.match(html,/if\(!map\)\{ seuls\.push\(\{seul:l\}\); return; \}/);
+});
+
+test("une exception technique ne s'affiche jamais à l'utilisateur",()=>{
+  assert.doesNotMatch(html,/panne\("Ça a coincé"/);
+  // elle va dans la console, avec les promesses rejetées
+  assert.match(html,/window\.addEventListener\("error", e=>\{\s*\n\s*console\.error\("Autour :"/);
+  assert.match(html,/window\.addEventListener\("unhandledrejection"/);
+  // et les actions de carte échouées se journalisent sans casser l'écran
+  assert.match(html,/catch\(e\)\{ console\.error\("Autour · carte :", e\); \}/);
+});
+
+test("l'instance Leaflet n'est jamais réassignée",()=>{
+  const assignations = (html.match(/^\s*map = /gm) || []);
+  assert.equal(assignations.length, 1, "une seule création de carte");
+  // et elle est protégée contre une seconde installation
+  assert.match(html,/if\(map \|\| typeof L === "undefined" \|\| !carteEnAttente\) return false;/);
 });

@@ -1478,7 +1478,17 @@ const journal = {
   warn(...a){ if(window.__autourDebug) console.warn(...a); },
 };
 
-window.addEventListener("error", e=>{ panne("Ça a coincé", e.message||"Script externe indisponible."); });
+/* Une exception est une information pour qui développe, jamais pour qui
+   cherche où manger. « Ça a coincé · TypeError: undefined is not an object »
+   s'affichait en plein écran sur mobile : c'était à la fois inutilisable et
+   alarmant, et ça masquait une application qui, elle, continuait de marcher.
+   Les erreurs vont dans la console ; l'écran, lui, garde ce qu'il montrait. */
+window.addEventListener("error", e=>{
+  console.error("Autour :", e && (e.error || e.message || e));
+});
+window.addEventListener("unhandledrejection", e=>{
+  console.error("Autour · promesse rejetée :", e && e.reason);
+});
 
 const {
   FAMILY_CATEGORIES,
@@ -1585,11 +1595,11 @@ async function rechercheGeographique(q){
   recherche = "";
   if($("#rech")) $("#rech").value = "";
 
-  if(zone.emprise && map.fitBounds){
-    map.fitBounds(zone.emprise, {maxZoom:ZOOM_ZONE_MAX, padding:[24,24], animate:true});
-    if(map.getZoom() < ZOOM_ZONE_MIN) map.setZoom(ZOOM_ZONE_MIN);
+  if(zone.emprise){
+    cadrerSur(zone.emprise, {maxZoom:ZOOM_ZONE_MAX, padding:[24,24], animate:true});
+    surLaCarte((m)=>{ if(m.getZoom() < ZOOM_ZONE_MIN) m.setZoom(ZOOM_ZONE_MIN); }, "zoom-mini");
   }else{
-    map.flyTo([zone.lat, zone.lng], ZOOM_ZONE_MAX, {duration:.8});
+    allerVers([zone.lat, zone.lng], ZOOM_ZONE_MAX, {duration:.8});
   }
 
   /* Un seul point de référence : celui que la carte montre effectivement.
@@ -1885,7 +1895,14 @@ function apresPeinture(f){
   if(typeof requestAnimationFrame !== "function"){ setTimeout(f, 0); return; }
   requestAnimationFrame(()=>requestAnimationFrame(()=>f()));
 }
-const quandLibre = (f)=> (window.requestIdleCallback || (g=>setTimeout(g, 400)))(f);
+/* `requestIdleCallback` SANS délai n'a aucune échéance : tant que le fil
+   principal a du travail — et au démarrage il en a en permanence — il peut
+   n'être jamais appelé. Un fond de carte confié à ce mécanisme n'arrivait
+   donc jamais. Tout ce qui est différé ici est du confort, mais du confort
+   qui doit finir par arriver : une seconde et demie au plus. */
+const quandLibre = (f)=> window.requestIdleCallback
+  ? window.requestIdleCallback(f, {timeout: 1500})
+  : setTimeout(f, 400);
 
 
 const TRANSIT = window.AutourTransit;
@@ -3417,7 +3434,7 @@ function essayerFond(f){
     let ok = false, ko = 0, fini = false;
     const termine = (bon)=>{
       if(fini) return; fini = true;
-      if(!bon) map.removeLayer(couche);
+      if(!bon) surLaCarte((m)=>m.removeLayer(couche));
       resolve(bon ? couche : null);
     };
     couche.on("tileload", ()=>{ ok = true; termine(true); });
@@ -3437,7 +3454,7 @@ async function poserFond(){
   ]);
   // on retire les fonds arrivés après coup pour ne pas empiler les tuiles
   essais.forEach(p=>p.then(r=>{
-    if(r && gagnant && r.c !== gagnant.c) map.removeLayer(r.c);
+    if(r && gagnant && r.c !== gagnant.c) surLaCarte((m)=>m.removeLayer(r.c));
   }));
   return gagnant ? gagnant.f.nom : null;
 }
@@ -4120,14 +4137,126 @@ async function permissionPosition(){
    La carte est donc devenue une couche parmi d'autres : elle s'installe quand
    elle peut, éventuellement jamais, et le reste de l'application ne s'en
    aperçoit pas. */
+/* ---- La carte, jamais appelée à vide -------------------------------------
+   Leaflet vient d'un CDN et s'installe APRÈS le contenu essentiel : entre
+   l'ouverture de l'application et son arrivée, il existe une fenêtre — courte
+   sur fibre, longue sur un téléphone en 4G — pendant laquelle `map` n'existe
+   pas. Une trentaine d'endroits l'appelaient directement ; dans cette fenêtre,
+   ils levaient `undefined is not an object (evaluating 'map.flyTo')`. Sur
+   mobile Safari, l'exception remontait jusqu'à l'écran.
+
+   Une seule porte, donc. `surLaCarte(action)` exécute tout de suite si la
+   carte est là, et sinon met l'action de côté pour la rejouer à l'installation.
+   Rien n'est perdu, rien n'échoue, et si Leaflet ne vient jamais l'application
+   continue sans carte — ce qu'elle sait déjà faire.
+
+   La `cle` sert à ne pas rejouer un historique : dix déplacements empilés
+   pendant le chargement, seul le dernier a du sens. */
+const enAttenteDeCarte = [];
+const ATTENTE_CARTE_MAX = 12;
+
+function surLaCarte(action, cle){
+  if(map){
+    try{ action(map); }catch(e){ console.error("Autour · carte :", e); }
+    return true;
+  }
+  if(cle){
+    for(let i = enAttenteDeCarte.length - 1; i >= 0; i -= 1)
+      if(enAttenteDeCarte[i].cle === cle) enAttenteDeCarte.splice(i, 1);
+  }
+  enAttenteDeCarte.push({action, cle});
+  while(enAttenteDeCarte.length > ATTENTE_CARTE_MAX) enAttenteDeCarte.shift();
+  return false;
+}
+
+function rejouerSurLaCarte(){
+  const file = enAttenteDeCarte.splice(0, enAttenteDeCarte.length);
+  file.forEach(({action})=>{
+    try{ action(map); }catch(e){ console.error("Autour · carte différée :", e); }
+  });
+}
+
+/* Le SEUL déplacement de carte de toute l'application. `zoom` accepte une
+   fonction, pour exprimer « au moins 17 » sans lire `map.getZoom()` avant que
+   la carte n'existe. */
+function allerVers(coords, zoom, opts){
+  const lat = coords && Number(coords[0]), lng = coords && Number(coords[1]);
+  if(!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return surLaCarte((m)=>{
+    const z = typeof zoom === "function" ? zoom(m) : zoom;
+    m.flyTo([lat, lng], z == null ? m.getZoom() : z, Object.assign({duration:.7}, opts));
+  }, "deplacement");
+}
+
+/* Cadrer une emprise : même règle, même file d'attente. */
+function cadrerSur(bornes, opts){
+  if(!bornes) return false;
+  return surLaCarte((m)=>m.fitBounds(bornes, opts), "deplacement");
+}
+
+/* Lectures sûres : elles servent à décider, pas à afficher, et doivent donc
+   rendre une valeur plausible même sans carte. */
+function zoomCarte(defaut){ return map ? map.getZoom() : (defaut == null ? 16 : defaut); }
+/* Le point que la carte regarde, sous la forme `{lat, lng}` qu'attendent les
+   appelants. Sans carte, c'est la position — jamais une exception. */
+function pointCarte(){
+  if(map) return map.getCenter();
+  const p = positionMoi || [0,0];
+  return {lat:p[0], lng:p[1]};
+}
+/* Retirer le tracé d'itinéraire, avec ou sans carte. */
+function effacerLignes(){
+  const couches = ligneCouches;
+  ligneCouches = [];
+  if(!couches.length) return;
+  surLaCarte((m)=>couches.forEach(c=>{ try{ m.removeLayer(c); }catch(e){} }));
+}
+function centreCarte(){
+  if(!map) return positionMoi;
+  const c = map.getCenter();
+  return [c.lat, c.lng];
+}
+
 let carteEnAttente = null;
 
-/* La feuille de style de Leaflet n'est plus bloquante : si elle arrive après
-   la carte, les tuiles sont mal placées jusqu'à ce qu'on remesure. */
-window.AutourCarteRemesurer = ()=>{ try{ if(map) map.invalidateSize(); }catch(e){} };
+/* La feuille de style de Leaflet n'est plus bloquante — c'est ce qui a rendu
+   le premier écran instantané, et on le garde. Mais elle ne fait pas que du
+   décor : `.leaflet-pane{position:absolute}` et `.leaflet-container{overflow
+   :hidden}` sont ce qui donne aux tuiles un endroit où se placer. Une carte
+   construite avant elle pose ses tuiles dans le flux normal, décalées par le
+   translate3d de Leaflet — c'est-à-dire nulle part. Le conteneur existait,
+   l'attribution aussi, et les tuiles étaient invisibles.
+
+   On attend donc la feuille de style avant de construire la carte. Elle vient
+   du même CDN que leaflet.js, en général avant lui ; et si le CDN reste muet,
+   le garde-fou ci-dessous la débloque pour que l'absence de style ne coûte
+   jamais la carte elle-même. */
+const CSS_CARTE_ATTENTE_MAX = 3000;
+function lienStyleCarte(){ return document.querySelector('link[data-leaflet-css]'); }
+function styleCartePret(){
+  const lien = lienStyleCarte();
+  if(!lien) return true;                       // pas de lien : rien à attendre
+  return lien.media === "all";
+}
+/* Appelé par l'attribut `onload` du lien, et par le garde-fou. */
+window.AutourCarteRemesurer = ()=>{
+  try{
+    if(map) map.invalidateSize();
+    else installerCarte();                     // la carte n'attendait que ça
+  }catch(e){ console.error("Autour · carte :", e); }
+};
+setTimeout(()=>{
+  const lien = lienStyleCarte();
+  if(lien && lien.media !== "all"){
+    journal.warn("Feuille Leaflet lente : la carte s'installe sans attendre");
+    lien.media = "all";
+  }
+  window.AutourCarteRemesurer();
+}, CSS_CARTE_ATTENTE_MAX);
 
 function installerCarte(){
   if(map || typeof L === "undefined" || !carteEnAttente) return false;
+  if(!styleCartePret()) return false;          // rappelé par le `onload` du lien
   const {centre, partage} = carteEnAttente;
   carteEnAttente = null;
   PERF.jalon("map_init_debut");
@@ -4173,19 +4302,31 @@ function installerCarte(){
   // toucher la carte referme la feuille : la carte reprend tout l'écran
   map.on("click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
 
+  // tout ce qui a été demandé pendant l'absence de carte se joue maintenant
+  rejouerSurLaCarte();
   // les marqueurs n'existaient pas tant que la carte n'était pas là
   planifierRendu({carte:true});
-  // le fond et le décor : du confort, jamais du chemin critique
-  quandLibre(()=>{
-    const [lat,lng] = positionMoi;
-    poserFond().then(fond=>{
-      if(fond) return;
-      quandLibre(()=>geometrieVille(lat,lng).then(geo=>{
-        if(geo && geo.length) dessinerVille(geo); else grilleSecours(lat,lng);
-      }));
-    });
-    prechargerCategories();
+
+  /* Le fond de carte part MAINTENANT, pas au premier temps mort.
+     Il avait été confié à `quandLibre()` pendant la passe « instant-first »,
+     avec l'idée qu'un fond de carte est du décor. C'était une erreur de
+     raisonnement : les tuiles ne coûtent rien au fil principal — elles sont
+     décodées par le navigateur, en parallèle, hors du chemin critique — mais
+     leur DEMANDE, elle, était derrière un `requestIdleCallback` sans
+     échéance. Résultat : la zone cartographique existait, l'attribution
+     s'affichait (c'est notre propre élément), et aucune tuile n'était jamais
+     réclamée. On revient au comportement d'avant : `poserFond()` est appelé
+     dans la foulée de `L.map()`, exactement comme il l'était dans `demarrer()`. */
+  const [lat,lng] = positionMoi;
+  poserFond().then(fond=>{
+    if(fond) return;
+    // aucun fournisseur de tuiles : on dessine la ville nous-mêmes
+    quandLibre(()=>geometrieVille(lat,lng).then(geo=>{
+      if(geo && geo.length) dessinerVille(geo); else grilleSecours(lat,lng);
+    }));
   });
+  // ça, en revanche, c'est bien du confort différable
+  quandLibre(()=>prechargerCategories());
   return true;
 }
 
@@ -4814,6 +4955,7 @@ function grouper(liste){
   const seuls = [], cases = new Map();
   liste.forEach(l=>{
     if(epingles.has(l.id)){ seuls.push({seul:l}); return; }
+    if(!map){ seuls.push({seul:l}); return; }   // sans carte, rien à regrouper
     const p = map.latLngToLayerPoint([l.lat,l.lng]);
     const cle = Math.round(p.x/TAILLE_GRAPPE)+":"+Math.round(p.y/TAILLE_GRAPPE);
     if(!cases.has(cle)) cases.set(cle, []);
@@ -5024,7 +5166,7 @@ function rendre(){
         iconSize:[0,0]}),
       zIndexOffset:100
     }).addTo(map);
-    m.on("click", ()=>map.flyTo([lat,lng], Math.min(map.getZoom()+2, 17), {duration:.55}));
+    m.on("click", ()=>allerVers([lat,lng], (mc)=>Math.min(mc.getZoom()+2, 17), {duration:.55}));
     marqueurs.set(id,m);
   });
   marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
@@ -5104,10 +5246,10 @@ function fermerFeuille(options){
     history.go(-profondeur);
   }
   const avaitTrajet = ligneCouches.length > 0;
-  ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches=[];
+  effacerLignes();
   // cadrer un itinéraire dézoome souvent au point de réduire les lieux à des
   // pastilles : on revient sur le quartier pour qu'ils réapparaissent
-  if(avaitTrajet && positionMoi) map.flyTo(positionMoi, 16, {duration:.6});
+  if(avaitTrajet && positionMoi) allerVers(positionMoi, 16, {duration:.6});
   const cible = dernierFocusFeuille;
   dernierFocusFeuille = null;
   requestAnimationFrame(()=>{
@@ -5472,7 +5614,7 @@ function quitterNav(){
   ["#navBas","#appHeader","#btnTransports","#attribution"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   majFiltres(); majRaccourcis();
-  ligneCouches.forEach(c=>map.removeLayer(c)); ligneCouches = [];
+  effacerLignes();
   $("#voile").hidden = false; $("#feuille").hidden = false;  // la fiche revient
   rendre();                                                   // et les marqueurs aussi
   majBoutons();
@@ -5521,7 +5663,7 @@ async function segmentTrajet(profil, depart, arrivee){
 }
 
 function dessinerSegments(segments){
-  ligneCouches.forEach(c=>map.removeLayer(c));
+  effacerLignes();
   ligneCouches = [];
   const points = [];
   segments.forEach(seg=>{
@@ -5535,16 +5677,18 @@ function dessinerSegments(segments){
   // la feuille de détail couvre le bas de l'écran : on cadre l'itinéraire
   // dans la bande encore visible, sinon le tracé est dessiné sous la feuille
   if(points.length){
-    const feuille = $("#feuille");
-    // en navigation la feuille est masquée : le trajet dispose de tout l'écran
-    const cache = (!modeNav && feuille && !feuille.hidden)
-      ? feuille.getBoundingClientRect().height : 0;
-    const hauteur = map.getSize().y;
-    map.fitBounds(L.latLngBounds(points), {
-      paddingTopLeft:[30,30],
-      paddingBottomRight:[30, Math.min(cache + 20, Math.max(hauteur - 140, 40))],
-      maxZoom:16
-    });
+    surLaCarte((m)=>{
+      const feuille = $("#feuille");
+      // en navigation la feuille est masquée : le trajet dispose de tout l'écran
+      const cache = (!modeNav && feuille && !feuille.hidden)
+        ? feuille.getBoundingClientRect().height : 0;
+      const hauteur = m.getSize().y;
+      m.fitBounds(L.latLngBounds(points), {
+        paddingTopLeft:[30,30],
+        paddingBottomRight:[30, Math.min(cache + 20, Math.max(hauteur - 140, 40))],
+        maxZoom:16
+      });
+    }, "deplacement");
   }
 }
 
@@ -6072,7 +6216,7 @@ function ouvrirLieuPartage(){
     : lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
   if(!cible) return;                 // les lieux ne sont pas encore tous arrivés
   partageOuvert = true;
-  map.flyTo([cible.lat,cible.lng], 17, {duration:.8});
+  allerVers([cible.lat,cible.lng], 17, {duration:.8});
   setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
 }
 
@@ -6265,7 +6409,7 @@ async function preparerImage(fichier){
 }
 
 function nouveauBrouillon(){
-  const c=map.getCenter();
+  const c=pointCarte();
   // le type a déjà été choisi à l'étape précédente : on ne le redemande pas
   return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:typeAvantPose || "popup",
           date:isoDate(aujourdHui()), heure:prochaineHeure(), fin:"",
@@ -6273,7 +6417,7 @@ function nouveauBrouillon(){
           imageFichier:null, imageApercu:""};
 }
 function validerPose(){
-  const c = map.getCenter();
+  const c = pointCarte();
   if(retourFormulaire && brouillon){
     brouillon.lat=c.lat; brouillon.lng=c.lng;
     publicationModifiee = true;
@@ -6551,7 +6695,7 @@ async function publier(){
   fermerFeuille();
   filtreActif="tout";
   planifierRendu({carte:true, filtres:true, accueil:true});
-  if(map) map.flyTo([l.lat,l.lng], Math.max(map.getZoom(),17), {duration:.7});
+  allerVers([l.lat,l.lng], (mc)=>Math.max(mc.getZoom(),17), {duration:.7});
   toast("Publié · visible par tous");
 
   // 2. le réseau, derrière
@@ -7116,7 +7260,7 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
   $("#feuille").querySelectorAll("[data-va]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.va, cible = lieux.find(x=>x.id===id);
     if(!cible) return;
-    map.flyTo([cible.lat,cible.lng], Math.max(map.getZoom(),17), {duration:.7});
+    allerVers([cible.lat,cible.lng], (mc)=>Math.max(mc.getZoom(),17), {duration:.7});
     pousserEcran(()=>ouvrirDetail(id));   // le retour ramène à la liste
   });
 }
@@ -7318,7 +7462,7 @@ async function rechercherAilleurs(phrase, ville){
   charge(null);
   if(!res.length){ toast("Rien trouvé à "+ville); return; }
 
-  if(pos && map){ map.flyTo(pos, 13, {duration:.8}); dernierChargement = pos; }
+  if(pos){ allerVers(pos, 13, {duration:.8}); dernierChargement = pos; }
   ajouterLieuxGoogle(res, "commerce");
 
   // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
@@ -7873,7 +8017,7 @@ let intentionCourante = null;
 
 function elargirZone(){
   rayonRecherche = Math.min(rayonRecherche * 2, 20000);
-  if(map) map.setZoom(Math.max(12, map.getZoom() - 1));
+  surLaCarte((m)=>m.setZoom(Math.max(12, m.getZoom() - 1)), "zoom");
   dernierChargement = null;                 // on force un nouveau tour
   if(positionMoi) chargerZone(positionMoi[0], positionMoi[1]);
   toast("Zone élargie à " + Math.round(rayonRecherche/1000) + " km");
@@ -8990,7 +9134,7 @@ function brancherFeuille2(){
       majFiltres(); rendre(); majFeuille2(); reinitialiserScrollFeuille();
       return;
     }
-    const centre = map.getCenter();
+    const centre = pointCarte();
     rechercheEtat.overpass = SEARCH_STATES.IDLE;
     definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
     chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
@@ -9001,7 +9145,7 @@ function brancherFeuille2(){
     const action = b.dataset.videAction;
     if(action === "5km"){
       rayonRecherche = Math.max(rayonRecherche,5000);
-      if(map) map.setZoom(Math.min(map.getZoom(),14));
+      surLaCarte((m)=>m.setZoom(Math.min(m.getZoom(),14)), "zoom");
       const centre = map.getCenter();
       chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
       if(sousChoisi !== null){
@@ -9038,7 +9182,7 @@ function brancherFeuille2(){
     const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
     if(!cible) return;
     mettreAJourProfil("clic", cible.cat);
-    map.flyTo([cible.lat,cible.lng], 17, {duration:.5});
+    allerVers([cible.lat,cible.lng], 17, {duration:.5});
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(id));
   });
@@ -9246,7 +9390,7 @@ function surprendre(){
   const d = distanceM(depuis[0], depuis[1], l.lat, l.lng);
   const c = CATS[l.cat] || {emoji:"📍", label:""};
 
-  map.flyTo([l.lat, l.lng], 17, {duration:.7});
+  allerVers([l.lat, l.lng], 17, {duration:.7});
   pileEcrans = [];
   pousserEcran(()=>{
     ouvrirFeuille(
@@ -9540,7 +9684,7 @@ function suivreMaPosition(){
       majEnteteLieu();
       detecterVille(c[0], c[1]);
       if(moi) moi.setLatLng(c);
-      if(map && bouge) map.flyTo(c, 16, {duration:.9});
+      if(bouge) allerVers(c, 16, {duration:.9});
       planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
 
       if(bouge){
@@ -9605,7 +9749,7 @@ $("#bandeauOk").textContent = "Utiliser ma position";
 $("#videOk").onclick=()=>{
   $("#bandeauVide").hidden = true;
   if($("#videOk").dataset.action === "retry"){
-    const centre=map.getCenter();
+    const centre=pointCarte();
     rechercheEtat.overpass=SEARCH_STATES.IDLE;
     chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
     return;
@@ -9987,7 +10131,7 @@ function revenirAutourDeMoi(){
   zoneAffichee = null;          // la feuille reprend ses recommandations locales
   recherche = ""; if($("#rech")) $("#rech").value = "";
   catsActives = null; filtreActif = "tout";
-  map.flyTo(positionMoi, 16, {duration:.6});
+  allerVers(positionMoi, 16, {duration:.6});
   chargerZone(positionMoi[0], positionMoi[1]);
   rendre(); majAccueil();
   if(feuilleNiveau !== null) majFeuille2(); else ouvrirAccueilFeuille();
@@ -10243,7 +10387,7 @@ $("#btnLieu").onclick = ()=>{
      ville à plusieurs kilomètres, sans aucun moyen d'y remédier. */
   if(!positionPrecise()){ suivreMaPosition(); return; }
   if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
-  if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
+  allerVers(positionMoi, 16, {duration:.6});
 };
 </script>
 </body>
