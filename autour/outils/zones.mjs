@@ -115,7 +115,12 @@ const sansAccents = (s) =>
   (s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 const DEMI_TUILE = 0.05;            // une tuile de 0,1° : [k-0,05 ; k+0,05[
-const SORTIE_OVERPASS = 700;        // ce qu'on demande à Overpass, borné
+/* 500, pas 700. C'est la valeur avec laquelle les onze premières tuiles sont
+   passées en trois minutes ; je l'avais montée à 700 en même temps que je
+   doublais le nombre de sous-requêtes, et les deux ensemble ont fait tomber
+   huit tuiles. Les sous-requêtes sont maintenant réparties sur deux appels :
+   on remet la sortie à la valeur qui, elle, a fait ses preuves. */
+const SORTIE_OVERPASS = 500;        // ce qu'on demande à Overpass, borné
 const GRILLE = 6;                   // 6×6 cellules pour éclaircir régulièrement
 const PAR_CELLULE = 5;
 const PLAFOND = 150;                // couvre la tuile ; le client n'en fusionne que le voisinage
@@ -124,11 +129,14 @@ const PLAFOND = 150;                // couvre la tuile ; le client n'en fusionne
    Elle garde une part réservée, et confortable. */
 const PLAFOND_AIDE = 70;
 const ATTENTE_ENTRE_TUILES = Number(process.env.ATTENTE_TUILES || 4000);
-/* Soixante-quinze secondes par instance, pas cent quatre-vingts. Une instance
-   qui n'a pas répondu en une minute et quart est saturée : insister coûte le
-   quadruple du temps pour le même silence, alors que la suivante répondra
-   peut-être tout de suite. */
-const DELAI_MS = 75000;
+/* Cinquante secondes, et non plus soixante-quinze : il y a maintenant deux
+   requêtes par tuile et deux tours, et le tout doit tenir dans le budget de la
+   tâche. Une instance qui n'a pas répondu en cinquante secondes est saturée —
+   insister coûte du temps pour le même silence, alors que la suivante, ou le
+   tour d'après, répondra peut-être tout de suite.
+   Pire cas par moitié : 2 tours × 3 instances × 50 s + 20 s de pause ≈ 5 min 20.
+   Deux moitiés : environ onze minutes, pour vingt-cinq de budget. */
+const DELAI_MS = 50000;
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -160,7 +168,7 @@ function requete(b, groupe, sortie) {
    sur la même l'aurait fait basculer en limitation, et c'est précisément ce
    qu'on cherche à éviter. */
 let tourServeur = 0;
-async function interroger(b, groupe, sortie) {
+async function unTour(b, groupe, sortie) {
   const ordre = SERVEURS.slice(tourServeur % SERVEURS.length)
     .concat(SERVEURS.slice(0, tourServeur % SERVEURS.length));
   tourServeur += 1;
@@ -195,6 +203,27 @@ async function interroger(b, groupe, sortie) {
     }
   }
   return null;
+}
+
+/* DEUX TOURS, PAS UN.
+
+   Un 504 d'Overpass ne dit pas « cette requête est impossible », il dit « je
+   suis saturé maintenant ». C'est visible dans les journaux : `overpass-api.de`
+   refuse en huit à douze secondes — c'est un rejet de charge, pas un calcul qui
+   n'aboutit pas — tandis que les deux autres peinent quarante à soixante-quinze
+   secondes. Et les tuiles tombées ne sont pas seulement les denses : Amiens,
+   Reims et Dijon ont échoué aussi, ce qui écarte l'explication par la taille
+   de la ville.
+
+   On repasse donc une fois, après une pause. Le premier tour a laissé aux trois
+   instances le temps de se libérer, et l'ordre de départ a changé. */
+const PAUSE_ENTRE_TOURS = 20000;
+async function interroger(b, groupe, sortie) {
+  const premier = await unTour(b, groupe, sortie);
+  if (premier) return premier;
+  console.warn("     (aucune instance au premier tour — nouvelle tentative dans 20 s)");
+  await attendre(PAUSE_ENTRE_TOURS);
+  return unTour(b, groupe, sortie);
 }
 
 /* La forme exacte que `fusionner()` sait absorber. On ne garde que ce qui sert

@@ -75,7 +75,8 @@ jobs:
   generer:
     needs: lister
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # deux requêtes par tuile, deux tours chacune : onze minutes au pire
+    timeout-minutes: 25
     strategy:
       max-parallel: 3
       fail-fast: false

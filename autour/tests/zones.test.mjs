@@ -54,6 +54,21 @@ test("l'aide et le reste sont demandés séparément, et l'aide reste légère",
   assert.equal(REQUETES.length, REQUETES_AIDE.length + REQUETES_RESTE.length);
 });
 
+test("un 504 n'est pas un verdict : on repasse une fois", () => {
+  /* Observé sur huit tuiles : `overpass-api.de` refuse en 8 à 12 s — un rejet
+     de charge, pas un calcul qui n'aboutit pas — et les tuiles tombées ne sont
+     pas que les denses (Amiens, Reims et Dijon aussi). Un seul tour rendait
+     donc une saturation passagère définitive. */
+  const src = readFileSync(join(ICI, "../outils/zones.mjs"), "utf8");
+  assert.match(src, /const PAUSE_ENTRE_TOURS = 20000;/);
+  assert.match(src, /const premier = await unTour\(b, groupe, sortie\);\s*\n\s*if \(premier\) return premier;/);
+  assert.match(src, /return unTour\(b, groupe, sortie\);/);
+  // et le budget doit tenir : 2 tours × 3 instances × délai + pause, deux fois
+  const delai = Number(/const DELAI_MS = (\d+);/.exec(src)[1]);
+  const pireCas = 2 * (2 * 3 * delai + 20000) / 60000;
+  assert.ok(pireCas < 25, "pire cas " + pireCas.toFixed(1) + " min > budget de la tâche");
+});
+
 test("un foyer est un hébergement, quel que soit son tag", () => {
   // le sous-tag explicite
   for (const v of ["shelter", "group_home", "homeless_shelter",
