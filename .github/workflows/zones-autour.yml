@@ -19,6 +19,16 @@
 name: Zones Autour
 
 on:
+  # `workflow_dispatch` et `schedule` ne s'exécutent que depuis la branche par
+  # défaut : c'est une règle de GitHub, pas un choix. Tant que ce fichier vit
+  # sur une branche de travail, c'est le déclencheur `push` qui sert — et il
+  # est filtré sur ce qui décide du contenu des zones, jamais sur les zones
+  # elles-mêmes, sinon le travail se relancerait sur son propre commit.
+  push:
+    paths:
+      - "autour/outils/zones.mjs"
+      - "autour/outils/villes.json"
+      - ".github/workflows/zones-autour.yml"
   workflow_dispatch:
     inputs:
       branche:
