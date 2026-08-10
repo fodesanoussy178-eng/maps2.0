@@ -8189,8 +8189,18 @@ function ouvrirFeuille2(niveau){
   }
   // ouvrir un besoin déclenche sa recherche : c'est le moment où elle sert
   const b = BESOIN_DE(niveau);
-  if(b && b.sous){
-    const manquantes = b.sous.flatMap(x=>x.cats).filter(c=>!CATS_DEPART.has(c));
+  /* Aide n'a pas de `sous` — c'est un mode entier, pas une liste de cases.
+     Cette branche testait `b.sous`, si bien qu'ouvrir Aide ne chargeait
+     AUCUNE catégorie d'aide. Et comme `CATS_DEPART` n'en contient aucune non
+     plus — au démarrage on ramène des commerces et des loisirs — l'écran
+     d'aide n'avait à afficher que ce qui avait pu arriver là par hasard.
+     C'est la raison principale pour laquelle « il n'y a aucun lieu d'aide » :
+     ils n'étaient jamais demandés, dans aucune ville. */
+  const cats = (niveau === "aide" || (b && b.aide)) ? CATS_AIDE
+             : (b && b.sous) ? b.sous.flatMap(x=>x.cats)
+             : null;
+  if(cats){
+    const manquantes = cats.filter(c=>!CATS_DEPART.has(c));
     if(manquantes.length) chargerPourCats(manquantes);
     if(niveau === "manger") completerRestauration();
     if(niveau === "famille") chargerEditorial("family");

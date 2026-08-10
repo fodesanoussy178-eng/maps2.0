@@ -704,6 +704,18 @@ test("un tag vague est demandé pour toutes les familles qu'il peut servir",()=>
   assert.match(html,/if\(garder && !cats\.some\(c=>garder\.has\(c\)\)\) return;/);
 });
 
+test("ouvrir Aide charge réellement les catégories d'aide",()=>{
+  /* Le besoin « aide » n'a pas de `sous` — c'est un mode entier, pas une
+     liste de cases. La branche de chargement testait `b.sous` : ouvrir Aide
+     ne demandait donc AUCUNE catégorie, et `CATS_DEPART` n'en contient pas
+     davantage. Mesuré : zéro requête, zéro lieu, dans toutes les villes. */
+  assert.match(html,/const cats = \(niveau === "aide" \|\| \(b && b\.aide\)\) \? CATS_AIDE/);
+  assert.match(html,/: \(b && b\.sous\) \? b\.sous\.flatMap\(x=>x\.cats\)/);
+  assert.match(html,/if\(cats\)\{\s*\n\s*const manquantes = cats\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
+  // et le besoin « aide » est bien celui qui n'a pas de sous-catégories
+  assert.match(html,/\{ id:"aide", emoji:"❤️", label:"Trouver de l’aide", aide:true \}/);
+});
+
 test("un social_facility sans sous-tag est classé par son nom",()=>{
   assert.match(html,/const NOM_HEBERGEMENT = /);
   assert.match(html,/const NOM_ALIMENTAIRE = /);
@@ -755,8 +767,8 @@ test("les suggestions distinguent une destination d'une intention",()=>{
 test("changer de catégorie ne relance pas le réseau si les lieux sont là",()=>{
   assert.match(html,/const manquantes = cats\.filter\(c=>!categorieEnMemoire\(c\)\);/);
   assert.match(html,/if\(!manquantes\.length\) return Promise\.resolve\(\[\]\);/);
-  // le rail de besoins passe bien par ce filtre
-  assert.match(html,/const manquantes = b\.sous\.flatMap\(x=>x\.cats\)\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
+  // le rail de besoins passe bien par ce filtre — Aide comprise, désormais
+  assert.match(html,/const manquantes = cats\.filter\(c=>!CATS_DEPART\.has\(c\)\);/);
   assert.match(html,/if\(manquantes\.length\) chargerPourCats\(manquantes\);/);
 });
 
