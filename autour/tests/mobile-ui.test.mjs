@@ -260,13 +260,13 @@ test("le créateur dispose des six actions sur son événement",()=>{
   for(const a of ["horaire","lieu","retard","places","annonce","annulation"])
     assert.match(html,new RegExp('id === "'+a+'"|"'+a+'"'), a);
   // les actions modifient l'événement : le message système vient de la base
-  assert.match(html,/Store\.modifierEvenement\(l\.dbId,\{annule:true\}\)/);
+  assert.match(html,/Store\.annuler\(l\.dbId\)/);
   assert.match(html,/Store\.modifierEvenement\(l\.dbId,\{debut_le:iso\}\)/);
 });
 
 test("un événement annulé reste affiché",()=>{
-  assert.match(html,/un événement annulé reste affiché/);
-  assert.match(html,/annulé/);
+  assert.match(html,/une annulation reste une information utile et distincte d'une suppression/);
+  assert.match(html,/\.filter\(l=>l\.annule \|\| !estPasse\(l\)\)/);
 });
 
 test("le partage couvre le natif et des cibles explicites",()=>{
@@ -303,24 +303,24 @@ test("sur desktop la carte occupe toute la fenêtre, sans rail ni sidebar",()=>{
   assert.match(desktop,/--nav-height:0px/);
 
   // navigation : une pastille flottante en bas à gauche, jamais pleine hauteur
-  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:calc\(var\(--panneau\) \+ 40px\);right:auto;width:auto/);
+  assert.match(desktop,/#navBas\{top:auto;bottom:var\(--marge-desktop\);left:var\(--decalage-desktop\);right:auto;width:440px/);
   assert.match(desktop,/border-radius:99px/);
 
   /* Le panneau tient la gauche, la carte la droite : on lit ce qu'on peut
      faire avant de regarder où c'est. L'en-tête et la recherche se décalent
      donc à droite du panneau quand il est ouvert, et reviennent à gauche
      quand la carte a toute la fenêtre. */
-  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:20px;right:auto/);
-  assert.match(desktop,/#appHeader\{left:calc\(var\(--panneau\) \+ 40px\);right:auto/);
-  assert.match(desktop,/body:not\(\.sheet-open\) #appHeader\{left:20px\}/);
-  assert.match(desktop,/#rechercheOverlay\{left:calc\(var\(--panneau\) \+ 40px\);right:auto/);
+  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:var\(--marge-desktop\);right:auto/);
+  assert.match(desktop,/#appHeader\{left:var\(--decalage-desktop\);right:auto/);
+  assert.match(desktop,/body:not\(\.sheet-open\) #appHeader\{left:var\(--marge-desktop\)\}/);
+  assert.match(desktop,/#rechercheOverlay\{left:var\(--decalage-desktop\);right:auto/);
 
   // panneau de résultats : temporaire et fermable, pas une sidebar. La règle
   // .accueil est reprise explicitement, sinon sa spécificité l'emportait et
   // le panneau redevenait une feuille mobile étirée.
   assert.match(desktop,/#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie,\s*#feuilleBesoins\.reduite\{/);
   assert.match(desktop,/width:var\(--panneau\)/);
-  assert.match(html,/--panneau:400px/);
+  assert.match(html,/--panneau:530px/);
   // la croix reste atteignable même sur l'accueil : c'est elle qui rend
   // l'espace à la carte
   assert.match(desktop,/#feuilleBesoins\.accueil \.fb-tete\{display:flex\}/);
@@ -336,7 +336,19 @@ test("la hauteur mesurée de la navigation ne rogne pas la carte sur desktop",()
   assert.match(html,/NAV_FLOTTANTE\.matches \? "0px" : haut\+"px"/);
   assert.match(html,/setProperty\("--nav-flottante", haut\+"px"\)/);
   // l'attribution se range au-dessus de la pastille, pas dessous
-  assert.match(html,/#attribution\{left:auto;right:20px;bottom:16px\}/);
+  assert.match(html,/#attribution\{left:auto;right:var\(--marge-desktop\);bottom:8px/);
+});
+
+test("sur desktop une catégorie garde la recherche réelle à côté du panneau",()=>{
+  assert.match(html,/function rechercheDockeeDesktopDemandee\(\)/);
+  assert.match(html,/responsiveLayoutState\.isDesktop && !modeNav && !modePose/);
+  assert.match(html,/overlay\.classList\.toggle\("recherche-dockee", dockee\)/);
+  // Suggestions et panneau restent deux surfaces simultanément interactives.
+  assert.match(html,/rechercheDockee && x === NOMS_COUCHES\.mainSheet/);
+  assert.match(html,/responsiveLayout\.subscribe\(\(\)=>synchroniserRechercheDesktop\(\)\)/);
+  assert.match(html,/const actif = feuilleNiveau === b\.id;/);
+  assert.match(html,/responsiveLayoutState\.isDesktop \? 3 : 12/);
+  assert.match(html,/const nombreAffiche = items\.length \|\| \(chargement \? 5 : 0\)/);
 });
 
 test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa hauteur",()=>{
@@ -357,6 +369,37 @@ test("les photos de lieux sont réellement demandées à Google",()=>{
   assert.match(html,/places\.googleapis\.com\/v1\/"\+photo\.name\+/);
   // une photo de lieu ne remplace pas l'affiche d'un événement
   assert.match(html,/if\(meilleur\.image && !l\.image\) l\.image = meilleur\.image;/);
+  // le lieu ajouté par Google ne perd pas son image lors de la normalisation
+  assert.match(html,/image:f\.image \|\| ""/);
+  // et le démarrage rapide la conserve pour la session suivante
+  assert.match(html,/const CHAMPS_RAPIDE = \["id","cat","categories","titre","adresse","cp","lat","lng","image",/);
+  // les résultats de catégorie affichent la photo sans la mettre sur le chemin critique
+  assert.match(html,/class="ac-photo"/);
+  assert.match(html,/loading="lazy" decoding="async" fetchpriority="low"/);
+});
+
+test("Manger rend visibles les fiches Google complètes dès leur arrivée",()=>{
+  assert.match(html,/if\(feuilleNiveau === "manger"\) majFeuille2\(\);/);
+  assert.match(html,/function selectionResultatsFeuille\(classement, limite\)\{/);
+  assert.match(html,/const objectif = Math\.min\(2, classement\.filter\(complet\)\.length\);/);
+  assert.match(html,/const items = selectionResultatsFeuille\(classement,5\);/);
+  assert.match(html,/toLocaleString\("fr-FR"\)\+" avis\)"/);
+});
+
+test("une fiche Google n'est jamais greffée au seul prétexte qu'elle est proche",()=>{
+  assert.match(html,/function nomsLieuxCompatibles\(nomA, nomB\)\{/);
+  assert.match(html,/if\(d >= dMin \|\| !nomsLieuxCompatibles\(nomL, nomF\)\) return;/);
+  assert.doesNotMatch(html,/const score = memeNom \? d\/4 : d;/);
+});
+
+test("une source partielle ne masque pas des résultats déjà utilisables",()=>{
+  assert.match(html,/if\(rechercheEnCours\(\)\) return nombreResultats/);
+  assert.match(html,/Résultats disponibles · mise à jour incomplète/);
+  assert.match(html,/return entete\+liste\+statut;/);
+  assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
+  // une tentative Google vide reste retentable, notamment depuis Manger
+  assert.match(html,/if\(!f \|\| !f\.length\)\{ zonesResto\.delete\(cle\); return \[\]; \}/);
+  assert.match(html,/if\(feuilleNiveau === "manger"\) completerRestauration\(\{force:true\}\);/);
 });
 
 test("les transports sont chargés mais pas dessinés sans qu'on les demande",()=>{
@@ -595,9 +638,12 @@ test("le cœur bascule immédiatement et se remet en place si la base refuse",()
   assert.match(html,/Impossible d’enregistrer ce favori/);
 });
 
-test("l'identité n'est réclamée qu'au moment du favori",()=>{
-  assert.match(html,/l'identité anonyme n'est réclamée qu'ici, au moment où elle sert/);
-  assert.match(html,/if\(!\(await connecter\(\)\)\)\{/);
+test("l'identité anonyme n'est créée qu'au premier geste qui en a besoin",()=>{
+  assert.match(html,/l'identité anonyme n'est créée qu'ici, au moment où elle sert/);
+  assert.match(html,/if\(!\(await assurerSessionAnonyme\(\)\)\)\{/);
+  // une simple lecture initialise le client, elle ne crée pas  un utilisateur
+  const connecter = html.slice(html.indexOf("async function connecter"), html.indexOf("let pSessionAnonyme"));
+  assert.doesNotMatch(connecter,/signInAnonymously/);
 });
 
 test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()=>{
@@ -611,7 +657,7 @@ test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()
 });
 
 test("la fiche compacte propose Partager et, au créateur, Prévenir",()=>{
-  assert.match(html,/const mien = !!\(l\.dbId && moiId && l\.auteur === moiId\);/);
+  assert.match(html,/const mien = estPublicationAMoi\(l\);/);
   assert.match(html,/l\.dbId \? '<button class="fc-part">Partager<\/button>' : ''/);
   assert.match(html,/mien \? '<button class="fc-prevenir">Prévenir<\/button>' : ''/);
 });
@@ -1131,7 +1177,7 @@ test("une cuisine trie les résultats, elle ne les exclut pas",()=>{
 test("un événement annulé ne se lit jamais comme un événement qui a lieu",()=>{
   // la colonne, le déclencheur et le bouton existaient ; le champ se perdait
   // dans versLieu, et la carte l'affichait comme normal
-  assert.match(html,/annule: !!p\.annule/);
+  assert.match(html,/annule: p\.status === "cancelled" \|\| !!p\.annule/);
   // « Maintenant » l'écarte : le moteur temporel range une annulation en passé
   assert.match(temporel,/if \(source\.annule\) return \{ statut: STATUTS\.PASSE/);
   // sur la carte : affiche conservée mais barrée et mentionnée
@@ -1219,12 +1265,23 @@ test("le classement tranche le temps avant de calculer la pertinence",()=>{
   // la proximité ne doit jamais faire remonter un événement futur
   assert.match(core,/const survivants = \[\];/);
   assert.match(core,/if \(temporary && etat && etat\.statut === temps\.STATUTS\.PASSE\) return;/);
-  assert.match(core,/if \(ctx\.nowOnly && !isAvailableNow\(date, now\)\) return;/);
+  assert.match(core,/if \(ctx\.nowOnly\) \{/);
+  assert.match(core,/const disponible = temps && etat/);
   assert.ok(core.indexOf("survivants.push(") < core.indexOf("return survivants.map("),
     "le filtre temporel doit précéder le calcul du score");
   // le statut calculé est exposé, il n'est pas recalculé autrement ailleurs
   assert.match(core,/rankTemporal: etat \? etat\.statut : null,/);
-  assert.match(core,/rankSection: etat && temps \? temps\.sectionTemporelle\(etat, now\) : null,/);
+  assert.match(core,/rankSection: temporalSection,/);
+});
+
+test("la proximité de date des événements passe avant leur trajet",()=>{
+  assert.match(core,/function compareEventDate\(a, b\) \{/);
+  assert.match(core,/startsAt: temporalStart, temporalDistance, temporary, quality,/);
+  const tri = core.indexOf("}).filter(Boolean).sort((a, b) =>");
+  const date = core.indexOf("compareEventDate(a, b)", tri);
+  const eta = core.indexOf("compareEta(a, b)", tri);
+  assert.ok(date > 0 && eta > 0 && date < eta,
+    "l'échéance d'un événement doit être comparée avant sa proximité géographique");
 });
 
 test("une exposition fermée annonce sa réouverture, pas le début de sa période",()=>{
@@ -1298,7 +1355,8 @@ test("sans position connue, l'application ne prétend pas savoir où on est",()=
   assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
   // et surtout : plus jamais « rien autour de toi » quand on ignore où est « toi »
-  assert.match(html,/const montrer = \(erreurPartielle \|\| \(videReel && positionConnue\(\)\)\)/);
+  assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
+  assert.match(html,/const montrer = \(erreurSansResultat \|\| \(videReel && positionConnue\(\)\)\)/);
   // déclaré avant son premier usage
   assert.ok(html.indexOf("let originePosition = null;") < html.indexOf("positionConnue()"),
     "originePosition doit précéder son premier usage");
@@ -1599,10 +1657,11 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
   assert.match(html,/function squeletteHTML\(n\)\{/);
   assert.match(html,/data-testid="squelette"/);
   assert.match(html,/On cherche ce qui vaut le détour autour de toi…/);
-  // le squelette passe AVANT tout message d'état, y compris « aucun résultat »
-  assert.match(html,/if\(rechercheEnCours\(\)\) return squeletteHTML\(3\);/);
+  // le squelette passe AVANT tout message de vide, mais seulement quand aucune
+  // réponse issue du cache ou d'une première source n'est déjà utilisable
+  assert.match(html,/if\(rechercheEnCours\(\)\) return nombreResultats/);
   const statut = html.indexOf("function statutRechercheHTML(");
-  const enCours = html.indexOf("if(rechercheEnCours()) return squeletteHTML(3);", statut);
+  const enCours = html.indexOf("if(rechercheEnCours()) return nombreResultats", statut);
   const rien = html.indexOf("Rien d’ouvert à proximité", statut);
   assert.ok(enCours > 0 && rien > 0 && enCours < rien,
     "le chargement se dit avant le vide");
@@ -1660,13 +1719,13 @@ test("un établissement scolaire fermé pour vacances n'est pas recommandé",()=
 test("sur desktop, les recommandations tiennent la gauche et la carte la droite",()=>{
   const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
                              html.indexOf("/* ---- grappes de marqueurs"));
-  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:20px;right:auto/);
+  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:var\(--marge-desktop\);right:auto/);
   // ce qui vivait à gauche se décale à droite du panneau
-  assert.match(desktop,/#appHeader\{left:calc\(var\(--panneau\) \+ 40px\)/);
-  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:calc\(var\(--panneau\) \+ 40px\)/);
+  assert.match(desktop,/#appHeader\{left:var\(--decalage-desktop\)/);
+  assert.match(desktop,/#navBas\{top:auto;bottom:var\(--marge-desktop\);left:var\(--decalage-desktop\)/);
   // les flottants et l'attribution longent le bord droit
-  assert.match(desktop,/#attribution\{left:auto;right:20px/);
-  assert.match(desktop,/#bandeauGeo,#bandeauVide\{left:auto;right:20px/);
+  assert.match(desktop,/#attribution\{left:auto;right:var\(--marge-desktop\)/);
+  assert.match(desktop,/#bandeauGeo,#bandeauVide\{left:auto;right:var\(--marge-desktop\)/);
   // l'organisation mobile ne bouge pas : la feuille monte toujours du bas
   assert.match(html,/#feuilleBesoins\{position:absolute;left:8px;right:8px;bottom:0/);
 });
@@ -1705,6 +1764,8 @@ test("« apprécié » exige de vrais avis, en nombre",()=>{
 
 test("la clé Google est documentée, et son absence ne casse rien",()=>{
   assert.match(html,/Restriction d'application → Sites web \(référents HTTP\)/);
+  assert.match(html,/https:\/\/autour\.eu\/\*/);
+  assert.match(html,/https:\/\/www\.autour\.eu\/\*/);
   assert.match(html,/https:\/\/autour\.vercel\.app\/\*/);
   // chaque appel vérifie la clé avant de partir
   const gardes = (html.match(/if\(!CLE_GOOGLE/g) || []).length;
@@ -1915,6 +1976,12 @@ test("le relais Overpass n'est pas un relais ouvert",()=>{
   assert.match(apiLieux,/s-maxage=86400, stale-while-revalidate=604800/);
   // plusieurs instances : une muette ne fait pas tomber la route
   assert.ok((apiLieux.match(/api\/interpreter/g)||[]).length >= 3);
+  // chaque instance reçoit son propre signal : un timeout du premier ne doit
+  // jamais annuler instantanément toutes les suivantes
+  assert.match(apiLieux,/for \(const serveur of SERVEURS\) \{[\s\S]*?const arret = AbortSignal\.timeout/);
+  assert.match(apiLieux,/const restant = DELAI_TOTAL_MS - \(Date\.now\(\) - debut\);/);
+  // si le relais entier tombe, le chemin direct du client reste un vrai repli
+  assert.match(html,/if\(!r\.ok\) return r\.status >= 500 \? undefined : null;/);
   assert.match(apiCommune,/s-maxage=2592000/);
   assert.match(apiCommune,/user-agent/i, "la politique de Nominatim demande de s'identifier");
 });

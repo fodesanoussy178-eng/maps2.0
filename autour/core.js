@@ -317,6 +317,20 @@
     merged.description = preferred.description || fallback.description || "";
     merged.url = preferred.url || fallback.url || "";
     merged.image = preferred.image || fallback.image || "";
+    /* Une source prioritaire ne doit pas gagner avec du vide. C'est fréquent
+       pour OpenStreetMap : la fiche donne le nom et la position, tandis que
+       Google complète note, avis, horaires et photo. `Object.assign` seul
+       laissait alors un `null` OSM effacer la donnée Google du même lieu. */
+    const renseigne = (value) => {
+      if (value == null || value === "") return false;
+      if (Array.isArray(value)) return value.length > 0;
+      return true; // false et 0 sont des informations, pas des absences
+    };
+    ["note","avis","rating","userRatingCount","ouvert","prixN","prix",
+      "horaires","openingHours","tel","pmr","idGoogle","resumeGoogle"]
+      .forEach((field) => {
+        merged[field] = renseigne(preferred[field]) ? preferred[field] : fallback[field];
+      });
     merged.startsAt = preferred.startsAt != null ? preferred.startsAt : fallback.startsAt;
     merged.endsAt = preferred.endsAt != null ? preferred.endsAt : fallback.endsAt;
     merged.debutLe = merged.startsAt;
@@ -719,6 +733,7 @@
      Sans couche transport branchée, on retombe sur la marche : c'est faux
      pour un bus, mais c'est une durée honnête et jamais sous-estimée. */
   const ARRIVAL_GRACE_MS = 15 * 60000;
+  const EVENT_DEPARTURE_WINDOW_MS = 2 * 3600 * 1000;
 
   function walkingEta(distance) {
     const minutes = travelMinutes(distance);
@@ -760,6 +775,14 @@
       // journée. Le contrôle d'horaire ne vaut que pour ce qui n'a pas commencé.
       if (startsAt == null || (now != null && startsAt <= now)) return {state: "open", score: 0, reason: ""};
       if (arrival <= startsAt) {
+        /* Pour un événement de demain, partir maintenant n'est pas le scénario
+           de la personne. Le déclarer « faisable » parce qu'elle arriverait
+           vingt-trois heures trop tôt donnait à tous les événements lointains
+           la même priorité qu'à ceux de ce soir, avec des raisons absurdes du
+           type « 1 435 min avant le début ». On ne juge un départ immédiat que
+           dans la fenêtre où il est réellement plausible. */
+        if (now != null && startsAt - now > EVENT_DEPARTURE_WINDOW_MS)
+          return {state: "scheduled", score: 0, reason: ""};
         const early = Math.round((startsAt - arrival) / 60000);
         return {
           state: "onTime", score: 60,
@@ -859,6 +882,21 @@
     return a.rankBreakdown.distance - b.rankBreakdown.distance;
   }
 
+  /* Entre deux événements également pertinents et faisables, la date décide
+     avant le trajet. La distance temporelle vaut zéro tant que l'événement est
+     en cours, puis le temps restant avant la prochaine occurrence. Cela évite
+     deux erreurs : un rendez-vous demain ne bat plus celui de cet après-midi
+     parce qu'il est au coin de la rue, et une série récurrente est triée sur sa
+     prochaine séance plutôt que sur un `startsAt` absent ou périmé. */
+  function compareEventDate(a, b) {
+    if (!a.rankBreakdown.temporary || !b.rankBreakdown.temporary) return 0;
+    const left = a.rankBreakdown.temporalDistance;
+    const right = b.rankBreakdown.temporalDistance;
+    if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
+    if (Number.isFinite(left) !== Number.isFinite(right)) return Number.isFinite(left) ? -1 : 1;
+    return 0;
+  }
+
   function rankResults(results, context) {
     const ctx = context || {};
     const intent = ctx.intent || "sortir";
@@ -887,7 +925,21 @@
       // un événement terminé n'est plus un résultat, à aucun créneau
       if (temporary && etat && etat.statut === temps.STATUTS.PASSE) return;
       if (temporary && !etat && endsAt != null && endsAt < now) return;
-      if (ctx.nowOnly && !isAvailableNow(date, now)) return;
+      if (ctx.nowOnly) {
+        /* `etat` vient d'être calculé, parfois au prix d'une lecture complète
+           des horaires. Le repasser à isAvailableNow recalculait exactement le
+           même statut pour chaque candidat. On applique ici la même règle sur
+           cet état déjà disponible, et on ne garde l'ancien chemin qu'en repli
+           quand le moteur temporel n'est pas chargé. */
+        const disponible = temps && etat
+          ? (temporary
+            ? temps.estMaintenant(etat.statut)
+            : (etat.statut === temps.STATUTS.INCONNU
+              ? item.ouvert !== false
+              : temps.estMaintenant(etat.statut)))
+          : isAvailableNow(date, now);
+        if (!disponible) return;
+      }
 
       survivants.push({ item, startsAt, endsAt, temporary, etat });
     });
@@ -1050,8 +1102,14 @@
         ? profile.distance * 1.6 : profile.distance;
       score += poidsDistance * Math.exp(-distance / profile.distanceScale);
 
+      const temporalStart = temporary && etat && etat.debut != null ? etat.debut : startsAt;
+      const temporalDistance = temporary && temporalStart != null
+        ? Math.max(0, temporalStart - now) : null;
+      const temporalSection = temporary && etat && temps
+        ? temps.sectionTemporelle(etat, now) : null;
       let availability = 2;
-      let temporalReason = "";
+      let temporalReason = temporary && etat && temps
+        ? temps.libelleTemporel(item, now, {statut: etat}) : "";
       if (item.ouvert === true) {
         availability = 4;
         score += profile.open;
@@ -1065,10 +1123,10 @@
       if (temporary) {
         // le statut vient du moteur : sur un événement récurrent c'est la
         // prochaine occurrence réelle qui compte, pas le début de la période
-        const debut = etat && etat.debut != null ? etat.debut : startsAt;
+        const debut = temporalStart;
         const inProgress = etat
           ? etat.statut === temps.STATUTS.EN_COURS
-          : (startsAt == null || startsAt <= now) && (endsAt == null || endsAt >= now);
+          : startsAt != null && startsAt <= now && (endsAt == null || endsAt >= now);
         const imminent = etat
           ? etat.statut === temps.STATUTS.IMMINENT
           : debut != null && debut >= now && debut - now <= 2 * 3600 * 1000;
@@ -1082,7 +1140,13 @@
           score += profile.event + Math.max(0, 120 - minutesUntil);
           temporalReason = "Commence dans " + Math.max(1, minutesUntil) + " min";
         } else if (debut != null) {
-          availability = Math.max(availability, 1);
+          /* La date est une disponibilité, pas un détail de score : ce soir
+             peut rivaliser avec un lieu ouvert, ce week-end reste visible,
+             tandis qu'un événement lointain ne passe plus automatiquement
+             devant tout établissement ouvert. Le tri précis par date prend
+             ensuite le relais entre événements d'un même horizon. */
+          if (etat && etat.statut === temps.STATUTS.PLUS_TARD)
+            availability = Math.max(availability, 4);
           score += Math.max(20, profile.event * .35);
         }
       }
@@ -1107,7 +1171,7 @@
       // sur un événement récurrent, l'arrivée se juge par rapport à la
       // prochaine occurrence, pas au début de la période de récurrence
       const outlook = arrivalOutlook(item, arrival, temporary,
-        temporary && etat && etat.debut != null ? etat.debut : startsAt,
+        temporalStart,
         // la fin réelle de l'occurrence, jamais la durée supposée : inventer
         // une fin ferait rater un événement dont on ignore la durée
         temporary && etat && etat.occurrence && etat.occurrence.fin != null
@@ -1177,10 +1241,11 @@
         rankMatched: signauxTenus,
         rankFit: Math.round(adequation * 100) / 100,
         rankTemporal: etat ? etat.statut : null,
-        rankSection: etat && temps ? temps.sectionTemporelle(etat, now) : null,
-        rankStart: etat && etat.debut != null ? etat.debut : startsAt,
+        rankSection: temporalSection,
+        rankStart: temporalStart,
         rankRelevance: relevance,
-        rankBreakdown: {availability, intentMatch, distance, startsAt, quality,
+        rankBreakdown: {availability, intentMatch, distance,
+          startsAt: temporalStart, temporalDistance, temporary, quality,
           categoryFit, etaMinutes: minutes, relevance,
           /* L'adéquation aux caractéristiques demandées, par quarts. Le tri
              regardait la distance bien avant le score : « où bosser » plaçait
@@ -1197,11 +1262,12 @@
       (b.rankBreakdown.fit || 0) - (a.rankBreakdown.fit || 0) ||
       b.rankBreakdown.intentMatch - a.rankBreakdown.intentMatch ||
       (b.rankBreakdown.relevance || 0) - (a.rankBreakdown.relevance || 0) ||
+      // entre événements comparables, l'échéance passe avant la géographie
+      compareEventDate(a, b) ||
       // « le plus proche » se juge en temps de trajet réel, pas à vol d'oiseau :
       // un lieu à 400 m de l'autre côté du canal est plus loin qu'un lieu à 2 km
       // desservi directement
       compareEta(a, b) ||
-      (a.rankBreakdown.startsAt || Infinity) - (b.rankBreakdown.startsAt || Infinity) ||
       b.rankBreakdown.quality - a.rankBreakdown.quality ||
       b.rankScore - a.rankScore
     );

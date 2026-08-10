@@ -91,12 +91,21 @@ test("un événement jeunesse temporaire rejoint famille et événements", () =>
 });
 
 test("la déduplication fusionne les sources et les catégories", () => {
-  const osm = toCommonItem({id:"osm1",cat:"cinema",title:"Cinéma Le Fresnoy",lat:50.72,lng:3.16}, {source:"openstreetmap"});
-  const google = toCommonItem({id:"g1",cat:"cinema",title:"Cinema Le Fresnoy",lat:50.7201,lng:3.1601,note:4.7}, {source:"google_places"});
+  const osm = toCommonItem({
+    id:"osm1",cat:"cinema",title:"Cinéma Le Fresnoy",lat:50.72,lng:3.16,
+    note:null,avis:null,horaires:null,image:"",
+  }, {source:"openstreetmap"});
+  const google = toCommonItem({
+    id:"g1",cat:"cinema",title:"Cinema Le Fresnoy",lat:50.7201,lng:3.1601,
+    note:4.7,avis:812,horaires:["lundi: 10:00–22:00"],image:"https://example.test/fresnoy.jpg",
+  }, {source:"google_places"});
   const result = dedupeItems([osm,google],distance);
   assert.equal(result.length,1);
   assert.deepEqual(new Set(result[0].sources),new Set(["openstreetmap","google_places"]));
   assert.equal(result[0].note,4.7);
+  assert.equal(result[0].avis,812);
+  assert.deepEqual(result[0].horaires,["lundi: 10:00–22:00"]);
+  assert.equal(result[0].image,"https://example.test/fresnoy.jpg");
 });
 
 test("maintenant garde l'inconnu et le bientôt, retire le terminé", () => {

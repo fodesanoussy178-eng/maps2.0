@@ -867,6 +867,10 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .fb-statut{margin:4px 0 10px;padding:11px 12px;border-radius:12px;background:#fff;
   border:1px solid var(--bord);font-size:13px;line-height:1.4;color:var(--ink2)}
 .fb-statut.erreur{border-color:#E6B3AA;background:#FFF4F1;color:#713127}
+.fb-statut.partiel{display:flex;align-items:center;gap:10px;margin-top:10px;
+  border-color:rgba(20,30,25,.10);background:rgba(44,58,51,.045);color:var(--ink2)}
+.fb-statut.partiel span{flex:1;min-width:0}
+.fb-statut.partiel button{flex-shrink:0;margin-top:0;background:#fff}
 .fb-statut button{min-height:44px;margin-top:8px;padding:8px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;color:var(--ink);font-weight:700}
 .fb-plus{display:block;margin:8px 0 4px;padding:9px 0;border-top:1px solid var(--bord);
@@ -886,6 +890,14 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .ac-item:active{opacity:.6}
 .ac-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#fff;
   border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
+.ac-photo{position:relative;display:grid;place-items:center;flex-shrink:0;width:46px;height:46px;
+  overflow:hidden;border-radius:11px;background:var(--teinte,#5D6B63)}
+.ac-photo::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.91))}
+.ac-photo i{position:relative;z-index:1;font-style:normal;font-size:17px}
+.ac-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .18s ease}
+.ac-photo img.vue{opacity:1}
 .ac-txt{flex:1;min-width:0}
 .ac-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -921,7 +933,9 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
    Priorité mobile conservée : ces règles ne s'ajoutent qu'au-delà de 1100px. */
 @media (min-width:1100px){
   :root{
-    --panneau:400px;        /* panneau de résultats, temporaire */
+    --panneau:530px;        /* largeur de la référence desktop */
+    --marge-desktop:28px;
+    --decalage-desktop:calc(var(--panneau) + (var(--marge-desktop) * 2));
     --nav-height:0px;       /* la navigation flotte : rien à réserver */
   }
 
@@ -931,11 +945,14 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 
   /* Navigation : une pastille flottante en bas à gauche, pas un rail
      pleine hauteur. Même produit qu'en mobile, autre disposition. */
-  #navBas{top:auto;bottom:20px;left:calc(var(--panneau) + 40px);right:auto;width:auto;
-    flex-direction:row;gap:2px;padding:6px;
+  #navBas{top:auto;bottom:var(--marge-desktop);left:var(--decalage-desktop);right:auto;width:440px;
+    min-height:92px;flex-direction:row;gap:2px;padding:7px;
     border-top:0;border-radius:99px;
     box-shadow:0 6px 26px rgba(20,30,25,.20)}
-  .nb{flex:0 0 auto;gap:4px;padding:8px 14px;border-radius:99px;font-size:12px}
+  .nb{flex:1 1 0;gap:5px;padding:9px 8px;border-radius:99px;font-size:15.5px}
+  .nb svg{width:25px;height:25px}
+  .nb-plus{width:46px;height:46px;border-radius:15px}
+  .nb-plus svg{width:23px;height:23px}
   .nb.actif{background:var(--violet-doux)}
 
   /* ---- Lecture de gauche à droite ---------------------------------------
@@ -946,61 +963,147 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
      la feuille monte du bas, et c'est la bonne géométrie pour un pouce. */
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
   #feuilleBesoins.reduite{
-    left:20px;right:auto;top:calc(var(--safe-t) + 20px);bottom:20px;
+    left:var(--marge-desktop);right:auto;top:calc(var(--safe-t) + var(--marge-desktop));
+    bottom:var(--marge-desktop);
     width:var(--panneau);height:auto;max-height:none;transform:none;
-    border:1px solid var(--bord);border-radius:22px;
+    border:1px solid var(--bord);border-radius:28px;
     box-shadow:0 8px 34px rgba(20,30,25,.18)}
 
   /* L'en-tête et la recherche passent donc à droite du panneau : ils étaient
      à gauche, exactement là où il se trouve maintenant. */
-  #appHeader{left:calc(var(--panneau) + 40px);right:auto;top:calc(var(--safe-t) + 20px);
-    width:auto;max-width:520px}
-  body:not(.sheet-open) #appHeader{left:20px}
-  #btnLieu{flex:0 0 auto;max-width:340px}
+  #appHeader{left:var(--decalage-desktop);right:auto;
+    top:calc(var(--safe-t) + var(--marge-desktop));width:auto;max-width:600px;gap:10px}
+  body:not(.sheet-open) #appHeader{left:var(--marge-desktop)}
+  #btnLieu{flex:0 0 auto;max-width:380px;height:58px;padding:0 20px;font-size:17px}
+  .hd-icone{width:58px;height:58px}
+  .hd-icone svg{width:23px;height:23px}
 
-  #rechercheOverlay{left:calc(var(--panneau) + 40px);right:auto;
-    top:calc(var(--safe-t) + 20px);
-    width:min(520px,calc(100vw - var(--panneau) - 60px));
-    border-radius:22px;padding:16px}
-  body:not(.sheet-open) #rechercheOverlay{left:20px;
-    width:min(520px,calc(100vw - 40px))}
+  #rechercheOverlay{left:var(--decalage-desktop);right:auto;
+    top:calc(var(--safe-t) + var(--marge-desktop));
+    width:min(694px,calc(100vw - var(--decalage-desktop) - var(--marge-desktop)));
+    border-radius:28px;padding:20px 22px 18px}
+  body:not(.sheet-open) #rechercheOverlay{left:var(--marge-desktop);
+    width:min(694px,calc(100vw - (var(--marge-desktop) * 2)))}
+  .ro-barre{gap:14px}
+  .ro-barre > svg{width:23px;height:23px;margin-left:18px}
+  .ro-barre input{height:62px;padding:0 54px 0 54px;font-size:18px}
+  .ro-barre input::placeholder{font-size:18px}
+  .icone-btn{right:76px;width:48px;height:48px}
+  .icone-btn svg{width:20px;height:20px}
+  .hd-filtres{width:62px;height:62px}
+  .hd-filtres svg{width:23px;height:23px}
+  #rechercheOverlay .pills{gap:8px;margin:12px -22px 0;padding-inline:22px}
+  #rechercheOverlay .rc{height:45px;padding:0 15px;gap:7px;font-size:15.5px}
+  #rechercheOverlay .rc em{font-size:17px}
+  #rechercheOverlay #filtresHumains{margin-inline:-22px;padding-inline:22px}
   .fb-poignee{display:none}
-  .fb-tete{padding-top:10px;border-radius:22px 22px 0 0}
+  .fb-tete{min-height:72px;padding:10px 16px 8px;border-radius:28px 28px 0 0;background:#fff}
+  .fb-titre{font-size:22px;font-weight:800}
+  .fb-retour,.fb-x{width:56px;height:56px;font-size:18px}
+  .fb-retour{font-size:29px}
+  .fb-corps{padding:0 22px 26px}
   /* la croix doit rester visible même sur l'accueil : c'est elle qui rend
      l'espace à la carte */
   #feuilleBesoins.accueil .fb-tete{display:flex}
   #feuilleBesoins.accueil .fb-titre{opacity:0}
 
+  /* Le panneau de découverte reprend le rythme ample de la référence, sans
+     dupliquer aucun contenu : ce sont toujours les mêmes boutons et cartes. */
+  .br{gap:9px;padding-bottom:12px}
+  .br-b{min-height:54px;padding:10px 18px;font-size:17.5px}
+  .br-b em{font-size:20px}
+  .ong-temps{gap:8px;padding-bottom:16px}
+  .ong{min-height:52px;padding:12px 19px;font-size:16.5px}
+  .aide-bloc{min-height:76px;margin-bottom:16px;padding:14px 16px;border-radius:17px}
+  .aide-bloc em{font-size:23px}
+  .aide-bloc b{font-size:17.5px}
+  .aide-bloc i{font-size:14.5px}
+  .aide-bloc u{font-size:16px}
+  .rc-tete{padding:2px 0 12px}
+  #feuilleBesoins.accueil .rc-tete{padding:0 0 12px}
+  #feuilleBesoins.accueil .rc-tete strong,.rc-tete strong{font-size:22px}
+  .rc-tout{font-size:17px}
+
   /* Le carousel devient une liste verticale : sur grand écran on fait
      défiler vers le bas, pas latéralement. */
-  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none}
+  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:10px}
   .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
-  .rc-photo{width:96px;height:auto;min-height:96px;flex-shrink:0}
-  .rc-corps{flex:1;min-width:0}
+  .rc-photo,.rc-colonne .rc-photo{width:118px;height:auto;min-height:118px;flex-shrink:0}
+  .rc-corps{flex:1;min-width:0;padding:14px 16px 15px;gap:4px}
+  .rc-cats{font-size:13px}
+  .rc-nom{font-size:17.5px;line-height:1.18}
+  .rc-quand{font-size:15.5px}
+  .rc-min,.rc-note{font-size:14.5px}
+  .rc-trajet{font-size:14px}
   .rc-nom{min-height:0}
+  .tr-bloc{min-height:86px;margin:20px 0 10px;padding:15px 17px;border-radius:17px}
+  .tr-icone{width:44px;height:44px;font-size:21px}
+  .tr-titre{font-size:17px}
+  .tr-lignes,.tr-vide{font-size:14.5px}
+  .fb-pied{gap:18px;margin-top:24px;padding-top:17px}
+  .fb-pied button{font-size:14.5px}
+
+  /* Exploration d'une catégorie : même liste réelle, dimensionnée comme le
+     classement numéroté de la référence. */
+  .fb-resultats-tete{margin:4px 2px 8px}
+  .fb-resultats-tete strong{font-size:18px}
+  .fb-resultats-tete span{font-size:13.5px;letter-spacing:.12em}
+  .sq{gap:10px;padding-bottom:12px}
+  .sq-dit{font-size:16px}
+  .sq-carte{min-height:118px;padding:15px 16px;border-radius:18px}
+  .sq-img{width:86px;height:86px;border-radius:15px}
+  .sq-txt{gap:10px}
+  .sq-txt i{height:16px}
+  .ac-item{min-height:76px;padding:13px 3px;gap:14px}
+  .ac-emoji{width:40px;height:40px;font-size:16px}
+  .ac-photo{width:58px;height:58px;border-radius:13px}
+  .ac-nom{font-size:17.5px;font-weight:700}
+  .ac-sous{font-size:14.5px}
+  .ac-dist{font-size:18px}
+  .fb-plus{font-size:14px;padding:12px 0}
+  .fb-section{margin-top:20px;font-size:13px;letter-spacing:.14em}
+  .bn{min-height:58px;font-size:17px;border-radius:16px}
 
   /* Les flottants longent le bord droit : le panneau est à gauche, ils n'ont
      plus à s'écarter pour lui. */
-  #btnTransports,#btnAide{right:20px}
-  #btnTransports{bottom:44px}
-  #btnAide{bottom:96px}
+  #btnTransports,#btnAide{right:var(--marge-desktop)}
+  #btnTransports{bottom:var(--marge-desktop);width:58px;height:58px;
+    background:var(--violet);border-color:var(--violet);color:#fff}
+  #btnTransports.actif{box-shadow:0 0 0 4px rgba(124,58,237,.20),0 3px 14px rgba(20,30,25,.22)}
+  #btnTransports svg{width:23px;height:23px}
+  #btnAide{bottom:98px;min-height:58px;padding:0 20px 0 16px;gap:9px;
+    background:var(--aide);border-color:var(--aide);color:#fff}
+  #btnAide b{font-size:17px}
+  #btnAide svg{width:21px;height:21px}
   /* l'attribution se pose sous le panneau, dans le coin bas droit de la carte */
-  #attribution{left:auto;right:20px;bottom:16px}
-  #credits{left:auto;right:20px;width:min(420px,40vw);bottom:56px}
+  #attribution{left:auto;right:var(--marge-desktop);bottom:8px;font-size:13px}
+  #credits{left:auto;right:var(--marge-desktop);width:min(420px,40vw);bottom:72px}
+
+  /* Les marqueurs deviennent de vrais repères légendés sur grand écran. Le
+     moteur de collision continue de décider quelles étiquettes restent. */
+  .poi-rond{width:40px;height:40px;font-size:20px}
+  .poi-eti{margin-left:-10px;padding:6px 14px 6px 18px;border-radius:0 12px 12px 0;
+    max-width:240px}
+  .poi-eti b{font-size:15.5px}
+  .poi-eti span{font-size:13.5px}
+  .poi-eti.a-gauche{margin-right:-10px;padding:6px 18px 6px 14px;
+    border-radius:12px 0 0 12px}
+  .moi-in b{width:20px;height:20px}
 
   /* La fiche compacte se pose en bas au centre de la carte disponible. */
   #ficheCompacte{left:50%;right:auto;transform:translateX(-50%);
     width:min(460px,calc(100vw - 40px));bottom:20px}
   body.sheet-open #ficheCompacte{
-    left:calc((100vw + var(--panneau) + 40px) / 2);}
+    left:calc((100vw + var(--decalage-desktop)) / 2);}
 
-  #bandeauGeo,#bandeauVide{left:auto;right:20px;width:min(520px,45vw)}
+  #bandeauGeo,#bandeauVide{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
   #charge{left:50%}
   #filtresHumains{width:auto;max-width:none}
   /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
      que dessous — il y a la place, et le centre appartient à la carte */
-  #btnAutourDeMoi{left:auto;right:20px;transform:none;
-    margin-left:0;top:calc(var(--safe-t) + 26px)}
+  #btnAutourDeMoi{left:auto;right:var(--marge-desktop);transform:none;
+    margin-left:0;top:calc(var(--safe-t) + var(--marge-desktop));height:48px;
+    padding:0 18px;font-size:15px}
   #btnAutourDeMoi:active{transform:scale(.96)}
 }
 
@@ -1456,8 +1559,8 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=4f3ec1ed"></script>
-<script src="events.js?v=6c291809"></script>
-<script src="core.js?v=fcb497c1"></script>
+<script src="events.js?v=2a03415f"></script>
+<script src="core.js?v=a4d65a47"></script>
 <script src="transit.js?v=17e44189"></script>
 <script>
 function panne(titre, corps){
@@ -1743,6 +1846,9 @@ function estFavori(l){
 async function chargerFavoris(){
   if(favorisCharges) return;
   if(!(await connecter())) return;
+  // Sans session, il n'existe encore aucun favori : la lecture publique ne
+  // doit pas créer silencieusement un compte anonyme.
+  if(!moiId) return;
   favorisCharges = true;
   const lignes = await Store.favoris();
   favorisIds.clear();
@@ -1758,8 +1864,8 @@ async function basculerFavori(l){
   if(etait) favorisIds.delete(cle); else favorisIds.add(cle);
   majCoeurs();
 
-  // l'identité anonyme n'est réclamée qu'ici, au moment où elle sert
-  if(!(await connecter())){
+  // l'identité anonyme n'est créée qu'ici, au moment où elle sert
+  if(!(await assurerSessionAnonyme())){
     if(etait) favorisIds.add(cle); else favorisIds.delete(cle);
     majCoeurs();
     toast("Favoris indisponibles hors connexion");
@@ -2096,16 +2202,31 @@ const NOMS_COUCHES = Object.freeze({
   searchOverlay:"searchOverlay",
 });
 
+/* Sur desktop, l'exploration d'un besoin garde la recherche visible à côté
+   du panneau, comme un outil de la carte et non comme une modale. Sur mobile
+   elle conserve son comportement superposé et exclusif. La déclaration est
+   placée ici pour que le gestionnaire de couches puisse partager cette règle. */
+function rechercheDockeeDesktopDemandee(){
+  return responsiveLayoutState.isDesktop && !modeNav && !modePose &&
+    feuilleNiveau !== null && feuilleNiveau !== "racine" &&
+    feuilleNiveau !== "plus" && feuilleNiveau !== "aide" &&
+    !!BESOIN_DE(feuilleNiveau);
+}
+
 /* Une seule couche principale reste interactive. La sheet peut être suspendue
    derrière une fiche, mais elle est alors hidden et restaurée à la fermeture. */
 const layerManager = {
   stack:[],
   activate(name){
     const confirmation = name === NOMS_COUCHES.confirmationDialog;
-    if(!confirmation) this.stack = this.stack.filter(x=>x===NOMS_COUCHES.confirmationDialog);
+    const rechercheDockee = name === NOMS_COUCHES.searchOverlay &&
+      rechercheDockeeDesktopDemandee();
+    if(!confirmation) this.stack = this.stack.filter(x=>
+      x === NOMS_COUCHES.confirmationDialog ||
+      (rechercheDockee && x === NOMS_COUCHES.mainSheet));
     if(!this.stack.includes(name)) this.stack.push(name);
     const sheet = document.getElementById("feuilleBesoins");
-    if(name !== NOMS_COUCHES.mainSheet && sheet && !sheet.hidden){
+    if(name !== NOMS_COUCHES.mainSheet && !rechercheDockee && sheet && !sheet.hidden){
       sheet.dataset.suspended = "true";
       sheet.hidden = true;
     }
@@ -2704,10 +2825,11 @@ const TAGS_PARTAGES = [
 /*  Publications partagées                                            */
 /* ================================================================== */
 
-/* Identité anonyme : aucun formulaire, aucune adresse mail. Elle sert
-   uniquement à ce que chacun puisse retirer ce qu'il a publié et à ce qu'un
-   compte qui abuse puisse être bloqué. Exiger une inscription écarterait en
-   premier les personnes que l'aide alimentaire concerne. */
+/* Identité anonyme : aucun compte à remplir, aucune adresse mail. Explorer et
+   lire restent publics. Une session n'est créée qu'au premier geste qui doit
+   appartenir à quelqu'un (favori, participation ou publication). Pour publier,
+   le seul renseignement demandé est un prénom ou pseudo d'affichage ; l'uid
+   Supabase, jamais ce pseudo, reste l'unique preuve de propriété. */
 const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
 const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
@@ -2721,7 +2843,9 @@ if(window.AutourTransit) window.AutourTransit.configure({
   navitia: CLE_TRANSPORT ? {token:CLE_TRANSPORT} : null,
 });
 
-let sb = null, moiId = null;
+const CLE_PSEUDO_CREATEUR = "autour:creator_name";
+let sb = null, moiId = null, monPseudo = "";
+try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
    chemin critique du premier affichage. */
@@ -2741,18 +2865,13 @@ function chargerSupabase(){
 }
 
 async function connecter(){
-  if(sb && moiId) return sb;
+  if(sb) return sb;
   if(pConnexion) return pConnexion;
   pConnexion = (async()=>{
     if(!(await chargerSupabase())) return null;
     try{
       sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
-      let { data:{ session } } = await sb.auth.getSession();
-      if(!session){
-        const { data, error } = await sb.auth.signInAnonymously();
-        if(error) throw error;
-        session = data.session;
-      }
+      const { data:{ session } } = await sb.auth.getSession();
       moiId = session && session.user ? session.user.id : null;
       return sb;
     }catch(e){
@@ -2766,13 +2885,55 @@ async function connecter(){
   return resultat;
 }
 
+let pSessionAnonyme = null;
+async function assurerSessionAnonyme(){
+  if(!(await connecter())) return null;
+  if(moiId) return sb;
+  if(pSessionAnonyme) return pSessionAnonyme;
+  pSessionAnonyme = (async()=>{
+    try{
+      const { data, error } = await sb.auth.signInAnonymously();
+      if(error) throw error;
+      moiId = data && data.session && data.session.user ? data.session.user.id : null;
+      return moiId ? sb : null;
+    }catch(e){
+      console.error("Identité anonyme indisponible :", e.message || e);
+      return null;
+    }finally{
+      pSessionAnonyme = null;
+    }
+  })();
+  return pSessionAnonyme;
+}
+
+/* Demandé une seule fois au moment de la première publication. Le pseudo est
+   local et purement présentatif ; perdre cette valeur ne donne ni ne retire la
+   propriété, qui reste attachée à auth.uid() côté base. */
+async function assurerIdentitePublication(){
+  if(!(await connecter())) return null;
+  let pseudo = monPseudo;
+  if(!pseudo){
+    pseudo = String(prompt("Ton prénom ou pseudo ?") || "").trim().slice(0,50);
+    if(!pseudo) return null;
+  }
+  if(!moiId && !(await assurerSessionAnonyme())) return null;
+  monPseudo = pseudo;
+  try{ localStorage.setItem(CLE_PSEUDO_CREATEUR, pseudo); }catch(e){}
+  return { id:moiId, name:pseudo };
+}
+
+function estPublicationAMoi(l){
+  return !!(l && l.dbId && moiId && l.creatorId === moiId);
+}
+
 function versLieu(p){
   return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
     description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
-    par: p.verifie ? "Structure vérifiée" : "Habitant du quartier",
-    verifie: p.verifie, mien: !!(moiId && p.auteur === moiId),
+    par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
+    creatorId:p.creator_id || null, creatorName:p.creator_name || "",
+    verifie: p.verifie, mien: !!(moiId && p.creator_id === moiId),
     lat:p.lat, lng:p.lng,
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
@@ -2781,7 +2942,8 @@ function versLieu(p){
     /* Une annulation était enregistrée en base, écrite dans le canal, et
        perdue ici : la carte et la fiche affichaient l'événement comme s'il
        avait lieu. Quelqu'un se déplaçait pour rien. */
-    annule: !!p.annule
+    status:p.status || (p.annule ? "cancelled" : "active"),
+    annule: p.status === "cancelled" || !!p.annule
   }, "autour");
 }
 
@@ -2851,8 +3013,10 @@ const Store = {
   },
 
   async publier(l){
-    if(!sb) return null;
+    const identite = await assurerIdentitePublication();
+    if(!sb || !identite) return null;
     const { data, error } = await sb.from("publications").insert({
+      creator_id:identite.id, creator_name:identite.name, status:"active",
       cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
       gratuit:l.gratuit, prix:l.prix, places:l.places,
       lat:l.lat, lng:l.lng,
@@ -2870,10 +3034,19 @@ const Store = {
     return versLieu(data);
   },
   async supprimer(dbId){
-    if(!sb || !dbId) return false;
-    const { error } = await sb.from("publications").delete().eq("id", dbId);
+    if(!sb || !dbId || !moiId) return false;
+    const { data, error } = await sb.from("publications").delete()
+      .eq("id", dbId).select("id");
     if(error){ console.error("Suppression refusée :", error.message); return false; }
-    return true;
+    return !!(data && data.length === 1);
+  },
+
+  async annuler(dbId){
+    if(!sb || !dbId || !moiId) return false;
+    const { data, error } = await sb.from("publications")
+      .update({status:"cancelled"}).eq("id", dbId).select("id,status");
+    if(error){ console.error("Annulation refusée :", error.message); return false; }
+    return !!(data && data.length === 1 && data[0].status === "cancelled");
   },
 
   /* ---- Favoris ------------------------------------------------------------
@@ -2890,7 +3063,7 @@ const Store = {
   },
 
   async ajouterFavori(l){
-    if(!sb) return false;
+    if(!(await assurerSessionAnonyme())) return false;
     const ligne = {
       membre: moiId,
       publication_id: l.dbId || null,
@@ -2909,7 +3082,7 @@ const Store = {
   },
 
   async retirerFavori(l){
-    if(!sb) return false;
+    if(!(await assurerSessionAnonyme())) return false;
     const requete = sb.from("favoris").delete().eq("membre", moiId);
     const { error } = l.dbId
       ? await requete.eq("publication_id", l.dbId)
@@ -2924,7 +3097,7 @@ const Store = {
 
   // Les canaux où j'ai une raison d'être : créé, inscrit, ou suivi.
   async mesCanaux(){
-    if(!sb) return [];
+    if(!sb || !moiId) return [];
     const { data, error } = await sb.rpc("mes_canaux");
     if(error){ console.error("Canaux indisponibles :", error.message); return []; }
     return data || [];
@@ -2949,10 +3122,15 @@ const Store = {
      déclencheur qui observe la modification. On ne modifie donc que
      l'événement, et l'annonce suit toute seule. */
   async modifierEvenement(dbId, champs){
-    if(!sb || !dbId) return false;
-    const { error } = await sb.from("publications").update(champs).eq("id", dbId);
+    if(!sb || !dbId || !moiId) return false;
+    const permis = new Set(["titre","adresse","cp","quand","gratuit","prix","places",
+                            "lat","lng","image_url","debut_le","fin_le"]);
+    const propres = Object.fromEntries(Object.entries(champs || {}).filter(([cle])=>permis.has(cle)));
+    if(!Object.keys(propres).length) return false;
+    const { data, error } = await sb.from("publications")
+      .update(propres).eq("id", dbId).select("id");
     if(error){ console.error("Modification refusée :", error.message); return false; }
-    return true;
+    return !!(data && data.length === 1);
   },
 
   // Annonce libre et courte, réservée à l'administrateur par la RLS.
@@ -2967,7 +3145,7 @@ const Store = {
   },
 
   async rejoindre(channelId, role){
-    if(!sb || !channelId) return false;
+    if(!channelId || !(await assurerSessionAnonyme())) return false;
     const { error } = await sb.from("event_participants")
       .insert({channel_id:channelId, membre:moiId, role:role || "participant"});
     // déjà inscrit : ce n'est pas une erreur pour l'utilisateur
@@ -3129,7 +3307,10 @@ async function overpassRelaye(q, msMax, signal){
     clearTimeout(t);
     // 404 : pas de fonction déployée ici. On note et on n'y revient plus.
     if(r.status === 404 || r.status === 405){ relaisLieux = false; return undefined; }
-    if(!r.ok) return null;            // 503 : Overpass muet, le relais l'a dit
+    // Une erreur de validation ne changera pas par un autre chemin. Une panne
+    // du relais, elle, ne doit pas condamner la carte : le client possède encore
+    // son chemin direct et une quatrième instance de secours.
+    if(!r.ok) return r.status >= 500 ? undefined : null;
     const j = await r.json();
     relaisLieux = true;
     PERF.jalon("relais_lieux");
@@ -3142,6 +3323,8 @@ async function overpassRelaye(q, msMax, signal){
 }
 
 async function overpass(q, msMax, signal, viaRelais){
+  const debut = Date.now();
+  const budget = msMax || 14000;
   const simule = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) &&
     new URLSearchParams(location.search).get("simulateOverpassFailure") === "1";
   if(simule){
@@ -3155,11 +3338,18 @@ async function overpass(q, msMax, signal, viaRelais){
     const parRelais = await overpassRelaye(q, msMax, signal);
     if(parRelais !== undefined) return parRelais;
   }
-  for(const url of SERVEURS){
+  for(let i=0;i<SERVEURS.length;i++){
+    const url = SERVEURS[i];
     if(signal && signal.aborted) return null;
+    // `msMax` est un budget TOTAL. L'ancien code l'accordait à chaque serveur :
+    // une demande de 7 s pouvait donc rester en vol près d'une demi-minute.
+    const restant = budget - (Date.now()-debut);
+    if(restant < 600) break;
+    const serveursRestants = SERVEURS.length-i;
+    const delaiTentative = Math.max(500, Math.floor(restant/serveursRestants));
     try{
       const stop = new AbortController();
-      const t = setTimeout(()=>stop.abort(), msMax||14000);
+      const t = setTimeout(()=>stop.abort(), delaiTentative);
       // une nouvelle zone demandée annule vraiment la précédente : avant, la
       // requête partait quand même et seul son résultat était jeté
       if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
@@ -3765,7 +3955,9 @@ function fusionner(nouveaux, flux, opts){
   const o = opts || {};
   const type = flux || "permanent";
   const source = nouveaux[0] && nouveaux[0].source || type;
-  const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source)).filter(l=>!estPasse(l));
+  const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source))
+    // une annulation reste une information utile et distincte d'une suppression
+    .filter(l=>l.annule || !estPasse(l));
   const courant = type === "external" ? externalEvents
     : type === "user" ? userPublications : permanentPlaces;
   const parId = new Map(courant.map(l=>[l.id,l]));
@@ -3883,7 +4075,7 @@ const RAPIDE_RAYON_M = 2000;
 /* Les champs qui servent à dessiner une carte et à la reclasser. Le reste
    (description, mots-clés, géométrie) pèse sans rien apporter au premier
    affichage : on ne l'écrit pas. */
-const CHAMPS_RAPIDE = ["id","cat","categories","titre","adresse","cp","lat","lng",
+const CHAMPS_RAPIDE = ["id","cat","categories","titre","adresse","cp","lat","lng","image",
   "note","avis","prixN","prix","gratuit","quand","cuisine","tags","pmr","source",
   "par","isTemporary","debutLe","finLe","idGoogle","service","solidaire","sansNom"];
 
@@ -4993,7 +5185,8 @@ function ouvrirFicheCompacte(l){
 
   const etiquettes = etiquettesLisibles(l);
   const ligne2 = [
-    l.note ? "⭐ "+l.note.toFixed(1).replace(".",",") : null,
+    l.note ? "⭐ "+l.note.toFixed(1).replace(".",",")+
+      (l.avis ? " ("+Number(l.avis).toLocaleString("fr-FR")+" avis)" : "") : null,
     ...etiquettes,
   ].filter(Boolean).join(" · ");
   // l'annulation passe devant tout le reste : c'est la seule chose qui compte,
@@ -5012,7 +5205,7 @@ function ouvrirFicheCompacte(l){
     ["🚲", min(VITESSES_KMH.velo)],
   ].filter(([,m])=>m != null).map(([e,m])=>e+" "+m+" min").join("  ");
 
-  const mien = !!(l.dbId && moiId && l.auteur === moiId);
+  const mien = estPublicationAMoi(l);
   // un lieu d'aide dit à quoi il sert dès la fiche posée sur la carte :
   // ouvrir le détail pour comprendre ce qu'est un CCAS est un pas de trop
   const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 130) : "";
@@ -5238,7 +5431,12 @@ function majBandeauVide(retenus){
   const videReel = retenus === 0 && lieux.length > 0 && !montrerFermes && !rechercheEnCours();
   // tant qu'on ignore où se trouve la personne, on ne peut pas affirmer qu'il
   // n'y a rien autour d'elle : on ne sait même pas de quel « autour » il s'agit
-  const montrer = (erreurPartielle || (videReel && positionConnue()))
+  // Une source secondaire en panne n'est pas un écran vide. Si la carte montre
+  // déjà des lieux, le grand bandeau donnait l'impression que tout avait échoué.
+  // Et quand la feuille est ouverte, elle porte elle-même un état compact : on
+  // évite le doublon visible dans la référence de production.
+  const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;
+  const montrer = (erreurSansResultat || (videReel && positionConnue()))
     && !modeNav && $("#bandeauGeo").hidden;
   b.hidden = !montrer;
   if(!montrer) return;
@@ -5624,11 +5822,14 @@ function noteVacances(l){
 function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
   const c = CATS[l.cat]||CATS.event;
+  const mien = estPublicationAMoi(l);
 
   ouvrirFeuille(
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
     '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+(l.gratuit?'Gratuit':l.prix+' €')+'</span></div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
+    (l.annule ? '<p class="non-verifie"><b>Annulé par l’organisateur.</b> '+
+      'La publication reste visible pour éviter un déplacement inutile.</p>' : '')+
     /* L'essentiel d'abord — où, combien de temps, ouvert, quelle réputation —
        puis les quatre gestes utiles. Le détail vit plus bas. */
     '<p class="resume">'+
@@ -5678,8 +5879,10 @@ function ouvrirDetail(id){
     '<div id="canalBloc"></div>'+
     '<div class="liens">'+
     '<button id="btnInviter" class="lien-fort">Partager / Inviter</button>'+
-    (l.mien
-      ? '<button id="btnSupprimer" class="lien-danger">Supprimer</button>'
+    (mien
+      ? '<button id="btnModifier">Modifier</button>'+
+        (l.annule ? '' : '<button id="btnAnnuler" class="lien-danger">Annuler</button>')+
+        '<button id="btnSupprimer" class="lien-danger">Supprimer définitivement</button>'
       : '<button id="btnSignal">Signaler</button>')+
     '</div>'
   );
@@ -5687,6 +5890,20 @@ function ouvrirDetail(id){
   if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
   completerExplication(l);
   if(l.dbId) chargerCanal(l);
+
+  const modifier = $("#btnModifier");
+  if(modifier) modifier.onclick = async ()=>{
+    await chargerCanal(l);
+    const actions = $("#canalBloc");
+    if(actions){
+      actions.scrollIntoView({behavior:"smooth", block:"start"});
+      const premier = actions.querySelector("[data-act]");
+      if(premier) premier.focus();
+    }
+    toast("Choisis ce que tu veux modifier");
+  };
+  const annuler = $("#btnAnnuler");
+  if(annuler) annuler.onclick = ()=>annulerPublication(l);
 
   /* Suppression en deux temps : un appui demande confirmation, le second
      supprime. Rien d'irréversible sur un simple effleurement. */
@@ -5711,6 +5928,20 @@ function ouvrirDetail(id){
     e.target.classList.toggle("act-on", estGarde(l.id));
   };
   $("#btnYAller").onclick=()=>afficherTrajet(l);
+}
+
+async function annulerPublication(l){
+  if(!l || !estPublicationAMoi(l)) return false;
+  if(!confirm("Annuler l’événement ? Il restera visible avec la mention « Annulé par l’organisateur » et les participants seront prévenus.")) return false;
+  if(!(await Store.annuler(l.dbId))){ toast("Annulation impossible"); return false; }
+  l.status = "cancelled";
+  l.annule = true;
+  userPublications.forEach(p=>{ if(p.dbId === l.dbId){ p.status="cancelled"; p.annule=true; } });
+  reconstruireLieux();
+  rendre(); dessinerFiltres();
+  ouvrirDetail(l.id);
+  toast("Événement annulé · il reste visible");
+  return true;
 }
 
 /* ================================================================== */
@@ -6469,10 +6700,8 @@ async function actionCreateur(id, l, canal){
     return chargerCanal(l);
   }
   if(id === "annulation"){
-    // un événement annulé reste affiché : le masquer ferait venir les gens
-    if(!confirm("Annuler l’événement ? Les participants seront prévenus.")) return;
-    toast(await Store.modifierEvenement(l.dbId,{annule:true}) ? "Événement annulé" : "Annulation impossible");
-    return chargerCanal(l);
+    // Annuler change le cycle de vie ; supprimer reste un geste séparé.
+    return annulerPublication(l);
   }
 }
 
@@ -6848,6 +7077,11 @@ function marquerPublication(id, etat){
 
 async function publier(){
   const b=brouillon;
+  /* La première publication est le seul moment où l'on demande un nom. La
+     session anonyme naît juste après ; si l'un ou l'autre échoue, rien n'est
+     affiché comme publié et le brouillon reste ouvert. */
+  const identite = await assurerIdentitePublication();
+  if(!identite){ toast("Publication annulée"); return; }
   const debut = new Date(b.date+"T"+(b.heure||"00:00")+":00");
   let fin = b.fin ? new Date(b.date+"T"+b.fin+":00") : null;
   if(fin && fin <= debut) fin.setDate(fin.getDate()+1);
@@ -6856,7 +7090,9 @@ async function publier(){
     adresse:(b.adresse||"").trim()||"Sur place",
     cp:commune, quand:libelleQuand(b)||"Bientôt",
     gratuit:b.gratuit, prix:b.gratuit?0:b.prix,
-    places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng,
+    places:b.limite?b.places:null, qr:b.qr, par:identite.name,
+    creatorId:identite.id, creatorName:identite.name, mien:true, status:"active",
+    lat:b.lat, lng:b.lng,
     debutLe:Number.isFinite(debut.getTime()) ? debut.getTime() : null,
     finLe:fin && Number.isFinite(fin.getTime()) ? fin.getTime() : null,
     // l'aperçu local de l'affiche, le temps que le vrai fichier monte
@@ -6940,7 +7176,8 @@ async function reessayerPublication(id){
 
    À configurer une fois, dans la console Google Cloud (voir docs/cle-google.md) :
      · Restriction d'application → Sites web (référents HTTP)
-       https://autour.vercel.app/*  et  https://*.vercel.app/*  (préproductions)
+       https://autour.eu/*, https://www.autour.eu/*,
+       https://autour.vercel.app/* et https://*.vercel.app/* (préproductions)
      · Restriction d'API → Places API (New) uniquement
      · Quota journalier plafonné, pour qu'un abus reste borné
 
@@ -7218,15 +7455,27 @@ async function notesGoogle(lat, lng, opts){
 /* Complément restauration, déclenché seulement quand le besoin « Manger »
    s'ouvre. Une fois par zone : on ne repaie pas à chaque aller-retour. */
 const zonesResto = new Set();
-function completerRestauration(){
-  if(!positionMoi || !CLE_GOOGLE) return;
+function completerRestauration(opts){
+  if(!positionMoi || !CLE_GOOGLE) return Promise.resolve([]);
+  const o = opts || {};
   const [lat,lng] = positionMoi;
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
-  if(zonesResto.has(cle)) return;
+  if(o.force) zonesResto.delete(cle);
+  if(zonesResto.has(cle)) return Promise.resolve([]);
   zonesResto.add(cle);
-  placesGoogle(lat, lng, TYPES_RESTO)
-    .then(f=>{ if(f && f.length){ greffeNotes(lieux, f); ajouterLieuxGoogle(f); majAccueil(); } })
-    .catch(()=>{});
+  return placesGoogle(lat, lng, TYPES_RESTO)
+    .then(f=>{
+      // Une réponse vide ou transitoirement refusée ne condamne pas la zone
+      // jusqu'au prochain rechargement : le bouton « Actualiser » peut retenter.
+      if(!f || !f.length){ zonesResto.delete(cle); return []; }
+      greffeNotes(lieux, f); ajouterLieuxGoogle(f); majAccueil();
+      /* Les fiches arrivaient bien, les photos étaient même téléchargées,
+         mais la feuille Manger gardait le HTML calculé avant leur arrivée.
+         Les données Google restaient donc invisibles jusqu'à un autre geste. */
+      if(feuilleNiveau === "manger") majFeuille2();
+      return f;
+    })
+    .catch(()=>{ zonesResto.delete(cle); return []; });
 }
 
 /* Les commerces connus de Google mais absents d'OpenStreetMap : sans eux, la
@@ -7258,7 +7507,7 @@ function ajouterLieuxGoogle(fiches, catDefaut){
       prixN:f.prixN, cuisine:f.cuisine, service, horaires:f.horaires,
       // un lieu ramené par une recherche de réseau d'aide l'est par construction
       solidaire: f.solidaire === true || estSolidaire(f.nom, false),
-      tel:f.tel, pmr:f.pmr
+      tel:f.tel, pmr:f.pmr, image:f.image || ""
     }, "google_places"));
   });
   const ajoutes = aAjouter.length;
@@ -7267,7 +7516,48 @@ function ajouterLieuxGoogle(fiches, catDefaut){
   return ajoutes;
 }
 
-/* rapproche chaque lieu OSM de la fiche Google la plus proche (< 150 m) */
+/* Deux établissements mitoyens ne sont pas interchangeables. La distance
+   confirme une correspondance de nom, elle ne l'invente jamais. Les mots de
+   type « restaurant » ou « chez » sont retirés pour reconnaître proprement
+   « Restaurant Oegil » et « Oegil », sans transformer l'arrêt Phalempins en
+   Crousti Baguette simplement parce qu'ils sont proches. */
+function nomsLieuxCompatibles(nomA, nomB){
+  const nettoyer = nom=>sansAccents(nom || "").toLowerCase()
+    .replace(/[^a-z0-9]+/g," ").trim();
+  const a = nettoyer(nomA), b = nettoyer(nomB);
+  if(!a || !b) return false;
+  if(a === b) return true;
+  const generiques = new Set([
+    "le","la","les","de","du","des","chez","restaurant","resto",
+    "cafe","bar","brasserie","snack","fast","food","boulangerie"
+  ]);
+  const jetons = nom=>[...new Set(nom.split(/\s+/)
+    .filter(mot=>mot.length > 2 && !generiques.has(mot)))];
+  const ja = jetons(a), jb = jetons(b);
+  if(!ja.length || !jb.length) return false;
+  const communs = ja.filter(mot=>jb.includes(mot));
+  const petit = Math.min(ja.length, jb.length);
+  // Un nom distinctif seul (« Oegil », « O'Tacos ») suffit ; pour les noms
+  // composés, au moins deux mots et les deux tiers du plus court sont requis.
+  if(petit === 1) return communs.length === 1 && communs[0].length >= 5;
+  return communs.length >= 2 && communs.length / petit >= 2/3;
+}
+
+/* rapproche un lieu OSM d'une fiche Google compatible située à moins de 150 m */
+function appliquerFicheGoogle(l, meilleur){
+  if(!l || !meilleur) return;
+  l.note = meilleur.note; l.avis = meilleur.avis;
+  l.ouvert = meilleur.ouvert;
+  if(meilleur.prixN != null) l.prixN = meilleur.prixN;
+  if(meilleur.horaires) l.horaires = meilleur.horaires;
+  if(meilleur.tel) l.tel = meilleur.tel;
+  if(meilleur.pmr != null) l.pmr = meilleur.pmr;
+  // la photo ne remplace jamais celle d'un événement déjà illustré
+  if(meilleur.image && !l.image) l.image = meilleur.image;
+  if(meilleur.idGoogle && !l.idGoogle) l.idGoogle = meilleur.idGoogle;
+  if(meilleur.resumeGoogle && !l.resumeGoogle) l.resumeGoogle = meilleur.resumeGoogle;
+}
+
 function greffeNotes(liste, fiches){
   if(!fiches) return;
   liste.forEach(l=>{
@@ -7275,27 +7565,18 @@ function greffeNotes(liste, fiches){
     const nomL = sansAccents(l.titre);
     fiches.forEach(f=>{
       const d = distanceM(l.lat,l.lng,f.lat,f.lng);
-      if(d > 400) return;
-      // un nom qui correspond l'emporte sur la simple proximité : deux
-      // restaurants mitoyens ne doivent pas hériter de la note l'un de l'autre
       const nomF = sansAccents(f.nom);
-      const memeNom = nomL && nomF && (nomL.includes(nomF) || nomF.includes(nomL));
-      const score = memeNom ? d/4 : d;
-      if(score < dMin){ dMin = score; meilleur = f; }
+      if(d >= dMin || !nomsLieuxCompatibles(nomL, nomF)) return;
+      dMin = d; meilleur = f;
     });
     if(meilleur){
-      l.note = meilleur.note; l.avis = meilleur.avis;
-      l.ouvert = meilleur.ouvert;                       // ouvert / fermé maintenant
-      if(meilleur.prixN != null) l.prixN = meilleur.prixN;
-      if(meilleur.horaires) l.horaires = meilleur.horaires;
-      if(meilleur.tel) l.tel = meilleur.tel;
-      if(meilleur.pmr != null) l.pmr = meilleur.pmr;
-      // la photo ne remplace jamais celle d'un événement déjà illustré
-      if(meilleur.image && !l.image) l.image = meilleur.image;
-      // l'identifiant Google voyage avec le reste : c'est ce qui permet
-      // d'aller chercher le descriptif d'un lieu venu d'OpenStreetMap
-      if(meilleur.idGoogle && !l.idGoogle) l.idGoogle = meilleur.idGoogle;
-      if(meilleur.resumeGoogle && !l.resumeGoogle) l.resumeGoogle = meilleur.resumeGoogle;
+      appliquerFicheGoogle(l, meilleur);
+      /* `lieux` est parfois une fiche fusionnée. Une reconstruction ultérieure
+         repart de `permanentPlaces` et faisait alors disparaître photo, note et
+         horaires. On enrichit aussi la fiche canonique pour que l'information
+         survive aux arrivées asynchrones des autres sources. */
+      const canonique = permanentPlaces.find(x=>x.id === l.id);
+      if(canonique && canonique !== l) appliquerFicheGoogle(canonique, meilleur);
     }
   });
   rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
@@ -8349,6 +8630,7 @@ function fermerFeuille2(options){
   delete f.dataset.suspended;
   reglerFeuilleDeplie(false);
   layerManager.deactivate(NOMS_COUCHES.mainSheet);
+  synchroniserRechercheDesktop();
   majRaccourcis();
   if(o.nettoyerHistorique !== false && historiqueFeuilleBesoins){
     historiqueFeuilleBesoins=false;
@@ -8368,10 +8650,12 @@ function majFeuille2(){
   const f = $("#feuilleBesoins");
   if(!f || feuilleNiveau === null || modeNav || modePose){
     if(f) f.hidden = true;
+    synchroniserRechercheDesktop();
     synchroniserHauteurFeuille();
     return;
   }
   f.hidden = false;
+  synchroniserRechercheDesktop();
 
   const corps = $("#fbCorps");
   const retour = $("#fbRetour");
@@ -8396,7 +8680,10 @@ function majFeuille2(){
     retour.hidden = true;
     // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
-    let reco = recommandationsAccueil(12);
+    /* Sur desktop, la référence montre un aperçu de trois cartes puis les
+       transports et les liens. « Voir tout » conserve l'accès au classement
+       complet ; le mobile garde son défilement progressif plus long. */
+    let reco = recommandationsAccueil(responsiveLayoutState.isDesktop ? 3 : 12);
   // le classement peut ne rien rendre au tout début (aucun ETA, aucun horaire) :
   // on montre alors l'échantillon varié du cache plutôt qu'un écran vide
   if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
@@ -8407,10 +8694,10 @@ function majFeuille2(){
       besoinsRapidesHTML()+
       ongletsTemps()+
       blocAideAccueil()+
+      '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
+        '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
       (reco.length
-        ? '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
-            '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
-          '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
+        ? '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
             reco.map(carteRecommandation).join("")+'</div>'
         : statutGroupeHTML())+
       (creneau === "maintenant" ? blocTransports() : "")+
@@ -8485,10 +8772,21 @@ function squeletteHTML(n){
 }
 
 function statutRechercheHTML(nombreResultats){
-  // tant que ça charge, on ne dit jamais qu'il n'y a rien : on ne le sait pas
-  if(rechercheEnCours()) return squeletteHTML(3);
+  // Quand des résultats issus du cache ou d'une première source sont déjà là,
+  // ils restent au premier plan. Trois squelettes au-dessus d'eux donnaient
+  // l'impression que la liste n'avait pas chargé alors qu'elle était utilisable.
+  if(rechercheEnCours()) return nombreResultats
+    ? '<div class="fb-statut partiel" role="status"><span>Mise à jour des résultats…</span></div>'
+    : squeletteHTML(3);
   if(rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED && !positionMoi)
     return '<div class="fb-statut">Active ta position ou choisis un endroit sur la carte.</div>';
+  const sourceIndisponible = rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.NETWORK_ERROR ||
+    rechercheEtat.events === SEARCH_STATES.NETWORK_ERROR || etatErreurPartielle();
+  if(nombreResultats && sourceIndisponible)
+    return '<div class="fb-statut partiel"><span>Résultats disponibles · mise à jour incomplète</span>'+
+      '<button data-etat-action="retry">Actualiser</button></div>';
   if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE || rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE)
     return '<div class="fb-statut erreur">Certains lieux n’ont pas pu être chargés. Réessayer.'+
       '<br><button data-etat-action="retry">Réessayer</button></div>';
@@ -8504,32 +8802,75 @@ function statutRechercheHTML(nombreResultats){
   return "";
 }
 
+/* La distance seule remplirait l'aperçu Manger de cinq lignes OSM sans photo,
+   note ni horaire alors que Google vient de fournir des fiches complètes à
+   quelques minutes de là. On garde trois places pour les premiers du vrai
+   classement et on réserve au plus deux places à des résultats documentés.
+   Leur ordre relatif reste celui du classement : la donnée ne devient jamais
+   un passe-droit illimité sur la proximité. */
+function selectionResultatsFeuille(classement, limite){
+  const items = classement.slice(0, limite);
+  if(feuilleNiveau !== "manger" || items.length < limite) return items;
+  const complet = l=>!!(l && l.image && Number.isFinite(Number(l.note)) &&
+    Number(l.avis) > 0 && Array.isArray(l.horaires) && l.horaires.length);
+  const objectif = Math.min(2, classement.filter(complet).length);
+  let presents = items.filter(complet).length;
+  if(presents >= objectif) return items;
+  const deja = new Set(items.map(l=>l.id));
+  const candidats = classement.filter(l=>complet(l) && !deja.has(l.id));
+  for(const candidat of candidats){
+    const aRemplacer = items.map((l,i)=>({l,i})).reverse().find(x=>!complet(x.l));
+    if(!aRemplacer) break;
+    items[aRemplacer.i] = candidat;
+    presents += 1;
+    if(presents >= objectif) break;
+  }
+  const rang = new Map(classement.map((l,i)=>[l.id,i]));
+  return items.sort((a,b)=>(rang.get(a.id)||0)-(rang.get(b.id)||0));
+}
+
 /* Les cinq meilleures recommandations appartiennent à l'intention ouverte,
    pas à une ancienne sélection d'accueil. Elles précèdent toujours les menus. */
 function blocResultats(){
   const classement = classementFeuille();
-  const items = classement.slice(0,5);
+  const items = selectionResultatsFeuille(classement,5);
   const statut = statutRechercheHTML(items.length);
-  if(!items.length) return statut;
+  const chargement = rechercheEnCours();
   const ouverts = classement.filter(l=>l.ouvert === true || (l.isTemporary && isAvailableNow(l,Date.now()))).length;
+  /* Les cinq emplacements existent déjà pendant leur chargement : garder leur
+     titre stabilise la hiérarchie et évite que tout le panneau saute quand les
+     données arrivent. Il s'agit d'une capacité d'aperçu, pas d'un faux compte
+     de résultats confirmés. */
+  const nombreAffiche = items.length || (chargement ? 5 : 0);
   const entete = '<div class="fb-resultats-tete" data-testid="primary-results">'+
-    '<strong>'+items.length+' '+(items.length>1?'solutions':'solution')+' près de toi</strong>'+
+    '<strong>'+nombreAffiche+' '+(nombreAffiche>1?'solutions':'solution')+' près de toi</strong>'+
     '<span>'+(ouverts ? ouverts+' '+(ouverts>1?'ouvertes':'ouverte') : 'Les mieux classées')+'</span></div>';
-  return entete+statut+items.map((l,index)=>{
+  if(!items.length) return (nombreAffiche ? entete : "")+statut;
+  const liste = items.map((l,index)=>{
     const c = CATS[l.cat] || {emoji:"📍"};
     const bouts = ['<span class="raison">'+esc(l.rankReason)+'</span>'];
-    if(l.note) bouts.push("★ "+l.note.toFixed(1));
+    if(l.note) bouts.push("★ "+l.note.toFixed(1)+
+      (l.avis ? " ("+Number(l.avis).toLocaleString("fr-FR")+" avis)" : ""));
     // dans l'aide, le nom seul ne suffit pas : « CCAS » ne dit rien tant
     // qu'on n'a pas eu besoin d'un CCAS. Une ligne dit à quoi ça sert.
     const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 110) : "";
+    const photo = l.image
+      ? '<span class="ac-photo" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+          '<i>'+c.emoji+'</i><img loading="lazy" decoding="async" fetchpriority="low" alt="" '+
+          'src="'+esc(l.image)+'" onload="this.classList.add(\'vue\')" onerror="this.remove()"></span>'
+      : '';
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+(index+1)+'</span>'+
+      photo+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
       (aQuoi ? '<span class="ac-expli">'+esc(aQuoi)+'</span>' : '')+
       '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
       '<span class="ac-dist" aria-hidden="true">'+c.emoji+'</span></button>';
   }).join("")+(classement.length>5
     ? '<span class="fb-plus">Fais défiler pour préciser · '+(classement.length-5)+' autres résultats</span>' : "");
+  // Les erreurs non bloquantes et la mise à jour se lisent après les réponses,
+  // jamais avant elles. Si la liste est vide, l'état reste naturellement seul.
+  return entete+liste+statut;
 }
 
 /* ---- « Pour toi, maintenant » -------------------------------------------
@@ -9329,6 +9670,7 @@ function brancherFeuille2(){
     rechercheEtat.overpass = SEARCH_STATES.IDLE;
     definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
     chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
+    if(feuilleNiveau === "manger") completerRestauration({force:true});
   });
 
   corps.querySelectorAll("[data-elargir]").forEach(b=>b.onclick=elargirZone);
@@ -9395,7 +9737,7 @@ function majRaccourcis(){
      et son seul foyer est le bouton filtres. */
   const ordre = BESOINS_PRINCIPAUX.filter(b=>b.id !== "aide");
   z.innerHTML = ordre.map(b=>{
-    const actif = feuilleNiveau === b.id && catsActives;
+    const actif = feuilleNiveau === b.id;
     return '<button class="rc'+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
       '<em>'+b.emoji+'</em>'+esc(b.label.replace(" autour de moi",""))+
       '</button>';
@@ -9406,7 +9748,9 @@ function majRaccourcis(){
     if(id === "plus"){
       if(modeAide) basculerAide();
       if(feuilleNiveau === "plus"){ fermerFeuille2(); return; }
-      ouvrirFeuille2("plus"); return;
+      ouvrirFeuille2("plus");
+      if(!rechercheDockeeDesktopDemandee()) fermerRecherche({force:true});
+      return;
     }
     if(id === "aide"){
       if(modeAide){ basculerAide(); fermerFeuille2(); return; }
@@ -9415,6 +9759,9 @@ function majRaccourcis(){
     if(modeAide) basculerAide();
     if(feuilleNiveau === id){ fermerFeuille2(); return; }
     ouvrirFeuille2(id);
+    /* Sur téléphone, le choix rend l'écran à la feuille. Sur desktop, la
+       recherche devient au contraire le bloc docké de la référence. */
+    if(!rechercheDockeeDesktopDemandee()) fermerRecherche({force:true});
   });
 }
 
@@ -10050,6 +10397,10 @@ $("#videOk").onclick=()=>{
    position connue et se corrige silencieusement quand la vraie arrive. */
 performance.mark("autour:script");
 PERF.jalon("script");
+/* `demarrer()` peut appeler majEnteteLieu immédiatement en mode de test : ce
+   vocabulaire doit donc exister avant le premier démarrage, pas seulement plus
+   bas avec les gestionnaires de navigation. */
+const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
 const positionTest = positionLocaleDeTest();
 if(!positionTest) demarrerLocalisation();
 demarrer(positionTest || positionMemorisee());
@@ -10066,12 +10417,39 @@ function ouvrirRecherche(){
   layerManager.activate(NOMS_COUCHES.searchOverlay);
   requestAnimationFrame(()=>$("#rech").focus());
 }
-function fermerRecherche(){
-  $("#rechercheOverlay").hidden = true;
-  $("#appHeader").hidden = false;
+function fermerRecherche(options){
+  const force = !!(options && options.force);
+  const dockee = !force && rechercheDockeeDesktopDemandee();
+  $("#rechercheOverlay").hidden = !dockee;
+  $("#appHeader").hidden = dockee;
   $("#suggestions").hidden = true;
   layerManager.deactivate(NOMS_COUCHES.searchOverlay);
 }
+
+/* Le grand bloc de recherche de l'état catégorie est le même formulaire que
+   la loupe de l'accueil. Il apparaît sans voler le focus, reste branché aux
+   suggestions et filtres, puis redevient une superposition sur téléphone. */
+function synchroniserRechercheDesktop(){
+  const overlay = $("#rechercheOverlay");
+  const header = $("#appHeader");
+  if(!overlay || !header) return;
+  const etaitDockee = overlay.classList.contains("recherche-dockee");
+  const dockee = rechercheDockeeDesktopDemandee();
+  overlay.classList.toggle("recherche-dockee", dockee);
+  if(dockee){
+    overlay.hidden = false;
+    header.hidden = true;
+    majRaccourcis();
+    return;
+  }
+  if(etaitDockee){
+    overlay.hidden = true;
+    header.hidden = false;
+    $("#suggestions").hidden = true;
+    layerManager.deactivate(NOMS_COUCHES.searchOverlay);
+  }
+}
+responsiveLayout.subscribe(()=>synchroniserRechercheDesktop());
 $("#btnLoupe").onclick = ouvrirRecherche;
 $("#btnFermerRech").onclick=()=>{
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
@@ -10226,7 +10604,7 @@ async function lancerRecherche(){
   const q = (champ.value || "").trim();
   if(!q) return;
   champ.blur();                 // referme le clavier avant de bouger la carte
-  fermerRecherche();
+  fermerRecherche({force:true});
   zoneAffichee = null;          // une nouvelle recherche remplace la précédente
   intentionCourante = null;     // et son interprétation avec elle
 
@@ -10582,8 +10960,6 @@ function ouvrirCanaux(){
 /* Ce que l'en-tête dit du lieu regardé. Tant que personne n'a donné sa
    position ni choisi de ville, il le dit — au lieu de faire croire que le
    point affiché est « autour de toi ». */
-const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
-
 function majEnteteLieu(){
   const v = $("#hdVille");
   if(!v) return;

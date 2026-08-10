@@ -19,19 +19,19 @@ Console Google Cloud → **API et services → Identifiants** → la clé
 
 ### 1 · Restriction d'application → Sites web (référents HTTP)
 
-Ajoutez exactement ces deux référents :
+Ajoutez exactement ces quatre référents :
 
 ```
+https://autour.eu/*
+https://www.autour.eu/*
 https://autour.vercel.app/*
 https://*.vercel.app/*
 ```
 
-Le second couvre les URL de prévisualisation que Vercel génère à chaque
+Les deux premiers couvrent le domaine de production, avec et sans `www`. Le
+dernier couvre les URL de prévisualisation que Vercel génère à chaque
 déploiement (`autour-abc123-votrecompte.vercel.app`). Sans lui, les
 préproductions cassent.
-
-Si vous branchez un jour un nom de domaine à vous, ajoutez-le aussi :
-`https://votredomaine.fr/*`.
 
 ⚠️ Ne mettez **pas** `http://localhost/*` en production. Pour développer en
 local, utilisez une seconde clé, restreinte à localhost et sans facturation.
