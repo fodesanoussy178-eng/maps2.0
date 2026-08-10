@@ -1,0 +1,174 @@
+# =============================================================================
+# Génère les jeux de démarrage par zone d'Autour
+#
+# Ce que fait ce travail : interroger Overpass pour chaque tuile listée dans
+# `autour/outils/villes.json`, écrire `autour/zones/<tuile>.json`, et pousser
+# le résultat. Vercel déploie ensuite ces fichiers comme des statiques.
+#
+# UNE TUILE PAR TÂCHE. La première version faisait les onze tuiles à la
+# suite : une instance Overpass lente suffisait à consommer les quarante-cinq
+# minutes du travail sans produire un seul fichier, et tout était perdu — y
+# compris les tuiles déjà obtenues. Chaque tuile a maintenant son propre
+# budget, sa propre instance, et son propre résultat. Une tuile qui échoue ne
+# coûte que cette tuile ; les autres sont publiées quand même.
+#
+# À quoi ça sert : au TOUT premier démarrage, sur un téléphone qui n'a rien en
+# mémoire, c'est la seule source de propositions qui ne dépende ni d'Overpass,
+# ni de Nominatim, ni d'une permission de géolocalisation. Voir
+# autour/docs/demarrage-a-froid.md.
+# =============================================================================
+
+name: Zones Autour
+
+on:
+  # `workflow_dispatch` et `schedule` ne s'exécutent que depuis la branche par
+  # défaut : c'est une règle de GitHub, pas un choix. Tant que ce fichier vit
+  # sur une branche de travail, c'est le déclencheur `push` qui sert — et il
+  # est filtré sur ce qui décide du contenu des zones, jamais sur les zones
+  # elles-mêmes, sinon le travail se relancerait sur son propre commit.
+  push:
+    paths:
+      - "autour/outils/zones.mjs"
+      - "autour/outils/villes.json"
+      - ".github/workflows/zones-autour.yml"
+  workflow_dispatch:
+  schedule:
+    # une fois par mois : ces données vieillissent lentement, et les sources
+    # fraîches les remplacent silencieusement à chaque ouverture de l'app
+    - cron: "17 4 1 * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zones-autour
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. La liste des tuiles, lue depuis villes.json — pas recopiée ici, sinon
+  #    les deux divergeraient au premier ajout de ville.
+  # ---------------------------------------------------------------------------
+  lister:
+    runs-on: ubuntu-latest
+    outputs:
+      tuiles: ${{ steps.calcul.outputs.tuiles }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: calcul
+        working-directory: autour
+        run: |
+          node -e '
+            const villes = require("./outils/villes.json");
+            const tuiles = [...new Set(villes
+              .filter(v => Number.isFinite(v.lat) && Number.isFinite(v.lng))
+              .map(v => v.lat.toFixed(1) + "," + v.lng.toFixed(1)))];
+            console.log(tuiles.length + " tuiles :", tuiles.join(" "));
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT,
+              "tuiles=" + JSON.stringify(tuiles) + "\n");
+          '
+
+  # ---------------------------------------------------------------------------
+  # 2. Une tuile, une tâche, un artefact. Trois à la fois : au-delà, on
+  #    martèlerait des instances publiques qui rendent ce service gratuitement.
+  # ---------------------------------------------------------------------------
+  generer:
+    needs: lister
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      max-parallel: 3
+      fail-fast: false
+      matrix:
+        tuile: ${{ fromJSON(needs.lister.outputs.tuiles) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Générer ${{ matrix.tuile }}
+        working-directory: autour
+        run: node outils/zones.mjs "${{ matrix.tuile }}"
+
+      - name: Déposer le résultat
+        uses: actions/upload-artifact@v4
+        with:
+          name: zone-${{ strategy.job-index }}
+          path: autour/zones/
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # 3. Rassembler, vérifier, publier. `always()` : on publie ce qu'on a même si
+  #    une tuile a échoué — dix zones valent mieux que zéro.
+  # ---------------------------------------------------------------------------
+  publier:
+    needs: generer
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Rassembler les tuiles
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/zones
+          pattern: zone-*
+          merge-multiple: true
+
+      - name: Vérifier ce qui a été produit
+        run: |
+          mkdir -p autour/zones
+          cp -f /tmp/zones/*.json autour/zones/ 2>/dev/null || true
+          echo "--- fichiers ---"
+          ls -la autour/zones/
+          echo "--- contrôle ---"
+          cd autour && node -e '
+            const fs = require("fs");
+            const fichiers = fs.readdirSync("zones").filter(f => f.endsWith(".json"));
+            if (!fichiers.length) { console.error("aucune zone générée"); process.exit(1); }
+            let total = 0;
+            for (const f of fichiers) {
+              const z = JSON.parse(fs.readFileSync("zones/" + f, "utf8"));
+              // la clé du fichier doit être celle que le client calcule
+              const attendue = z.centre[0].toFixed(1) + "," + z.centre[1].toFixed(1) + ".json";
+              if (f !== attendue) { console.error(f, "≠", attendue); process.exit(1); }
+              // chaque lieu doit être nommé, situé, et dans sa tuile
+              const [s, o, n, e] = z.bornes;
+              for (const l of z.lieux) {
+                if (!l.titre || !Number.isFinite(l.lat) || !Number.isFinite(l.lng)) {
+                  console.error(f, "lieu incomplet", JSON.stringify(l).slice(0, 120)); process.exit(1);
+                }
+                if (l.lat < s - 0.001 || l.lat > n + 0.001 || l.lng < o - 0.001 || l.lng > e + 0.001) {
+                  console.error(f, "lieu hors tuile", l.titre); process.exit(1);
+                }
+              }
+              total += z.lieux.length;
+              const ko = (fs.statSync("zones/" + f).size / 1024).toFixed(1);
+              console.log(f.padEnd(16), String(z.lieux.length).padStart(4), "lieux",
+                ko.padStart(7), "Ko  ", (z.noms || []).join(", "));
+            }
+            console.log("---", fichiers.length, "zones,", total, "lieux au total");
+          '
+
+      - name: Pousser
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add autour/zones
+          if git diff --cached --quiet; then
+            echo "aucun changement : les zones sont déjà à jour"
+            exit 0
+          fi
+          git commit -m "Zones Autour : jeux de démarrage régénérés depuis OpenStreetMap
+
+          Données OpenStreetMap sous licence ODbL, récoltées via Overpass par
+          autour/outils/zones.mjs. Ce sont les propositions affichées au tout
+          premier démarrage, avant toute API et avant toute géolocalisation."
+          # la branche a pu bouger pendant que les tuiles se généraient
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

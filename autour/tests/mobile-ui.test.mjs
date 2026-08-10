@@ -3,6 +3,13 @@ import {readFile} from "node:fs/promises";
 import test from "node:test";
 
 const html = await readFile(new URL("../index.html",import.meta.url),"utf8");
+/* Le démarrage à froid ne tient pas qu'au client : la ville vient du bord du
+   réseau, les lieux d'un relais mis en cache, et le tout premier lancement
+   d'un jeu pré-calculé. Ces fichiers font partie du chemin critique. */
+const middleware = await readFile(new URL("../middleware.js",import.meta.url),"utf8");
+const apiLieux = await readFile(new URL("../api/lieux.js",import.meta.url),"utf8");
+const apiCommune = await readFile(new URL("../api/commune.js",import.meta.url),"utf8");
+const zones = await readFile(new URL("../outils/zones.mjs",import.meta.url),"utf8");
 const temporel = await readFile(new URL("../temporel.js",import.meta.url),"utf8");
 const core = await readFile(new URL("../core.js",import.meta.url),"utf8");
 const comprendre = await readFile(new URL("../comprendre.js",import.meta.url),"utf8");
@@ -192,10 +199,11 @@ test("le bottom sheet propose au lieu de poser une question",()=>{
   assert.match(html,/function recommandationsAccueil/);
   assert.match(html,/class="rc-piste"/);
   assert.match(html,/data-rc-tout/);
-  // l'accueil s'ouvre tout seul — et sans attendre que des lieux existent :
-  // il montre son squelette pendant que les sources répondent
-  assert.equal((html.match(/if\(feuilleNiveau === null && !modeNav && !modePose\) ouvrirAccueilFeuille\(\);/g)||[]).length, 2,
-    "à l'ouverture de la carte, puis une fois les lieux arrivés");
+  // l'accueil s'ouvre tout seul — et sans attendre que des lieux existent.
+  // Avec le jeu rapide il s'ouvre directement sur les propositions gardées,
+  // sinon sur le squelette ; dans les deux cas avant toute requête.
+  assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose\)\{\s*\n\s*if\(rapide\) ouvrirFeuille2\("racine"\);/);
+  assert.match(html,/else ouvrirAccueilFeuille\(\);/);
   assert.doesNotMatch(html,/!modePose && lieux\.length\) ouvrirAccueilFeuille/);
 });
 
@@ -463,8 +471,12 @@ test("les événements créés peuvent porter une image stockée dans Supabase",
   assert.match(html,/sb\.storage\.from\("evenements"\)/);
   assert.match(html,/image_url:l\.image \|\| null/);
   assert.match(html,/image:p\.image_url \|\| p\.image \|\| ""/);
-  // l'image part avant la fiche, sinon la publication se ferait sans URL
-  assert.match(html,/if\(b\.imageFichier\) l\.image = await Store\.televerserImage/);
+  // l'image monte pendant que l'affiche est déjà sur la carte : la publication
+  // est optimiste, mais l'insertion en base porte bien l'URL définitive
+  assert.match(html,/const image = b\.imageFichier \? await Store\.televerserImage\(b\.imageFichier\) : "";/);
+  assert.match(html,/Store\.publier\(Object\.assign\(\{\}, l, \{image\}\)\)/);
+  // et un aperçu local s'affiche tout de suite, sans attendre le téléversement
+  assert.match(html,/image: b\.imageFichier \? URL\.createObjectURL\(b\.imageFichier\) : "",/);
 });
 
 test("le formulaire propose une photo sans l'imposer",()=>{
@@ -589,7 +601,9 @@ test("l'identité n'est réclamée qu'au moment du favori",()=>{
 });
 
 test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()=>{
-  assert.match(html,/m\.on\("click", \(\)=>\{ mettreAJourProfil\("clic", l\.cat\); ouvrirFicheCompacte\(l\); \}\);/);
+  assert.match(html,/mettreAJourProfil\("clic", l\.cat\); ouvrirFicheCompacte\(l\);/);
+  // sauf une affiche dont l'envoi a échoué : l'appui la retente
+  assert.match(html,/if\(l\.envoi === "echec"\)\{ reessayerPublication\(l\.id\); return; \}/);
   assert.match(html,/function ouvrirFicheCompacte/);
   assert.match(html,/class="fc-voir">Voir/);
   // « Voir » seulement ensuite ouvre le détail
@@ -872,7 +886,10 @@ test("un seul jeu de prédicats pour la barre et les suggestions",()=>{
 test("« Trouver de l'aide » est un contrôle permanent de la carte",()=>{
   // il vivait dans le rail des intentions, donc derrière la loupe : ce n'est
   // pas une envie parmi d'autres, ça doit être à un doigt
-  assert.match(html,/id="btnAide" hidden aria-pressed="false"/);
+  // plus de `hidden` : la coquille est peinte par le navigateur, pas révélée
+  // par le script — c'est ce qui fait apparaître l'écran avant l'analyse du JS
+  assert.match(html,/id="btnAide" aria-pressed="false"/);
+  assert.doesNotMatch(html,/id="btnAide" hidden/);
   assert.match(html,/#btnAide\{bottom:calc\(var\(--map-control-bottom\) \+ 108px\)\}/);
   assert.match(html,/#btnAide\.actif\{/);
   assert.match(html,/\$\("#btnAide"\)\.onclick=\(\)=>\{/);
@@ -1078,9 +1095,13 @@ test("sans position connue, l'application ne prétend pas savoir où on est",()=
   // autour de toi » : deux affirmations fausses d'affilée
   assert.match(html,/let originePosition = null;/);
   assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
-  assert.match(html,/originePosition = coords \? "memoire" : null;/);
+  // trois provenances, aucune ne devine : mémoire, ville déduite par le
+  // serveur, ou rien du tout
+  assert.match(html,/if\(coords\)\{ originePosition = "memoire"; originePrecision = "point";/);
+  assert.match(html,/originePosition = "serveur"; originePrecision = "ville";/);
+  assert.match(html,/else \{ originePosition = null; originePrecision = null;/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
-  assert.match(html,/if\(positionConnue\(\)\) detecterVille\(positionMoi\[0\], positionMoi\[1\]\);/);
+  assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
   // et surtout : plus jamais « rien autour de toi » quand on ignore où est « toi »
   assert.match(html,/const montrer = \(erreurPartielle \|\| \(videReel && positionConnue\(\)\)\)/);
@@ -1144,7 +1165,7 @@ test("les liens partagés ont une adresse propre, sans casser les anciens",()=>{
 
 test("l'attribution cartographique est lisible sur la carte",()=>{
   // elle vivait entièrement derrière le « ⓘ », c'est-à-dire nulle part
-  assert.match(html,/<div id="attribution" hidden>/);
+  assert.match(html,/<div id="attribution">/);
   assert.match(html,/openstreetmap\.org\/copyright[^>]*>OSM<\/a>/);
   assert.match(html,/carto\.com\/attributions[^>]*>CARTO<\/a>/);
   assert.match(html,/#attribution\{position:absolute/);
@@ -1394,7 +1415,7 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
   // le groupe temporel aussi : on ne parle pas de vide pendant qu'on charge
   assert.match(html,/if\(rechercheEnCours\(\)\) return squeletteHTML\(3\);\s*\n\s*if\(!positionConnue\(\)\)/);
   // et l'accueil s'ouvre sans attendre Overpass
-  assert.match(html,/L'accueil s'ouvre TOUT DE SUITE, avec son squelette/);
+  assert.match(html,/L'accueil s'ouvre TOUT DE SUITE\./);
 });
 
 test("l'accueil propose quatre besoins rapides",()=>{
@@ -1494,4 +1515,276 @@ test("la clé Google est documentée, et son absence ne casse rien",()=>{
   // chaque appel vérifie la clé avant de partir
   const gardes = (html.match(/if\(!CLE_GOOGLE/g) || []).length;
   assert.ok(gardes >= 5, "tous les appels Google sont gardés : "+gardes);
+});
+
+/* ==========================================================================
+   Passe « instant-first » : ce qui décide du temps entre l'ouverture et
+   l'écran utilisable
+   ======================================================================== */
+
+test("chaque étape du démarrage est mesurée, pas ressentie",()=>{
+  // les jalons attendus, du script à la fin du démarrage
+  for(const jalon of ["script","boot_debut","ui_ready","premier_lieu","map_ready",
+                      "geolocation_demandee","geolocation_ready","overpass_done",
+                      "google_pret","supabase_pret","demarrage_termine","rendu_final"])
+    assert.match(html, new RegExp('PERF\\.jalon\\("'+jalon+'"\\)'), jalon+" doit être marqué");
+  // durées nommées, lisibles dans l'onglet Performance du navigateur
+  assert.match(html,/mesure\(nom, depuis, jusqua\)/);
+  assert.match(html,/PERF\.mesure\("géolocalisation", "geolocation_demandee", "geolocation_ready"\)/);
+  assert.match(html,/PERF\.mesure\("démarrage", "boot_debut", "demarrage_termine"\)/);
+  // LCP et DOMContentLoaded font partie du rapport
+  assert.match(html,/type:"largest-contentful-paint", buffered:true/);
+  assert.match(html,/lignes\["dom-content-loaded"\] = Math\.round\(nav\.domContentLoadedEventEnd\)/);
+  // et les objectifs sont écrits, pour que la mesure dise elle-même si elle tient
+  assert.match(html,/OBJECTIFS: \{"first-contentful-paint":1000, "largest-contentful-paint":2500,/);
+});
+
+test("un seul rendu par image, quel que soit le nombre de sources",()=>{
+  assert.match(html,/function planifierRendu\(quoi\)\{/);
+  // fusionner ne redessine plus trois fois de suite
+  assert.match(html,/planifierRendu\(\{carte:true, accueil:true, filtres:true\}\);/);
+  assert.doesNotMatch(html,/reindexerCategories\(\);\s*\n\s*rendre\(\);\s*\n\s*dessinerFiltres\(\);/);
+  // les fonctions ne se rappellent pas entre elles pendant un lot
+  assert.match(html,/if\(feuilleNiveau !== null && !renduEnLot\) majFeuille2\(\);/);
+  assert.match(html,/if\(renduEnLot\) return;/);
+});
+
+test("rien de lourd avant la première peinture",()=>{
+  assert.match(html,/function apresPeinture\(f\)\{/);
+  assert.match(html,/requestAnimationFrame\(\(\)=>requestAnimationFrame\(\(\)=>f\(\)\)\)/);
+  // le cache complet, les requêtes et la carte viennent APRÈS
+  assert.match(html,/apresPeinture\(\(\)=>chargerLeDemarrage\(rapide\)\);/);
+  const peinture = html.indexOf("apresPeinture(()=>chargerLeDemarrage(rapide));");
+  assert.ok(peinture > 0 && peinture < html.indexOf("function chargerLeDemarrage"),
+    "demarrer() se termine sur la peinture, le reste suit");
+});
+
+test("le jeu rapide affiche les propositions de la dernière session",()=>{
+  assert.match(html,/const CLE_RAPIDE = "autour:rapide:v1";/);
+  assert.match(html,/const RAPIDE_MAX = 50;/);
+  assert.match(html,/function memoriserJeuRapide\(choisis, reserve\)\{/);
+  assert.match(html,/function lireJeuRapide\(lat,lng\)\{/);
+  // il n'est lu que s'il décrit vraiment l'endroit où l'on est
+  assert.match(html,/distanceM\(lat,lng,o\.zone\[0\],o\.zone\[1\]\) > RAPIDE_RAYON_M\) return null;/);
+  assert.match(html,/if\(Date\.now\(\) - o\.t > RAPIDE_HEURES\*3600\*1000\) return null;/);
+  // et il est posé sans déclencher de reclassement avant la première image
+  assert.match(html,/fusionner\(rapide\.lieux, "permanent", \{silencieux:true\}\);/);
+  // l'écriture ne se fait pas sur le fil critique
+  assert.match(html,/quandLibre\(\(\)=>\{\s*\n\s*try\{\s*\n\s*const vus = new Set\(\);/);
+});
+
+test("Overpass n'est jamais ce qu'on attend au démarrage",()=>{
+  assert.match(html,/const OVERPASS_DELAI_BOOT = 7000;/);
+  assert.match(html,/const OVERPASS_DELAI_DEMANDE = 25000;/);
+  assert.match(html,/vraisLieux\(lat,lng,null,\{delai:OVERPASS_DELAI_BOOT,/);
+  assert.match(html,/rayon:RAYON_BOOT, limite:PLAFOND_BOOT\}\)/);
+  assert.match(html,/const RAYON_BOOT = 900;/);
+  assert.match(html,/const PLAFOND_BOOT = 90;/);
+  // et le quartier entier arrive derrière, sans rien retarder
+  assert.match(html,/PERF\.jalon\("quartier_complet"\);/);
+  // le délai voyage jusqu'à la requête
+  assert.match(html,/const delai = o\.delai \|\| OVERPASS_DELAI_DEMANDE;/);
+  assert.doesNotMatch(html,/overpass\(`\[out:json\]\[timeout:25\];/);
+});
+
+test("la carte est une couche, pas une condition",()=>{
+  assert.match(html,/function installerCarte\(\)\{/);
+  assert.match(html,/function attendreLeaflet\(\)\{/);
+  assert.match(html,/leaflet\.js" async data-leaflet/);
+  // sans Leaflet, l'application vit : plus d'écran de panne
+  assert.doesNotMatch(html,/panne\("Carte indisponible"/);
+  assert.match(html,/Carte indisponible · les propositions restent affichées/);
+  // les recommandations ne dépendent plus de la carte
+  assert.match(html,/function majAccueil\(\)\{[\s\S]{0,400}if\(!positionMoi \|\| modeNav\) return;/);
+  // et la feuille de style de Leaflet ne bloque plus la première peinture
+  assert.match(html,/<link rel="stylesheet" media="print" data-leaflet-css/);
+});
+
+test("la géolocalisation part avec l'interface et se voit à l'arrivée",()=>{
+  // lancée AVANT demarrer(), pas après
+  const geo = html.indexOf("if(!positionTest) suivreMaPosition();");
+  const dem = html.indexOf("demarrer(positionTest || positionMemorisee());");
+  assert.ok(geo > 0 && dem > 0 && geo < dem, "la position est demandée en parallèle");
+  // plus de bandeau « Recherche de ta position… » à côté d'un bouton « Activer »
+  assert.doesNotMatch(html,/etat\("Recherche de ta position…", true\);/);
+  // à l'arrivée, l'écran change : en-tête, ville, point bleu, propositions
+  assert.match(html,/\$\("#bandeauGeo"\)\.hidden = true;\s*\n\s*majEnteteLieu\(\);\s*\n\s*detecterVille\(c\[0\], c\[1\]\);/);
+  assert.match(html,/planifierRendu\(\{accueil:true, carte:true, feuille:true\}\);/);
+  assert.match(html,/if\(premiereFois\) toast\("Position trouvée · autour de toi"\);/);
+  // et le quartier réel se charge
+  assert.match(html,/chargerZone\(c\[0\], c\[1\], \{delai:OVERPASS_DELAI_BOOT\}\);/);
+});
+
+test("la mise à jour se signale, elle ne vide pas l'écran",()=>{
+  assert.match(html,/function majSignalMaj\(actif\)\{/);
+  assert.match(html,/c\.textContent="Mise à jour…"/);
+  assert.match(html,/#charge\.discret\{/);
+  // quand on a déjà quelque chose à montrer, pas de gros chargement
+  assert.match(html,/if\(rapide\) majSignalMaj\(true\); else charge\("Recherche autour de toi…"\);/);
+});
+
+test("un événement publié apparaît tout de suite, et son retard se voit",()=>{
+  // l'affiche est posée avant l'aller-retour réseau
+  const pose = html.indexOf('fusionner([l], "user");');
+  const reseau = html.indexOf("const minuteurRetard = setTimeout");
+  assert.ok(pose > 0 && reseau > pose, "l'affiche précède le réseau");
+  assert.match(html,/const ATTENTE_VISIBLE_MS = 2000;/);
+  assert.match(html,/function marquerPublication\(id, etat\)\{/);
+  // le statut s'écrit là où l'affiche dit son prix et ses places
+  assert.match(html,/<span class="a-envoi">Envoi…<\/span>/);
+  assert.match(html,/<span class="a-envoi a-echec">Non publié · Réessayer<\/span>/);
+  assert.match(html,/\(l\.places!=null && !l\.annule\?'<span class="a-places">/);
+  assert.match(html,/\.a-envoi\{flex-basis:100%/);
+  // un marqueur déjà posé suit le changement d'état
+  assert.match(html,/if\(existant\._envoi !== l\.envoi\)\{/);
+  // et l'échec se retente
+  assert.match(html,/async function reessayerPublication\(id\)\{/);
+});
+
+test("ce qu'on vient de publier reste à l'écran",()=>{
+  assert.match(html,/const EPINGLE_MS = 10\*60\*1000;/);
+  assert.match(html,/function epinglerPublication\(id\)\{/);
+  assert.match(html,/epinglerPublication\(l\.id\);\s*\n\s*fusionner\(\[l\], "user"\);/);
+  // il passe le filtre « maintenant », le classement et la liste
+  assert.match(html,/if\(epingles\.length && epingles\.includes\(l\.id\)\) return true;/);
+  assert.match(html,/if\(publicationsEpinglees\.has\(l\.id\)\) return true;/);
+  assert.match(html,/return avecEpingles\(classement\)\.slice\(0, limite \|\| 12\);/);
+  // et l'épingle suit l'identifiant que la base attribue
+  assert.match(html,/publicationsEpinglees\.delete\(l\.id\);\s*\n\s*epinglerPublication\(enligne\.id\);/);
+  // déclarés avant leur premier usage
+  assert.ok(html.indexOf("const publicationsEpinglees") < html.indexOf("function visiblesBruts"),
+    "publicationsEpinglees doit précéder visiblesBruts");
+});
+
+/* ==========================================================================
+   Démarrage à froid : aucune première suggestion ne doit dépendre d'un tiers
+   ======================================================================== */
+
+test("la ville est connue avant que la page ne s'exécute",()=>{
+  // le cookie est posé par le bord du réseau, sur la réponse du document
+  assert.match(middleware,/x-vercel-ip-latitude/);
+  assert.match(middleware,/x-vercel-ip-city/);
+  assert.match(middleware,/set-cookie/);
+  assert.match(middleware,/autour_geo=/);
+  // lisible par le script de la page : le cookie posé ne porte pas HttpOnly
+  const pose = /"autour_geo=" \+[\s\S]*?\);/.exec(middleware);
+  assert.ok(pose, "le cookie doit être posé");
+  assert.doesNotMatch(pose[0],/HttpOnly/i);
+  assert.match(middleware,/SameSite=Lax/);
+  // rien de plus que deux nombres et un nom : pas d'identifiant, pas de trace
+  assert.doesNotMatch(middleware,/x-vercel-ip-(?!latitude|longitude|city|country)/);
+  assert.match(middleware,/runtime: "edge"/);
+  // et le client le lit
+  assert.match(html,/function positionServeur\(\)\{/);
+  assert.match(html,/document\.cookie\.match\(\/\(\?:\^\|;\\s\*\)autour_geo=/);
+});
+
+test("une position de ville ne se fait pas passer pour un point GPS",()=>{
+  assert.match(html,/let originePrecision = null;/);
+  assert.match(html,/const positionPrecise = \(\)=>originePrecision === "point";/);
+  // aucun temps de trajet tant qu'on n'a que la ville
+  assert.match(html,/if\(!TRANSIT \|\| !positionMoi \|\| !positionPrecise\(\)\) return;/);
+  // la vraie géolocalisation, elle, débloque la précision
+  assert.match(html,/originePrecision = "point";\s+\/\/ désormais on peut parler en minutes/);
+  // déclaré avant son premier usage
+  assert.ok(html.indexOf("let originePrecision") < html.indexOf("positionPrecise()"),
+    "originePrecision doit précéder son premier usage");
+});
+
+test("Overpass et Nominatim passent par notre propre origine",()=>{
+  assert.match(html,/async function overpassRelaye\(q, msMax, signal\)\{/);
+  assert.match(html,/fetch\("\/api\/lieux\?q="\+encodeURIComponent\(q\)/);
+  assert.match(html,/async function communeRelayee\(lat,lng\)\{/);
+  assert.match(html,/fetch\("\/api\/commune\?lat="\+lat\+"&lng="\+lng\)/);
+  // une route absente n'est demandée qu'une fois, puis on passe en direct
+  assert.match(html,/if\(r\.status === 404 \|\| r\.status === 405\)\{ relaisLieux = false; return undefined; \}/);
+  assert.match(html,/if\(relaisCommune === false\) return undefined;/);
+  // une seule requête de commune en vol à la fois
+  assert.match(html,/if\(communesEnVol\.has\(cle\)\) return communesEnVol\.get\(cle\);/);
+  // seules les requêtes de lieux passent par le relais : le décor a une autre forme
+  assert.match(html,/async function overpass\(q, msMax, signal, viaRelais\)\{/);
+  assert.match(html,/if\(viaRelais\)\{/);
+});
+
+test("le relais Overpass n'est pas un relais ouvert",()=>{
+  assert.match(apiLieux,/const FORME = \//);
+  assert.match(apiLieux,/if \(!FORME\.test\(q\)\) return refus/);
+  assert.match(apiLieux,/if \(q\.length > LONGUEUR_MAX\)/);
+  assert.match(apiLieux,/if \(!sortie \|\| sortie > SORTIE_MAX\)/);
+  // et il mutualise : c'est tout l'intérêt
+  assert.match(apiLieux,/s-maxage=86400, stale-while-revalidate=604800/);
+  // plusieurs instances : une muette ne fait pas tomber la route
+  assert.ok((apiLieux.match(/api\/interpreter/g)||[]).length >= 3);
+  assert.match(apiCommune,/s-maxage=2592000/);
+  assert.match(apiCommune,/user-agent/i, "la politique de Nominatim demande de s'identifier");
+});
+
+test("au tout premier démarrage, une source qui ne dépend de personne",()=>{
+  assert.match(html,/async function lieuxDeZone\(lat,lng\)\{/);
+  assert.match(html,/fetch\("zones\/"\+cleZoneStatique\(lat,lng\)\+"\.json"\)/);
+  assert.match(html,/if\(!rapide && positionMoi\) demarrerSurZonePrecalculee/);
+  // 404 : on note et on ne redemande plus
+  assert.match(html,/if\(r\.status === 404\) zonesDisponibles = false;/);
+  // et surtout : rien n'est inventé quand la zone n'existe pas
+  assert.match(html,/if\(!depart \|\| !depart\.length\) return;/);
+  // le générateur existe et n'écrit rien qu'il n'ait reçu
+  assert.match(zones,/aucun lieu exploitable — tuile ignorée/);
+  assert.match(zones,/if \(!p\.lat \|\| !p\.lon \|\| !t\.name\) return null;/);
+  // il écrit sous la clé EXACTE que le client calcule, sinon les fichiers
+  // produits ne seraient jamais demandés
+  assert.match(zones,/const cleTuile = \(lat, lng\) => lat\.toFixed\(1\) \+ "," \+ lng\.toFixed\(1\);/);
+  assert.match(html,/const cleZoneStatique = \(lat,lng\)=> lat\.toFixed\(1\)\+","\+lng\.toFixed\(1\);/);
+  // et il couvre la tuile entière, pas seulement son centre : 0,1° font
+  // onze kilomètres sur sept, le classement n'en garde que 2,5
+  assert.match(zones,/const DEMI_TUILE = 0\.05;/);
+  assert.match(zones,/function eclaircir\(lieux, b\)/);
+});
+
+test("la coquille est peinte par le navigateur, pas par le script",()=>{
+  for(const id of ["appHeader","navBas","btnAide","btnTransports","attribution"])
+    assert.doesNotMatch(html, new RegExp('id="'+id+'"[^>]*\\shidden'),
+      id+" ne doit plus attendre JavaScript pour exister");
+  // la ligne qui les révélait reste : elle sert au retour de navigation
+  assert.match(html,/\["#appHeader","#navBas","#btnAide","#btnTransports","#attribution"\]\s*\n\s*\.forEach\(s=>\$\(s\)\.hidden=false\);/);
+});
+
+test("la chaîne du démarrage est lisible maillon par maillon",()=>{
+  for(const [nom] of [["boot UI"],["position"],["cache local"],["1re source locale"],
+                      ["Overpass"],["Nominatim"],["Supabase"],["classement"],["1re suggestion"]])
+    assert.ok(html.includes('"'+nom+'"'), "la chaîne doit nommer « "+nom+" »");
+  assert.match(html,/chaine\(\)\{/);
+  assert.match(html,/PERF\.jalon\("cache_lu"\)/);
+  assert.match(html,/PERF\.jalon\("source_locale"\)/);
+  assert.match(html,/PERF\.jalon\("scoring_fait"\)/);
+  assert.match(html,/PERF\.jalon\("nominatim_done"\)/);
+  // l'objectif de coquille est celui qu'on s'est donné
+  assert.match(html,/ui_ready:300/);
+});
+
+test("un jeu de zone couvre la tuile, le démarrage n'en paie que le voisinage",()=>{
+  // le fichier décrit onze kilomètres sur sept…
+  assert.match(zones,/const PLAFOND = 120;/);
+  assert.match(zones,/const GRILLE = 6;/);
+  // …mais fusionner cent lieux coûte des secondes de fil principal pour en
+  // afficher cinq : on ne prend que les plus proches
+  assert.match(html,/const RAPIDE_VOISINAGE = 25;/);
+  assert.match(html,/\.sort\(\(a,b\)=>a\._d - b\._d\)\s*\n\s*\.slice\(0, RAPIDE_VOISINAGE\)/);
+  // et la marque de distance ne survit pas au tri
+  assert.match(html,/\.map\(l=>\{ delete l\._d; return l; \}\)/);
+});
+
+test("une instance régionale ne décide pas qu'un quartier est vide",()=>{
+  // `overpass.osm.ch` ne contient que la Suisse : elle répondait « zéro objet »
+  // en huit dixièmes de seconde à toute requête française, et les trois chemins
+  // acceptaient cette réponse. Constaté en produisant les zones de Lille.
+  for (const [nom, source] of [["le client", html], ["le relais", apiLieux], ["le générateur", zones]])
+    assert.doesNotMatch(source, /"https:\/\/overpass\.osm\.ch/, nom+" ne doit plus l'interroger");
+  // et une réponse vide n'est plus une réponse, où qu'elle arrive
+  assert.match(apiLieux,/if \(!j\.elements\.length\) continue;/);
+  assert.match(zones,/if \(!j\.elements\.length\) \{/);
+  // surtout, le relais ne met jamais un quartier vide en cache pour la journée
+  const avantCache = apiLieux.indexOf("if (!j.elements.length) continue;");
+  const cache = apiLieux.indexOf('"cache-control": "public, s-maxage=86400');
+  assert.ok(avantCache > 0 && avantCache < cache,
+    "le garde-fou doit précéder la mise en cache");
 });

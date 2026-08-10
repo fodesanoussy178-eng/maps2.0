@@ -20,14 +20,46 @@ test("le HTML se revalide, les modules sont immuables", () => {
   // le HTML : revalidation à chaque ouverture, sinon Safari sert une vieille
   // version pendant des jours
   const tout = vercel.headers[vercel.headers.length - 1];
-  assert.equal(tout.source, "/(.*)");
+  assert.match(tout.source, /^\/:chemin/);
   assert.match(valeur(tout), /max-age=0/);
   assert.match(valeur(tout), /must-revalidate/);
+  // …mais elle ne doit PAS écraser le cache des fonctions ni des jeux de zone :
+  // c'est tout ce qui rend le démarrage à froid indépendant d'Overpass
+  assert.match(tout.source, /\(\?!api\/\|zones\/\)/,
+    "la règle générale doit épargner /api et /zones");
+
+  // les jeux de zone : c'est ce qui s'affiche au tout premier lancement
+  const zones = regle("/zones/(.*)");
+  assert.ok(zones, "une règle doit viser les jeux de démarrage par zone");
+  assert.match(valeur(zones), /s-maxage=\d{5,}/);
+  assert.match(valeur(zones), /stale-while-revalidate/);
 
   // l'ordre compte : la règle générale ne doit pas précéder les .js
   assert.ok(vercel.headers.findIndex((h) => h.source === "/(.*)\\.js")
-          < vercel.headers.findIndex((h) => h.source === "/(.*)"),
+          < vercel.headers.length - 1,
     "la règle .js doit passer avant la règle générale");
+});
+
+/* `vercel.json` est validé par un schéma au déploiement : une clé inconnue —
+   un `comment` bien intentionné, par exemple — fait échouer le build entier.
+   Le raisonnement derrière chaque règle vit donc dans docs/demarrage-a-froid.md,
+   et ce test garde la porte. */
+test("vercel.json ne porte aucune clé hors schéma", () => {
+  const clesRegle = new Set(["source", "headers", "has", "missing"]);
+  vercel.headers.forEach((regle, i) => {
+    Object.keys(regle).forEach((k) => assert.ok(clesRegle.has(k),
+      "headers[" + i + "] : « " + k + " » n'existe pas dans le schéma Vercel"));
+    regle.headers.forEach((h) => {
+      assert.deepEqual(Object.keys(h).sort(), ["key", "value"]);
+    });
+  });
+  vercel.rewrites.forEach((regle, i) => {
+    Object.keys(regle).forEach((k) => assert.ok(
+      ["source", "destination", "has", "missing"].includes(k),
+      "rewrites[" + i + "] : « " + k + " » n'existe pas dans le schéma Vercel"));
+  });
+  // et rien d'autre à la racine que ce que ce fichier déclare volontairement
+  assert.deepEqual(Object.keys(vercel).sort(), ["headers", "rewrites"]);
 });
 
 test("chaque module est appelé avec l’empreinte de son contenu", async () => {

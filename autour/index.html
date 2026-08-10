@@ -23,7 +23,14 @@
 <link rel="manifest" href="manifest.json" />
 <meta name="apple-mobile-web-app-title" content="Autour" />
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<!-- La feuille de style de Leaflet vient d'un CDN et bloquait la première
+     peinture : tant qu'elle n'était pas arrivée, l'écran restait blanc, y
+     compris quand tout le contenu était déjà prêt. Elle ne sert qu'à la carte,
+     qui s'installe désormais après le contenu essentiel — elle est donc
+     chargée sans bloquer, et la carte se remesure à son arrivée. -->
+<link rel="stylesheet" media="print" data-leaflet-css
+      onload="this.media='all';window.AutourCarteRemesurer&&window.AutourCarteRemesurer()"
+      href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <!-- les polices ne doivent pas retarder le premier affichage : chargées en
@@ -95,6 +102,15 @@ input{font-family:inherit;font-size:16px}
 .a-titre{font-size:12.5px;font-weight:600;line-height:1.25}
 .a-lieu{font-size:11px;line-height:1.25;opacity:.75}
 .a-places{opacity:.72;font-weight:500}
+/* Le statut d'envoi occupe la même ligne que le prix et les places, avec le
+   même poids typographique : c'est ce qu'on regarde en premier sur une affiche,
+   donc c'est là qu'un retard doit se lire. Il ne prend la place de rien — il
+   s'ajoute, et disparaît dès que la base a confirmé. */
+.a-envoi{flex-basis:100%;margin-top:3px;padding:2px 6px;border-radius:4px;
+  background:rgba(31,42,37,.1);font-weight:700;letter-spacing:.06em}
+.gratuit .a-envoi{background:rgba(255,255,255,.28)}
+.a-envoi.a-echec{background:var(--aide);color:#fff}
+.affiche.a-rate{border-color:var(--aide)}
 .gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
 .payant{background:#fff;color:var(--ink)}
 .payant .a-haut{color:var(--ink2)}
@@ -254,6 +270,12 @@ input{font-family:inherit;font-size:16px}
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+/* Quand l'écran montre déjà les propositions de la dernière session, il n'y a
+   rien à faire attendre : la mise à jour se signale au lieu de s'annoncer.
+   Même pastille, discrète — pas de voile, pas d'animation plein écran, et
+   surtout aucune carte retirée le temps que le réseau réponde. */
+#charge.discret{background:rgba(255,255,255,.9);border-color:transparent;color:var(--ink2);
+  box-shadow:0 1px 6px rgba(20,30,25,.1);letter-spacing:.06em}
 
 /* ---- En-tête flottant compact -------------------------------------------
    La carte est le produit : l'interface se pose dessus au lieu de la
@@ -1256,7 +1278,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
      décor derrière ça, pas l'interface elle-même. -->
 <!-- En-tête flottant compact : la carte domine, l'interface se pose dessus.
      Une pastille de contexte, une loupe, une cloche. Rien d'autre. -->
-<header id="appHeader" hidden>
+<header id="appHeader">
   <!-- Le lieu regardé, et rien d'autre. Cette pastille portait aussi
        « Maintenant », ce qui faisait deux commandes du temps (ici et dans la
        feuille) et brouillait la seule question qu'elle doit répondre : où
@@ -1309,18 +1331,18 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
      permanent de la carte et non une pastille du rail des intentions. -->
 <!-- Une capsule, pas un rond : un cœur seul se lit « favoris », « santé »,
      « j'aime » — tout sauf « aide ». Le mot est donc écrit, sans clic. -->
-<button class="capsule-flottante" id="btnAide" hidden aria-pressed="false" aria-label="Trouver de l’aide : manger, logement, santé, papiers">
+<button class="capsule-flottante" id="btnAide" aria-pressed="false" aria-label="Trouver de l’aide : manger, logement, santé, papiers">
   <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
   <b>Aide</b>
 </button>
-<button class="rond-flottant" id="btnTransports" hidden aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
+<button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
 </button>
 
 <!-- Attribution : légalement due, et donc lisible sur la carte elle-même.
      Elle vivait entièrement derrière le « ⓘ », c'est-à-dire nulle part pour
      qui ne clique pas. Compacte, discrète, mais présente. -->
-<div id="attribution" hidden>
+<div id="attribution">
   <span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OSM</a>
   · <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></span>
   <button id="btnCredits" aria-label="Sources et attributions" aria-expanded="false">ⓘ</button>
@@ -1349,7 +1371,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <!-- Navigation basse. « Messages » ne sert qu'à prévenir les participants
      d'un événement qu'on a créé (annulation, changement d'horaire, limite
      de places) : il ne s'active donc que si on a publié quelque chose. -->
-<nav id="navBas" hidden>
+<nav id="navBas">
   <!-- « Autour de moi » et « Pour toi » ouvraient le même écran par deux
        portes : c'était deux noms pour une seule chose. Il n'en reste qu'une,
        Explorer, et le temps se choisit à l'intérieur (Maintenant, Ce soir,
@@ -1418,7 +1440,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="toast" hidden></div>
 <div id="panne" hidden></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<!-- Leaflet est chargé en `async` : il ne bloque plus l'analyse du script de
+     l'application, qui fait dix fois sa taille et n'a aucun besoin de lui pour
+     afficher les propositions. Il s'installe quand il arrive (`installerCarte`),
+     et son absence ne coûte que la carte. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" async data-leaflet></script>
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=9024fc47"></script>
@@ -1697,24 +1723,142 @@ function estFerme(l){
    `AutourPerf.rapport()` rend le tableau des durées depuis l'ouverture. */
 const PERF = {
   vus: new Set(),
+  lcp: 0,
   jalon(nom){
     // un jalon décrit un premier instant : le remarquer cent fois le noierait
     if(this.vus.has(nom)) return;
     this.vus.add(nom);
     try{ performance.mark("autour:"+nom); }catch(e){}
   },
+  /* Une étape a une durée, pas seulement un instant. `mesure` la nomme pour
+     qu'elle apparaisse telle quelle dans l'onglet Performance du navigateur —
+     c'est ce qui permet de dire « la géolocalisation a coûté 900 ms » au lieu
+     de le déduire de deux nombres. */
+  mesure(nom, depuis, jusqua){
+    try{ performance.measure(nom, "autour:"+depuis, "autour:"+jusqua); }catch(e){}
+  },
   rapport(){
-    const marques = performance.getEntriesByType("mark")
-      .filter(m=>m.name.startsWith("autour:"));
-    const fcp = performance.getEntriesByType("paint")
-      .find(e=>e.name === "first-contentful-paint");
     const lignes = {};
-    if(fcp) lignes["first-contentful-paint"] = Math.round(fcp.startTime);
-    marques.forEach(m=>{ lignes[m.name.slice(7)] = Math.round(m.startTime); });
+    performance.getEntriesByType("paint")
+      .forEach(e=>{ lignes[e.name] = Math.round(e.startTime); });
+    if(this.lcp) lignes["largest-contentful-paint"] = Math.round(this.lcp);
+    const nav = performance.getEntriesByType("navigation")[0];
+    if(nav){
+      lignes["dom-interactive"] = Math.round(nav.domInteractive);
+      lignes["dom-content-loaded"] = Math.round(nav.domContentLoadedEventEnd);
+    }
+    performance.getEntriesByType("mark")
+      .filter(m=>m.name.startsWith("autour:"))
+      .forEach(m=>{ lignes[m.name.slice(7)] = Math.round(m.startTime); });
+    // lecture chronologique : c'est l'ordre qui raconte le démarrage
+    return Object.fromEntries(Object.entries(lignes).sort((a,b)=>a[1]-b[1]));
+  },
+  /* Les objectifs sont écrits ici pour que la mesure dise elle-même si elle
+     les tient — sinon chacun garde en tête un chiffre différent. */
+  OBJECTIFS: {"first-contentful-paint":1000, "largest-contentful-paint":2500,
+              ui_ready:300, premier_lieu:1500},
+  verdict(){
+    const r = this.rapport(), out = {};
+    Object.entries(this.OBJECTIFS).forEach(([k,cible])=>{
+      if(r[k] != null) out[k] = r[k] + " ms / " + cible + " ms " + (r[k] <= cible ? "✓" : "✗");
+    });
+    return out;
+  },
+  /* La chaîne du démarrage, dans l'ordre où elle se déroule, chaque maillon
+     avec son instant et ce qu'il a coûté. C'est ce tableau qui répond à la
+     seule question qui compte : QUI retient la première suggestion.
+     Un maillon absent n'a pas eu lieu — une source en panne, un cache vide —
+     et c'est une information, pas un trou. */
+  CHAINE: [
+    ["boot UI",              "ui_ready"],
+    ["position",             ["position_serveur","position_memoire","geolocation_ready","position_inconnue"]],
+    ["cache local",          "cache_lu"],
+    ["1re source locale",    "source_locale"],
+    ["Overpass",             "overpass_done"],
+    ["Nominatim",            "nominatim_done"],
+    ["Supabase",             "supabase_pret"],
+    ["classement",           "scoring_fait"],
+    ["1re suggestion",       "premier_lieu"],
+  ],
+  chaine(){
+    const r = this.rapport();
+    const lire = (cle)=>{
+      if(Array.isArray(cle)){
+        const trouves = cle.map(c=>r[c]).filter(v=>v != null);
+        return trouves.length ? Math.min(...trouves) : null;
+      }
+      return r[cle] != null ? r[cle] : null;
+    };
+    const lignes = [];
+    let precedent = 0;
+    this.CHAINE.forEach(([nom, cle])=>{
+      const t = lire(cle);
+      if(t == null){ lignes.push({etape:nom, a:"—", duree:"—"}); return; }
+      lignes.push({etape:nom, a:t+" ms", duree:Math.max(0, t-precedent)+" ms"});
+      precedent = Math.max(precedent, t);
+    });
     return lignes;
   },
 };
+try{
+  new PerformanceObserver((liste)=>{
+    liste.getEntries().forEach(e=>{ PERF.lcp = e.startTime; });
+  }).observe({type:"largest-contentful-paint", buffered:true});
+}catch(e){}
 window.AutourPerf = PERF;
+
+/* ---- Un seul rendu par image ---------------------------------------------
+   Chaque source de données (cache, Google, OpenStreetMap, événements,
+   publications) appelait `rendre()`, `dessinerFiltres()` et `majAccueil()` en
+   repartant à zéro — et `majAccueil()` rappelait `rendre()` et `majFeuille2()`.
+   Cinq sources au démarrage : la carte était redessinée dix fois et la feuille
+   quinze, pendant que le navigateur attendait pour peindre. Mesuré sur un
+   téléphone d'entrée de gamme, cela représentait plus de trois secondes de fil
+   principal bloqué, uniquement en travail refait.
+
+   On note donc ce qu'il y a à refaire, et on le fait UNE fois à la prochaine
+   image. Les fonctions restent appelables directement — un test, un clic ou
+   une saisie ont le droit d'exiger un rendu immédiat. */
+const aRefaire = {carte:false, accueil:false, filtres:false, feuille:false};
+let renduPlanifie = 0;
+let renduEnLot = false;
+
+function planifierRendu(quoi){
+  Object.assign(aRefaire, quoi || {});
+  if(renduPlanifie) return;
+  const executer = ()=>{
+    renduPlanifie = 0;
+    const q = Object.assign({}, aRefaire);
+    aRefaire.carte = aRefaire.accueil = aRefaire.filtres = aRefaire.feuille = false;
+    renduEnLot = true;
+    try{
+      if(q.accueil)  majAccueil();
+      if(q.filtres)  dessinerFiltres();
+      if(q.carte)    rendre();
+      if(q.feuille || q.accueil || q.carte) majFeuille2();
+    } finally { renduEnLot = false; }
+    PERF.jalon("rendu_final");
+  };
+  renduPlanifie = typeof requestAnimationFrame === "function"
+    ? requestAnimationFrame(executer) : setTimeout(executer, 16);
+}
+
+/* Rendre la main au navigateur avant un gros calcul : sans ça, le premier
+   affichage attend la fin du travail, et l'écran reste blanc alors que tout
+   est déjà prêt à être peint. */
+function apresPeinture(f){
+  if(typeof requestAnimationFrame !== "function"){ setTimeout(f, 0); return; }
+  requestAnimationFrame(()=>requestAnimationFrame(()=>f()));
+}
+const quandLibre = (f)=> (window.requestIdleCallback || (g=>setTimeout(g, 400)))(f);
+
+/* Connue à quel point ? La position peut venir de trois endroits (voir
+   `originePosition`, plus bas) : la mémoire, la ville déduite par le serveur,
+   ou la géolocalisation. Seule la dernière autorise à écrire « à 4 minutes à
+   pied » — d'où ce drapeau, déclaré ici parce que le préchargement des
+   itinéraires, juste en dessous, est le premier à le lire. */
+let originePrecision = null;         // "ville" | "point" | null
+const positionPrecise = ()=>originePrecision === "point";
 
 const TRANSIT = window.AutourTransit;
 const etaParLieu = new Map();
@@ -1734,7 +1878,11 @@ function etaConnu(l, centre){
 /* Ne demande d'itinéraire que pour le haut de liste : c'est le seul endroit
    où l'ordre se joue, et chaque appel coûte une requête réseau. */
 function prechargerEta(classement, centre, auRetour){
-  if(!TRANSIT || !positionMoi) return;
+  /* Pas d'itinéraire depuis un point qu'on n'a pas. La position déduite par le
+     serveur désigne la ville à quelques kilomètres près : elle suffit à choisir
+     un quartier, pas à écrire « à 4 minutes ». On attend le vrai point plutôt
+     que d'afficher une durée fausse. */
+  if(!TRANSIT || !positionMoi || !positionPrecise()) return;
   const cibles = classement.slice(0,12).filter(l=>!etaParLieu.has(cleEta(l, centre)));
   if(!cibles.length) return;
   if(etaEnVol) etaEnVol.abort();
@@ -2641,6 +2789,28 @@ let permanentPlaces=[], externalEvents=[], userPublications=[];
 let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
 let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
+
+/* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
+   false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
+let selectionAccueil = null;
+
+/* Ce qu'on vient de publier reste à l'écran, quoi qu'en dise le classement.
+   Un événement de demain soir n'a rien à faire dans « Pour toi, maintenant » —
+   c'est la bonne règle, et elle avait pour conséquence que l'événement qu'on
+   venait de créer disparaissait à la seconde où on appuyait sur « Publier ».
+   On l'épingle donc dix minutes : le temps de vérifier que c'est bien ce qu'on
+   voulait, et de le partager. Passé ce délai, il rentre dans le rang. */
+const EPINGLE_MS = 10*60*1000;
+const publicationsEpinglees = new Map();     // id → instant de publication
+
+function epinglerPublication(id){ publicationsEpinglees.set(id, Date.now()); }
+function idsEpingles(){
+  const t = Date.now();
+  publicationsEpinglees.forEach((quand,id)=>{
+    if(t - quand > EPINGLE_MS) publicationsEpinglees.delete(id);
+  });
+  return [...publicationsEpinglees.keys()];
+}
 /* D'où vient le point que la carte regarde : "gps" (la personne l'a autorisé),
    "memoire" (dernière zone visitée), "choix" (une ville choisie à la main),
    ou null — et null veut dire « on ne sait pas », pas « il n'y a rien ». */
@@ -2668,7 +2838,27 @@ function etat(t, montrer){
   z.textContent = t;
   if(montrer !== undefined) b.hidden = !montrer;
 }
-function charge(t){const c=$("#charge"); if(t){c.textContent=t;c.hidden=false}else c.hidden=true}
+/* Un écran vide a besoin qu'on lui dise ce qu'on cherche. Un écran déjà rempli
+   n'a besoin que de savoir que ça bouge : « Recherche des événements autour de
+   ce point… » en gros au-dessus de propositions parfaitement lisibles donne
+   l'impression que l'application recommence à zéro alors qu'elle complète. */
+function ecranDejaRempli(){
+  return Array.isArray(selectionAccueil) && selectionAccueil.length > 0;
+}
+function charge(t){
+  const c=$("#charge");
+  if(!t){ c.classList.remove("discret"); c.hidden=true; return; }
+  if(ecranDejaRempli()){ majSignalMaj(true); return; }
+  c.classList.remove("discret"); c.textContent=t; c.hidden=false;
+}
+/* Mise à jour silencieuse : l'écran garde ce qu'il montre, une pastille dit
+   simplement que ça bouge derrière. */
+function majSignalMaj(actif){
+  const c=$("#charge");
+  if(!c) return;
+  if(actif){ c.classList.add("discret"); c.textContent="Mise à jour…"; c.hidden=false; }
+  else { c.classList.remove("discret"); c.hidden=true; }
+}
 
 const SEARCH_STATES = Object.freeze({
   IDLE:"idle",
@@ -2711,20 +2901,62 @@ function etatErreurPartielle(){
 /*  Overpass                                                          */
 /* ================================================================== */
 
+/* Uniquement des instances qui portent la planète entière. `overpass.osm.ch`
+   figurait ici : c'est l'instance SUISSE, elle ne contient que la Suisse. Elle
+   répondait « zéro objet » en huit dixièmes de seconde à toute requête
+   française, et le tour de repli s'arrêtait là — une réponse valide, rapide, et
+   complètement fausse. Constaté en produisant les jeux de zone de Lille. */
 const SERVEURS = [
   "https://overpass.kumi.systems/api/interpreter",   // le plus rapide et le moins saturé
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
 ];
 
-async function overpass(q, msMax, signal){
+/* Notre propre origine d'abord. `/api/lieux` est un relais mis en cache par le
+   CDN : la première personne d'un quartier paie l'attente d'Overpass une fois,
+   côté serveur, et tous les suivants reçoivent la réponse en un aller-retour.
+   C'est la seule façon de ne pas faire dépendre le démarrage d'une instance
+   publique dont on ne maîtrise ni la charge ni la disponibilité.
+
+   Si la route n'existe pas — développement local, hébergement statique sans
+   fonctions — on retombe sur l'accès direct, et rien ne change. */
+let relaisLieux = null;              // null = pas encore su, false = absent
+async function overpassRelaye(q, msMax, signal){
+  if(relaisLieux === false) return undefined;
+  try{
+    const stop = new AbortController();
+    const t = setTimeout(()=>stop.abort(), msMax || 14000);
+    if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
+    const r = await fetch("/api/lieux?q="+encodeURIComponent(q), {signal:stop.signal});
+    clearTimeout(t);
+    // 404 : pas de fonction déployée ici. On note et on n'y revient plus.
+    if(r.status === 404 || r.status === 405){ relaisLieux = false; return undefined; }
+    if(!r.ok) return null;            // 503 : Overpass muet, le relais l'a dit
+    const j = await r.json();
+    relaisLieux = true;
+    PERF.jalon("relais_lieux");
+    return j && Array.isArray(j.elements) ? j.elements : null;
+  }catch(e){
+    if(signal && signal.aborted) return null;
+    // le relais n'a pas répondu : on tente le chemin direct plutôt que rien
+    return undefined;
+  }
+}
+
+async function overpass(q, msMax, signal, viaRelais){
   const simule = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) &&
     new URLSearchParams(location.search).get("simulateOverpassFailure") === "1";
   if(simule){
     journal.warn("Overpass : panne simulée pour le test local");
     return null;
+  }
+  /* Seules les requêtes de LIEUX passent par le relais. Le décor de la ville
+     (routes, parcs, plans d'eau) a une autre forme, que le relais refuse à
+     juste titre — l'y envoyer ne produisait que des 400 avant le repli. */
+  if(viaRelais){
+    const parRelais = await overpassRelaye(q, msMax, signal);
+    if(parRelais !== undefined) return parRelais;
   }
   for(const url of SERVEURS){
     if(signal && signal.aborted) return null;
@@ -2777,6 +3009,17 @@ out geom;`;
 const CATS_DEPART = new Set(["resto","fastfood","cafe","marche","bar","cinema",
   "spectacle","concert","friperie","commerce","biblio","musee","parc","metro","bus"]);
 
+/* Combien de temps on accepte d'attendre OpenStreetMap.
+   Au démarrage : sept secondes, et l'écran vit déjà sans lui.
+   Sur demande explicite : vingt-cinq, parce que la personne attend un
+   résultat précis et qu'un écran vide serait une réponse fausse. */
+const OVERPASS_DELAI_BOOT = 7000;
+const OVERPASS_DELAI_DEMANDE = 25000;
+/* Ce qu'on demande à l'ouverture : le quartier immédiat, et de quoi remplir
+   cinq recommandations avec de la marge. Le reste vient au premier geste. */
+const RAYON_BOOT = 900;
+const PLAFOND_BOOT = 90;
+
 async function vraisLieux(lat,lng,bornes,opts){
   const o = opts || {};
   // Une sous-requête par CLÉ (avec regex sur les valeurs) au lieu d'une par
@@ -2792,12 +3035,29 @@ async function vraisLieux(lat,lng,bornes,opts){
   // On interroge la zone effectivement affichée plutôt qu'un rayon fixe :
   // en vue serrée on ramène beaucoup moins, en vue large on couvre vraiment
   // ce que la personne regarde. Bornée pour ne pas demander une ville entière.
+  /* Au démarrage on ne demande que le pâté de maisons, et pas trois cents
+     objets. Ce n'est pas de l'économie de réseau : c'est ce qui suit derrière —
+     normaliser, dédupliquer, regrouper et classer trois cents lieux coûte plus
+     d'une seconde de fil principal sur un téléphone, avant qu'une seule carte
+     n'apparaisse. Or on n'en montre que cinq. Le reste du quartier arrive au
+     premier déplacement de carte, quand il y a quelqu'un pour le regarder. */
+  const rayon = o.rayon || 1500;
+  const plafond = o.limite || 300;
   const zone = bornes ? `(${bornes.s},${bornes.o},${bornes.n},${bornes.e})`
-                      : `(around:1500,${lat},${lng})`;
+                      : `(around:${rayon},${lat},${lng})`;
   const bloc = Object.entries(parCle).map(([k,vs])=>
     `nwr${zone}["${k}"~"^(${vs.join("|")})$"];`).join("");
-  // 25 s : mieux vaut attendre que retomber sur des lieux inventés
-  const els = await overpass(`[out:json][timeout:25];(${bloc});out center 300;`, 25000, o.signal);
+  /* Le délai n'est pas le même selon le moment. Au démarrage, Overpass ne doit
+     jamais être ce qu'on attend : le cache et le jeu rapide portent déjà
+     l'écran, et une requête qui traîne vingt secondes ne fait que garder une
+     pastille « mise à jour » allumée pour rien. On coupe court et on
+     réessaiera au prochain déplacement de carte.
+     Quand c'est la personne qui a demandé quelque chose de précis, en
+     revanche, mieux vaut attendre que revenir les mains vides. */
+  const delai = o.delai || OVERPASS_DELAI_DEMANDE;
+  const els = await overpass(
+    `[out:json][timeout:${Math.round(delai/1000)}];(${bloc});out center ${plafond};`,
+    delai, o.signal, true);
   if(!els){ definirEtatRecherche("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE); return []; }
   definirEtatRecherche("overpass",SEARCH_STATES.SUCCESS);
   return els.map(e=>{
@@ -2937,11 +3197,47 @@ async function evenementsOpenAgenda(lat,lng){
 }
 
 let dernierNom = [0,0];         // là où le nom de commune a été demandé
+
+/* Nominatim, comme Overpass, passe par notre propre origine quand elle existe :
+   sa politique d'usage plafonne à une requête par seconde et interdit le
+   trafic massif depuis des clients, alors que le nom d'une commune ne change
+   pas — c'est exactement ce qu'un cache doit absorber. Le repli direct reste
+   en place pour le développement local et les hébergements sans fonctions. */
+let relaisCommune = null;            // null = pas encore su, false = absent
+const communesEnVol = new Map();     // une seule requête par quartier à la fois
+async function communeRelayee(lat,lng){
+  if(relaisCommune === false) return undefined;
+  /* `nomCommune`, `detecterVille` et le rechargement de zone demandaient la
+     même commune en même temps : trois requêtes parties avant que la première
+     ne réponde, donc trois passages complets par Nominatim. On partage la
+     promesse — le CDN ne peut pas dédoublonner ce qui part simultanément. */
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(communesEnVol.has(cle)) return communesEnVol.get(cle);
+  const promesse = (async ()=>{
+  try{
+    const r = await fetch("/api/commune?lat="+lat+"&lng="+lng);
+    if(r.status === 404 || r.status === 405){ relaisCommune = false; return undefined; }
+    if(!r.ok) return null;
+    const j = await r.json();
+    relaisCommune = true;
+    if(j && j.pays) paysISO = j.pays;
+    PERF.jalon("nominatim_done");
+    return (j && j.commune) || null;
+  }catch(e){ return undefined; }
+  })();
+  communesEnVol.set(cle, promesse);
+  promesse.finally(()=>communesEnVol.delete(cle));
+  return promesse;
+}
+
 async function nomCommune(lat,lng){
+  const parRelais = await communeRelayee(lat,lng);
+  if(parRelais !== undefined) return parRelais || "ton quartier";
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
     const j = await r.json(); const a=j.address||{};
     paysISO = (a.country_code||"").toUpperCase();
+    PERF.jalon("nominatim_done");
     return a.city||a.town||a.village||a.municipality||a.suburb||"ton quartier";
   }catch(e){ return "ton quartier"; }
 }
@@ -3260,8 +3556,9 @@ function reindexerCategories(){
 function lieuxDeCategorie(cat){ return indexCategories.get(cat) || []; }
 function categorieEnMemoire(cat){ return lieuxDeCategorie(cat).length > 0; }
 
-function fusionner(nouveaux, flux){
+function fusionner(nouveaux, flux, opts){
   if(!nouveaux || !nouveaux.length) return;
+  const o = opts || {};
   const type = flux || "permanent";
   const source = nouveaux[0] && nouveaux[0].source || type;
   const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source)).filter(l=>!estPasse(l));
@@ -3282,10 +3579,13 @@ function fusionner(nouveaux, flux){
   }
   // l'index doit précéder le rendu : le classement et les filtres le lisent
   reindexerCategories();
-  rendre();
-  dessinerFiltres();
-  majAccueil();             // la sélection se reclasse à chaque nouvelle source
-  ouvrirLieuPartage();      // le lieu d'un lien partagé s'ouvre dès qu'il arrive
+  // `silencieux` : l'appelant sait déjà ce qu'il va afficher (le jeu rapide au
+  // démarrage) et ne veut surtout pas d'un reclassement avant la première image
+  if(!o.silencieux){
+    // un seul rendu par image, quel que soit le nombre de sources qui arrivent
+    planifierRendu({carte:true, accueil:true, filtres:true});
+    ouvrirLieuPartage();    // le lieu d'un lien partagé s'ouvre dès qu'il arrive
+  }
 }
 
 /* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
@@ -3355,6 +3655,117 @@ function echantillonImmediat(candidats){
     prendre(candidats.find(l=>famille.includes(l.cat) && !vus.has(l.id)));
   });
   return retenus;
+}
+
+/* ---- Jeu de données rapide ----------------------------------------------
+   Le cache de tuiles rend les lieux ; il ne rend pas les PROPOSITIONS. Au
+   démarrage suivant, il fallait encore reclasser, filtrer temporellement et
+   composer la feuille avant qu'une seule carte n'apparaisse — un demi-seconde
+   de fil principal sur un téléphone, pendant laquelle l'écran est un
+   squelette gris.
+
+   On garde donc le résultat, pas seulement la matière : les quelques lieux
+   retenus la dernière fois, dans l'ordre où ils l'étaient. À l'ouverture ils
+   s'affichent tels quels, à la première image, sans rien recalculer. Le
+   classement réel les remplace ensuite, sans jamais vider l'écran.
+
+   Ce ne sont pas des données inventées : ce sont exactement celles qui
+   étaient à l'écran il y a quelques heures, avec leur date. Ce qui a fermé
+   depuis sera écarté par le moteur temporel dès le premier vrai classement. */
+const CLE_RAPIDE = "autour:rapide:v1";
+const RAPIDE_MAX = 50;              // ce qu'on garde en réserve pour la zone
+const RAPIDE_HEURES = 24;
+const RAPIDE_RAYON_M = 2000;
+/* Les champs qui servent à dessiner une carte et à la reclasser. Le reste
+   (description, mots-clés, géométrie) pèse sans rien apporter au premier
+   affichage : on ne l'écrit pas. */
+const CHAMPS_RAPIDE = ["id","cat","categories","titre","adresse","cp","lat","lng",
+  "note","avis","prixN","prix","gratuit","quand","cuisine","tags","pmr","source",
+  "par","isTemporary","debutLe","finLe","idGoogle","service","solidaire","sansNom"];
+
+function alleger(l){
+  const out = {};
+  CHAMPS_RAPIDE.forEach(k=>{ if(l[k] !== undefined) out[k] = l[k]; });
+  return out;
+}
+
+let dernierJeuRapide = 0;
+function memoriserJeuRapide(choisis, reserve){
+  if(!positionMoi || !choisis || !choisis.length) return;
+  // une écriture par minute suffit : le classement bouge à chaque source qui
+  // arrive, et sérialiser cinquante lieux à chaque fois coûterait plus cher
+  // que ce que l'écriture fait gagner
+  if(Date.now() - dernierJeuRapide < 60000) return;
+  dernierJeuRapide = Date.now();
+  quandLibre(()=>{
+    try{
+      const vus = new Set();
+      const garder = [];
+      [...choisis, ...(reserve || [])].forEach(l=>{
+        if(!l || vus.has(l.id) || garder.length >= RAPIDE_MAX) return;
+        vus.add(l.id); garder.push(alleger(l));
+      });
+      localStorage.setItem(CLE_RAPIDE, JSON.stringify({
+        t:Date.now(), zone:positionMoi, commune,
+        choisis:choisis.map(l=>l.id), lieux:garder,
+      }));
+    }catch(e){ /* quota plein : le cache de tuiles reste, on ne casse rien */ }
+  });
+}
+
+/* ---- Le tout premier démarrage ------------------------------------------
+   Le jeu rapide vient de la session précédente ; le cache de tuiles aussi. Un
+   nouveau téléphone n'a ni l'un ni l'autre, et n'a donc que le réseau — c'est
+   le seul cas où Autour dépendait encore d'un tiers pour afficher sa première
+   ligne.
+
+   On sert donc un jeu pré-calculé par zone, déposé à côté de l'application et
+   mis en cache par le CDN comme un fichier statique : une requête vers notre
+   propre origine, sans Overpass, sans Nominatim, sans permission. La clé est
+   la coordonnée arrondie au dixième de degré — environ une agglomération —
+   ce qui évite un index à télécharger d'abord.
+
+   Ces fichiers sont produits par `outils/zones.mjs` (voir docs/zones.md). Leur
+   absence n'est pas une panne : la fonction rend `null` et le démarrage suit
+   son chemin habituel. Ce qu'on ne fabrique jamais, c'est un lieu : s'il n'y a
+   pas de fichier pour la zone, il n'y a pas de proposition inventée. */
+let zonesDisponibles = null;         // null = pas encore su, false = absentes
+const cleZoneStatique = (lat,lng)=> lat.toFixed(1)+","+lng.toFixed(1);
+
+/* Le fichier couvre la tuile entière — onze kilomètres sur sept — pour que
+   n'importe qui dedans y trouve son quartier. Mais on n'en fusionne que le
+   voisinage immédiat : normaliser, dédupliquer et regrouper cent soixante-dix
+   lieux coûte près de trois secondes de fil principal sur un téléphone, pour
+   en afficher cinq. Le reste de la tuile ne sert à rien tant qu'on n'a pas
+   bougé — et si on bouge, les vraies sources auront répondu depuis longtemps. */
+const RAPIDE_VOISINAGE = 25;
+
+async function lieuxDeZone(lat,lng){
+  if(zonesDisponibles === false) return null;
+  try{
+    const r = await fetch("zones/"+cleZoneStatique(lat,lng)+".json");
+    if(!r.ok){ if(r.status === 404) zonesDisponibles = false; return null; }
+    const j = await r.json();
+    if(!j || !Array.isArray(j.lieux) || !j.lieux.length) return null;
+    zonesDisponibles = true;
+    return j.lieux
+      .map(l=>Object.assign({}, l, {_d:distanceM(lat,lng,l.lat,l.lng)}))
+      .sort((a,b)=>a._d - b._d)
+      .slice(0, RAPIDE_VOISINAGE)
+      .map(l=>{ delete l._d; return l; });
+  }catch(e){ return null; }
+}
+
+function lireJeuRapide(lat,lng){
+  try{
+    const o = JSON.parse(localStorage.getItem(CLE_RAPIDE) || "null");
+    if(!o || !o.lieux || !o.lieux.length) return null;
+    if(Date.now() - o.t > RAPIDE_HEURES*3600*1000) return null;
+    // le jeu décrit une zone : à l'autre bout de la France il ne décrit rien
+    if(lat != null && o.zone &&
+       distanceM(lat,lng,o.zone[0],o.zone[1]) > RAPIDE_RAYON_M) return null;
+    return o;
+  }catch(e){ return null; }
 }
 
 /* Le cache des zones n'était jamais purgé : une entrée par tuile de ~110 m,
@@ -3468,7 +3879,7 @@ function chargerZone(lat, lng, opts){
 
   // allSettled : une source lente ou en panne ne retient pas les autres
   const travaux = [
-    vraisLieux(lat,lng,bornesVisibles(),{signal, cats:o.cats}).then(r=>{
+    vraisLieux(lat,lng,bornesVisibles(),{signal, cats:o.cats, delai:o.delai}).then(r=>{
       if(signal.aborted) return;
       if(r && r.length){ fusionner(r); if(!o.cats) ecrireCacheLieux(lat,lng,r); PERF.jalon("fresh_pois_ready"); }
       PERF.jalon("overpass_done");
@@ -3595,6 +4006,31 @@ function chargerEditorial(type){
   return promesse;
 }
 
+/* ---- La ville, connue avant que la page ne s'exécute ----------------------
+   À froid, sans rien en mémoire, Autour ne savait pas où il était et devait
+   attendre `navigator.geolocation` : une permission, puis un point GPS — entre
+   deux cents millisecondes et huit secondes, et très souvent jamais. Rien ne
+   pouvait être proposé avant, puisque « autour de toi » suppose un « toi ».
+
+   Le serveur, lui, connaît la ville approximative de qui demande la page. Il
+   la dépose dans un cookie sur la réponse qui porte `index.html` (voir
+   `middleware.js`) : elle est donc lisible ICI, à l'analyse du script, sans un
+   aller-retour de plus et sans rien demander.
+
+   C'est la VILLE, pas la position : à quelques kilomètres près. On le note
+   (`originePrecision`), et tout ce qui prétendrait à mieux — « à 4 minutes à
+   pied » — attend le vrai point. */
+function positionServeur(){
+  try{
+    const brut = (document.cookie.match(/(?:^|;\s*)autour_geo=([^;]*)/) || [])[1];
+    if(!brut) return null;
+    const o = JSON.parse(decodeURIComponent(brut));
+    if(!o || !Number.isFinite(o.lat) || !Number.isFinite(o.lng)) return null;
+    if(Math.abs(o.lat) > 90 || Math.abs(o.lng) > 180) return null;
+    return o;
+  }catch(e){ return null; }
+}
+
 /* Dernière position connue : évite de démarrer à Paris quelqu'un qui vit à
    Tourcoing, et permet d'afficher une carte utile avant toute géolocalisation. */
 function positionMemorisee(){
@@ -3619,35 +4055,27 @@ function memoriserPosition(c){
   try{ localStorage.setItem("autour:position", JSON.stringify(c)); }catch(e){}
 }
 
-async function demarrer(coords){
-  if(typeof L === "undefined"){
-    etat("");
-    panne("Carte indisponible","Leaflet n’a pas pu être téléchargé depuis le CDN.");
-    return;
-  }
-  /* Sans position connue, l'application affichait Paris et l'annonçait comme
-     « autour de toi », puis « rien d'ouvert autour de toi ». Elle affirmait
-     deux choses fausses : qu'elle savait où on est, et qu'il n'y a rien.
-     On garde un point de départ pour que la carte existe, mais on note que
-     personne ne l'a choisi — et tout ce qui parle de « autour de toi » lit
-     ce drapeau. */
-  originePosition = coords ? "memoire" : null;
-  positionMoi = coords || [48.8566,2.3522];
-  // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
-  const partage = lieuPartage();
-  // un lien vers un événement ne porte pas de coordonnées : on reste sur la
-  // position connue et c'est `ouvrirLieuPartage` qui recadre à l'arrivée
-  const centre = partage && partage.lat != null
-    ? [partage.lat, partage.lng] : positionMoi;
-  ["#appHeader","#navBas","#btnAide","#btnTransports","#attribution"]
-    .forEach(s=>$(s).hidden=false);
-  PERF.jalon("ui_ready");         // l'écran est lisible et interactif
-  majEnteteLieu();
-  mesurerHeader();
-  // le contexte d'abord : la ville s'affiche sans attendre les lieux. Mais on
-  // ne nomme pas la ville d'un point que personne n'a choisi : afficher
-  // « Paris » à quelqu'un qui est à Lille est pire que ne rien afficher.
-  if(positionConnue()) detecterVille(positionMoi[0], positionMoi[1]);
+/* ---- La carte, séparée du reste --------------------------------------------
+   Leaflet vient d'un CDN : c'est la seule pièce d'Autour qu'un tiers peut
+   retarder ou faire disparaître. Tant qu'elle était construite au milieu du
+   démarrage, elle décidait de tout — un CDN lent repoussait les
+   recommandations, un CDN muet laissait un écran de panne alors que le cache
+   local contenait de quoi remplir la feuille.
+
+   La carte est donc devenue une couche parmi d'autres : elle s'installe quand
+   elle peut, éventuellement jamais, et le reste de l'application ne s'en
+   aperçoit pas. */
+let carteEnAttente = null;
+
+/* La feuille de style de Leaflet n'est plus bloquante : si elle arrive après
+   la carte, les tuiles sont mal placées jusqu'à ce qu'on remesure. */
+window.AutourCarteRemesurer = ()=>{ try{ if(map) map.invalidateSize(); }catch(e){} };
+
+function installerCarte(){
+  if(map || typeof L === "undefined" || !carteEnAttente) return false;
+  const {centre, partage} = carteEnAttente;
+  carteEnAttente = null;
+  PERF.jalon("map_init_debut");
 
   // ni contrôle de zoom, ni bandeau Leaflet : la carte doit se lire comme un
   // fond d'application. L'attribution reste due — elle est écrite en bas à
@@ -3659,6 +4087,7 @@ async function demarrer(coords){
   map.getPane("ruesPane").style.pointerEvents = "none";
 
   PERF.jalon("map_ready");
+  PERF.mesure("carte", "map_init_debut", "map_ready");
   coucheVille = L.layerGroup().addTo(map);
 
   moi = L.marker(positionMoi,{
@@ -3686,88 +4115,224 @@ async function demarrer(coords){
       if(catsActives) chargerPourCats([...catsActives]);
     }, 350);
   });
-
-  dessinerFiltres();
-  majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
-
-  /* L'accueil s'ouvre TOUT DE SUITE, avec son squelette. Il attendait la
-     réponse d'Overpass — une à trois secondes de carte nue devant quelqu'un
-     qui vient d'arriver, ce qui se lit comme une application vide. Les
-     recommandations remplacent le squelette dès qu'elles existent. */
-  if(feuilleNiveau === null && !modeNav && !modePose) ouvrirAccueilFeuille();
   // toucher la carte referme la feuille : la carte reprend tout l'écran
   map.on("click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
 
+  // les marqueurs n'existaient pas tant que la carte n'était pas là
+  planifierRendu({carte:true});
+  // le fond et le décor : du confort, jamais du chemin critique
+  quandLibre(()=>{
+    const [lat,lng] = positionMoi;
+    poserFond().then(fond=>{
+      if(fond) return;
+      quandLibre(()=>geometrieVille(lat,lng).then(geo=>{
+        if(geo && geo.length) dessinerVille(geo); else grilleSecours(lat,lng);
+      }));
+    });
+    prechargerCategories();
+  });
+  return true;
+}
+
+/* Le CDN peut avoir répondu avant nous, arriver plus tard, ou ne jamais
+   arriver. Les trois cas mènent au même endroit : l'application marche. */
+function attendreLeaflet(){
+  if(installerCarte()) return;
+  const balise = document.querySelector('script[data-leaflet]');
+  if(!balise) return;
+  balise.addEventListener("load", ()=>{ installerCarte(); });
+  balise.addEventListener("error", ()=>{
+    carteEnAttente = null;
+    journal.warn("Leaflet indisponible : Autour continue sans carte");
+    toast("Carte indisponible · les propositions restent affichées");
+  });
+}
+
+async function demarrer(coords){
+  PERF.jalon("boot_debut");
+  /* Sans position connue, l'application affichait Paris et l'annonçait comme
+     « autour de toi », puis « rien d'ouvert autour de toi ». Elle affirmait
+     deux choses fausses : qu'elle savait où on est, et qu'il n'y a rien.
+     On garde un point de départ pour que la carte existe, mais on note que
+     personne ne l'a choisi — et tout ce qui parle de « autour de toi » lit
+     ce drapeau. */
+  /* Trois provenances possibles, dans cet ordre de confiance : la dernière
+     position réelle mémorisée, puis la ville déduite par le serveur, puis
+     rien. Aucune n'attend le réseau ni une permission. */
+  const duServeur = coords ? null : positionServeur();
+  if(coords){ originePosition = "memoire"; originePrecision = "point"; positionMoi = coords; }
+  else if(duServeur){
+    originePosition = "serveur"; originePrecision = "ville";
+    positionMoi = [duServeur.lat, duServeur.lng];
+    if(duServeur.ville) commune = duServeur.ville;
+    if(duServeur.pays) paysISO = duServeur.pays;
+    PERF.jalon("position_serveur");
+  }
+  else { originePosition = null; originePrecision = null; positionMoi = [48.8566,2.3522]; }
+  PERF.jalon("position_" + (originePosition || "inconnue"));
+  // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
+  const partage = lieuPartage();
+  // un lien vers un événement ne porte pas de coordonnées : on reste sur la
+  // position connue et c'est `ouvrirLieuPartage` qui recadre à l'arrivée
+  const centre = partage && partage.lat != null
+    ? [partage.lat, partage.lng] : positionMoi;
+  carteEnAttente = {centre, partage};
+
+  /* La coquille — en-tête, navigation, bouton Aide, attribution — n'est plus
+     masquée dans le HTML. Elle l'était, et c'était JavaScript qui la révélait :
+     le navigateur avait donc tout ce qu'il fallait pour peindre l'écran, et
+     attendait quand même l'analyse de trois cent soixante kilo-octets de
+     script pour le faire. Mesuré sur un réseau mobile : sept cent cinquante
+     millisecondes d'écran vide alors que la page était arrivée.
+
+     Elle est désormais peinte dès que la feuille de style est lue. Cette ligne
+     reste : elle sert au retour de navigation et à la sortie du mode pose, où
+     ces éléments ont bel et bien été masqués. */
+  ["#appHeader","#navBas","#btnAide","#btnTransports","#attribution"]
+    .forEach(s=>$(s).hidden=false);
+  PERF.jalon("ui_ready");         // l'écran est lisible et interactif
+  majEnteteLieu();
+  mesurerHeader();
+
+  /* ÉTAPE 1 — ce qui s'affiche sans rien attendre.
+     Le jeu rapide contient les propositions de la dernière session : elles
+     sont posées telles quelles, dans leur ordre, avant tout classement et
+     avant la carte. C'est ce que la personne voit à la première image. */
+  const rapide = lireJeuRapide(positionMoi[0], positionMoi[1]);
+  if(rapide){
+    if(rapide.commune) commune = rapide.commune;
+    fusionner(rapide.lieux, "permanent", {silencieux:true});
+    selectionAccueil = rapide.choisis;
+    dernierChargement = [positionMoi[0], positionMoi[1]];
+  }
+  dessinerFiltres();
+  majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
+
+  /* L'accueil s'ouvre TOUT DE SUITE. Il attendait la réponse d'Overpass — une
+     à trois secondes de carte nue devant quelqu'un qui vient d'arriver, ce qui
+     se lit comme une application vide. */
+  if(feuilleNiveau === null && !modeNav && !modePose){
+    if(rapide) ouvrirFeuille2("racine");   // les cartes du jeu rapide, intactes
+    else ouvrirAccueilFeuille();
+  }
+  if(rapide){ PERF.jalon("premier_lieu"); PERF.jalon("source_locale"); }
+
+  /* Rien en mémoire : c'est le tout premier démarrage. On va chercher le jeu
+     pré-calculé de la zone TOUT DE SUITE — avant la peinture, parce que c'est
+     une requête, pas un calcul : elle part maintenant et répondra pendant que
+     le reste s'installe. C'est le seul chemin qui donne une proposition à
+     froid sans dépendre d'Overpass, de Nominatim ni d'une permission. */
+  if(!rapide && positionMoi) demarrerSurZonePrecalculee(positionMoi[0], positionMoi[1]);
+
+  /* ÉTAPE 2 — on rend la main au navigateur. Tout ce qui suit coûte du fil
+     principal ou du réseau ; le faire avant la première peinture revenait à
+     garder l'écran blanc pendant qu'on préparait ce qu'il devait montrer. */
+  apresPeinture(()=>chargerLeDemarrage(rapide));
+}
+
+/* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
+   déjà passé quelque chose de plus frais entre-temps, on ne touche à rien. */
+function demarrerSurZonePrecalculee(lat,lng){
+  lieuxDeZone(lat,lng).then(depart=>{
+    if(!depart || !depart.length) return;
+    if(lieux.length) return;          // le réseau a déjà répondu : tant mieux
+    fusionner(depart);
+    PERF.jalon("source_locale");
+    PERF.jalon("premier_lieu");
+    charge(null);
+  }).catch(()=>{});
+}
+
+/* Tout ce qui a besoin du réseau ou d'un vrai calcul, une fois l'écran peint.
+   Les sources partent ENSEMBLE : aucune n'attend le résultat d'une autre. */
+function chargerLeDemarrage(rapide){
   const [lat,lng] = positionMoi;
+  attendreLeaflet();
+
+  // le contexte : la ville s'affiche sans attendre les lieux. Mais on ne nomme
+  // pas la ville d'un point que personne n'a choisi — afficher « Paris » à
+  // quelqu'un qui est à Lille est pire que ne rien afficher.
+  if(positionConnue()) detecterVille(lat, lng);
+  dernierNom = [lat,lng];
+  dernierChargement = [lat,lng];
 
   definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
-  charge("Recherche autour de toi…");
+  // pas de gros écran de chargement quand on a déjà quelque chose à montrer :
+  // un simple « mise à jour… » discret, et les cartes précédentes restent
+  if(rapide) majSignalMaj(true); else charge("Recherche autour de toi…");
 
-  /* Affichage progressif. Rien n'attend plus rien : chaque source complète la
-     carte dès qu'elle répond, et surtout la carte est déjà là. Le nom de la
-     commune était attendu avant de lancer quoi que ce soit — il ne sert qu'à
-     étiqueter des adresses, il n'a rien à faire sur le chemin critique. */
-  const pFond   = poserFond();
-  dernierNom = [lat,lng];
-  nomCommune(lat,lng).then(n=>{ if(n) commune = n; });
-  const pGoogle = notesGoogle(lat,lng);
-
-  // 1. quartier déjà visité : affichage immédiat depuis le cache local
-  dernierChargement = [lat,lng];
+  /* Le cache de tuiles : plus complet que le jeu rapide, mais il faut le
+     reclasser. Il arrive donc juste après la première image, pas avant. */
   const enCache = lireCacheProche(lat,lng);
+  PERF.jalon("cache_lu");
   if(enCache && enCache.length){
     fusionner(enCache);
     charge(null);
-    // stale-while-revalidate : on montre ce qu'on a, on rafraîchit derrière
     PERF.jalon("cached_pois_visible");
+    PERF.jalon("source_locale");
+    PERF.jalon("premier_lieu");
   }
 
-  // 2. Google répond en ~1 s
-  pGoogle.then(fiches=>{
-    if(!fiches) return;
-    greffeNotes(lieux, fiches);      // notes et ouvert/fermé sur les lieux OSM
-    ajouterLieuxGoogle(fiches);      // + les commerces que OSM ne connaît pas
-    charge(null);
-  });
+  /* Toutes les sources en parallèle. `allSettled` : une source lente ou en
+     panne ne retient aucune autre, et le démarrage se termine quand la
+     dernière a répondu — pas quand la première a échoué. */
+  const travaux = [
+    nomCommune(lat,lng).then(n=>{ if(n) commune = n; }),
 
-  // 3. OpenStreetMap complète quand il arrive, sans bloquer l'affichage
-  vraisLieux(lat,lng).then(reels=>{
-    if(reels && reels.length){
-      fusionner(reels);
-      ecrireCacheLieux(lat,lng,reels);
-    }else if(!lieux.length){
-      // plus aucun lieu inventé : mieux vaut dire qu'on n'a rien trouvé que
-      // de faire déplacer quelqu'un vers une bibliothèque qui n'existe pas
-      toast("Aucune donnée reçue · réseau ou OSM indisponible");
-    }
-    charge(null);
-    if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE)
-      definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
-    else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
-    majAccueil();
-    // les canaux décident de l'existence de la section Messages
-    rafraichirCanaux();
-    chargerFavoris();
-    // l'accueil est déjà ouvert (avec son squelette) : il se remplit ici
-    if(feuilleNiveau === null && !modeNav && !modePose) ouvrirAccueilFeuille();
-    // ce qu'on ouvrira ensuite se charge pendant qu'on regarde l'accueil
-    prechargerCategories();
+    notesGoogle(lat,lng).then(fiches=>{
+      if(!fiches) return;
+      greffeNotes(lieux, fiches);      // notes et ouvert/fermé sur les lieux OSM
+      ajouterLieuxGoogle(fiches);      // + les commerces que OSM ne connaît pas
+      charge(null);
+      PERF.jalon("google_pret");
+    }),
+
+    // OpenStreetMap complète quand il arrive, sans bloquer l'affichage
+    vraisLieux(lat,lng,null,{delai:OVERPASS_DELAI_BOOT,
+                             rayon:RAYON_BOOT, limite:PLAFOND_BOOT}).then(reels=>{
+      if(reels && reels.length){
+        fusionner(reels);
+        ecrireCacheLieux(lat,lng,reels);
+        PERF.jalon("premier_lieu");
+      }else if(!lieux.length){
+        // plus aucun lieu inventé : mieux vaut dire qu'on n'a rien trouvé que
+        // de faire déplacer quelqu'un vers une bibliothèque qui n'existe pas
+        toast("Aucune donnée reçue · réseau ou OSM indisponible");
+      }
+      charge(null);
+      PERF.jalon("overpass_done");
+      if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE)
+        definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
+      else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
+      planifierRendu({accueil:true, carte:true, filtres:true});
+    }),
+
+    // Supabase : favoris, canaux et publications, hors chemin critique
+    connecter().then(()=>Promise.allSettled([rafraichirCanaux(), chargerFavoris()]))
+      .then(()=>PERF.jalon("supabase_pret")),
+  ];
+
+  Promise.allSettled(travaux).then(()=>{
+    majSignalMaj(false);
+    PERF.jalon("demarrage_termine");
+    PERF.mesure("démarrage", "boot_debut", "demarrage_termine");
   });
 
   /* Couche éphémère, chargée à part et après les lieux : un événement de ce
      soir n'a pas à retarder l'affichage du quartier. */
-  const differer = (f)=> (window.requestIdleCallback || (g=>setTimeout(g, 400)))(f);
+  quandLibre(()=>chargerDonneesTemporaires(lat,lng));
 
-  differer(()=>{
-    chargerDonneesTemporaires(lat,lng);
-  });
-
-  // le décor de la ville arrive en dernier : c'est du confort, pas de l'info
-  pFond.then(fond=>{
-    if(fond) return;
-    differer(()=>geometrieVille(lat,lng).then(geo=>{
-      if(geo && geo.length) dessinerVille(geo); else grilleSecours(lat,lng);
-    }));
+  /* Le quartier entier, une fois que l'écran est servi. La requête d'ouverture
+     est volontairement étroite (900 m, 90 objets) ; celle-ci reprend la portée
+     normale et remplit le cache de tuiles pour le prochain lancement. Elle
+     n'affiche rien de plus tout de suite : elle prépare. */
+  quandLibre(()=>{
+    vraisLieux(lat,lng,null,{delai:OVERPASS_DELAI_DEMANDE}).then(reels=>{
+      if(!reels || !reels.length) return;
+      fusionner(reels);
+      ecrireCacheLieux(lat,lng,reels);
+      PERF.jalon("quartier_complet");
+    }).catch(()=>{});
   });
 }
 
@@ -3976,7 +4541,13 @@ function visiblesBruts(){
     return lieux.filter(l=>selectionAccueil.includes(l.id));
 
   const [mLat,mLng] = positionMoi || [0,0];
+  const epingles = idsEpingles();
   return lieux.filter(l=>{
+    /* Ce qu'on vient de publier passe tous les filtres. Le filtre « maintenant »
+       est actif au repos ; un concert de demain soir n'est donc pas « vivant »,
+       et l'événement qu'on venait de créer disparaissait de la carte à la
+       seconde où on appuyait sur « Publier ». Publier doit montrer. */
+    if(epingles.length && epingles.includes(l.id)) return true;
     // un point sans nom exploitable n'apprend rien : « Restaurants · 3 » sur
     // la carte au lieu d'une enseigne, personne ne sait où il va
     if(!nomExploitable(l)) return false;
@@ -4124,11 +4695,19 @@ function htmlMarqueur(l){
     const tilt = ((hash(l.id)%700)/100-3.5).toFixed(2);
     // annulé : l'affiche reste, mais elle ne peut pas se lire comme un
     // événement qui a lieu — c'est tout l'intérêt de ne pas le supprimer
+    /* Un envoi qui traîne se dit là où l'affiche dit son prix et ses places :
+       c'est la ligne qu'on lit, et elle est assez grosse pour être lue de
+       loin. Tant qu'il n'y a pas de retard, rien ne s'affiche — une
+       publication qui part en trois cents millisecondes n'a rien à annoncer. */
+    const envoi = l.envoi === "retard" ? '<span class="a-envoi">Envoi…</span>'
+      : l.envoi === "echec" ? '<span class="a-envoi a-echec">Non publié · Réessayer</span>'
+      : '';
     return '<span class="mk-in"><div class="affiche '+(l.gratuit?'gratuit':'payant')+
-      (l.annule?' annulee':'')+'" style="--tilt:'+tilt+'deg">'+
+      (l.annule?' annulee':'')+(l.envoi==="echec"?' a-rate':'')+'" style="--tilt:'+tilt+'deg">'+
       '<span class="a-haut"><span>'+c.emoji+'</span><span>'+
         (l.annule?'ANNULÉ':(l.gratuit?'GRATUIT':l.prix+' €'))+'</span>'+
-      (l.places!=null && !l.annule?'<span class="a-places">· '+l.places+' pl.</span>':'')+'</span>'+
+      (l.places!=null && !l.annule?'<span class="a-places">· '+l.places+' pl.</span>':'')+
+      envoi+'</span>'+
       '<span class="a-titre">'+esc(l.titre)+'</span>'+
       // un événement sans adresse écrivait littéralement « undefined »
       (l.adresse ? '<span class="a-lieu">'+esc(l.adresse)+'</span>' : '')+
@@ -4327,18 +4906,35 @@ function rendre(){
   // les étiquettes se départagent une fois les marqueurs posés
   requestAnimationFrame(resoudreCollisions);
   majBandeauVide(choisis.length);
-  if(feuilleNiveau !== null) majFeuille2();
+  // en lot, la feuille est rafraîchie une seule fois à la fin : la refaire ici
+  // reviendrait à la reconstruire deux fois pour le même écran
+  if(feuilleNiveau !== null && !renduEnLot) majFeuille2();
   grouper(choisis).forEach(item=>{
     if(item.seul){
       const l = item.seul;
       garder.add(l.id);
-      if(marqueurs.has(l.id)) return;
+      const existant = marqueurs.get(l.id);
+      if(existant){
+        /* Un marqueur posé n'est pas redessiné — c'est ce qui garde la carte
+           fluide. Une publication en cours d'envoi, elle, change d'état sans
+           changer d'identité : son affiche doit suivre. */
+        if(existant._envoi !== l.envoi){
+          existant._envoi = l.envoi;
+          existant.setIcon(L.divIcon({className:"mk mk-eph", html:htmlMarqueur(l), iconSize:[0,0]}));
+        }
+        return;
+      }
       const eph = estTemporaire(l);
       const m = L.marker([l.lat,l.lng],{
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
-      m.on("click", ()=>{ mettreAJourProfil("clic", l.cat); ouvrirFicheCompacte(l); });
+      m.on("click", ()=>{
+        // une affiche qui n'est pas partie se retente d'un appui : c'est le
+        // geste qu'on fait naturellement quand on lit « Réessayer »
+        if(l.envoi === "echec"){ reessayerPublication(l.id); return; }
+        mettreAJourProfil("clic", l.cat); ouvrirFicheCompacte(l);
+      });
       marqueurs.set(l.id,m);
       return;
     }
@@ -5840,6 +6436,29 @@ function dessinerFormulaire(){
   $("#fOk").onclick = ()=>{ memo(); publier(); };
 }
 
+/* ---- Publication immédiate ------------------------------------------------
+   Publier attendait le téléversement de l'affiche PUIS l'insertion en base
+   avant que quoi que ce soit n'apparaisse : sur un réseau moyen, plusieurs
+   secondes pendant lesquelles le formulaire restait ouvert et rien ne disait
+   si ça avait marché. Or l'événement, on le connaît entièrement au moment où
+   on appuie sur « Publier » — le serveur ne fait que le confirmer.
+
+   L'affiche est donc posée sur la carte tout de suite, et l'aller-retour se
+   fait derrière. S'il traîne, ça se voit : le statut s'écrit sur l'affiche
+   elle-même, à la place du prix et du nombre de places, en gros. Et s'il
+   échoue, l'affiche le dit et se retente d'un appui — le brouillon n'est
+   jamais perdu en silence. */
+const ATTENTE_VISIBLE_MS = 2000;   // au-delà, on annonce le retard
+const publicationsEnVol = new Map();
+
+function marquerPublication(id, etat){
+  const p = userPublications.find(x=>x.id === id);
+  if(!p) return;
+  p.envoi = etat;                  // "envoi" | "retard" | "echec" | undefined
+  reconstruireLieux();
+  planifierRendu({carte:true, feuille:true});
+}
+
 async function publier(){
   const b=brouillon;
   const debut = new Date(b.date+"T"+(b.heure||"00:00")+":00");
@@ -5853,18 +6472,71 @@ async function publier(){
     places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng,
     debutLe:Number.isFinite(debut.getTime()) ? debut.getTime() : null,
     finLe:fin && Number.isFinite(fin.getTime()) ? fin.getTime() : null,
+    // l'aperçu local de l'affiche, le temps que le vrai fichier monte
+    image: b.imageFichier ? URL.createObjectURL(b.imageFichier) : "",
     isTemporary:true }, "autour");
-  // l'affiche part avant la fiche : sans URL, la publication se ferait sans image
-  if(b.imageFichier) l.image = await Store.televerserImage(b.imageFichier);
-  const enligne = await Store.publier(l);
-  if(!enligne) return;                       // message déjà affiché, brouillon conservé
-  fusionner([enligne], "user");
-  // publier crée le canal côté base : la section Messages apparaît aussitôt
-  rafraichirCanaux();
+  l.envoi = "envoi";
+
+  // 1. à l'écran, maintenant
+  epinglerPublication(l.id);
+  fusionner([l], "user");
   fermerFeuille();
-  filtreActif="tout"; dessinerFiltres(); rendre();
-  map.flyTo([enligne.lat,enligne.lng], Math.max(map.getZoom(),17), {duration:.7});
+  filtreActif="tout";
+  planifierRendu({carte:true, filtres:true, accueil:true});
+  if(map) map.flyTo([l.lat,l.lng], Math.max(map.getZoom(),17), {duration:.7});
   toast("Publié · visible par tous");
+
+  // 2. le réseau, derrière
+  const minuteurRetard = setTimeout(()=>marquerPublication(l.id, "retard"), ATTENTE_VISIBLE_MS);
+  publicationsEnVol.set(l.id, b);
+  try{
+    const image = b.imageFichier ? await Store.televerserImage(b.imageFichier) : "";
+    const enligne = await Store.publier(Object.assign({}, l, {image}));
+    clearTimeout(minuteurRetard);
+    if(!enligne){                            // message déjà affiché par Store
+      marquerPublication(l.id, "echec");
+      return;
+    }
+    // l'exemplaire local cède la place à celui que la base a confirmé —
+    // l'épingle le suit, sinon l'événement disparaîtrait au moment même où
+    // la publication réussit
+    userPublications = userPublications.filter(p=>p.id !== l.id);
+    publicationsEnVol.delete(l.id);
+    publicationsEpinglees.delete(l.id);
+    epinglerPublication(enligne.id);
+    fusionner([enligne], "user");
+    // publier crée le canal côté base : la section Messages apparaît aussitôt
+    rafraichirCanaux();
+  }catch(e){
+    clearTimeout(minuteurRetard);
+    console.error("Publication :", e);
+    marquerPublication(l.id, "echec");
+  }
+}
+
+/* Réessayer : le brouillon est encore là, l'affiche aussi. */
+async function reessayerPublication(id){
+  const l = userPublications.find(x=>x.id === id);
+  const b = publicationsEnVol.get(id);
+  if(!l || !b) return;
+  marquerPublication(id, "envoi");
+  const minuteurRetard = setTimeout(()=>marquerPublication(id, "retard"), ATTENTE_VISIBLE_MS);
+  try{
+    const image = b.imageFichier ? await Store.televerserImage(b.imageFichier) : (l.image || "");
+    const enligne = await Store.publier(Object.assign({}, l, {image}));
+    clearTimeout(minuteurRetard);
+    if(!enligne){ marquerPublication(id, "echec"); return; }
+    userPublications = userPublications.filter(p=>p.id !== id);
+    publicationsEnVol.delete(id);
+    publicationsEpinglees.delete(id);
+    epinglerPublication(enligne.id);
+    fusionner([enligne], "user");
+    rafraichirCanaux();
+    toast("Publié · visible par tous");
+  }catch(e){
+    clearTimeout(minuteurRetard);
+    marquerPublication(id, "echec");
+  }
 }
 
 /* ================================================================== */
@@ -6990,6 +7662,9 @@ function catsAideActives(){
 }
 
 function proposableAuto(l, ctx){
+  // une publication toute fraîche est proposable par construction : c'est la
+  // personne devant l'écran qui vient de l'écrire
+  if(publicationsEpinglees.has(l.id)) return true;
   if(modeAide){
     // même ici, ce qu'on cherche par son nom ou qu'on choisit dans Explorer
     // reste trouvable : le mode change les priorités, il n'enferme personne
@@ -7095,9 +7770,6 @@ function niveauLieu(l, ctx, sc){
 }
 
 
-/* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
-   false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
-let selectionAccueil = null;
 
 /* ================================================================== */
 /*  Bottom sheet : un besoin, puis ses sous-choix. Jamais les deux.    */
@@ -7518,7 +8190,25 @@ function recommandationsAccueil(limite){
   prechargerEta(classement, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
-  return classement.slice(0, limite || 12);
+  return avecEpingles(classement).slice(0, limite || 12);
+}
+
+/* Ce qu'on vient de publier ouvre la liste. Le classement fait bien son
+   travail en n'y mettant pas un concert de demain soir ; mais après avoir
+   appuyé sur « Publier », la première question est « est-ce que c'est bien
+   passé ? », et la réponse doit être sur la première ligne. */
+function avecEpingles(classement){
+  const epingles = idsEpingles();
+  if(!epingles.length) return classement;
+  const devant = [];
+  epingles.forEach(id=>{
+    const dansClassement = classement.find(l=>l.id === id);
+    const l = dansClassement || lieux.find(x=>x.id === id);
+    if(l && !devant.includes(l)) devant.push(l);
+  });
+  if(!devant.length) return classement;
+  const ids = new Set(devant.map(l=>l.id));
+  return devant.concat(classement.filter(l=>!ids.has(l.id)));
 }
 
 /* ==================================================================== */
@@ -8642,7 +9332,11 @@ const ACCUEIL_MAX = 5;
 const ACCUEIL_SEUIL = 55;
 
 function majAccueil(){
-  if(!map || !positionMoi || modeNav) return;
+  /* La carte n'est plus une condition. Elle vient d'un CDN, elle peut manquer
+     ou arriver en retard ; les recommandations, elles, ne dépendent que des
+     lieux et de la position. Les faire attendre Leaflet rendait l'application
+     entièrement vide quand le CDN toussait. */
+  if(!positionMoi || modeNav) return;
   if(selectionAccueil === false) return;
   const ctx = contexteActuel();
   /* Le point de référence est celui du classement — soi, ou la zone qu'on est
@@ -8663,8 +9357,29 @@ function majAccueil(){
     .sort((a,b)=>b.score - a.score);
   if(modeAide && !montrerFermes)
     notes = ecarterFermesSiAlternative(notes.map(l=>({l}))).map(x=>x.l);
+  /* La réserve du jeu rapide : les meilleurs candidats du quartier, seuil
+     compris. Elle est prise AVANT le filtre du seuil — au prochain démarrage,
+     l'heure aura changé et un lieu écarté ce soir peut très bien être le bon
+     demain matin. */
+  const reserve = notes.slice(0, RAPIDE_MAX);
 
+  /* Ce qu'on vient de publier passe devant tout le reste : c'est la seule
+     chose à l'écran dont on sait avec certitude qu'elle intéresse la personne
+     qui regarde — elle vient de l'écrire. */
   const choisis = [];
+  const epingles = idsEpingles();
+  if(epingles.length){
+    const vus = new Set();
+    epingles.forEach(id=>{
+      if(vus.has(id)) return;
+      // la version classée si elle existe (elle porte le trajet et l'horaire),
+      // sinon l'objet brut — mais dans tous les cas, à l'écran
+      const l = notes.find(x=>x.id === id) || lieux.find(x=>x.id === id);
+      if(!l) return;
+      vus.add(id); choisis.push(l);
+    });
+    notes = notes.filter(l=>!vus.has(l.id));
+  }
   if(modeAide){
     // couvrir les besoins plutôt que trôner cinq banques alimentaires : un
     // seul lieu par catégorie, le meilleur. Et pas de seuil — si le seul
@@ -8687,8 +9402,13 @@ function majAccueil(){
   }
 
   selectionAccueil = choisis.map(l=>l.id);
+  if(choisis.length) PERF.jalon("scoring_fait");
+  // ce qu'on vient de choisir servira au prochain démarrage : c'est la seule
+  // façon d'avoir des propositions réelles à l'image suivant l'ouverture
+  memoriserJeuRapide(choisis, reserve);
 
   // le rendu appartient à la feuille : ici on ne fait que choisir
+  if(renduEnLot) return;
   if(feuilleNiveau !== null) majFeuille2();
   rendre();
 }
@@ -8709,37 +9429,59 @@ function suivreMaPosition(){
     return;
   }
   definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
-  etat("Recherche de ta position…", true);
+  /* Plus de bandeau pendant la recherche. Il affichait « Recherche de ta
+     position… » à côté d'un bouton « Activer », c'est-à-dire qu'il demandait
+     de lancer ce qui était déjà lancé, et il occupait le haut de l'écran au
+     moment précis où l'on veut lire les propositions. La demande se fait en
+     silence ; on ne parle que si elle échoue. */
+  PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
     p=>{
       const c = [p.coords.latitude, p.coords.longitude];
       PERF.jalon("geolocation_ready");
+      PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
       memoriserPosition(c);
-      const bouge = !positionConnue() || !positionMoi
+      const premiereFois = !positionConnue();
+      const bouge = premiereFois || !positionMoi
         || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
       positionMoi = c;
       originePosition = "gps";
+      originePrecision = "point";      // désormais on peut parler en minutes
+
+      /* Ce que ça change à l'écran, et qui doit se voir : la pastille cesse de
+         dire « Choisir un endroit » et prend le nom de la commune, le point
+         bleu se pose au bon endroit, et les propositions se recalculent autour
+         de là où on est vraiment. Avant, tout ça restait en l'état : on
+         obtenait la position sans que rien ne bouge. */
+      $("#bandeauGeo").hidden = true;
       majEnteteLieu();
       detecterVille(c[0], c[1]);
-      majAccueil();
       if(moi) moi.setLatLng(c);
-      if(bouge && map){
-        map.flyTo(c, 16, {duration:.9});
-        chargerZone(c[0], c[1]);
+      if(map && bouge) map.flyTo(c, 16, {duration:.9});
+      planifierRendu({accueil:true, carte:true, feuille:true});
+
+      if(bouge){
+        // le quartier réel se charge — court délai : on est encore au
+        // démarrage, et l'écran montre déjà quelque chose
+        chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
+        chargerDonneesTemporaires(c[0], c[1]);
         // le nom de commune n'est redemandé que si on a réellement changé de
         // coin : deux appels au démarrage pour la même ville, c'est un de trop
         if(distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
           dernierNom = c;
           nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
         }
-        majAccueil();
       }
+      // on ne le dit qu'au premier coup, et seulement si l'écran partait sans
+      // position : sinon c'est une notification pour rien
+      if(premiereFois) toast("Position trouvée · autour de toi");
       definirEtatRecherche("location",SEARCH_STATES.SUCCESS);
-      $("#bandeauGeo").hidden = true;
     },
     ()=>{
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-      etat("Active ta position ou choisis un endroit sur la carte.", true);
+      etat(positionConnue()
+        ? "Position indisponible · on garde ton dernier quartier."
+        : "Active ta position ou choisis un endroit sur la carte.", true);
     },
     {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
@@ -8758,14 +9500,20 @@ $("#videOk").onclick=()=>{
   toast("Les lieux fermés sont affichés"); rendre();
 };
 
-/* Démarrage immédiat : plus rien n'attend un clic ni une permission. */
+/* Démarrage immédiat : plus rien n'attend un clic ni une permission.
+
+   La géolocalisation part EN MÊME TEMPS que l'interface, pas après elle. Elle
+   était lancée à la fin de `demarrer()`, donc derrière la carte, le cache et
+   les premières requêtes : sur un téléphone, la permission n'était demandée
+   qu'une seconde après l'ouverture, et la position n'arrivait qu'une seconde
+   plus tard encore. Elle ne bloque rien — l'écran démarre sur la dernière
+   position connue et se corrige silencieusement quand la vraie arrive. */
 performance.mark("autour:script");
+PERF.jalon("script");
 const positionTest = positionLocaleDeTest();
-demarrer(positionTest || positionMemorisee()).then(()=>{
-  performance.mark("autour:carte");
-  performance.measure("interface prête", "autour:script", "autour:carte");
-  if(!positionTest) suivreMaPosition();
-});
+if(!positionTest) suivreMaPosition();
+demarrer(positionTest || positionMemorisee());
+PERF.mesure("boot UI", "script", "ui_ready");
 /* La recherche est désormais toujours visible : elle porte l'intention
    («&nbsp;que veux-tu faire&nbsp;?»), elle ne se déplie plus. La croix
    n'apparaît que s'il y a quelque chose à effacer. */
@@ -9282,6 +10030,14 @@ function majEnteteLieu(){
   const v = $("#hdVille");
   if(!v) return;
   if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
+  /* Quand le serveur a déjà donné la ville, on l'écrit tout de suite : c'est
+     vrai, c'est utile, et ça évite de laisser « Autour de toi » sur l'écran
+     pendant que Nominatim répond — ou définitivement, s'il ne répond pas. */
+  if(originePosition === "serveur" && commune && commune !== "ton quartier"){
+    if(v.textContent === "Choisir un endroit" || v.textContent === "Autour de toi")
+      v.textContent = commune;
+    return;
+  }
   if(v.textContent === "Choisir un endroit") v.textContent = "Autour de toi";
 }
 
@@ -9289,6 +10045,11 @@ async function detecterVille(lat,lng){
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(villeDetectee === cle) return;
   villeDetectee = cle;
+  const parRelais = await communeRelayee(lat,lng);
+  if(parRelais !== undefined){
+    if(parRelais){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
+    return;
+  }
   try{
     const stop = new AbortController();
     const t = setTimeout(()=>stop.abort(), 6000);
@@ -9301,7 +10062,6 @@ async function detecterVille(lat,lng){
     const nom = a.city || a.town || a.village || a.municipality || a.county;
     if(nom){
       $("#hdVille").textContent = nom;
-      $("#hdSous").hidden = false;
       mesurerHeader();
     }
   }catch(e){ /* silencieux : l'en-tête reste neutre plutôt que faux */ }

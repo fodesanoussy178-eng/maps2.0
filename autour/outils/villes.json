@@ -1,0 +1,57 @@
+[
+  {
+    "nom": "Lille sud-ouest · Loos · Haubourdin",
+    "lat": 50.61,
+    "lng": 3.02
+  },
+  {
+    "nom": "Lille centre · Villeneuve-d'Ascq",
+    "lat": 50.63,
+    "lng": 3.08
+  },
+  {
+    "nom": "Hem · Villeneuve-d'Ascq est",
+    "lat": 50.64,
+    "lng": 3.17
+  },
+  {
+    "nom": "Marcq · La Madeleine · Croix",
+    "lat": 50.68,
+    "lng": 3.12
+  },
+  {
+    "nom": "Roubaix · Tourcoing · Wattrelos",
+    "lat": 50.71,
+    "lng": 3.18
+  },
+  {
+    "nom": "Paris 16e · Boulogne · Neuilly",
+    "lat": 48.86,
+    "lng": 2.24
+  },
+  {
+    "nom": "Paris 15e ouest · Issy",
+    "lat": 48.83,
+    "lng": 2.24
+  },
+  {
+    "nom": "Paris 8e · 9e · 17e · 18e",
+    "lat": 48.88,
+    "lng": 2.32
+  },
+  {
+    "nom": "Paris 5e · 6e · 7e · 14e · 15e",
+    "lat": 48.84,
+    "lng": 2.32
+  },
+  {
+    "nom": "Paris 2e · 10e · 11e · 19e · 20e · Montreuil",
+    "lat": 48.87,
+    "lng": 2.37
+  },
+  {
+    "nom": "Paris 12e · 13e",
+    "lat": 48.83,
+    "lng": 2.37
+  }
+]
