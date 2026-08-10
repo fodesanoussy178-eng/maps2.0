@@ -1501,6 +1501,34 @@ let canauxAMoi = [];
    « Tourcoing », « Wazemmes » : on déplace la carte vers la zone et on
    n'affiche d'abord que trois à cinq résultats fortement pertinents. Le reste
    se charge derrière, sans bloquer. */
+/* ---- Où est la personne, et à quel point le sait-on ----------------------
+   Deux questions distinctes, deux variables. Les confondre a produit exactement
+   le défaut qu'on corrige ici : une ville déduite d'une adresse IP s'est mise à
+   valoir position, et l'application a annoncé « Lille » à quelqu'un qui n'y
+   était pas.
+
+   D'OÙ elle vient :
+     · "gps"    — le navigateur l'a mesurée. SEULE source autorisée à dire où
+                  est la personne.
+     · "server" — déduite de l'adresse IP par le bord du réseau. Sur un réseau
+                  mobile, c'est souvent la passerelle de l'opérateur, à des
+                  dizaines de kilomètres. Cela sert à choisir la bonne zone de
+                  données, rien d'autre.
+     · "manual" — une zone choisie à la main.
+     · null     — on ne sait pas, et on le dit.
+
+   CE QU'ELLE VAUT :
+     · "point"  — à quelques mètres. On peut parler en minutes de marche.
+     · "ville"  — à quelques kilomètres. On ne peut rien promettre de précis.
+
+   Déclaré ici parce que le préchargement des itinéraires, juste en dessous,
+   est le premier à le lire. */
+let originePosition = null;          // "gps" | "server" | "manual" | null
+let precisionPosition = null;        // "point" | "ville" | null
+const positionConnue = ()=>originePosition !== null;
+const positionPrecise = ()=>precisionPosition === "point";
+const positionApprochee = ()=>positionConnue() && !positionPrecise();
+
 let rechercheGeo = null;              // {nom, lat, lng} de la zone visée
 /* La zone dont la feuille affiche les résultats. Null = recommandations
    habituelles. C'est ce qui permet aux résultats de survivre à l'arrivée des
@@ -1573,6 +1601,13 @@ async function rechercheGeographique(q){
   const c = map.getCenter();
   const centre = c ? [c.lat, c.lng] : [zone.lat, zone.lng];
   rechercheGeo = {nom:q, lat:centre[0], lng:centre[1]};
+  /* Choisir une ville à la main, c'est dire soi-même où l'on regarde : c'est
+     donc une position, et une position VOULUE — mais à l'échelle d'une ville,
+     pas d'un point. On l'enregistre comme telle quand on n'avait rien, sans
+     jamais écraser une mesure du navigateur. */
+  if(!positionPrecise()){
+    originePosition = "manual"; precisionPosition = "ville";
+  }
 
   /* Redessiner tout de suite, sans attendre le réseau. Deux raisons :
      · la zone peut être déjà chargée — chargerZone ne repart alors pas, aucune
@@ -1852,13 +1887,6 @@ function apresPeinture(f){
 }
 const quandLibre = (f)=> (window.requestIdleCallback || (g=>setTimeout(g, 400)))(f);
 
-/* Connue à quel point ? La position peut venir de trois endroits (voir
-   `originePosition`, plus bas) : la mémoire, la ville déduite par le serveur,
-   ou la géolocalisation. Seule la dernière autorise à écrire « à 4 minutes à
-   pied » — d'où ce drapeau, déclaré ici parce que le préchargement des
-   itinéraires, juste en dessous, est le premier à le lire. */
-let originePrecision = null;         // "ville" | "point" | null
-const positionPrecise = ()=>originePrecision === "point";
 
 const TRANSIT = window.AutourTransit;
 const etaParLieu = new Map();
@@ -2811,11 +2839,6 @@ function idsEpingles(){
   });
   return [...publicationsEpinglees.keys()];
 }
-/* D'où vient le point que la carte regarde : "gps" (la personne l'a autorisé),
-   "memoire" (dernière zone visitée), "choix" (une ville choisie à la main),
-   ou null — et null veut dire « on ne sait pas », pas « il n'y a rien ». */
-let originePosition = null;
-const positionConnue = ()=>originePosition !== null;
 let routes=[]; // {couche, base}
 let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
@@ -4051,8 +4074,40 @@ function positionLocaleDeTest(){
   return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat)<=90 && Math.abs(lng)<=180
     ? [lat,lng] : null;
 }
-function memoriserPosition(c){
-  try{ localStorage.setItem("autour:position", JSON.stringify(c)); }catch(e){}
+/* La dernière position réelle. « Réelle » veut dire mesurée par le navigateur :
+   une ville déduite d'une adresse IP n'entre JAMAIS ici. Sinon elle
+   ressortirait au démarrage suivant déguisée en position mémorisée, et
+   l'erreur deviendrait permanente — c'est précisément ce qu'on corrige. */
+function memoriserPosition(c, source){
+  if(source !== "gps") return false;
+  try{ localStorage.setItem("autour:position", JSON.stringify(c)); return true; }
+  catch(e){ return false; }
+}
+
+/* Safari ne répond pas à `navigator.permissions.query({name:"geolocation"})`.
+   On garde donc trace de la réponse qu'il nous a déjà donnée : si la
+   localisation a abouti au moins une fois sur cet appareil, elle aboutira
+   encore sans redemander, et on peut la relancer d'office au démarrage.
+   Un refus efface la trace — on ne harcèle pas quelqu'un qui a dit non. */
+const CLE_GEO_OK = "autour:geo-autorisee";
+function noterAutorisationGeo(ok){
+  try{ if(ok) localStorage.setItem(CLE_GEO_OK, "1");
+       else localStorage.removeItem(CLE_GEO_OK); }catch(e){}
+}
+function geoDejaAutorisee(){
+  try{ return localStorage.getItem(CLE_GEO_OK) === "1"; }catch(e){ return false; }
+}
+
+/* L'état réel de la permission, avec le repli qu'impose Safari. */
+async function permissionPosition(){
+  if(!navigator.geolocation) return "absent";
+  try{
+    if(navigator.permissions && navigator.permissions.query){
+      const p = await navigator.permissions.query({name:"geolocation"});
+      if(p && p.state) return p.state;          // granted | prompt | denied
+    }
+  }catch(e){ /* pas de réponse : on retombe sur ce qu'on a mémorisé */ }
+  return geoDejaAutorisee() ? "granted" : "prompt";
 }
 
 /* ---- La carte, séparée du reste --------------------------------------------
@@ -4156,19 +4211,32 @@ async function demarrer(coords){
      On garde un point de départ pour que la carte existe, mais on note que
      personne ne l'a choisi — et tout ce qui parle de « autour de toi » lit
      ce drapeau. */
-  /* Trois provenances possibles, dans cet ordre de confiance : la dernière
-     position réelle mémorisée, puis la ville déduite par le serveur, puis
-     rien. Aucune n'attend le réseau ni une permission. */
+  /* La hiérarchie de la position, par ordre de vérité décroissante.
+
+     1. La dernière position GPS mémorisée. C'est une mesure réelle du
+        navigateur, éventuellement d'il y a quelques heures : on la préfère
+        toujours à l'IP, et on la rafraîchit tout de suite.
+     2. La ville déduite de l'adresse IP. Elle sert UNIQUEMENT à choisir la
+        bonne zone de données pour que l'écran se remplisse vite. Elle ne dit
+        pas où est la personne, et l'interface ne le prétendra pas.
+     3. Rien. Et on le dit, plutôt que d'afficher une ville au hasard.
+
+     Aucune de ces trois n'attend le réseau ni une permission. */
   const duServeur = coords ? null : positionServeur();
-  if(coords){ originePosition = "memoire"; originePrecision = "point"; positionMoi = coords; }
+  if(coords){
+    originePosition = "gps"; precisionPosition = "point"; positionMoi = coords;
+    PERF.jalon("position_gps_memorisee");
+  }
   else if(duServeur){
-    originePosition = "serveur"; originePrecision = "ville";
+    originePosition = "server"; precisionPosition = "ville";
     positionMoi = [duServeur.lat, duServeur.lng];
+    // le nom sert à chercher les agendas et à étiqueter des adresses ; il n'est
+    // jamais affiché comme « tu es ici » tant que la précision est « ville »
     if(duServeur.ville) commune = duServeur.ville;
     if(duServeur.pays) paysISO = duServeur.pays;
-    PERF.jalon("position_serveur");
+    PERF.jalon("position_server");
   }
-  else { originePosition = null; originePrecision = null; positionMoi = [48.8566,2.3522]; }
+  else { originePosition = null; precisionPosition = null; positionMoi = [48.8566,2.3522]; }
   PERF.jalon("position_" + (originePosition || "inconnue"));
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
@@ -8442,7 +8510,10 @@ function carteAide(l){
   const cond = AIDE.conditionDe(l);
   const pour = AIDE.convient(l, {age:ageDeclare});
   const dist = positionMoi ? formatDist(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng)) : "";
-  const eta = l.rankEta && Number.isFinite(l.rankEta.minutes) ? l.rankEta.minutes+" min" : "";
+  /* Pas de durée depuis une position approchée : « 16 min » calculé à partir
+     d'un point à plusieurs kilomètres est un chiffre faux, et il a l'air juste. */
+  const eta = positionPrecise() && l.rankEta && Number.isFinite(l.rankEta.minutes)
+    ? l.rankEta.minutes+" min" : "";
 
   return '<div class="ac-aide" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
     '<div class="aa-tete"><span class="aa-emoji">'+c.emoji+'</span>'+
@@ -8674,7 +8745,9 @@ function fermeDansMoinsDUneHeure(d){
 function carteRecommandation(l){
   favorisEnMemoire.set(cleFavori(l), l);
   const c = CATS[l.cat] || {emoji:"📍"};
-  const eta = l.rankEta;
+  // même règle que pour les cartes d'aide : aucune durée tant que le point
+  // n'est pas mesuré par le navigateur
+  const eta = positionPrecise() ? l.rankEta : null;
   const dispo = l.rankAvailability;
   const cats = etiquettesLisibles(l).join(" • ")
     || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
@@ -8707,7 +8780,11 @@ function carteRecommandation(l){
   // événement déjà en cours, elle ne décide de rien
   const dejaEnCours = estTemporaire(l) &&
     statutTemps(l).statut === TEMPS.STATUTS.EN_COURS;
-  const arrivee = l.rankArrival && !dejaEnCours
+  /* L'heure d'arrivée est un temps de trajet déguisé : elle se calcule depuis
+     le point de départ. Depuis une zone approximative, « Arrivée 03:07 » est
+     aussi faux que « 16 min », et bien plus crédible. L'horaire de fermeture,
+     lui, ne dépend pas de nous : il reste. */
+  const arrivee = l.rankArrival && !dejaEnCours && positionPrecise()
     ? "Arrivée "+heureLocale(l.rankArrival, l)
     : (dispo && dispo.closesAtTime ? "Ferme à "+dispo.closesAtTime : "");
 
@@ -9425,40 +9502,46 @@ function dessinerFiltres(){ majRaccourcis(); }
 function suivreMaPosition(){
   if(!navigator.geolocation){
     definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-    etat("Active ta position ou choisis un endroit sur la carte.", true);
+    etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
     return;
   }
   definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
-  /* Plus de bandeau pendant la recherche. Il affichait « Recherche de ta
-     position… » à côté d'un bouton « Activer », c'est-à-dire qu'il demandait
-     de lancer ce qui était déjà lancé, et il occupait le haut de l'écran au
-     moment précis où l'on veut lire les propositions. La demande se fait en
-     silence ; on ne parle que si elle échoue. */
   PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
     p=>{
       const c = [p.coords.latitude, p.coords.longitude];
       PERF.jalon("geolocation_ready");
       PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
-      memoriserPosition(c);
+      noterAutorisationGeo(true);
+      memoriserPosition(c, "gps");
+
+      /* Le GPS REMPLACE tout ce qui précède, il ne le complète pas. Venir
+         d'une ville déduite d'une adresse IP et arriver sur le vrai point,
+         c'est potentiellement un saut de plusieurs dizaines de kilomètres :
+         la ville, les distances, les temps de trajet, les recommandations et
+         la carte doivent tous être refaits, pas seulement rafraîchis. */
+      const venaitDeLApproximation = positionApprochee();
       const premiereFois = !positionConnue();
-      const bouge = premiereFois || !positionMoi
+      const bouge = premiereFois || venaitDeLApproximation || !positionMoi
         || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
       positionMoi = c;
       originePosition = "gps";
-      originePrecision = "point";      // désormais on peut parler en minutes
+      precisionPosition = "point";     // désormais on peut parler en minutes
 
-      /* Ce que ça change à l'écran, et qui doit se voir : la pastille cesse de
-         dire « Choisir un endroit » et prend le nom de la commune, le point
-         bleu se pose au bon endroit, et les propositions se recalculent autour
-         de là où on est vraiment. Avant, tout ça restait en l'état : on
-         obtenait la position sans que rien ne bouge. */
       $("#bandeauGeo").hidden = true;
+      if(venaitDeLApproximation){
+        // tout ce qui avait été déduit de l'IP est faux jusqu'à preuve du
+        // contraire : on efface, on ne corrige pas
+        villeDetectee = null;
+        commune = "ton quartier";
+        etaParLieu.clear();
+        $("#hdVille").textContent = "Autour de toi";
+      }
       majEnteteLieu();
       detecterVille(c[0], c[1]);
       if(moi) moi.setLatLng(c);
       if(map && bouge) map.flyTo(c, 16, {duration:.9});
-      planifierRendu({accueil:true, carte:true, feuille:true});
+      planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
 
       if(bouge){
         // le quartier réel se charge — court délai : on est encore au
@@ -9467,33 +9550,58 @@ function suivreMaPosition(){
         chargerDonneesTemporaires(c[0], c[1]);
         // le nom de commune n'est redemandé que si on a réellement changé de
         // coin : deux appels au démarrage pour la même ville, c'est un de trop
-        if(distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
+        if(venaitDeLApproximation ||
+           distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
           dernierNom = c;
           nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
         }
       }
-      // on ne le dit qu'au premier coup, et seulement si l'écran partait sans
-      // position : sinon c'est une notification pour rien
-      if(premiereFois) toast("Position trouvée · autour de toi");
+      // on ne le dit qu'au premier coup, et seulement si l'écran ne savait pas
+      // vraiment où l'on est : sinon c'est une notification pour rien
+      if(premiereFois || venaitDeLApproximation) toast("Position trouvée · autour de toi");
       definirEtatRecherche("location",SEARCH_STATES.SUCCESS);
     },
-    ()=>{
+    (err)=>{
+      // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
+      if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-      /* Dire la vérité sur ce qu'on sait. « On garde ton dernier quartier »
-         était rassurant et faux quand la ville venait d'une adresse IP : ce
-         n'est pas un quartier, c'est une approximation à plusieurs kilomètres,
-         et la personne doit pouvoir la corriger. */
-      etat(originePosition === "memoire" || originePosition === "gps"
-        ? "Position indisponible · on garde ton dernier quartier."
-        : originePosition === "serveur"
-          ? "On te situe à " + commune + ", à quelques kilomètres près. Active ta position pour être précis."
-          : "Active ta position ou choisis un endroit sur la carte.", true);
+      proposerPosition();
     },
     {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
 }
 
+/* Le bandeau qui propose la localisation. Il dit ce qu'on sait — et surtout ce
+   qu'on ne sait pas. Une zone déduite d'une adresse IP n'est pas « ton
+   quartier » : c'est une approximation à plusieurs kilomètres, et le dire est
+   la seule façon de donner envie de la corriger. */
+function proposerPosition(){
+  etat(positionApprochee()
+    ? "Zone approximative · active ta position pour être précis."
+    : positionConnue()
+      ? "Position indisponible · on garde ton dernier quartier."
+      : "Active ta position ou choisis un endroit sur la carte.", true);
+}
+
+/* Au démarrage, on ne force jamais la boîte de dialogue du navigateur.
+   · déjà autorisée → on relance la mesure tout de suite, en silence. Safari ne
+     répondant pas à `permissions.query`, c'est notre propre trace qui le dit ;
+     sans elle, quelqu'un ayant déjà accepté aurait dû réappuyer à chaque
+     ouverture.
+   · jamais demandée → on propose, et c'est un geste qui déclenche la demande.
+     Une boîte de dialogue qui surgit sans qu'on ait rien fait est refusée par
+     réflexe, et sur iOS elle est souvent ignorée purement et simplement.
+   · refusée → on le dit, sans insister. */
+async function demarrerLocalisation(){
+  const etatPerm = await permissionPosition();
+  PERF.jalon("permission_" + etatPerm);
+  if(etatPerm === "granted"){ suivreMaPosition(); return; }
+  if(etatPerm === "absent"){ suivreMaPosition(); return; }   // dira ce qu'il faut
+  proposerPosition();
+}
+
 $("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
+$("#bandeauOk").textContent = "Utiliser ma position";
 $("#videOk").onclick=()=>{
   $("#bandeauVide").hidden = true;
   if($("#videOk").dataset.action === "retry"){
@@ -9517,7 +9625,7 @@ $("#videOk").onclick=()=>{
 performance.mark("autour:script");
 PERF.jalon("script");
 const positionTest = positionLocaleDeTest();
-if(!positionTest) suivreMaPosition();
+if(!positionTest) demarrerLocalisation();
 demarrer(positionTest || positionMemorisee());
 PERF.mesure("boot UI", "script", "ui_ready");
 /* La recherche est désormais toujours visible : elle porte l'intention
@@ -10032,28 +10140,33 @@ function ouvrirCanaux(){
 /* Ce que l'en-tête dit du lieu regardé. Tant que personne n'a donné sa
    position ni choisi de ville, il le dit — au lieu de faire croire que le
    point affiché est « autour de toi ». */
+const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
+
 function majEnteteLieu(){
   const v = $("#hdVille");
   if(!v) return;
   if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
-  /* Quand le serveur a déjà donné la ville, on l'écrit tout de suite : c'est
-     vrai, c'est utile, et ça évite de laisser « Autour de toi » sur l'écran
-     pendant que Nominatim répond — ou définitivement, s'il ne répond pas. */
-  if(originePosition === "serveur" && commune && commune !== "ton quartier"){
-    if(v.textContent === "Choisir un endroit" || v.textContent === "Autour de toi")
-      v.textContent = commune;
-    return;
-  }
-  if(v.textContent === "Choisir un endroit") v.textContent = "Autour de toi";
+  /* Une ville déduite d'une adresse IP ne s'écrit JAMAIS dans cette pastille.
+     Sur un réseau mobile elle désigne souvent la passerelle de l'opérateur, à
+     des dizaines de kilomètres : afficher « Lille » à quelqu'un qui est à
+     Tourcoing est une affirmation fausse, et c'est celle qui a été signalée.
+     On dit donc ce qu'on sait vraiment — qu'on regarde une zone, sans plus. */
+  if(positionApprochee()){ v.textContent = "Zone approximative"; return; }
+  if(ETIQUETTES_LIEU.includes(v.textContent)) v.textContent = "Autour de toi";
 }
 
 async function detecterVille(lat,lng){
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(villeDetectee === cle) return;
   villeDetectee = cle;
+  /* Le nom de commune est demandé même sur une zone approchée — il sert aux
+     agendas et aux adresses. Mais il ne s'AFFICHE que si la position est un
+     vrai point : sinon la pastille se remettrait à nommer une ville où l'on
+     n'est peut-être pas. */
+  const nommable = ()=>positionPrecise();
   const parRelais = await communeRelayee(lat,lng);
   if(parRelais !== undefined){
-    if(parRelais){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
+    if(parRelais && nommable()){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
     return;
   }
   try{
@@ -10066,7 +10179,7 @@ async function detecterVille(lat,lng){
     const j = await r.json();
     const a = j.address || {};
     const nom = a.city || a.town || a.village || a.municipality || a.county;
-    if(nom){
+    if(nom && nommable()){
       $("#hdVille").textContent = nom;
       mesurerHeader();
     }

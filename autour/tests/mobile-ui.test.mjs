@@ -1095,11 +1095,11 @@ test("sans position connue, l'application ne prétend pas savoir où on est",()=
   // autour de toi » : deux affirmations fausses d'affilée
   assert.match(html,/let originePosition = null;/);
   assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
-  // trois provenances, aucune ne devine : mémoire, ville déduite par le
-  // serveur, ou rien du tout
-  assert.match(html,/if\(coords\)\{ originePosition = "memoire"; originePrecision = "point";/);
-  assert.match(html,/originePosition = "serveur"; originePrecision = "ville";/);
-  assert.match(html,/else \{ originePosition = null; originePrecision = null;/);
+  // trois provenances, aucune ne devine : la dernière mesure du navigateur,
+  // la zone déduite de l'adresse IP, ou rien du tout
+  assert.match(html,/originePosition = "gps"; precisionPosition = "point"; positionMoi = coords;/);
+  assert.match(html,/originePosition = "server"; precisionPosition = "ville";/);
+  assert.match(html,/else \{ originePosition = null; precisionPosition = null;/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
   assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
@@ -1602,15 +1602,16 @@ test("la carte est une couche, pas une condition",()=>{
 
 test("la géolocalisation part avec l'interface et se voit à l'arrivée",()=>{
   // lancée AVANT demarrer(), pas après
-  const geo = html.indexOf("if(!positionTest) suivreMaPosition();");
+  const geo = html.indexOf("if(!positionTest) demarrerLocalisation();");
   const dem = html.indexOf("demarrer(positionTest || positionMemorisee());");
   assert.ok(geo > 0 && dem > 0 && geo < dem, "la position est demandée en parallèle");
   // plus de bandeau « Recherche de ta position… » à côté d'un bouton « Activer »
   assert.doesNotMatch(html,/etat\("Recherche de ta position…", true\);/);
   // à l'arrivée, l'écran change : en-tête, ville, point bleu, propositions
-  assert.match(html,/\$\("#bandeauGeo"\)\.hidden = true;\s*\n\s*majEnteteLieu\(\);\s*\n\s*detecterVille\(c\[0\], c\[1\]\);/);
-  assert.match(html,/planifierRendu\(\{accueil:true, carte:true, feuille:true\}\);/);
-  assert.match(html,/if\(premiereFois\) toast\("Position trouvée · autour de toi"\);/);
+  assert.match(html,/\$\("#bandeauGeo"\)\.hidden = true;/);
+  assert.match(html,/majEnteteLieu\(\);\s*\n\s*detecterVille\(c\[0\], c\[1\]\);/);
+  assert.match(html,/planifierRendu\(\{accueil:true, carte:true, feuille:true, filtres:true\}\);/);
+  assert.match(html,/if\(premiereFois \|\| venaitDeLApproximation\) toast\("Position trouvée · autour de toi"\);/);
   // et le quartier réel se charge
   assert.match(html,/chargerZone\(c\[0\], c\[1\], \{delai:OVERPASS_DELAI_BOOT\}\);/);
 });
@@ -1680,15 +1681,20 @@ test("la ville est connue avant que la page ne s'exécute",()=>{
 });
 
 test("une position de ville ne se fait pas passer pour un point GPS",()=>{
-  assert.match(html,/let originePrecision = null;/);
-  assert.match(html,/const positionPrecise = \(\)=>originePrecision === "point";/);
-  // aucun temps de trajet tant qu'on n'a que la ville
+  // deux axes séparés : d'où elle vient, et ce qu'elle vaut
+  assert.match(html,/let originePosition = null;\s+\/\/ "gps" \| "server" \| "manual" \| null/);
+  assert.match(html,/let precisionPosition = null;\s+\/\/ "point" \| "ville" \| null/);
+  assert.match(html,/const positionPrecise = \(\)=>precisionPosition === "point";/);
+  assert.match(html,/const positionApprochee = \(\)=>positionConnue\(\) && !positionPrecise\(\);/);
+  // aucun temps de trajet tant qu'on n'a que la zone
   assert.match(html,/if\(!TRANSIT \|\| !positionMoi \|\| !positionPrecise\(\)\) return;/);
+  assert.match(html,/const eta = positionPrecise\(\) \? l\.rankEta : null;/);
+  assert.match(html,/const eta = positionPrecise\(\) && l\.rankEta/);
   // la vraie géolocalisation, elle, débloque la précision
-  assert.match(html,/originePrecision = "point";\s+\/\/ désormais on peut parler en minutes/);
-  // déclaré avant son premier usage
-  assert.ok(html.indexOf("let originePrecision") < html.indexOf("positionPrecise()"),
-    "originePrecision doit précéder son premier usage");
+  assert.match(html,/precisionPosition = "point";\s+\/\/ désormais on peut parler en minutes/);
+  // déclarés avant leur premier usage
+  assert.ok(html.indexOf("let precisionPosition") < html.indexOf("positionPrecise()"),
+    "precisionPosition doit précéder son premier usage");
 });
 
 test("Overpass et Nominatim passent par notre propre origine",()=>{
@@ -1797,6 +1803,71 @@ test("une ville déduite de l'IP ne coupe pas l'accès à la vraie position",()=
   assert.match(html,/if\(!positionPrecise\(\)\)\{ suivreMaPosition\(\); return; \}/);
   assert.doesNotMatch(html,/if\(!positionConnue\(\)\)\{ suivreMaPosition\(\); return; \}/);
   // et le message d'échec ne prétend pas garder un quartier qu'on n'a jamais eu
-  assert.match(html,/originePosition === "serveur"\s*\n\s*\? "On te situe à " \+ commune/);
-  assert.match(html,/originePosition === "memoire" \|\| originePosition === "gps"/);
+  assert.match(html,/"Zone approximative · active ta position pour être précis\."/);
+  assert.match(html,/"Position indisponible · on garde ton dernier quartier\."/);
+});
+
+/* ==========================================================================
+   La hiérarchie de la localisation : une seule source dit où l'on est
+   ======================================================================== */
+
+test("l'adresse IP choisit une zone de données, jamais la position",()=>{
+  // seul le GPS peut définir la position réelle
+  assert.match(html,/positionMoi = c;\s*\n\s*originePosition = "gps";\s*\n\s*precisionPosition = "point";/);
+  // la ville déduite de l'IP ne s'écrit jamais dans la pastille
+  assert.match(html,/if\(positionApprochee\(\)\)\{ v\.textContent = "Zone approximative"; return; \}/);
+  // ni via le géocodage inverse, qui ne nomme que sur un vrai point
+  assert.match(html,/const nommable = \(\)=>positionPrecise\(\);/);
+  assert.match(html,/if\(parRelais && nommable\(\)\)/);
+  assert.match(html,/if\(nom && nommable\(\)\)/);
+  // aucune durée de trajet depuis un point approximatif
+  assert.match(html,/const eta = positionPrecise\(\) \? l\.rankEta : null;/);
+});
+
+test("une position déduite de l'IP n'entre jamais dans localStorage",()=>{
+  assert.match(html,/function memoriserPosition\(c, source\)\{\s*\n\s*if\(source !== "gps"\) return false;/);
+  // un seul appelant, et c'est la mesure du navigateur
+  const appels = html.match(/memoriserPosition\([^)]*\)/g) || [];
+  const vrais = appels.filter((a) => !a.includes("c, source"));
+  assert.deepEqual(vrais, ['memoriserPosition(c, "gps")'],
+    "seule la géolocalisation du navigateur enregistre une position");
+});
+
+test("le GPS remplace l'approximation, il ne la complète pas",()=>{
+  assert.match(html,/const venaitDeLApproximation = positionApprochee\(\);/);
+  // tout ce qui avait été déduit de l'IP est effacé, pas corrigé
+  assert.match(html,/villeDetectee = null;\s*\n\s*commune = "ton quartier";\s*\n\s*etaParLieu\.clear\(\);/);
+  // et la zone est rechargée même si le déplacement est court
+  assert.match(html,/const bouge = premiereFois \|\| venaitDeLApproximation/);
+  assert.match(html,/if\(venaitDeLApproximation \|\|\s*\n\s*distanceM\(c\[0\],c\[1\], dernierNom\[0\], dernierNom\[1\]\) > 2000\)/);
+});
+
+test("la permission décide du démarrage, et Safari n'est pas oublié",()=>{
+  assert.match(html,/async function permissionPosition\(\)\{/);
+  assert.match(html,/navigator\.permissions\.query\(\{name:"geolocation"\}\)/);
+  // Safari ne répond pas : on se souvient de l'autorisation déjà obtenue,
+  // sinon il faudrait réappuyer à chaque ouverture
+  assert.match(html,/return geoDejaAutorisee\(\) \? "granted" : "prompt";/);
+  assert.match(html,/const CLE_GEO_OK = "autour:geo-autorisee";/);
+  assert.match(html,/noterAutorisationGeo\(true\);/);
+  // un refus efface la trace : on ne relance plus d'office
+  assert.match(html,/if\(err && err\.code === 1\) noterAutorisationGeo\(false\);/);
+  // accordée → on mesure tout de suite ; sinon on propose, sans forcer
+  assert.match(html,/if\(etatPerm === "granted"\)\{ suivreMaPosition\(\); return; \}/);
+  assert.match(html,/proposerPosition\(\);/);
+  assert.match(html,/\$\("#bandeauOk"\)\.textContent = "Utiliser ma position";/);
+});
+
+test("choisir une ville à la main est une position, à l'échelle d'une ville",()=>{
+  assert.match(html,/originePosition = "manual"; precisionPosition = "ville";/);
+  // et cela n'écrase jamais une mesure du navigateur
+  assert.match(html,/if\(!positionPrecise\(\)\)\{\s*\n\s*originePosition = "manual";/);
+});
+
+test("l'heure d'arrivée est un temps de trajet, elle obéit à la même règle",()=>{
+  // « Arrivée 03:07 » se calcule depuis le point de départ : depuis une zone
+  // approximative c'est aussi faux que « 16 min », et bien plus crédible
+  assert.match(html,/const arrivee = l\.rankArrival && !dejaEnCours && positionPrecise\(\)/);
+  // l'heure de fermeture, elle, ne dépend pas d'où l'on est
+  assert.match(html,/dispo && dispo\.closesAtTime \? "Ferme à "\+dispo\.closesAtTime/);
 });
