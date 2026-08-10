@@ -1788,3 +1788,15 @@ test("une instance régionale ne décide pas qu'un quartier est vide",()=>{
   assert.ok(avantCache > 0 && avantCache < cache,
     "le garde-fou doit précéder la mise en cache");
 });
+
+test("une ville déduite de l'IP ne coupe pas l'accès à la vraie position",()=>{
+  // `positionConnue()` répond « oui » dès qu'une ville est déduite de l'adresse
+  // IP. La pastille de l'en-tête — le seul bouton toujours visible — testait
+  // ça et se contentait alors de recentrer : plus aucun moyen, dans tout
+  // l'écran, de demander la vraie position.
+  assert.match(html,/if\(!positionPrecise\(\)\)\{ suivreMaPosition\(\); return; \}/);
+  assert.doesNotMatch(html,/if\(!positionConnue\(\)\)\{ suivreMaPosition\(\); return; \}/);
+  // et le message d'échec ne prétend pas garder un quartier qu'on n'a jamais eu
+  assert.match(html,/originePosition === "serveur"\s*\n\s*\? "On te situe à " \+ commune/);
+  assert.match(html,/originePosition === "memoire" \|\| originePosition === "gps"/);
+});

@@ -9479,9 +9479,15 @@ function suivreMaPosition(){
     },
     ()=>{
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-      etat(positionConnue()
+      /* Dire la vérité sur ce qu'on sait. « On garde ton dernier quartier »
+         était rassurant et faux quand la ville venait d'une adresse IP : ce
+         n'est pas un quartier, c'est une approximation à plusieurs kilomètres,
+         et la personne doit pouvoir la corriger. */
+      etat(originePosition === "memoire" || originePosition === "gps"
         ? "Position indisponible · on garde ton dernier quartier."
-        : "Active ta position ou choisis un endroit sur la carte.", true);
+        : originePosition === "serveur"
+          ? "On te situe à " + commune + ", à quelques kilomètres près. Active ta position pour être précis."
+          : "Active ta position ou choisis un endroit sur la carte.", true);
     },
     {enableHighAccuracy:true, timeout:8000, maximumAge:120000}
   );
@@ -10116,7 +10122,13 @@ poigneeFeuille.addEventListener("pointerup",e=>{
    C'est la seule commande géographique — « Autour de moi » n'est plus un
    concept concurrent de « Maintenant », c'est ce geste-là. */
 $("#btnLieu").onclick = ()=>{
-  if(!positionConnue()){ suivreMaPosition(); return; }
+  /* Tant qu'on n'a pas le vrai point, ce bouton le demande. Il testait
+     `positionConnue()`, qui répond « oui » depuis que la ville peut venir de
+     l'adresse IP : la pastille se contentait donc de recentrer sur une ville
+     approchée, et plus rien dans l'écran ne permettait de demander la vraie
+     position. Quelqu'un que le navigateur n'a jamais localisé restait sur une
+     ville à plusieurs kilomètres, sans aucun moyen d'y remédier. */
+  if(!positionPrecise()){ suivreMaPosition(); return; }
   if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
   if(positionMoi && map) map.flyTo(positionMoi, 16, {duration:.6});
 };
