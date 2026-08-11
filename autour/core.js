@@ -85,6 +85,16 @@
     "event", "popup", "rencontre", "sport", "collecte", "studio", "food", "autre",
   ]);
 
+  /* L'accueil Explorer propose des destinations où l'on va maintenant. Les
+     services, l'aide, l'hébergement, les établissements scolaires et les
+     commerces génériques restent accessibles par leur besoin ou recherche,
+     mais ne gagnent jamais simplement parce qu'ils sont voisins. */
+  const DISCOVERY_EXCLUDED_CATEGORIES = new Set([
+    "alimentaire", "asso", "collecte", "commerce", "ecole", "emploi",
+    "hebergement", "mairie", "recharge", "sante", "toilettes",
+    "metro", "bus", "tram", "train", "velo",
+  ]);
+
   function normalizeText(value) {
     return String(value || "")
       .normalize("NFD")
@@ -345,12 +355,31 @@
     return !!left && !!right && (left === right || (left.length > 7 && right.length > 7 && (left.includes(right) || right.includes(left))));
   }
 
+  /* Un nom seul ne suffit pas : un « Central » café et un « Central » hôtel
+     voisins sont deux destinations. Deux sources ne se fusionnent que si leur
+     catégorie interne a un usage en commun, en plus du nom normalisé et de la
+     proximité géographique. */
+  function sameCategory(a, b) {
+    const left = unique([a && a.cat, ...((a && a.categories) || [])]);
+    const right = new Set(unique([b && b.cat, ...((b && b.categories) || [])]));
+    return left.some((category) => right.has(category));
+  }
+
   function dedupeItems(items, distanceBetween) {
     const result = [];
     (items || []).forEach((item) => {
       const found = result.findIndex((existing) => {
         if (!!existing.isTemporary !== !!item.isTemporary) return false;
+        /* Une station et une destination peuvent porter exactement le même
+           nom à la même adresse (« Phalempins »). Les fusionner donne à la
+           station la photo, la note et la catégorie du café voisin, puis la
+           fait remonter dans Manger. L'homonymie ne franchit donc jamais la
+           frontière transport / lieu où l'on va. */
+        const estTransport = (lieu) => [lieu.cat, ...(lieu.categories || [])]
+          .some((category) => TRANSPORT_CATEGORIES.includes(category));
+        if (estTransport(existing) !== estTransport(item)) return false;
         if (!sameTitle(existing.title || existing.titre, item.title || item.titre)) return false;
+        if (!sameCategory(existing, item)) return false;
         const distance = distanceBetween(existing.latitude, existing.longitude, item.latitude, item.longitude);
         if (!Number.isFinite(distance) || distance > 120) return false;
         if (!item.isTemporary) return true;
@@ -644,6 +673,18 @@
       exact: ["event", "studio", "concert", "spectacle", "bar", "cinema", "sport"],
       open: 105, event: 185, distance: 85, distanceScale: 2200, rating: 7,
     }),
+    /* L'accueil n'est ni une recherche Manger ni une recherche Sortir : il
+       doit faire remonter ce qui mérite un détour dans l'immédiat. Les
+       événements, activités, culture et marchés reçoivent donc une vraie
+       correspondance exacte ; un simple commerce ne peut les devancer. */
+    explorer: Object.freeze({
+      categories:["event", "studio", "concert", "spectacle", "show", "bar", "cinema",
+        "musee", "museum", "culture", "marche", "food", "sport", "terrain",
+        "swimming_pool", "parc", "park", "resto", "fastfood", "cafe"],
+      exact:["event", "studio", "concert", "spectacle", "bar", "cinema", "musee",
+        "museum", "culture", "marche", "food", "sport", "terrain", "swimming_pool"],
+      open:115, event:205, distance:88, distanceScale:2200, rating:8,
+    }),
     famille: Object.freeze({
       categories: ["family", ...FAMILY_CATEGORIES, "parc", "biblio", "musee", "terrain", "sport"],
       exact: ["cinema", "parc", "biblio", "musee", "playground", "park", "library", "museum", "kids_event", "family_event"],
@@ -702,6 +743,13 @@
   function hasAnyCategory(item, categories) {
     const own = new Set([item.cat, ...(item.categories || [])]);
     return (categories || []).some((category) => own.has(category));
+  }
+
+  function isDiscoveryCandidate(item) {
+    if (!item) return false;
+    if (item.isTemporary === true || TEMPORARY_CATEGORIES.includes(item.cat)) return true;
+    return ![item.cat, ...(item.categories || [])]
+      .some((category) => DISCOVERY_EXCLUDED_CATEGORIES.has(category));
   }
 
   function dataQuality(item) {
@@ -882,14 +930,52 @@
     return a.rankBreakdown.distance - b.rankBreakdown.distance;
   }
 
-  /* Entre deux événements également pertinents et faisables, la date décide
-     avant le trajet. La distance temporelle vaut zéro tant que l'événement est
-     en cours, puis le temps restant avant la prochaine occurrence. Cela évite
-     deux erreurs : un rendez-vous demain ne bat plus celui de cet après-midi
-     parce qu'il est au coin de la rue, et une série récurrente est triée sur sa
-     prochaine séance plutôt que sur un `startsAt` absent ou périmé. */
+  /* La priorité temporelle est volontairement discrète : un événement n'est
+     pas seulement « plus ou moins loin dans le futur ». L'ordre produit est
+     celui qui aide réellement à décider : en cours → imminent → aujourd'hui
+     → demain → cette semaine → futur. La date exacte ne départage qu'à
+     l'intérieur d'un même groupe. */
+  function eventTemporalBucket(item, now) {
+    if (!item || !item.rankBreakdown || !item.rankBreakdown.temporary) return null;
+    const temporal = item.rankTemporal;
+    const start = item.rankStart;
+    const temps = root.AutourTemps;
+    if (temps && temporal === temps.STATUTS.EN_COURS) return 0;
+    if (temps && temporal === temps.STATUTS.IMMINENT) return 1;
+    if (!Number.isFinite(start)) return 6; // date inconnue : utile, jamais prioritaire
+
+    const timeZone = item.timezone || item.timeZone || temps?.DEFAULT_TIMEZONE;
+    const localDay = (value) => {
+      if (temps && typeof temps.partsLocales === "function") {
+        const p = temps.partsLocales(value, timeZone);
+        return Date.UTC(p.annee, p.mois - 1, p.jour) / 86400000;
+      }
+      const d = new Date(value);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000;
+    };
+    const daysAway = localDay(start) - localDay(now);
+    if (daysAway <= 0) return 2;
+    if (daysAway === 1) return 3;
+    if (daysAway <= 7) return 4;
+    return 5;
+  }
+
+  /* Entre deux événements, le groupe temporel décide avant tous les signaux
+     souples, puis la date réelle avant le trajet. Une série récurrente est
+     ainsi classée sur sa prochaine séance et non sur un `startsAt` périmé. */
   function compareEventDate(a, b) {
     if (!a.rankBreakdown.temporary || !b.rankBreakdown.temporary) return 0;
+    const now = Math.min(
+      Number.isFinite(a.rankStart) ? a.rankStart : Infinity,
+      Number.isFinite(b.rankStart) ? b.rankStart : Infinity,
+    );
+    /* `rankTemporal` est calculé avec le même `now` par rankResults. On le
+       transporte explicitement pour garder ce comparateur pur et testable. */
+    const reference = Number.isFinite(a.rankNow) ? a.rankNow
+      : Number.isFinite(b.rankNow) ? b.rankNow : now;
+    const bucketA = eventTemporalBucket(a, reference);
+    const bucketB = eventTemporalBucket(b, reference);
+    if (bucketA !== bucketB) return bucketA - bucketB;
     const left = a.rankBreakdown.temporalDistance;
     const right = b.rankBreakdown.temporalDistance;
     if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
@@ -1046,6 +1132,13 @@
       let score = (exactMatch ? 145 : 105) + Math.round(categoryFit * 35 + exactWeight * 25);
       const quality = dataQuality(item);
       score += quality;
+      /* Une publication Autour est une information fraîche posée par une
+         personne du quartier. Elle est seulement avantagée APRÈS les filtres
+         de pertinence, disponibilité et temporalité : elle ne peut donc pas
+         faire remonter un événement fini, fermé ou hors sujet. */
+      const community = item.source === "autour" || item.dbId != null ||
+        (item.sources || []).includes("autour");
+      if (community) score += 18;
 
       // pertinence de recherche : décisive quand une requête est posée,
       // sans effet quand il n'y en a pas
@@ -1243,8 +1336,9 @@
         rankTemporal: etat ? etat.statut : null,
         rankSection: temporalSection,
         rankStart: temporalStart,
+        rankNow: now,
         rankRelevance: relevance,
-        rankBreakdown: {availability, intentMatch, distance,
+        rankBreakdown: {availability, intentMatch, distance, community:community ? 1 : 0,
           startsAt: temporalStart, temporalDistance, temporary, quality,
           categoryFit, etaMinutes: minutes, relevance,
           /* L'adéquation aux caractéristiques demandées, par quarts. Le tri
@@ -1258,12 +1352,18 @@
           fit: Math.round(adequation * 4) / 4},
       });
     }).filter(Boolean).sort((a, b) =>
+      /* La faisabilité reste le garde-fou absolu : une séance qu'on ne peut
+         plus attraper ne doit pas devancer une proposition ouverte. Dès que
+         deux événements sont faisables, leur fenêtre temporelle devient le
+         critère principal : en cours, imminent, aujourd'hui, demain, semaine,
+         futur. Pour un lieu pérenne face à un événement, compareEventDate
+         renvoie 0 et le classement habituel reste intact. */
       b.rankBreakdown.availability - a.rankBreakdown.availability ||
+      compareEventDate(a, b) ||
       (b.rankBreakdown.fit || 0) - (a.rankBreakdown.fit || 0) ||
       b.rankBreakdown.intentMatch - a.rankBreakdown.intentMatch ||
       (b.rankBreakdown.relevance || 0) - (a.rankBreakdown.relevance || 0) ||
-      // entre événements comparables, l'échéance passe avant la géographie
-      compareEventDate(a, b) ||
+      b.rankBreakdown.community - a.rankBreakdown.community ||
       // « le plus proche » se juge en temps de trajet réel, pas à vol d'oiseau :
       // un lieu à 400 m de l'autre côté du canal est plus loin qu'un lieu à 2 km
       // desservi directement
@@ -1275,6 +1375,7 @@
 
   root.AutourCore = Object.freeze({
     FAMILY_CATEGORIES,
+    DISCOVERY_EXCLUDED_CATEGORIES,
     CATEGORY_RELATIONS,
     normalizeText,
     classifyPlace,
@@ -1283,6 +1384,7 @@
     bestCategoryWeight,
     toCommonItem,
     matchesCategory,
+    isDiscoveryCandidate,
     dedupeItems,
     normalizePlaceName,
     placeFamily,

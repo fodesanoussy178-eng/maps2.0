@@ -813,9 +813,14 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   box-shadow:0 -3px 18px rgba(20,30,25,.13);
   transition:height .22s ease,max-height .22s ease}
 /* À l'accueil la feuille est l'écran lui-même : elle occupe toute la largeur
-   et se passe de barre de titre, le titre étant dans le corps. */
+   et se passe de barre de titre, le titre étant dans le corps. La croix reste
+   toutefois atteignable sur téléphone : la carte doit pouvoir redevenir
+   pleine sans imposer un geste de défilement ou un tap sur la carte. */
 #feuilleBesoins.accueil{left:0;right:0;border-left:0;border-right:0}
-#feuilleBesoins.accueil .fb-tete{display:none}
+#feuilleBesoins.accueil .fb-tete{position:absolute;z-index:3;top:0;right:10px;
+  display:flex;width:44px;min-height:44px;padding:0;background:transparent}
+#feuilleBesoins.accueil .fb-titre,#feuilleBesoins.accueil .fb-retour{display:none}
+#feuilleBesoins.accueil .fb-x{box-shadow:0 2px 8px rgba(20,30,25,.14)}
 /* À l'accueil, la poignée et le titre coûtent une recommandation entière :
    on les resserre pour qu'une troisième carte tienne au-dessus du pli. */
 /* le trait reste fin — c'est la zone de frappe qui doit faire 44 px, pas le
@@ -1004,8 +1009,9 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   .fb-corps{padding:0 22px 26px}
   /* la croix doit rester visible même sur l'accueil : c'est elle qui rend
      l'espace à la carte */
-  #feuilleBesoins.accueil .fb-tete{display:flex}
-  #feuilleBesoins.accueil .fb-titre{opacity:0}
+  #feuilleBesoins.accueil .fb-tete{position:relative;top:auto;right:auto;
+    display:flex;width:auto;min-height:72px;padding:10px 16px 8px;background:#fff}
+  #feuilleBesoins.accueil .fb-titre{display:block;opacity:0}
 
   /* Le panneau de découverte reprend le rythme ample de la référence, sans
      dupliquer aucun contenu : ce sont toujours les mêmes boutons et cartes. */
@@ -1560,7 +1566,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=4f3ec1ed"></script>
 <script src="events.js?v=2a03415f"></script>
-<script src="core.js?v=a4d65a47"></script>
+<script src="core.js?v=6ee7a0fa"></script>
 <script src="transit.js?v=17e44189"></script>
 <script>
 function panne(titre, corps){
@@ -1604,6 +1610,7 @@ const {
   matchesCategory,
   dedupeItems,
   groupLogicalPlaces,
+  isDiscoveryCandidate,
   parseSearchQuery,
   isAvailableNow,
   rankResults,
@@ -2927,13 +2934,17 @@ function estPublicationAMoi(l){
 }
 
 function versLieu(p){
+  /* `created_by` est le propriétaire canonique. `creator_id` demeure lu pour
+     les réponses RPC antérieures à la migration : il ne sert jamais à donner
+     une propriété à une publication qui n'en avait pas. */
+  const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
     description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
-    creatorId:p.creator_id || null, creatorName:p.creator_name || "",
-    verifie: p.verifie, mien: !!(moiId && p.creator_id === moiId),
+    creatorId:createdBy, creatorName:p.creator_name || "",
+    verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
     lat:p.lat, lng:p.lng,
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
@@ -3016,7 +3027,8 @@ const Store = {
     const identite = await assurerIdentitePublication();
     if(!sb || !identite) return null;
     const { data, error } = await sb.from("publications").insert({
-      creator_id:identite.id, creator_name:identite.name, status:"active",
+      creator_id:identite.id, created_by:identite.id,
+      creator_name:identite.name, status:"active",
       cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
       gratuit:l.gratuit, prix:l.prix, places:l.places,
       lat:l.lat, lng:l.lng,
@@ -3165,7 +3177,10 @@ const Store = {
 
 /* ================================================================== */
 
-let permanentPlaces=[], externalEvents=[], userPublications=[];
+/* Chaque flux reste séparé jusqu'à la fusion finale : une mise à jour
+   DATAtourisme ne peut ainsi jamais effacer un lieu OSM ou une publication
+   Autour déjà visible. */
+let permanentPlaces=[], datatourismePlaces=[], externalEvents=[], userPublications=[];
 let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
 let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
@@ -3479,6 +3494,34 @@ async function vraisLieux(lat,lng,bornes,opts){
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
     }, "openstreetmap");
   }).filter(Boolean);
+}
+
+/* DATAtourisme passe exclusivement par notre fonction Vercel : la clé n'est
+   ni dans cette page, ni dans une URL, ni dans un repli navigateur. La route
+   arrondit déjà ses coordonnées côté serveur ; le client les arrondit aussi
+   pour que quelques mètres de déplacement réemploient la même entrée CDN. */
+let relaisDatatourisme = null;
+const datatourismeEnVol = new Map();
+async function lieuxDatatourisme(lat,lng,signal){
+  if(relaisDatatourisme === false) return [];
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(datatourismeEnVol.has(cle)) return datatourismeEnVol.get(cle);
+  const promesse = (async()=>{
+    try{
+      const r = await fetch("/api/datatourisme?lat="+encodeURIComponent(lat.toFixed(2))+"&lng="+
+        encodeURIComponent(lng.toFixed(2)), {signal});
+      // Le développement statique n'a pas de Function : c'est un repli prévu,
+      // pas une erreur qui doit masquer OSM ou les publications.
+      if(r.status === 404 || r.status === 405){ relaisDatatourisme = false; return []; }
+      if(!r.ok) return [];
+      const j = await r.json();
+      relaisDatatourisme = true;
+      return j && Array.isArray(j.items) ? j.items : [];
+    }catch(e){ return []; }
+  })();
+  datatourismeEnVol.set(cle,promesse);
+  promesse.finally(()=>datatourismeEnVol.delete(cle));
+  return promesse;
 }
 
 /* Événements locaux publiés sur les agendas officiels OpenAgenda. La clé est
@@ -3925,6 +3968,7 @@ function journaliserPipeline(source, brut, classes, dedupliques){
 function reconstruireLieux(){
   lieux = dedupeItems([
     ...permanentPlaces,
+    ...datatourismePlaces,
     ...externalEvents,
     ...userPublications
   ], distanceM);
@@ -3959,12 +4003,14 @@ function fusionner(nouveaux, flux, opts){
     // une annulation reste une information utile et distincte d'une suppression
     .filter(l=>l.annule || !estPasse(l));
   const courant = type === "external" ? externalEvents
-    : type === "user" ? userPublications : permanentPlaces;
+    : type === "user" ? userPublications
+    : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
   const parId = new Map(courant.map(l=>[l.id,l]));
   classes.forEach(l=>parId.set(l.id,l));
   const dedupliques = dedupeItems([...parId.values()], distanceM);
   if(type === "external") externalEvents = dedupliques;
   else if(type === "user") userPublications = dedupliques;
+  else if(type === "datatourisme") datatourismePlaces = dedupliques;
   else permanentPlaces = dedupliques;
   reconstruireLieux();
   journaliserPipeline(source, nouveaux.length, classes, dedupliques);
@@ -4292,6 +4338,17 @@ function chargerZone(lat, lng, opts){
       performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
     })
   ];
+  /* Une source touristique complémentaire, en parallèle d'OSM : elle ne
+     bloque jamais l'écran et son échec garde exactement les données déjà là.
+     La passe générale suffit ; rouvrir une catégorie ne redemande pas les
+     mêmes cinquante POI touristiques. */
+  if(!o.cats) travaux.push(
+    lieuxDatatourisme(lat,lng,signal).then(r=>{
+      if(signal.aborted || !r || !r.length) return;
+      fusionner(r,"datatourisme");
+      PERF.jalon("datatourisme_done");
+    })
+  );
   /* Google ne sert qu'à enrichir les lieux courants : inutile de le relancer
      quand on va simplement chercher les toilettes ou les écoles — ni pour une
      ville qu'on regarde de loin, où ses notes et ses horaires ne serviront à
@@ -8680,10 +8737,10 @@ function majFeuille2(){
     retour.hidden = true;
     // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
-    /* Sur desktop, la référence montre un aperçu de trois cartes puis les
+    /* Sur desktop, la référence montre un aperçu de sept cartes puis les
        transports et les liens. « Voir tout » conserve l'accès au classement
        complet ; le mobile garde son défilement progressif plus long. */
-    let reco = recommandationsAccueil(responsiveLayoutState.isDesktop ? 3 : 12);
+    let reco = recommandationsAccueil(7);
   // le classement peut ne rien rendre au tout début (aucun ETA, aucun horaire) :
   // on montre alors l'échantillon varié du cache plutôt qu'un écran vide
   if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
@@ -8750,6 +8807,11 @@ function piedFeuille(){
    alors que ça veut dire qu'on n'a rien trouvé. La nuance compte, et les
    sorties doivent être là. */
 function messageVide(type){
+  /* Sans point de départ, « cette zone » serait une affirmation vide. Les
+     choix suivants sont disponibles immédiatement, sans attendre Overpass,
+     Google, la géolocalisation ni une quelconque donnée inventée. */
+  if(!positionConnue()) return '<div class="fb-vide" data-vide="inconnu">'+
+    '<p>Je ne sais pas encore où chercher.</p>'+blocOuRegarder()+'</div>';
   return '<div class="fb-vide" data-vide="'+esc(type||"autre")+'">'+
     'Je n’ai rien trouvé dans cette zone. Ça ne veut pas dire qu’il n’y a rien.'+
     '<div class="etat-vide-actions">'+
@@ -8798,7 +8860,8 @@ function statutRechercheHTML(nombreResultats){
       '<br><button data-etat-action="retry">Réessayer</button></div>';
   if(!nombreResultats)
     return '<div class="fb-statut">Rien d’ouvert à proximité pour le moment.'+
-      '<br><button data-etat-action="all">Tout voir</button></div>';
+      '<br><button data-etat-action="all">Voir tous les lieux</button>'+
+      '<button data-etat-action="aide">Trouver de l’aide</button></div>';
   return "";
 }
 
@@ -8878,12 +8941,11 @@ function blocResultats(){
    quoi que ce soit : il propose. Le classement est le même que celui des
    besoins, sans filtre de catégorie — donc soumis aux mêmes règles
    d'ouverture, d'ETA et de faisabilité. */
-/* Ce que l'accueil considère. Les catégories de transport en sont exclues :
-   « Vélo » est un sous-besoin légitime de Bouger, mais une station de vélos
-   n'est pas une réponse à « qu'est-ce que je peux faire maintenant ». Elles
-   restent accessibles par Bouger → Vélo et par le bouton transports. */
+/* Ce que l'accueil considère. Aide, services et transport gardent leur entrée
+   dédiée : les mélanger à Explorer faisait remonter un hôtel ou un lycée au
+   seul motif qu'il est proche. */
 const CATS_ACCUEIL = ()=>[...new Set(
-  BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))]
+  BESOINS_PRINCIPAUX.filter(b=>!b.aide).flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []))]
   .filter(c=>!CATS_TRANSPORT.has(c));
 
 function recommandationsAccueil(limite){
@@ -8899,11 +8961,11 @@ function recommandationsAccueil(limite){
      éphémères hors de « maintenant », et on les range par date réelle. */
   const groupe = creneau === "maintenant";
   const candidats = groupe
-    ? lieux.filter(nomExploitable)
+    ? lieux.filter(l=>nomExploitable(l) && isDiscoveryCandidate(l))
     : lieux.filter(l=>estTemporaire(l) && nomExploitable(l));
 
   const classement = rankResults(candidats,{
-    intent:"sortir",
+    intent:groupe ? "explorer" : "sortir",
     intention:intentionCourante,
     /* Une recherche qui a posé des catégories les impose ici aussi : sans ça,
        « un endroit calme où travailler » reposait le filtre puis affichait les
@@ -9660,6 +9722,11 @@ function brancherFeuille2(){
 
   corps.querySelectorAll("[data-etat-action]").forEach(b=>b.onclick=()=>{
     const action = b.dataset.etatAction;
+    if(action === "aide"){
+      if(!modeAide) basculerAide();
+      ouvrirFeuille2("aide");
+      return;
+    }
     if(action === "all"){
       filtreMaintenant = false;
       montrerFermes = true;
@@ -10084,10 +10151,10 @@ function toutAfficher(){
   rendre();
 }
 
-/* Ce que l'accueil garde. Cinq lignes au maximum, mais surtout : aucune
+/* Ce que l'accueil garde. Sept recommandations au maximum, mais surtout : aucune
    ligne de remplissage. Une proposition qui ne passe pas la barre est une
    proposition en moins, pas une proposition médiocre de plus. */
-const ACCUEIL_MAX = 5;
+const ACCUEIL_MAX = 7;
 const ACCUEIL_SEUIL = 55;
 
 function majAccueil(){
@@ -10130,7 +10197,7 @@ function majAccueil(){
   if(epingles.length){
     const vus = new Set();
     epingles.forEach(id=>{
-      if(vus.has(id)) return;
+      if(vus.has(id) || choisis.length >= ACCUEIL_MAX) return;
       // la version classée si elle existe (elle porte le trajet et l'horaire),
       // sinon l'objet brut — mais dans tous les cas, à l'écran
       const l = notes.find(x=>x.id === id) || lieux.find(x=>x.id === id);
@@ -10158,6 +10225,19 @@ function majAccueil(){
     const ev = notes.find(l=>estTemporaire(l));
     if(ev) choisis.push(ev);
     notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  }
+
+  /* La feuille et la carte doivent raconter exactement la même sélection.
+     Le moteur commun écarte les événements terminés et les lieux fermés quand
+     leurs horaires le disent, puis impose l'ordre temporel des événements.
+     L'ancien score historique reste utile pour le jeu rapide, mais ne décide
+     plus seul des marqueurs de « Pour toi, maintenant ». */
+  if(!modeAide && creneau === "maintenant"){
+    const pourToi = recommandationsAccueil(ACCUEIL_MAX);
+    if(pourToi.length){
+      choisis.length = 0;
+      choisis.push(...pourToi.slice(0,ACCUEIL_MAX));
+    }
   }
 
   selectionAccueil = choisis.map(l=>l.id);

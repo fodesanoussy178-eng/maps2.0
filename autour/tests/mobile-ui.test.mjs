@@ -176,6 +176,13 @@ test("la carte est un décor : ni zoom Leaflet, ni attribution posée dessus",()
   assert.match(html,/carto\.com\/attributions/);
 });
 
+test("la recherche universelle garde un seul formulaire, quel que soit le contexte",()=>{
+  assert.equal((html.match(/id="formRech"/g) || []).length, 1);
+  assert.equal((html.match(/id="rech"/g) || []).length, 1);
+  assert.match(html,/function synchroniserRechercheDesktop\(\)/);
+  assert.match(html,/lancerRecherche\(\);/);
+});
+
 test("le marqueur utilisateur est un point bleu, pas un emoji",()=>{
   assert.match(html,/<span class="moi-in"><i><\/i><b><\/b><\/span>/);
   assert.match(html,/\.moi-in b\{display:block;width:17px;height:17px;border-radius:50%;\s*\n\s*background:#1A73E8/);
@@ -205,6 +212,14 @@ test("le bottom sheet propose au lieu de poser une question",()=>{
   assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose\)\{\s*\n\s*if\(rapide\) ouvrirFeuille2\("racine"\);/);
   assert.match(html,/else ouvrirAccueilFeuille\(\);/);
   assert.doesNotMatch(html,/!modePose && lieux\.length\) ouvrirAccueilFeuille/);
+});
+
+test("« Pour toi, maintenant » peut se fermer sur mobile",()=>{
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:absolute/);
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-x\{box-shadow/);
+  assert.match(html,/\$\("#fbFermer"\)\.onclick = fermerFeuille2;/);
+  // la règle mobile est réinitialisée dans le panneau desktop
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:relative;top:auto;right:auto/);
 });
 
 test("les prochains départs n'inventent jamais d'horaire",()=>{
@@ -323,7 +338,7 @@ test("sur desktop la carte occupe toute la fenêtre, sans rail ni sidebar",()=>{
   assert.match(html,/--panneau:530px/);
   // la croix reste atteignable même sur l'accueil : c'est elle qui rend
   // l'espace à la carte
-  assert.match(desktop,/#feuilleBesoins\.accueil \.fb-tete\{display:flex\}/);
+  assert.match(desktop,/#feuilleBesoins\.accueil \.fb-tete\{[\s\S]*?display:flex/);
 
   // le carousel horizontal devient une liste verticale
   assert.match(desktop,/\.rc-piste\{flex-direction:column/);
@@ -347,7 +362,9 @@ test("sur desktop une catégorie garde la recherche réelle à côté du panneau
   assert.match(html,/rechercheDockee && x === NOMS_COUCHES\.mainSheet/);
   assert.match(html,/responsiveLayout\.subscribe\(\(\)=>synchroniserRechercheDesktop\(\)\)/);
   assert.match(html,/const actif = feuilleNiveau === b\.id;/);
-  assert.match(html,/responsiveLayoutState\.isDesktop \? 3 : 12/);
+  // Même sélection sur desktop et mobile : sept recommandations et leurs
+  // marqueurs, pas un apercu différent selon la taille d'écran.
+  assert.match(html,/let reco = recommandationsAccueil\(7\)/);
   assert.match(html,/const nombreAffiche = items\.length \|\| \(chargement \? 5 : 0\)/);
 });
 

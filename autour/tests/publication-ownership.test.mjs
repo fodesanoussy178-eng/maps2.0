@@ -16,6 +16,10 @@ const migrationCanaux = await readFile(
   new URL("../supabase/migrations/20260810203500_mes_canaux_security_invoker.sql", import.meta.url),
   "utf8",
 );
+const migrationCreatedBy = await readFile(
+  new URL("../supabase/migrations/20260811003229_created_by_publications.sql", import.meta.url),
+  "utf8",
+);
 
 test("la propriété est un uid Supabase et le pseudo reste seulement présentatif", () => {
   assert.match(migration, /creator_id = \(select auth\.uid\(\)\)/);
@@ -23,7 +27,8 @@ test("la propriété est un uid Supabase et le pseudo reste seulement présentat
   assert.match(migration, /creator_name is not null/);
   assert.doesNotMatch(migration, /creator_name\s*=\s*\(?select auth\.uid/);
   assert.doesNotMatch(migration, /using \([^)]*creator_name/);
-  assert.match(html, /creator_id:identite\.id, creator_name:identite\.name, status:"active"/);
+  assert.match(html, /creator_id:identite\.id, created_by:identite\.id/);
+  assert.match(html, /creator_name:identite\.name, status:"active"/);
   assert.doesNotMatch(html, /p\.auteur|l\.auteur/);
 });
 
@@ -47,6 +52,17 @@ test("RLS laisse lire publiquement et réserve toute mutation au créateur", () 
   assert.match(migration, /for delete[\s\S]*?using \(creator_id = \(select auth\.uid\(\)\)\)/);
   assert.match(migration, /grant select on public\.publications to anon, authenticated/);
   assert.match(migration, /grant insert, update, delete on public\.publications to authenticated/);
+});
+
+test("created_by est le propriétaire canonique et reste synchronisé avec la compatibilité", () => {
+  assert.match(migrationCreatedBy, /add column if not exists created_by uuid/);
+  assert.match(migrationCreatedBy, /set created_by = creator_id[\s\S]*?where created_by is null[\s\S]*?and creator_id is not null/);
+  assert.match(migrationCreatedBy, /creator_id is null and created_by is null[\s\S]*?creator_id = created_by/);
+  assert.match(migrationCreatedBy, /created_by = \(select auth\.uid\(\)\)/);
+  assert.match(migrationCreatedBy, /using \(created_by = \(select auth\.uid\(\)\)\)/);
+  assert.match(migrationCreatedBy, /new\.created_by is distinct from old\.created_by/);
+  assert.match(html, /creator_id:identite\.id, created_by:identite\.id/);
+  assert.match(html, /const createdBy = p\.created_by \|\| p\.creator_id \|\| null/);
 });
 
 test("les anciennes publications ne deviennent jamais la propriété du premier visiteur", () => {
