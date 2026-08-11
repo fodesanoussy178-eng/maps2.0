@@ -5,13 +5,13 @@
      Un modèle normalisé pour le prix, les horaires et les signaux
 
      Ces trois familles de données arrivent de partout : tags OpenStreetMap,
-     niveaux de prix Google, horaires déclarés par un habitant, inférences de
+     tarifs Google ou déclarés par une structure ou un habitant, inférences de
      catégorie. Jusqu'ici chaque écran les lisait à sa façon, et surtout
      personne ne savait D'OÙ venait une valeur ni QUAND elle avait été vue.
 
      Trois champs accompagnent donc désormais toute valeur :
 
-       · `source`     — qui l'affirme (osm, google, habitant, categorie…) ;
+       · `source`     — qui l'affirme (osm, google, habitant, agenda, categorie…) ;
        · `confidence` — 0 à 1. Zéro veut dire « on ne sait pas », et c'est un
                         état à part entière : ce n'est PAS « non » ;
        · `updated_at` — quand la donnée a été vue pour la dernière fois.
@@ -44,18 +44,12 @@
     categorie: .4,
   });
 
-  /* Correspondance entre le niveau de prix Google et une fourchette en euros.
-     Approximative et assumée comme telle : la confiance associée le dit. Sans
-     elle, « moins de 15 € » ne pouvait rien exclure du tout. */
-  const PALIERS = Object.freeze([
-    { min: 0, max: 0 },        // 0 · gratuit
-    { min: 1, max: 15 },       // 1 · €
-    { min: 15, max: 30 },      // 2 · €€
-    { min: 30, max: 60 },      // 3 · €€€
-    { min: 60, max: null },    // 4 · €€€€
-  ]);
-
   const maintenant = () => new Date().toISOString();
+
+  const PALIERS = Object.freeze([
+    { min: 0, max: 0 }, { min: 1, max: 15 }, { min: 15, max: 30 },
+    { min: 30, max: 60 }, { min: 60, max: null },
+  ]);
 
   function vide(champ) {
     return Object.freeze({
@@ -64,9 +58,8 @@
   }
 
   /* ---- Prix --------------------------------------------------------------
-     `{ level, min, max, currency, source, confidence, updated_at }`
-     `level` suit l'échelle Google (0 à 4). `min`/`max` sont en euros, `max`
-     à null voulant dire « sans plafond connu ». Confiance à 0 = inconnu. */
+     `{ level, min, max, currency, source, confidence, updated_at }`.
+     Sans tarif publié, la confiance est nulle : on ne devine pas. */
   const PRIX_INCONNU = Object.freeze({
     level: null, min: null, max: null, currency: "EUR",
     source: null, confidence: 0, updated_at: null,
@@ -93,12 +86,11 @@
         confidence: l.tags && l.tags.fee === "no" ? CONFIANCE.osm : CONFIANCE.habitant,
         updated_at: vu };
     }
-    // 3. le niveau de prix Google : une fourchette, pas un montant
+    // 3. le niveau de prix publié par Google : une fourchette, jamais un prix exact.
     const n = Number(l.prixN);
     if (Number.isFinite(n) && PALIERS[n]) {
-      return Object.assign({ level: n, currency: "EUR",
-        source: SOURCES.GOOGLE, confidence: CONFIANCE.google * .8, updated_at: vu },
-        PALIERS[n]);
+      return Object.assign({ level:n, currency:"EUR", source:SOURCES.GOOGLE,
+        confidence:CONFIANCE.google * .8, updated_at:vu }, PALIERS[n]);
     }
     // 4. rien. Et « rien » n'est pas « cher ».
     return PRIX_INCONNU;

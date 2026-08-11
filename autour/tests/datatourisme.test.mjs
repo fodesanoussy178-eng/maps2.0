@@ -6,6 +6,7 @@ import datatourisme, { normaliserDatatourisme } from "../api/datatourisme.js";
 
 const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const api = await readFile(new URL("../api/datatourisme.js", import.meta.url), "utf8");
+const provider = await readFile(new URL("../providers/datatourisme.js", import.meta.url), "utf8");
 
 test("DATAtourisme est normalisé côté Function, sans clé dans le contrat client", () => {
   const lieu = normaliserDatatourisme({
@@ -16,7 +17,7 @@ test("DATAtourisme est normalisé côté Function, sans clé dans le contrat cli
       address:{streetAddress:"12 rue des Arts", postalCode:"59000", addressLocality:"Lille"},
       openingHoursSpecification:[{dayOfWeek:["Monday", "Tuesday"], opens:"09:00", closes:"18:00"}],
     },
-    hasMainRepresentation:{contentUrl:"https://cdn.example.test/musee.jpg"},
+    hasMainRepresentation:{contentUrl:"https://cdn.example.test/musee.jpg", license:"https://creativecommons.org/licenses/by/4.0/"},
   });
   assert.deepEqual(lieu && {id:lieu.id, source:lieu.source, cat:lieu.cat, lat:lieu.lat, lng:lieu.lng}, {
     id:"datatourisme:musee-1", source:"datatourisme", cat:"musee", lat:50.631, lng:3.059,
@@ -46,7 +47,7 @@ test("les représentations imbriquées et les types scolaires sont normalisés s
   const ecole = normaliserDatatourisme({
     uuid:"ecole-1", label:"Lycée public", type:"SchoolOrEducationalOrganization",
     isLocatedAt:[{geo:{latitude:50.63, longitude:3.06}}],
-    hasMainRepresentation:[{resourceLocator:{contentUrl:"https://cdn.example.test/lycee.jpg"}}],
+    hasMainRepresentation:[{resourceLocator:{contentUrl:"https://cdn.example.test/lycee.jpg"}, license:"CC BY 4.0"}],
   });
   assert.equal(ecole.cat, "ecole");
   assert.equal(ecole.image, "https://cdn.example.test/lycee.jpg");
@@ -79,7 +80,8 @@ test("la route DATAtourisme borne la requête, garde la clé serveur et met la z
   assert.match(api, /const CACHE_MS = 10 \* 60 \* 1000/);
   assert.doesNotMatch(api, /api_key=/);
   assert.doesNotMatch(index, /DATATOURISME_API_KEY/);
-  assert.match(index, /\/api\/datatourisme\?lat=/);
+  assert.match(index, /providers\/datatourisme\.js/);
+  assert.match(provider, /\/api\/datatourisme\?lat=/);
 });
 
 test("la Function envoie la clé uniquement en en-tête et renvoie une projection sûre", async () => {
@@ -116,7 +118,8 @@ test("DATAtourisme complète OSM sans bloquer ni modifier l'interface", () => {
   assert.match(index, /\.\.\.datatourismePlaces/);
   assert.match(index, /fusionner\(r,"datatourisme"\)/);
   assert.match(index, /if\(!o\.cats\) travaux\.push\(/);
-  assert.match(index, /if\(r\.status === 404 \|\| r\.status === 405\)\{ relaisDatatourisme = false; return \[\]; \}/);
+  assert.match(index, /AutourProviders\.datatourisme/);
+  assert.match(provider, /AutourProviders\.normaliser/);
   assert.match(index, /let reco = recommandationsAccueil\(7\)/);
   assert.match(index, /const ACCUEIL_MAX = 7/);
   assert.match(index, /const pourToi = recommandationsAccueil\(ACCUEIL_MAX\)/);

@@ -117,6 +117,28 @@ test("la déduplication fusionne les sources et les catégories", () => {
   assert.equal(result[0].image,"https://example.test/fresnoy.jpg");
 });
 
+test("une faute OSM et un suffixe de ville Google ne dupliquent pas un commerce", () => {
+  const osm = toCommonItem({
+    id:"osm-pepe",cat:"fastfood",title:"Pepe Chiken byFast Good cuisine",lat:50.7225,lng:3.1626,
+  }, {source:"openstreetmap"});
+  const google = toCommonItem({
+    id:"google-pepe",cat:"resto",title:"Pepe Chicken By Fastgood Cuisine - Tourcoing",lat:50.72264,lng:3.16270,
+    note:4.2,avis:358,image:"https://example.test/pepe.jpg",
+  }, {source:"google_places"});
+  const result = dedupeItems([osm,google],distance);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].source, "google_places");
+  assert.deepEqual(new Set(result[0].sources), new Set(["openstreetmap","google_places"]));
+});
+
+test("la correction typographique ne fusionne ni les sources identiques ni des noms distincts", () => {
+  const osmA = toCommonItem({id:"a",cat:"fastfood",title:"Pepe Chiken",lat:50.72,lng:3.16}, {source:"openstreetmap"});
+  const osmB = toCommonItem({id:"b",cat:"fastfood",title:"Pepe Chicken",lat:50.7201,lng:3.1601}, {source:"openstreetmap"});
+  const google = toCommonItem({id:"c",cat:"fastfood",title:"Pepe Burger",lat:50.7201,lng:3.1601}, {source:"google_places"});
+  assert.equal(dedupeItems([osmA,osmB],distance).length, 2);
+  assert.equal(dedupeItems([osmA,google],distance).length, 2);
+});
+
 test("un transport et un établissement homonymes restent deux lieux", () => {
   const station = toCommonItem({
     id:"metro1",cat:"metro",title:"Phalempins",lat:50.72,lng:3.16,

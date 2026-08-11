@@ -1,10 +1,11 @@
-# Restreindre la clé Google Places
+# Restreindre la clé Google Maps et Places
 
 ## Ce qui est exposé, et pourquoi
 
-La clé est dans `index.html` et part dans chaque requête (`X-Goog-Api-Key`) ainsi
-que dans l'URL des photos (`…/media?key=…`). **C'est inévitable pour une
-application sans serveur** : c'est le navigateur qui appelle Google. La cacher
+La clé navigateur est fournie au SDK Google Maps et au provider
+`providers/googlePlaces.js`. Elle part dans les requêtes Places et l'URL des
+photos. **Ce n'est pas un secret serveur** : c'est le navigateur qui appelle
+Google. La cacher
 dans une variable, l'encoder, la découper en morceaux ne protège de rien — elle
 reste lisible dans l'onglet Réseau en trois secondes.
 
@@ -14,8 +15,8 @@ pas de votre domaine.
 
 ## Ce que vous devez configurer (action manuelle, 3 minutes)
 
-Console Google Cloud → **API et services → Identifiants** → la clé
-`AIzaSyAFjDL4NtNNaTFhD-tbN4escj8xQ9Mpio4`.
+Console Google Cloud → **API et services → Identifiants** → la clé navigateur
+restreinte d’Autour.
 
 ### 1 · Restriction d'application → Sites web (référents HTTP)
 
@@ -38,14 +39,14 @@ local, utilisez une seconde clé, restreinte à localhost et sans facturation.
 
 ### 2 · Restriction d'API
 
-Cochez **uniquement** :
+Cochez uniquement les API réellement utilisées par la clé navigateur :
 
 - **Places API (New)**
+- **Maps JavaScript API**
 
-Décochez tout le reste. Aujourd'hui l'application n'appelle que
-`places:searchNearby`, `places:searchText`, `places/{id}` et l'endpoint photo.
-Une clé qui n'ouvre que ça ne peut pas servir à consommer Directions, Geocoding
-ou Maps JavaScript sur votre compte.
+Décochez tout le reste. Le fond devient Google Maps avant que le provider Places
+ne fournisse les fiches ; les tuiles CARTO/OSM ne sont qu'un repli indépendant
+si le SDK Google est indisponible.
 
 ### 3 · Plafond de quota
 
@@ -61,12 +62,15 @@ et 100 %. C'est ce qui vous prévient le jour où quelque chose part de travers.
 
 ## Ce que le code fait déjà pour limiter la dépense
 
-- Les résumés (`generativeSummary`, `editorialSummary`) ne sont demandés que
-  lorsqu'une fiche d'aide s'ouvre, jamais pour une zone entière ;
+- Les données Places ne sont demandées que lorsque Google Maps est réellement
+  chargé ; les appels sont isolés dans `providers/googlePlaces.js` ;
+- Les résumés ne sont demandés que pour une fiche hors Aide. Les conditions,
+  publics et coûts d'une aide viennent des sources sociales, jamais de Google ;
 - l'enrichissement prix/horaires ne concerne que **cinq candidats maximum**, et
   seulement si la requête a parlé de budget ou d'horaire ;
-- chaque lieu n'est demandé qu'une fois, et la réponse est conservée ;
-- une erreur 4xx est mémorisée pour ne pas relancer la même requête ;
+- les contenus Places restent en mémoire : aucun résultat, photo, horaire ou
+  descriptif Places n'est écrit dans les caches locaux, Supabase ou un fichier
+  de zone Autour ;
 - la passe restauration ne part que lorsque « Manger » est ouvert, et une seule
   fois par zone.
 

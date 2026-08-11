@@ -293,6 +293,9 @@
       isTemporary,
       url: raw.url || "",
       image: raw.image || "",
+      imageSource: raw.imageSource || "",
+      sourceRefs: Object.assign({}, raw.sourceRefs || {}, raw.idGoogle ? {googlePlaceId:raw.idGoogle} : {},
+        raw.idOsm ? {osmId:raw.idOsm} : {}, raw.idDatatourisme ? {datatourismeId:raw.idDatatourisme} : {}),
       titre: title,
       lat: latitude,
       lng: longitude,
@@ -308,7 +311,12 @@
 
   function mergeDuplicate(left, right) {
     const merged = Object.assign({}, left);
-    const preferred = right.source === "autour" ? right : left;
+    /* L'identité Autour reste souveraine. Pour un même commerce, Google est
+       ensuite la source la plus précise (nom, coordonnées, horaires, photo),
+       puis viennent les catalogues et OSM. Le choix ne dépend donc plus de
+       l'ordre d'arrivée asynchrone des fournisseurs. */
+    const priority = {autour:4, google_places:3, datatourisme:2, openstreetmap:1};
+    const preferred = (priority[right.source] || 0) > (priority[left.source] || 0) ? right : left;
     const fallback = preferred === right ? left : right;
     Object.assign(merged, fallback, preferred);
     // fusionner deux fiches, c'est réunir leurs appartenances en gardant le
@@ -323,21 +331,25 @@
     merged.categoryWeights = categoryWeights;
     merged.categories = sortByWeight(categoryWeights);
     merged.sources = unique([...(left.sources || [left.source]), ...(right.sources || [right.source])]);
+    merged.sourceRefs = Object.assign({}, left.sourceRefs || {}, right.sourceRefs || {});
     merged.source = preferred.source || fallback.source;
     merged.description = preferred.description || fallback.description || "";
     merged.url = preferred.url || fallback.url || "";
     merged.image = preferred.image || fallback.image || "";
-    /* Une source prioritaire ne doit pas gagner avec du vide. C'est fréquent
-       pour OpenStreetMap : la fiche donne le nom et la position, tandis que
-       Google complète note, avis, horaires et photo. `Object.assign` seul
-       laissait alors un `null` OSM effacer la donnée Google du même lieu. */
+    merged.imageSource = preferred.image ? (preferred.imageSource || fallback.imageSource || "")
+      : (fallback.imageSource || "");
+    merged.imageAttribution = preferred.image ? (preferred.imageAttribution || fallback.imageAttribution || "")
+      : (fallback.imageAttribution || "");
+    /* Une source prioritaire ne doit pas gagner avec du vide. Une fiche OSM
+       peut être moins détaillée qu'une publication ou un catalogue ouvert ;
+       `Object.assign` seul laisserait alors un `null` effacer l'information. */
     const renseigne = (value) => {
       if (value == null || value === "") return false;
       if (Array.isArray(value)) return value.length > 0;
       return true; // false et 0 sont des informations, pas des absences
     };
-    ["note","avis","rating","userRatingCount","ouvert","prixN","prix",
-      "horaires","openingHours","tel","pmr","idGoogle","resumeGoogle"]
+    ["note","avis","rating","userRatingCount","ouvert","prixN","prix","horaires",
+      "openingHours","tel","pmr","idGoogle","resumeGoogle","descriptionSource"]
       .forEach((field) => {
         merged[field] = renseigne(preferred[field]) ? preferred[field] : fallback[field];
       });
@@ -355,6 +367,40 @@
     return !!left && !!right && (left === right || (left.length > 7 && right.length > 7 && (left.includes(right) || right.includes(left))));
   }
 
+  /* Les relevés ouverts peuvent garder une faute de frappe ou une ville
+     suffixée là où Google donne le nom commercial complet. On accepte cette
+     preuve plus faible UNIQUEMENT entre fournisseurs, pour le même premier
+     mot significatif, à très forte ressemblance et à très courte distance.
+     Ainsi « Pepe Chiken byFast Good cuisine » rejoint « Pepe Chicken By
+     Fastgood Cuisine – Tourcoing », sans confondre deux commerces voisins. */
+  function distanceEdition(left, right) {
+    const previous = Array.from({length:right.length + 1}, (_, index) => index);
+    for (let i = 1; i <= left.length; i += 1) {
+      let diagonal = previous[0]; previous[0] = i;
+      for (let j = 1; j <= right.length; j += 1) {
+        const before = previous[j];
+        previous[j] = Math.min(previous[j] + 1, previous[j - 1] + 1,
+          diagonal + (left[i - 1] === right[j - 1] ? 0 : 1));
+        diagonal = before;
+      }
+    }
+    return previous[right.length];
+  }
+
+  function titlesNearlySame(a, b) {
+    const clean = (value) => normalizeText(value).replace(/\b(le|la|les|l|the)\b/g, " ")
+      .replace(/\s+/g, " ").trim();
+    const left = clean(a), right = clean(b);
+    const firstLeft = left.split(" ")[0] || "", firstRight = right.split(" ")[0] || "";
+    if (firstLeft.length < 4 || firstLeft !== firstRight) return false;
+    const compactLeft = left.replace(/\s/g, ""), compactRight = right.replace(/\s/g, "");
+    const short = compactLeft.length <= compactRight.length ? compactLeft : compactRight;
+    const long = short === compactLeft ? compactRight : compactLeft;
+    if (short.length < 12) return false;
+    const compared = long.slice(0, short.length);
+    return (1 - distanceEdition(short, compared) / short.length) >= 0.9;
+  }
+
   /* Un nom seul ne suffit pas : un « Central » café et un « Central » hôtel
      voisins sont deux destinations. Deux sources ne se fusionnent que si leur
      catégorie interne a un usage en commun, en plus du nom normalisé et de la
@@ -362,7 +408,14 @@
   function sameCategory(a, b) {
     const left = unique([a && a.cat, ...((a && a.categories) || [])]);
     const right = new Set(unique([b && b.cat, ...((b && b.categories) || [])]));
-    return left.some((category) => right.has(category));
+    if(left.some((category) => right.has(category))) return true;
+    /* Google et OSM ne découpent pas toujours pareil un même établissement :
+       « restaurant », « fast-food », café et bar peuvent désigner la même
+       enseigne. Cette équivalence est volontairement étroite ; elle ne mêle
+       ni l'aide, ni le transport, ni deux commerces génériques voisins. */
+    const restauration = new Set(["resto","fastfood","cafe","bar"]);
+    return left.some((category) => restauration.has(category)) &&
+      [...right].some((category) => restauration.has(category));
   }
 
   function dedupeItems(items, distanceBetween) {
@@ -378,10 +431,13 @@
         const estTransport = (lieu) => [lieu.cat, ...(lieu.categories || [])]
           .some((category) => TRANSPORT_CATEGORIES.includes(category));
         if (estTransport(existing) !== estTransport(item)) return false;
-        if (!sameTitle(existing.title || existing.titre, item.title || item.titre)) return false;
+        const sameName = sameTitle(existing.title || existing.titre, item.title || item.titre);
+        const typoCrossProvider = !sameName && existing.source !== item.source &&
+          titlesNearlySame(existing.title || existing.titre, item.title || item.titre);
+        if (!sameName && !typoCrossProvider) return false;
         if (!sameCategory(existing, item)) return false;
         const distance = distanceBetween(existing.latitude, existing.longitude, item.latitude, item.longitude);
-        if (!Number.isFinite(distance) || distance > 120) return false;
+        if (!Number.isFinite(distance) || distance > (typoCrossProvider ? 180 : 120)) return false;
         if (!item.isTemporary) return true;
         if (existing.startsAt == null || item.startsAt == null) return true;
         return Math.abs(existing.startsAt - item.startsAt) <= 3 * 3600 * 1000;

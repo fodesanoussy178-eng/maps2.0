@@ -177,6 +177,28 @@
      un formulaire administratif. Les autres besoins restent reconnus. */
   const BESOINS_GRILLE = Object.freeze(BESOINS.filter((b) => !b.horsGrille));
 
+  /* `asso` est une catégorie de collecte, pas une preuve qu'une structure
+     répond à tous les besoins. On garde les associations dans le catalogue et
+     les résultats larges, mais une sélection précise ne retient que les
+     catégories réellement spécialisées ou un réseau/nom qui l'atteste. */
+  const CATEGORIES_DIRECTES = Object.freeze({
+    /* `food` est une catégorie éditoriale de découverte : elle contient des
+       restaurants, ateliers de cuisine et marchés. Ce n'est jamais, à elle
+       seule, une preuve d'aide alimentaire. Les réseaux et les données
+       explicitement `alimentaire` / `collecte` restent admis ci-dessous. */
+    manger: ["alimentaire", "collecte"],
+    logement: ["hebergement"],
+    travail: ["emploi"],
+    papiers: ["mairie", "emploi"],
+    sante: ["sante"],
+    jeunes: ["emploi", "biblio"],
+    hygiene: ["toilettes", "hebergement"],
+    vetements: ["collecte", "friperie"],
+    parler: ["sante"],
+    famille: ["sante"],
+    securite: ["sante", "hebergement"],
+  });
+
   /* ---- Urgence -----------------------------------------------------------
      Ce n'est pas un besoin de plus : c'est une gravité. Elle traverse les
      besoins et remonte ce qui accueille sans rendez-vous. */
@@ -273,27 +295,69 @@
     return n >= 10 && n <= 110 ? n : null;
   }
 
+  function texteLieu(lieu) {
+    const l = lieu || {};
+    const tags = l.tags || {};
+    return [l.titre, l.title, l.service, l.description,
+      tags.social_facility, tags.amenity, tags.office, tags.healthcare]
+      .filter(Boolean).join(" ");
+  }
+
+  function categoriesLieu(lieu) {
+    const l = lieu || {};
+    return new Set([l.cat, ...(l.categories || [])].filter(Boolean));
+  }
+
   /* ---- Un lieu répond-il à un besoin ? -----------------------------------
      Retourne un poids de 0 à 1 et la raison. Le nom qui désigne un réseau
      connu vaut plus qu'une simple appartenance de catégorie : une Mission
      locale pour « travail », c'est sûr ; une association pour « travail »,
      c'est possible. */
-  function pertinence(lieu, besoinId, options) {
+  function pertinence(lieu, besoinId) {
     const b = BESOIN_DE(besoinId);
     if (!b || !lieu) return { poids: 0, raison: "" };
-    const o = options || {};
-    const nom = String(lieu.titre || lieu.title || "");
-    const cats = new Set([lieu.cat, ...(lieu.categories || [])]);
+    const texte = texteLieu(lieu);
+    const cats = categoriesLieu(lieu);
 
-    if (b.reseaux.some((re) => re.test(nom)))
-      return { poids: 1, raison: b.pourquoi, sur: true };
-    if (b.cats.some((c) => cats.has(c)))
-      return { poids: .6, raison: b.pourquoi, sur: false };
+    if (b.reseaux.some((re) => re.test(texte)))
+      return { poids: 1, raison: b.pourquoi, sur: true, direct: true };
+    const directes = CATEGORIES_DIRECTES[b.id] || (b.id === "autre" ? b.cats : []);
+    if (directes.some((c) => cats.has(c)))
+      return { poids: .72, raison: b.pourquoi, sur: false, direct: true };
     // un service précisé par le nom (« vestiaire », « douches ») compte aussi
-    if (b.mots.some((m) => m.length > 4 && contient(sansAccents(nom), m)))
-      return { poids: .8, raison: b.pourquoi, sur: false };
-    if (o.large && cats.has("asso")) return { poids: .25, raison: b.pourquoi, sur: false };
+    if (b.mots.some((m) => m.length > 4 && contient(sansAccents(texte), m)))
+      return { poids: .8, raison: b.pourquoi, sur: false, direct: true };
+    // L'association générique reste un recours dans « Autre aide » ou une
+    // liste élargie, mais n'est jamais une fausse réponse à « Travail » ou
+    // « Santé ». `direct:false` permet au panneau et à la carte de l'écarter.
+    if (cats.has("asso"))
+      return { poids: .25, raison: b.pourquoi, sur: false, direct: false };
     return { poids: 0, raison: "" };
+  }
+
+  function estSolution(lieu, besoins, options) {
+    const ids = (besoins || []).filter((id) => !!BESOIN_DE(id));
+    if (!ids.length) return false;
+    const o = options || {};
+    return ids.some((id) => {
+      const p = pertinence(lieu, id, { large: o.large === true });
+      return p.direct === true || (o.accepterLarge === true && p.poids > 0);
+    });
+  }
+
+  /* Rendez-vous : seulement une information explicitement publiée par le
+     lieu, un tag OSM, ou une règle de réseau connue. L'absence reste « non
+     renseigné », jamais « sans rendez-vous ». */
+  function rendezVousDe(lieu) {
+    const l = lieu || {};
+    const tag = String((l.tags || {}).appointment || "").toLowerCase();
+    if (["yes", "required", "only"].includes(tag)) return { label: "Sur rendez-vous", source: "OpenStreetMap" };
+    if (["no", "walk_in"].includes(tag)) return { label: "Sans rendez-vous", source: "OpenStreetMap" };
+    const condition = conditionDe(l);
+    const texte = [condition && condition.texte, l.description, l.service].filter(Boolean).join(" ");
+    if (/sans rendez-vous/i.test(texte)) return { label: "Sans rendez-vous", source: condition ? "Réseau" : "Structure" };
+    if (/rendez-vous/i.test(texte)) return { label: "Sur rendez-vous", source: condition ? "Réseau" : "Structure" };
+    return null;
   }
 
   /* ---- « Pourquoi Autour te le propose » ---------------------------------
@@ -327,8 +391,8 @@
   const estUrgent = (phrase) => URGENCE.test(String(phrase || ""));
 
   root.AutourAide = Object.freeze({
-    BESOINS, BESOINS_GRILLE, BESOIN_DE, CONDITIONS,
+    BESOINS, BESOINS_GRILLE, BESOIN_DE, CONDITIONS, CATEGORIES_DIRECTES,
     besoinsDepuisPhrase, ageDepuisPhrase, pertinence, pourquoi,
-    conditionDe, convient, estUrgent,
+    conditionDe, convient, estSolution, rendezVousDe, estUrgent,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

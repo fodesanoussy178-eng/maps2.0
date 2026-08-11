@@ -17,6 +17,8 @@ const signaux = await readFile(new URL("../signaux.js",import.meta.url),"utf8");
 const aide = await readFile(new URL("../aide.js",import.meta.url),"utf8");
 const donnees = await readFile(new URL("../donnees.js",import.meta.url),"utf8");
 const explications = await readFile(new URL("../explications.js",import.meta.url),"utf8");
+const googlePlaces = await readFile(new URL("../providers/googlePlaces.js",import.meta.url),"utf8");
+const googleMaps = await readFile(new URL("../mapProviders/googleMaps.js",import.meta.url),"utf8");
 
 test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",()=>{
   assert.match(html,/<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" \/>/);
@@ -73,12 +75,12 @@ test("le parcours de publication couvre les six familles annoncées",()=>{
   assert.match(html,/const eph=Object\.entries\(CATS\)\.filter\(\(\[,c\]\)=>c\.eph\)/);
 });
 
-test("l’entrée dans Aide laisse peindre la feuille et fusionne le cache en lot",()=>{
+test("l’entrée dans Aide laisse peindre la feuille, privilégie les sources sociales et enrichit sans cache Places",()=>{
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
-  assert.match(html,/const fiches = o\.l\.map\(x=>Object\.assign\(\{\},x\.f,\{autourCat:x\.cat\}\)\)/);
-  assert.match(html,/ajouterLieuxGoogle\(fiches\)/);
-  assert.match(html,/CAT_GOOGLE\[f\.type\] \|\| f\.autourCat \|\| catDefaut/);
-  assert.doesNotMatch(html,/o\.l\.forEach\(x=>ajouterLieuxGoogle\(\[x\.f\], x\.cat\)\)/);
+  assert.match(html,/vraisLieux\(lat,lng,null,\{cats:CATS_AIDE,rayon:9000,limite:180\}\)/);
+  assert.match(html,/lieuxDatatourisme\(lat,lng\)/);
+  assert.match(html,/const reseaux = RESEAUX_AIDE\.filter/);
+  assert.doesNotMatch(html,/const cleAide/);
 });
 
 test("les accès principaux suivent l'intention, pas la nomenclature",()=>{
@@ -174,6 +176,16 @@ test("la carte est un décor : ni zoom Leaflet, ni attribution posée dessus",()
   assert.match(html,/id="btnCredits"/);
   assert.match(html,/openstreetmap\.org\/copyright/);
   assert.match(html,/carto\.com\/attributions/);
+});
+
+test("le repli cartographique ne fabrique pas une ville par défaut",()=>{
+  assert.doesNotMatch(html,/positionMoi \|\| \[50\.6292,3\.0573\]/);
+  assert.match(html,/const centre = positionMoi \|\| \[map\.getCenter\(\)\.lat,map\.getCenter\(\)\.lng\];/);
+});
+
+test("une fiche dont le code postal manque ne rend jamais « undefined »",()=>{
+  assert.match(html,/esc\(l\.adresse \|\| ""\)/);
+  assert.match(html,/esc\(l\.cp \|\| ""\)/);
 });
 
 test("la recherche universelle garde un seul formulaire, quel que soit le contexte",()=>{
@@ -380,16 +392,17 @@ test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa haut
 });
 
 test("les photos de lieux sont réellement demandées à Google",()=>{
-  // sans places.photos, toutes les cartes retombaient sur un emoji
-  assert.match(html,/"places\.photos,"/);
+  // La requête et l'URL média sont confinées au provider, pas à l'UI.
+  assert.match(html,/providers\/googlePlaces\.js\?v=/);
+  assert.match(googlePlaces,/"places\.photos"/);
   assert.match(html,/function photoGoogle/);
-  assert.match(html,/places\.googleapis\.com\/v1\/"\+photo\.name\+/);
+  assert.match(googlePlaces,/places\.googleapis\.com\/v1\//);
   // une photo de lieu ne remplace pas l'affiche d'un événement
-  assert.match(html,/if\(meilleur\.image && !l\.image\) l\.image = meilleur\.image;/);
+  assert.match(html,/if\(f\.image && !l\.image\)\{ l\.image=f\.image;/);
   // le lieu ajouté par Google ne perd pas son image lors de la normalisation
-  assert.match(html,/image:f\.image \|\| ""/);
+  assert.match(html,/imageSource:f\.imageSource\|\|"google_places"/);
   // et le démarrage rapide la conserve pour la session suivante
-  assert.match(html,/const CHAMPS_RAPIDE = \["id","cat","categories","titre","adresse","cp","lat","lng","image",/);
+  assert.match(html,/function estContenuGoogle\(l\)\{/);
   // les résultats de catégorie affichent la photo sans la mettre sur le chemin critique
   assert.match(html,/class="ac-photo"/);
   assert.match(html,/loading="lazy" decoding="async" fetchpriority="low"/);
@@ -404,8 +417,8 @@ test("Manger rend visibles les fiches Google complètes dès leur arrivée",()=>
 });
 
 test("une fiche Google n'est jamais greffée au seul prétexte qu'elle est proche",()=>{
-  assert.match(html,/function nomsLieuxCompatibles\(nomA, nomB\)\{/);
-  assert.match(html,/if\(d >= dMin \|\| !nomsLieuxCompatibles\(nomL, nomF\)\) return;/);
+  assert.match(html,/function nomsLieuxCompatibles\(nomA,nomB\)\{/);
+  assert.match(html,/if\(d<dMin && nomsLieuxCompatibles\(l\.titre,f\.nom\)\)/);
   assert.doesNotMatch(html,/const score = memeNom \? d\/4 : d;/);
 });
 
@@ -415,7 +428,7 @@ test("une source partielle ne masque pas des résultats déjà utilisables",()=>
   assert.match(html,/return entete\+liste\+statut;/);
   assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
   // une tentative Google vide reste retentable, notamment depuis Manger
-  assert.match(html,/if\(!f \|\| !f\.length\)\{ zonesResto\.delete\(cle\); return \[\]; \}/);
+  assert.match(html,/if\(!f\.length\)\{ zonesResto\.delete\(cle\); return \[\]; \}/);
   assert.match(html,/if\(feuilleNiveau === "manger"\) completerRestauration\(\{force:true\}\);/);
 });
 
@@ -712,13 +725,14 @@ test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
    carte construite avant la feuille de style qui place ses tuiles. Ces
    quatre contrôles tiennent les deux fermées. */
 
-test("le fond de carte est demandé dans la foulée de L.map, pas au repos",()=>{
+test("Google Maps est le fond prioritaire, avec CARTO/OSM en repli immédiat",()=>{
   const debut = html.indexOf('map = L.map("map"');
   const fin   = html.indexOf("function attendreLeaflet");
   assert.ok(debut > 0 && fin > debut);
   const corps = html.slice(debut, fin);
-  // poserFond() est appelé directement, jamais derrière un différé
-  assert.match(corps,/\n  poserFond\(\)\.then\(fond=>\{/);
+  assert.match(corps,/\(promesseCarteGoogle \|\| Promise\.resolve\(false\)\)\.then\(googleActif=>\{/);
+  assert.match(corps,/fournisseur\.estActif\(\)/);
+  assert.match(corps,/return remettreFondAutonome\(\);/);
   assert.doesNotMatch(corps,/quandLibre\(\(\)=>\{[\s\S]*poserFond\(\)/);
 });
 
@@ -1326,25 +1340,13 @@ test("dans l'aide, chaque lieu dit à quoi il sert",()=>{
   assert.match(html,/\.ac-expli\{display:-webkit-box;-webkit-line-clamp:2;/);
 });
 
-test("le descriptif Google est demandé lieu par lieu, jamais par zone",()=>{
-  // ces résumés sont facturés dans une formule plus chère : les demander pour
-  // les vingt fiches de chaque zone coûterait cher pour un texte non lu
-  assert.match(html,/const CHAMPS_DESCRIPTIF = "id,generativeSummary,editorialSummary";/);
-  assert.doesNotMatch(html,/CHAMPS_PLACE = "[^"]*generativeSummary/);
-  assert.doesNotMatch(html,/CHAMPS_PLACE = "[^"]*editorialSummary/);
-  // réservé à l'aide, et une seule fois par lieu
-  assert.match(html,/if\(!SET_AIDE\.has\(l\.cat\)\) return;/);
-  assert.match(html,/if\(!EXPLIQUE \|\| !l \|\| !l\.idGoogle \|\| l\.resumeGoogle\) return;/);
-  assert.match(html,/const connu = descriptifEnCache\(idGoogle\);\s*\n\s*if\(connu != null\) return connu;/);
-  // l'identifiant Google doit être demandé pour pouvoir aller le chercher
-  assert.match(html,/CHAMPS_PLACE = "places\.id,/);
-  // un échec n'efface rien : l'explication générique reste
-  assert.match(html,/journal\.warn\("Descriptif Google: HTTP", r\.status\);/);
-  // le résumé généré n'est pas ouvert à toutes les clés : refus ⇒ repli sur
-  // l'éditorial, une fois, plutôt que perdre le descriptif
-  assert.match(html,/if\(r\.status === 400 && champsDescriptif !== CHAMPS_DESCRIPTIF_SOBRE\)\{/);
-  // une erreur client ne se réessaie pas à chaque ouverture, une panne serveur si
-  assert.match(html,/if\(r\.status < 500\) descriptifs\.set\(idGoogle, ""\);/);
+test("le descriptif Google passe par le provider et ne devient pas une donnée sociale",()=>{
+  assert.match(html,/function completerExplication\(l\)\{/);
+  assert.match(html,/if\(!l \|\| !l\.idGoogle \|\| estFicheAide\(l\) \|\| l\.description\) return;/);
+  assert.match(html,/async function descriptifGoogle\(idGoogle\)/);
+  assert.match(googlePlaces,/async function details\(placeId, config\)/);
+  assert.match(googlePlaces,/editorialSummary,generativeSummary/);
+  assert.doesNotMatch(html,/localStorage\.setItem\(CLE_DESCRIPTIF/);
 });
 
 test("aucune explication n'est écrite pour une ville en particulier",()=>{
@@ -1564,13 +1566,31 @@ test("Aide commence par la question, jamais par des structures",()=>{
 });
 
 test("l'aide mélange structures permanentes et opportunités temporaires",()=>{
-  assert.match(html,/function rangTemporelAide\(l\)\{/);
-  // le moteur temporel existant date les deux : pas de second moteur
-  assert.match(html,/TEMPS\.estMaintenant\(etat\.statut\)\) return 3;/);
-  assert.match(html,/return section === "a_venir" \? 0 : 1;/);
-  assert.match(html,/rangTemporelAide\(b\.l\) - rangTemporelAide\(a\.l\)/);
+  assert.match(html,/function prioriteDisponibiliteAide\(l\)\{/);
+  // en cours, imminent, aujourd'hui/demain, semaine, futur : le moteur
+  // temporel existant fournit les états, sans second moteur local
+  assert.match(html,/TEMPS\.STATUTS\.EN_COURS\) return 60;/);
+  assert.match(html,/TEMPS\.STATUTS\.IMMINENT\) return 50;/);
+  assert.match(html,/jours <= 1 \? 30 : jours <= 7 \? 20 : 10/);
+  assert.match(html,/prioriteDisponibiliteAide\(b\.l\) - prioriteDisponibiliteAide\(a\.l\)/);
   // et la carte d'aide affiche la date réelle d'un événement
   assert.match(html,/TEMPS\.libelleTemporel\(l, Date\.now\(\)/);
+});
+
+test("Aide garde uniquement les solutions liées au besoin et offre une fiche exploitable",()=>{
+  assert.match(html,/function estSolutionAideLiee\(l\)\{/);
+  assert.match(html,/AIDE\.estSolution\(l, besoins\)/);
+  assert.match(html,/let candidats = lieux\.filter\(l=>nomExploitable\(l\) && estSolutionAideLiee\(l\)\)/);
+  assert.match(html,/b\.poids - a\.poids \|\|\s*prioriteDisponibiliteAide/s);
+  // photo de source autorisée ou couverture graphique : son absence ne sert
+  // pas au classement et n'est jamais remplacée par une image inventée
+  assert.match(html,/function photoAutoriseeAide\(l\)\{/);
+  assert.match(html,/\["google_places", "datatourisme_licence", "structure", "autour_verifie"\]/);
+  assert.match(html,/function couvertureAide\(l, c\)\{/);
+  for(const action of ["Itinéraire","Appeler","Site web","Partager","Favori"])
+    assert.match(html,new RegExp(action),action);
+  for(const champ of ["Public accueilli","Conditions d’accès","Rendez-vous","Coût","Source","Dernière mise à jour"])
+    assert.match(html,new RegExp(champ),champ);
 });
 
 test("une carte d'aide dit pourquoi, à quelle condition, et ce qu'on ignore",()=>{
@@ -1606,8 +1626,7 @@ test("le mode Aide ne journalise aucune phrase",()=>{
 
 test("on n'enrichit que les meilleurs candidats, jamais une zone",()=>{
   assert.match(html,/const MAX_ENRICHIS = 5;/);
-  assert.match(html,/if\(aDemander\.length >= MAX_ENRICHIS\) break;/);
-  assert.match(html,/if\(!DONNEES\.manque\(l, intention, \{disponibilite:\(x,t\)=>dispoDe\(x, null, t\)\}\)\.length\) continue;/);
+  assert.match(html,/DONNEES\.manque\(l, intention, \{disponibilite:\(x,t\)=>dispoDe\(x, null, t\)\}\)\.length\)\.slice\(0,MAX_ENRICHIS\)/);
   // le modèle normalisé porte source, confiance et date
   assert.match(donnees,/source: null, confidence: 0, updated_at: null,/);
   assert.match(donnees,/function depassePlafond\(prix, plafond\)/);
@@ -1779,14 +1798,13 @@ test("« apprécié » exige de vrais avis, en nombre",()=>{
   assert.doesNotMatch(html,/Number\(l\.note\) >= 4\.4 && Number\(l\.avis\) >= 30/);
 });
 
-test("la clé Google est documentée, et son absence ne casse rien",()=>{
-  assert.match(html,/Restriction d'application → Sites web \(référents HTTP\)/);
-  assert.match(html,/https:\/\/autour\.eu\/\*/);
-  assert.match(html,/https:\/\/www\.autour\.eu\/\*/);
-  assert.match(html,/https:\/\/autour\.vercel\.app\/\*/);
-  // chaque appel vérifie la clé avant de partir
-  const gardes = (html.match(/if\(!CLE_GOOGLE/g) || []).length;
-  assert.ok(gardes >= 5, "tous les appels Google sont gardés : "+gardes);
+test("Google est isolé dans ses providers et Google Maps porte les lieux Places",()=>{
+  assert.match(html,/providers\/googlePlaces\.js\?v=/);
+  assert.match(html,/mapProviders\/googleMaps\.js\?v=/);
+  assert.doesNotMatch(html,/places\.googleapis\.com/);
+  assert.match(googlePlaces,/if \(!config \|\| !config\.apiKey\) return \[\];/);
+  assert.match(googleMaps,/maps\.googleapis\.com\/maps\/api\/js/);
+  assert.match(html,/if\(!fournisseur \|\| !\(await googleMapsActif\(\)\)\) return \[\];/);
 });
 
 /* ==========================================================================

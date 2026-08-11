@@ -168,9 +168,26 @@ function imageUrl(value, depth = 0) {
   return "";
 }
 
+function texteLicence(value, depth = 0) {
+  if (depth > 4 || value == null) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map((item) => texteLicence(item, depth + 1)).join(" ");
+  if (typeof value !== "object") return "";
+  return ["license", "licence", "rights", "dc:rights", "schema:license", "schema:copyrightNotice"]
+    .map((cle) => texteLicence(value[cle], depth + 1)).join(" ");
+}
+
+function imageAutorisee(representation) {
+  const licence = texteLicence(representation);
+  // Une représentation sans droit explicite peut être une image tierce : elle
+  // reste dans le catalogue mais ne quitte jamais le serveur DATAtourisme.
+  if (!/(creativecommons\.org|\bcc[- ]?by\b|\bcc0\b|public[ -]domain|open[ -]data|etalab|odbl)/i.test(licence)) return "";
+  return imageUrl(representation);
+}
+
 function image(poi) {
   const representationBrute = lire(poi, ["hasMainRepresentation", "mainRepresentation", "image"]);
-  return imageUrl(representationBrute);
+  return imageAutorisee(representationBrute);
 }
 
 function adresse(lieu) {
@@ -215,6 +232,7 @@ export function normaliserDatatourisme(poi) {
   const openingHours = horairesOsm(lire(lieu, ["openingHoursSpecification", "schema:openingHoursSpecification"]));
   const ou = adresse(lieu);
 
+  const imagePoi = image(poi);
   return {
     id:"datatourisme:" + id,
     source:"datatourisme",
@@ -225,7 +243,8 @@ export function normaliserDatatourisme(poi) {
     cp:ou.cp,
     lat:position.latitude,
     lng:position.longitude,
-    image:image(poi),
+    image:imagePoi,
+    imageSource:imagePoi ? "datatourisme_licence" : "",
     url:"", // une fiche Autour ne doit pas rediriger vers une URL fournisseur imprévisible
     par:"DATAtourisme",
     officialOpeningHours:openingHours || null,
@@ -289,7 +308,7 @@ export default async function handler(requete) {
     geo_distance:rLat + "," + rLng + "," + RAYON,
     page_size:String(LIMITE), lang:"fr",
     // Chaque champ est demandé explicitement : pas de réponse brute inutile.
-    fields:"uuid,label,type,isLocatedAt.geo,isLocatedAt.address,isLocatedAt.openingHoursSpecification,hasDescription,hasMainRepresentation,hasMainRepresentation.url,hasMainRepresentation.uri,hasMainRepresentation.contentUrl,hasMainRepresentation.resourceLocator,takesPlaceAt",
+    fields:"uuid,label,type,isLocatedAt.geo,isLocatedAt.address,isLocatedAt.openingHoursSpecification,hasDescription,hasMainRepresentation,hasMainRepresentation.url,hasMainRepresentation.uri,hasMainRepresentation.contentUrl,hasMainRepresentation.resourceLocator,hasMainRepresentation.license,hasMainRepresentation.licence,hasMainRepresentation.rights,hasMainRepresentation.dc:rights,takesPlaceAt",
   });
   let resultat;
   try {
