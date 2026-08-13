@@ -1,6 +1,60 @@
 (function (root) {
   "use strict";
 
+  /* ===================================================================
+     LE FOND EST UN SUPPORT, PAS UN CONTENU
+
+     Cette carte était instanciée sans `styles` : elle rendait donc le Google
+     Maps par défaut — routes jaunes et blanches, zones commerciales rosées,
+     et surtout la couche de POI complète, avec ses pastilles de couleur et
+     ses noms d'enseignes. Autour posait ses propres marqueurs par-dessus, et
+     ils se noyaient : deux systèmes d'épingles concurrents sur le même écran,
+     dont un seul est cliquable et pertinent.
+
+     Le fond redevient ce qu'il doit être : clair, gris-beige, très épuré.
+     Trois décisions, dans cet ordre d'importance :
+
+       · `poi` et `transit` éteints. Ce sont EUX le bruit — pas les couleurs.
+         Un restaurant Google à côté d'un restaurant Autour, c'est la même
+         information deux fois, dessinée deux fois, dont une inutile ;
+       · `labels.icon` éteint partout : plus aucune pastille du fond ne peut
+         être confondue avec un marqueur Autour ;
+       · une palette désaturée, proche du papier de l'application, pour que
+         le contraste appartienne aux éléments d'Autour et à rien d'autre.
+
+     Les parcs gardent une teinte : ce n'est pas de la décoration, c'est un
+     repère d'orientation que le gris seul ferait disparaître. Même chose pour
+     l'eau et la hiérarchie des voies, qui restent lisibles en niveaux très
+     rapprochés.
+
+     À NE PAS FAIRE en modifiant ce fichier : rallumer `poi`, remettre
+     `labels.icon`, ou saturer la palette. La densité d'information du fond
+     n'est pas un objectif ; la lisibilité des éléments Autour, si. */
+  const STYLE_MINIMAL = Object.freeze([
+    { elementType:"geometry",            stylers:[{color:"#F4F3EF"}] },
+    { elementType:"labels.icon",         stylers:[{visibility:"off"}] },
+    { elementType:"labels.text.fill",    stylers:[{color:"#8A908A"}] },
+    { elementType:"labels.text.stroke",  stylers:[{color:"#F4F3EF"},{weight:2}] },
+
+    // le bruit : les commerces du fond concurrencent les marqueurs d'Autour
+    { featureType:"poi",     stylers:[{visibility:"off"}] },
+    { featureType:"transit", stylers:[{visibility:"off"}] },
+
+    // sauf la verdure, qui sert à se repérer
+    { featureType:"poi.park", elementType:"geometry", stylers:[{color:"#E7EDE3"},{visibility:"on"}] },
+
+    { featureType:"road",          elementType:"geometry",     stylers:[{color:"#FFFFFF"}] },
+    { featureType:"road",          elementType:"labels.icon",  stylers:[{visibility:"off"}] },
+    { featureType:"road.arterial", elementType:"geometry",     stylers:[{color:"#FCFCFB"}] },
+    { featureType:"road.highway",  elementType:"geometry",     stylers:[{color:"#EFEDE6"}] },
+    { featureType:"road.local",    elementType:"labels",       stylers:[{visibility:"off"}] },
+
+    { featureType:"administrative",     elementType:"geometry", stylers:[{visibility:"off"}] },
+    { featureType:"landscape.man_made", elementType:"geometry", stylers:[{color:"#F0EFEA"}] },
+    { featureType:"water",              elementType:"geometry", stylers:[{color:"#DDE6E7"}] },
+    { featureType:"water", elementType:"labels.text.fill",      stylers:[{color:"#9FAEB0"}] },
+  ]);
+
   let carte = null;
   let leaflet = null;
   let chargement = null;
@@ -87,6 +141,10 @@
         disableDefaultUI:true, clickableIcons:false, keyboardShortcuts:false,
         gestureHandling:"greedy", mapTypeControl:false, streetViewControl:false,
         fullscreenControl:false,
+        /* `styles` est ignoré si un `mapId` est fourni — c'est pourquoi il n'y
+           en a pas ici, et il ne faut pas en ajouter sans déplacer ce style
+           vers la console Google. */
+        styles:STYLE_MINIMAL,
       });
     } catch (e) {
       desactiver();

@@ -409,6 +409,20 @@ input{font-family:inherit;font-size:16px}
 .ab-ok{flex-shrink:0;min-height:48px;padding:0 16px;border:0;border-radius:12px;
   background:var(--ink);color:#fff;font-size:14.5px;font-weight:700}
 .ab-vie{margin:10px 0 0;font-size:12px;line-height:1.4;color:var(--ink2)}
+.ab-exemples{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink2)}
+/* Discret : c'est un panneau indicateur, pas une consigne. */
+.ab-ailleurs-note{margin:6px 0 0;font-size:12px;line-height:1.4;color:#939D96}
+
+/* « Ça ressemble plutôt à une réparation » : une phrase, une action évidente,
+   une sortie de secours. Aucune hauteur imposée — le bloc fait sa taille. */
+.ab-ailleurs{padding:6px 0 4px}
+.aba-titre{margin:0 0 6px;font-size:17px;font-weight:750;line-height:1.35;letter-spacing:-.01em}
+.aba-sous{margin:0 0 16px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.aba-cta{width:100%;min-height:52px;padding:14px 16px;border:0;border-radius:12px;
+  background:var(--ink);color:#fff;font-size:15px;font-weight:700;text-align:left}
+.aba-rester{width:100%;min-height:44px;margin-top:8px;padding:10px 16px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:13.5px;font-weight:600;color:var(--ink2)}
 
 .as-tete{padding:2px 0 10px}
 .as-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em}
@@ -532,6 +546,36 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   border-radius:99px;background:#fff;color:var(--ink2);
   font-size:13.5px;font-weight:700;white-space:nowrap}
 .ong.actif{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* La pastille « Maintenant » vit au-dessus de la carte, centrée, sous
+   l'en-tête. `pointer-events` reste actif sur elle seule : le reste de la
+   bande laisse passer les gestes vers la carte. */
+#badgeMaintenant{position:fixed;left:50%;transform:translateX(-50%);
+  top:calc(var(--haut-entete, 64px) + env(safe-area-inset-top, 0px) + 10px);
+  z-index:420;display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:9px 18px;border:0;border-radius:99px;background:#fff;
+  box-shadow:0 6px 20px rgba(20,30,25,.16);cursor:pointer;
+  max-width:calc(100vw - 32px)}
+#badgeMaintenant .bm-haut{display:flex;align-items:center;gap:7px;
+  font-size:15px;font-weight:750;letter-spacing:-.01em;color:var(--ink)}
+#badgeMaintenant .bm-haut em{font-style:normal;font-size:15px}
+#badgeMaintenant .bm-haut i{font-style:normal;font-weight:750}
+#badgeMaintenant .bm-haut i::before{content:"· "}
+#badgeMaintenant .bm-sous{font-size:11.5px;font-weight:500;color:var(--ink2);
+  white-space:nowrap}
+/* en navigation ou en pose, la carte appartient à autre chose */
+body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
+/* Le compteur de « Maintenant » ne doit JAMAIS pousser les onglets voisins.
+   La place est réservée en permanence (padding-right) et le badge s'y pose en
+   absolu : il apparaît quand des événements arrivent, disparaît quand il n'y
+   en a plus, et aucun autre onglet ne bouge d'un pixel. */
+.ong-maintenant{position:relative;padding-right:38px}
+.ong-compte{position:absolute;top:50%;right:11px;transform:translateY(-50%);
+  min-width:20px;height:20px;padding:0 5px;border-radius:99px;
+  background:var(--signal);color:#fff;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  display:grid;place-items:center;line-height:1}
+.ong.actif .ong-compte{background:#fff;color:var(--ink)}
 
 /* ---- « Où veux-tu regarder ? » ------------------------------------------
    Ce qui s'affiche tant que personne n'a donné sa position : deux gestes et
@@ -1382,6 +1426,16 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="videOk">Tout voir</button>
 </div>
 
+<!-- « ⚡ Maintenant · 3 » : la réponse à « qu'est-ce qui se passe vraiment
+     là, tout de suite ». Elle est posée sur la carte, entre les pastilles de
+     gauche et Filtres à droite, et elle n'existe que s'il y a réellement
+     quelque chose en cours — jamais de « 0 », jamais de place réservée vide.
+     Un appui ouvre la liste de ces événements, rien d'autre. -->
+<button id="badgeMaintenant" hidden aria-live="polite">
+  <span class="bm-haut"><em aria-hidden="true">⚡</em><b>Maintenant</b><i id="bmCompte"></i></span>
+  <span class="bm-sous">En cours près de toi</span>
+</button>
+
 <!-- En-tête fixe : le contexte d'abord (où je suis, quand), puis l'intention
      (que veux-tu faire), puis le raccourci (catégories). La carte est un
      décor derrière ça, pas l'interface elle-même. -->
@@ -1556,7 +1610,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
-<script src="aide.js?v=1b6bc619"></script>
+<script src="aide.js?v=2f6a9f60"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
 <script src="explications.js?v=ea344e6e"></script>
@@ -1566,7 +1620,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/googlePlaces.js?v=70338a03"></script>
 <script src="providers/datatourisme.js?v=6f242f4e"></script>
 <script src="providers/osm.js?v=ce966e3f"></script>
-<script src="mapProviders/googleMaps.js?v=0ea702cc"></script>
+<script src="mapProviders/googleMaps.js?v=d6cadaf0"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -3320,6 +3374,11 @@ function idsEpingles(){
 }
 let routes=[]; // {couche, base}
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
+/* La vue que l'on regardait avant qu'un itinéraire ne recadre la carte.
+   Mémorisée au premier tracé seulement : les tracés suivants (passer de
+   « à pied » à « vélo ») ne doivent pas écraser le point de retour par un
+   cadrage d'itinéraire. */
+let vueAvantTrajet = null;
 let modeNav = false;   // itinéraire plein écran : la carte n'affiche que le trajet
 
 const $=(s)=>document.querySelector(s);
@@ -3959,15 +4018,29 @@ function grilleSecours(lat,lng){
 /*  Fond de carte : on essaie les vraies tuiles, on dessine sinon     */
 /* ================================================================== */
 
+/* L'ORDRE EST LE STYLE : le premier qui répond gagne la course.
+
+   Voyager était en tête. C'est le style COLORÉ de CARTO — voies orangées,
+   zones vertes et beiges soutenues, POI teintés. Il est joli et il est
+   exactement ce qu'on ne veut pas : le fond y a autant de présence visuelle
+   que les marqueurs d'Autour, qui s'y noient.
+
+   Positron passe donc devant : gris-beige, très désaturé, conçu pour porter
+   une couche de données par-dessus. C'est le rôle qu'on lui demande. Voyager
+   reste en second, et OpenStreetMap en dernier — le plus chargé des trois,
+   gardé uniquement parce qu'il est le repli qui ne tombe jamais.
+
+   Ne pas remonter Voyager pour « faire plus vivant ». La lisibilité des
+   éléments d'Autour prime sur la densité d'information du fond. */
 const FONDS = [
-  { nom:"CARTO Voyager",
-    url:"https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    opts:{subdomains:"abcd", maxZoom:20, crossOrigin:true,
-      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'} },
   { nom:"CARTO Positron",
     url:"https://basemaps.cartocdn.com/rastertiles/positron/{z}/{x}/{y}{r}.png",
     opts:{subdomains:"abcd", maxZoom:20, crossOrigin:true,
       attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © CARTO'} },
+  { nom:"CARTO Voyager",
+    url:"https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    opts:{subdomains:"abcd", maxZoom:20, crossOrigin:true,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'} },
   { nom:"OpenStreetMap",
     url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     opts:{maxZoom:19, crossOrigin:true,
@@ -5743,7 +5816,20 @@ function ouvrirFicheCompacte(l){
   f.querySelector(".fc-voir").onclick = ()=>{
     fermerFicheCompacte(); pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id));
   };
-  f.querySelector(".fc-y").onclick = ()=>{ fermerFicheCompacte(); ouvrirDetail(l.id); };
+  /* « Y ALLER » ALLAIT AU MÊME ENDROIT QUE « VOIR ».
+     Les deux boutons ouvraient la fiche, côte à côte, et il fallait ensuite y
+     retrouver « Y aller » pour obtenir enfin les temps de trajet. Deux gestes
+     et une deuxième lecture pour une intention qui était déjà claire au
+     premier appui.
+     Et ils n'ouvraient pas la fiche de la même façon : « Voir » passait par la
+     pile d'écrans, « Y aller » non — le bouton retour du téléphone ne se
+     comportait donc pas pareil selon celui des deux qu'on avait touché.
+     Même chemin d'ouverture pour les deux, et « Y aller » déplie le trajet
+     dans la foulée : on touche, Autour répond. */
+  f.querySelector(".fc-y").onclick = ()=>{
+    fermerFicheCompacte(); pileEcrans=[];
+    pousserEcran(()=>{ ouvrirDetail(l.id); afficherTrajet(l); });
+  };
   if(f.querySelector(".fc-part")) f.querySelector(".fc-part").onclick = ()=>partagerInviter(l);
   if(f.querySelector(".fc-prevenir")) f.querySelector(".fc-prevenir").onclick = ()=>{
     fermerFicheCompacte(); pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id));
@@ -6014,6 +6100,9 @@ function empreinteMarqueur(l){
 function rendre(){
   PERF.rendus.carte += 1;
   PERF.exposer();
+  // la pastille ne dépend pas de la carte : elle doit suivre même si Leaflet
+  // n'est pas arrivé, sinon elle reste muette là où l'application marche
+  majBadgeMaintenant();
   if(!map) return;
   majIndexEvenements();
   if(!rendre.mesure){ rendre.mesure = true; PERF.jalon("markers_ready"); }
@@ -6162,9 +6251,20 @@ function fermerFeuille(options){
   }
   const avaitTrajet = ligneCouches.length > 0;
   effacerLignes();
-  // cadrer un itinéraire dézoome souvent au point de réduire les lieux à des
-  // pastilles : on revient sur le quartier pour qu'ils réapparaissent
-  if(avaitTrajet && positionMoi) allerVers(positionMoi, 16, {duration:.6});
+  /* ON REVENAIT CHEZ SOI, PAS LÀ OÙ ON REGARDAIT.
+     Cadrer un itinéraire dézoome souvent au point de réduire les lieux à des
+     pastilles : il faut donc bien recadrer en fermant. Mais recadrer sur
+     `positionMoi`, c'était ramener la carte sur le GPS de la personne — alors
+     qu'elle explorait peut-être Roubaix depuis Lille. Elle ouvrait un parc,
+     regardait le trajet, fermait la fiche, et se retrouvait à dix kilomètres
+     de ce qu'elle était en train de lire, sans avoir rien demandé.
+     On restaure la vue exacte d'avant le tracé. `positionMoi` ne sert plus que
+     de dernier recours, quand aucune vue n'a été mémorisée. */
+  if(avaitTrajet){
+    if(vueAvantTrajet) allerVers(vueAvantTrajet.centre, vueAvantTrajet.zoom, {duration:.6});
+    else if(positionMoi) allerVers(positionMoi, 16, {duration:.6});
+  }
+  vueAvantTrajet = null;
   const cible = dernierFocusFeuille;
   dernierFocusFeuille = null;
   requestAnimationFrame(()=>{
@@ -6660,6 +6760,12 @@ async function segmentTrajet(profil, depart, arrivee){
 }
 
 function dessinerSegments(segments){
+  // avant d'écraser la vue par le cadrage de l'itinéraire, retenir celle qu'on
+  // avait — c'est elle qu'on rendra en fermant la fiche
+  if(!vueAvantTrajet && map){
+    const c = map.getCenter();
+    vueAvantTrajet = {centre:[c.lat, c.lng], zoom:map.getZoom()};
+  }
   effacerLignes();
   ligneCouches = [];
   const points = [];
@@ -8426,6 +8532,13 @@ const SOUS_AIDE = (AIDE ? AIDE.BESOINS_GRILLE : []).map(b=>({
 const AIDE_URGENCE = {id:"urgence", emoji:"🚨", label:"Urgence", urgentSeul:true,
   cats:["hebergement","sante","asso","alimentaire"]};
 let sousAide = null;          // id du besoin actif, ou null
+/* Ce qu'Aide a compris d'une phrase qui ne la concerne pas. Null la plupart
+   du temps : il ne s'affiche que le temps de proposer la bonne porte.
+   Déclaré ICI, avec les autres états d'Aide, et non près de son producteur :
+   `majFeuille2` le lit, et `majFeuille2` peut être appelée par le démarrage
+   avant que le script n'ait atteint le bas du fichier. Un `let` non encore
+   évalué aurait alors levé une ReferenceError au premier rendu. */
+let redirectionExplorer = null;
 /* Les besoins reconnus dans une phrase libre, et l'âge si la personne l'a dit
    d'elle-même. Rien de plus n'est retenu : pas de profil, pas de phrase. */
 let besoinsAide = [];
@@ -8975,7 +9088,8 @@ function majFeuille2(){
        n'est choisi, l'écran pose une seule question — « de quoi as-tu
        besoin ? » — et propose de l'écrire en toutes lettres. Les solutions
        viennent après, jamais avant. */
-    corps.innerHTML = sousAide ? ecranSolutionsAide() : ecranBesoinsAide();
+    corps.innerHTML = redirectionExplorer ? ecranRedirectionExplorer()
+      : sousAide ? ecranSolutionsAide() : ecranBesoinsAide();
   }else{
     const b = BESOIN_DE(feuilleNiveau);
     if(!b){ fermerFeuille2(); return; }
@@ -9232,6 +9346,21 @@ function avecEpingles(classement){
    « j'ai plus assez pour manger ». */
 function lancerBesoinAide(phrase){
   if(!AIDE) return;
+
+  /* « Mon vélo est cassé » n'est pas une demande d'aide sociale.
+     Avant, cette phrase tombait dans « autre » et l'écran répondait par les
+     structures qui orientent — un CCAS pour un pneu crevé. On traduit à la
+     place de l'utilisateur : on nomme ce qu'on a compris, et on propose la
+     porte d'Explorer. Sans jamais lui demander de choisir une catégorie. */
+  const domaine = AIDE.domaineDeLaPhrase ? AIDE.domaineDeLaPhrase(phrase) : {domaine:"aide"};
+  if(domaine.domaine === "explorer"){
+    redirectionExplorer = domaine;
+    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    majFeuille2(); reinitialiserScrollFeuille();
+    return;
+  }
+  redirectionExplorer = null;
+
   const trouves = AIDE.besoinsDepuisPhrase(phrase);
   const santeTrouvee = trouves.some(x=>x.id === "sante" || x.id === "parler");
   intentionsSanteAide = santeTrouvee && AIDE.intentionsSanteDepuisPhrase
@@ -9321,12 +9450,39 @@ function ecranBesoinsAide(){
     '<p class="ab-sous">Ou explique-le simplement&nbsp;:</p>'+
     '<form class="ab-form" id="formBesoin">'+
       '<input id="champBesoin" type="search" enterkeyhint="search" autocomplete="off" '+
-        'placeholder="« j’ai 20 ans et je trouve pas de travail »" '+
+        'placeholder="« je n’ai rien à manger »" '+
         'aria-label="Explique ce dont tu as besoin">'+
       '<button type="submit" class="ab-ok">Chercher</button>'+
     '</form>'+
+    /* Trois exemples plutôt qu'un : un seul placeholder se lit comme le
+       format attendu, trois se lisent comme une invitation à écrire ses
+       propres mots. Et la dernière ligne évite le voyage inutile — quelqu'un
+       qui vient pour une réparation le sait avant de taper, au lieu de
+       l'apprendre après. */
+    '<p class="ab-exemples">« je dors dehors » · '+
+      '« j’ai besoin d’aide pour une démarche » · '+
+      '« j’ai 20 ans et je trouve pas de travail »</p>'+
+    '<p class="ab-ailleurs-note">Pour une réparation, un commerce ou un '+
+      'service, utilise Explorer.</p>'+
     '<p class="ab-vie">Ce que tu écris ici reste sur ton téléphone. '+
       'Autour n’en garde que le besoin (« manger », « travail »), jamais ta phrase.</p>'+
+    '</section>';
+}
+
+/* Écran 1 bis — « ça ressemble plutôt à une réparation ».
+
+   Trois lignes, un bouton, et rien d'autre. Pas de popup, pas de nouveau
+   panneau : le même endroit, un contenu différent. La personne n'a qu'une
+   décision à prendre, et elle est écrite en toutes lettres — on ne lui
+   demande pas dans quelle catégorie classer sa demande. */
+function ecranRedirectionExplorer(){
+  const r = redirectionExplorer || {};
+  return '<section class="ab-ailleurs" data-testid="aide-redirection">'+
+    '<p class="aba-titre">Ça ressemble plutôt à '+esc(r.libelle || "une recherche de commerce")+'.</p>'+
+    '<p class="aba-sous">Ce n’est pas ce qu’Aide sait faire, mais Explorer, oui.</p>'+
+    '<button class="aba-cta" data-vers-explorer="1">'+
+      'Chercher '+esc(r.requete || "")+' autour de moi →</button>'+
+    '<button class="aba-rester" data-aide-rester="1">Non, j’ai besoin d’aide</button>'+
     '</section>';
 }
 
@@ -9592,12 +9748,53 @@ function besoinsRapidesHTML(){
    « Maintenant », « Autour de moi », « Pour toi » et « Explorer » disaient à
    peu près la même chose par quatre portes différentes. Il n'en reste qu'une :
    Explorer, et à l'intérieur le temps. */
+/* Combien d'événements ont VRAIMENT lieu en ce moment.
+
+   Le comptage ne réinterprète rien : il demande son statut au moteur temporel,
+   qui pour un événement canonique se contente de relayer le verdict de
+   Postgres. Un événement de demain ne peut donc pas entrer dans ce nombre,
+   même si le classement le trouve pertinent — c'est exactement la garantie
+   demandée : « Maintenant » ne se remplit jamais artificiellement. */
+function compterMaintenant(){
+  const t = Date.now();
+  return lieux.reduce((n,l)=>{
+    if(!estTemporaire(l) || l.annule) return n;
+    return TEMPS.estMaintenant(statutTemps(l, t).statut) ? n+1 : n;
+  }, 0);
+}
+
+/* La pastille suit le comptage, et le comptage suit le moteur temporel.
+   Elle disparaît à zéro plutôt que d'afficher « Maintenant · 0 » : un compteur
+   à zéro occupe la même place et demande la même lecture pour ne rien dire. */
+function majBadgeMaintenant(){
+  const badge = $("#badgeMaintenant");
+  if(!badge) return;
+  const n = (modeNav || modePose || modeAide) ? 0 : compterMaintenant();
+  badge.hidden = n === 0;
+  if(n === 0) return;
+  const compte = $("#bmCompte");
+  if(compte) compte.textContent = String(n);
+  badge.setAttribute("aria-label",
+    n + " événement" + (n > 1 ? "s" : "") + " en cours près de toi");
+}
+
 function ongletsTemps(){
+  const enCours = compterMaintenant();
   return '<div class="ong-temps" role="tablist" aria-label="Quand">'+
-    CRENEAUX.map(c=>
-      '<button class="ong'+(c.id===creneau?' actif':'')+'" role="tab" '+
-        'aria-selected="'+(c.id===creneau)+'" data-creneau="'+c.id+'">'+
-        esc(c.label)+'</button>').join("")+
+    CRENEAUX.map(c=>{
+      const maintenant = c.id === "maintenant";
+      // l'éclair est permanent : c'est un repère, pas une décoration qui
+      // apparaît et disparaît sous les yeux
+      const libelle = maintenant ? "⚡ "+c.label : c.label;
+      const compte = maintenant && enCours
+        ? '<span class="ong-compte" aria-hidden="true">'+enCours+'</span>' : '';
+      const lu = maintenant && enCours
+        ? ' aria-label="'+esc(c.label)+' : '+enCours+' événement'+(enCours>1?'s':'')+' en cours"' : '';
+      return '<button class="ong'+(maintenant?' ong-maintenant':'')+
+        (c.id===creneau?' actif':'')+'" role="tab" '+
+        'aria-selected="'+(c.id===creneau)+'" data-creneau="'+c.id+'"'+lu+'>'+
+        esc(libelle)+compte+'</button>';
+    }).join("")+
     '</div>';
 }
 
@@ -9611,7 +9808,20 @@ function statutGroupeHTML(){
   if(!positionConnue())
     return '<p class="fb-statut">Choisis un point de départ pour voir ce qui '+
            'se passe autour.</p>';
-  if(creneau === "maintenant") return statutRechercheHTML(0);
+  /* « Maintenant » vide n'est pas une impasse. La règle temporelle refuse d'y
+     faire entrer un événement de demain — c'est voulu — mais l'écran doit
+     alors dire où sont passés ces événements, sinon le refus ressemble à une
+     panne. Une phrase, une sortie, et la sortie mène à l'onglet d'à côté. */
+  if(creneau === "maintenant"){
+    const technique = statutRechercheHTML(0);
+    // une vraie panne ou une position refusée parle d'elle-même : on ne la
+    // recouvre pas d'un message rassurant
+    if(technique && !/Rien d’ouvert à proximité/.test(technique)) return technique;
+    return '<div class="fb-statut" data-testid="maintenant-vide">'+
+      'Rien en cours près de toi.'+
+      '<br><button data-creneau-vers="avenir">Voir ce qui arrive bientôt →</button>'+
+      '<button data-etat-action="all">Voir tous les lieux</button></div>';
+  }
   const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
   return '<p class="fb-statut">Rien d’annoncé pour « '+esc(groupe.label.toLowerCase())+
     ' » dans cette zone.<br>Les événements arrivent au fil des publications.</p>';
@@ -9851,11 +10061,50 @@ function brancherFeuille2(){
   corps.querySelectorAll("[data-as-plus]").forEach(b=>b.onclick=()=>{
     elargirZone(); chargerAideSiBesoin(true); majFeuille2();
   });
+
+  /* La bascule vers Explorer, recherche déjà écrite. Un seul geste : on ne
+     dépose pas la personne devant un champ vide en lui laissant retaper ce
+     qu'elle vient d'écrire. */
+  corps.querySelectorAll("[data-vers-explorer]").forEach(b=>b.onclick=()=>{
+    const requete = (redirectionExplorer || {}).requete || "";
+    redirectionExplorer = null;
+    if(modeAide) basculerAide();
+    // pas de fermeture suivie d'une réouverture : voir la note de l'onglet
+    // Explorer sur le rechargement provoqué par le va-et-vient d'historique
+    ouvrirAccueilFeuille();
+    ongletCourant = "explorer";
+    marquerNavigation("explorer");
+    // la recherche préparée remplace le contexte d'avant : la reposer
+    // par-dessus rouvrirait l'écran qu'on vient justement de quitter
+    contexteExplorer = null;
+    if(requete){
+      recherche = requete;
+      const champ = $("#rech");
+      if(champ) champ.value = requete;
+      ouvrirResultats(requete);
+    }
+  });
+  // « non, j'ai bien besoin d'aide » : on s'est trompé, on revient à la question
+  corps.querySelectorAll("[data-aide-rester]").forEach(b=>b.onclick=()=>{
+    redirectionExplorer = null;
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
+    majFeuille2();
+  });
   corps.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{
     const quoi = b.dataset.as;
     if(quoi === "ville"){ ouvrirRecherche(); const c=$("#rech"); if(c) c.placeholder = "Dans quelle ville ?"; return; }
     if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; majFeuille2(); return; }
     if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; intentionsSanteAide = []; majFeuille2(); return; }
+  });
+
+  /* Le pont depuis « Maintenant » vide vers « À venir ». Il passe par le même
+     chemin qu'un appui sur l'onglet : un seul comportement à maintenir. */
+  corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>{
+    const cible = b.dataset.creneauVers;
+    if(creneau === cible) return;
+    creneau = cible;
+    filtreMaintenant = creneau === "maintenant";
+    majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
 
   // les quatre groupes de temps : un seul geste, aucune page de plus
@@ -10087,6 +10336,7 @@ function basculerAide(){
   sousAide = null;
   besoinsAide = [];
   intentionsSanteAide = [];
+  redirectionExplorer = null;
   document.body.classList.toggle("aide", modeAide);
 
   // on sort de toute sélection en cours : le mode Aide repart d'une page nette
@@ -10357,6 +10607,7 @@ function majAccueil(){
      ou arriver en retard ; les recommandations, elles, ne dépendent que des
      lieux et de la position. Les faire attendre Leaflet rendait l'application
      entièrement vide quand le CDN toussait. */
+  majBadgeMaintenant();
   if(!positionMoi || modeNav) return;
   if(selectionAccueil === false) return;
   const ctx = contexteActuel();
@@ -11148,14 +11399,119 @@ function majNavBas(){
   const attente = E.nonLus(canauxAMoi);
   onglet.classList.toggle("avec-pastille", attente > 0);
 }
+/* L'onglet allumé doit toujours dire où l'on est. La surbrillance était posée
+   dans le gestionnaire de clic uniquement : toute navigation déclenchée par le
+   code — « Trouver de l'aide » depuis un état vide, la bascule vers Explorer
+   depuis Aide — laissait donc l'onglet précédent allumé. On voyait « Aide »
+   souligné en étant dans Explorer. */
+/* ---- Le contexte d'Explorer survit à un aller-retour ---------------------
+
+   Explorer → Aide → Explorer rendait une page neuve : catégories relâchées,
+   filtres vidés, recherche effacée, créneau ramené au départ. Quelqu'un qui
+   avait réglé « Ce soir », coché « gratuit » et cherché « concert » repartait
+   de zéro pour avoir jeté un œil à Aide. La carte, elle, ne bougeait pas —
+   c'est tout le reste qui était perdu.
+
+   On photographie donc Explorer en le quittant, et on le repose en revenant.
+   La remise à plat reste entière quand on ENTRE dans Aide : ce mode doit
+   partir d'une page nette, c'est une décision produit qui ne change pas. Ce
+   qu'on rétablit, c'est l'état d'avant. */
+let contexteExplorer = null;
+let ongletCourant = "explorer";
+
+function capturerContexteExplorer(){
+  const corps = $("#fbCorps");
+  contexteExplorer = {
+    creneau, filtreActif, recherche, montrerFermes,
+    catsActives: catsActives ? new Set(catsActives) : null,
+    filtresHumains: [...filtresHumains],
+    selectionAccueil: Array.isArray(selectionAccueil) ? selectionAccueil.slice() : selectionAccueil,
+    // « aide » n'est pas un état d'Explorer : on y revient par la racine
+    niveau: (feuilleNiveau === "aide" || feuilleNiveau == null) ? "racine" : feuilleNiveau,
+    scroll: corps ? corps.scrollTop : 0,
+  };
+}
+
+function restaurerContexteExplorer(){
+  const c = contexteExplorer;
+  contexteExplorer = null;
+  if(!c) return false;
+  creneau = c.creneau;
+  filtreActif = c.filtreActif;
+  recherche = c.recherche;
+  montrerFermes = c.montrerFermes;
+  catsActives = c.catsActives;
+  filtresHumains.clear();
+  c.filtresHumains.forEach(x=>filtresHumains.add(x));
+  selectionAccueil = c.selectionAccueil;
+  filtreMaintenant = creneau === "maintenant";
+  const champ = $("#rech");
+  if(champ) champ.value = recherche;
+  majFiltres(); rendre(); majAccueil();
+  ouvrirFeuille2(c.niveau);
+  /* Le scroll se repose APRÈS le rendu de la feuille : `ouvrirFeuille2`
+     appelle `reinitialiserScrollFeuille`, qui remet à zéro. Deux frames
+     d'attente pour que la hauteur réelle du contenu soit connue, sinon le
+     navigateur borne la position à la hauteur d'une feuille encore vide. */
+  const corps = $("#fbCorps");
+  if(corps && c.scroll > 0) requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    corps.scrollTop = c.scroll;
+  }));
+  return true;
+}
+
+function marquerNavigation(id){
+  const nav = $("#navBas");
+  if(!nav) return;
+  nav.querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x.dataset.nb === id));
+}
+
+/* Un appui sur « ⚡ Maintenant · 3 » ouvre la liste de ces trois-là. Pas un
+   menu, pas une page : le créneau « maintenant » et la feuille, c'est-à-dire
+   exactement ce que l'onglet du même nom fait déjà. */
+$("#badgeMaintenant").onclick = ()=>{
+  if(modeAide) basculerAide();
+  creneau = "maintenant";
+  filtreMaintenant = true;
+  ongletCourant = "explorer";
+  marquerNavigation("explorer");
+  contexteExplorer = null;
+  // même raison qu'ailleurs : rouvrir sans fermer, l'historique reste sain
+  ouvrirFeuille2("racine");
+  reinitialiserScrollFeuille();
+  rendre();
+};
+
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;
   if(b.getAttribute("aria-disabled") === "true"){
     toast("Bientôt disponible.");
     return;
   }
-  $("#navBas").querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x === b));
-  if(id === "explorer"){ if(modeAide) basculerAide(); fermerFeuille2(); ouvrirAccueilFeuille(); return; }
+  // photographier Explorer AVANT que quoi que ce soit ne le remette à plat
+  if(ongletCourant === "explorer" && id !== "explorer") capturerContexteExplorer();
+  ongletCourant = id;
+  marquerNavigation(id);
+  if(id === "explorer"){
+    if(modeAide) basculerAide();
+    /* ON NE FERME PAS POUR ROUVRIR AUSSITÔT.
+       `fermerFeuille2()` fait `history.back()`, `ouvrirFeuille2()` fait
+       `pushState()`. Les enchaîner dans le même geste lance deux opérations
+       d'historique asynchrones qui se croisent : le push atterrit avant le
+       back, l'entrée est consommée deux fois, et au bout de quelques
+       allers-retours d'onglets le `back()` finit par sortir du document —
+       la page se RECHARGE. Carte reconstruite, données refetchées, contexte
+       perdu, exactement ce que cette passe doit supprimer.
+       La feuille reste ouverte ; on ne fait que changer ce qu'elle montre. */
+    /* Le modal de Créer / Favoris / Profil, lui, doit bien se fermer : sinon
+       il reste posé PAR-DESSUS la feuille d'Explorer qu'on vient de rouvrir,
+       et deux panneaux principaux se superposent. Le rechargement de page
+       corrigé juste au-dessus masquait ce défaut — il remettait tout à zéro. */
+    const modal = $("#feuille");
+    if(modal && !modal.hidden) demanderFermetureFeuille();
+    if(!restaurerContexteExplorer()) ouvrirAccueilFeuille();
+    return;
+  }
   if(id === "aide"){
     // on repart toujours de la question, jamais d'une liste de structures
     if(!modeAide) basculerAide(); else { sousAide = null; besoinsAide = []; intentionsSanteAide = []; }
