@@ -32,6 +32,36 @@
     INCONNU:     "unknown",
   });
 
+  /* ---- Ce que la base a déjà tranché -------------------------------------
+     Les événements de la couche canonique arrivent avec un `temporalStatus`
+     calculé par Postgres (`event_temporal_status`), à l'instant de la requête
+     et selon une règle stricte : `now` exige un début passé, une fin future,
+     des heures connues et un événement non annulé.
+
+     Ce fichier ne refait pas ce calcul et ne le contredit jamais. Il traduit.
+     La raison est simple : deux moteurs qui répondent chacun de leur côté
+     finissent par ne pas répondre pareil, et c'est toujours l'utilisateur qui
+     paie l'écart — un événement annoncé « maintenant » alors qu'il commence
+     samedi.
+
+     La traduction n'est pas totale, et c'est délibéré :
+
+       · `now`, `past`, `unknown_date` sont des verdicts fermes → repris tels
+         quels ;
+       · `soon` et `upcoming` disent seulement « pas maintenant ». La base les
+         sépare à 24 h, ce qui ne dit pas s'il faut ranger l'événement dans
+         « ce soir », « ce week-end » ou « à venir ». C'est une question
+         d'affichage local, tranchée ici, à partir de la date réelle et du
+         fuseau du lieu.
+
+     Conséquence voulue : un événement canonique n'est JAMAIS « imminent ».
+     `estMaintenant` ne peut donc être vrai que si la base a dit `now`. */
+  const STATUTS_CANONIQUES = Object.freeze({
+    now:          STATUTS.EN_COURS,
+    past:         STATUTS.PASSE,
+    unknown_date: STATUTS.INCONNU,
+  });
+
   /* Deux heures : au-delà, ce n'est plus « maintenant », c'est « ce soir ».
      C'est la fenêtre demandée, et elle vaut partout — aucune règle locale. */
   const FENETRE_IMMINENT_MS = 2 * 3600 * 1000;
@@ -153,6 +183,30 @@
     const o = options || {};
     const source = item || {};
     const timeZone = source.timezone || source.timeZone || o.timeZone || DEFAULT_TIMEZONE;
+
+    /* La base a déjà répondu : on ne recalcule pas, on traduit. */
+    if (source.temporalStatus) {
+      const ferme = STATUTS_CANONIQUES[source.temporalStatus];
+      const periodes = normaliserPeriodes(source);
+      const occurrence = prochaineOccurrence(periodes, t);
+      const commun = {
+        timeZone,
+        debut: occurrence ? occurrence.debut : null,
+        fin: occurrence ? finEffective(occurrence) : null,
+        occurrence, occurrences: periodes.length,
+        canonique: source.temporalStatus,
+      };
+      if (source.annule) commun.annule = true;
+      if (ferme) return Object.assign({ statut: ferme }, commun);
+
+      // `soon` / `upcoming` : pas maintenant. Reste à savoir où le ranger,
+      // ce que seule la date locale peut dire.
+      if (commun.debut == null) return Object.assign({ statut: STATUTS.INCONNU }, commun);
+      return Object.assign({
+        statut: memeJour(commun.debut, t, timeZone) ? STATUTS.PLUS_TARD : STATUTS.A_VENIR,
+        dansMs: commun.debut - t,
+      }, commun);
+    }
 
     // un lieu permanent : son statut est celui de ses horaires, rien d'autre
     if (!source.isTemporary) {
@@ -301,6 +355,7 @@
 
   root.AutourTemps = Object.freeze({
     STATUTS,
+    STATUTS_CANONIQUES,
     FENETRE_IMMINENT_MS,
     SEUIL_PERIODE_LONGUE_MS,
     DUREE_SUPPOSEE_MS,

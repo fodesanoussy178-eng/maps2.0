@@ -1,0 +1,91 @@
+# =============================================================================
+# Synchronisation des événements canoniques
+#
+# Ce que fait ce travail : appeler la fonction Edge `sync-datatourisme`, qui
+# lit DATAtourisme zone par zone, normalise, déduplique et range le résultat
+# dans `events`. Le navigateur n'appelle jamais DATAtourisme : il lit
+# `evenements_proches`, et il continue de répondre même quand le catalogue
+# amont est en panne — avec des données un peu plus vieilles, ce que le
+# journal `event_sync_runs` sait dire.
+#
+# UNE ZONE PAR TÂCHE. Même raison que pour les zones Overpass : une zone lente
+# ou un catalogue qui répond en 504 ne doit pas consommer le budget des cinq
+# autres. Chaque zone a sa tâche, son budget et son résultat ; celles qui
+# passent sont enregistrées même si une autre échoue.
+#
+# Les zones sont lues dans `event_areas` — c'est-à-dire dans la base, pas ici.
+# Cette liste n'est qu'un plan de parallélisation : ajouter une ville se fait
+# par un INSERT, et la tâche « toutes » la ramassera au passage suivant.
+#
+# Secrets attendus dans le dépôt :
+#   SUPABASE_FUNCTIONS_URL  https://<ref>.supabase.co/functions/v1
+#   SUPABASE_SERVICE_ROLE_KEY
+#   EVENT_SYNC_SECRET       le même que la variable d'environnement de la fonction
+# =============================================================================
+
+name: Événements Autour
+
+on:
+  schedule:
+    # quatre fois par jour : les agendas touristiques bougent lentement, mais
+    # une annulation ou un changement d'horaire n'a de valeur que frais
+    - cron: "10 4,10,16,22 * * *"
+  workflow_dispatch:
+    inputs:
+      zone:
+        description: "Code de zone (vide = toutes)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # deux synchronisations simultanées écriraient les mêmes lignes et
+  # fausseraient les compteurs du journal
+  group: evenements-sync
+  cancel-in-progress: false
+
+jobs:
+  synchroniser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # une zone qui échoue ne doit pas annuler les autres
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        zone: [lille, paris, lyon, marseille, bordeaux, toulouse]
+
+    steps:
+      - name: Synchroniser la zone ${{ matrix.zone }}
+        env:
+          BASE: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_SECRET: ${{ secrets.EVENT_SYNC_SECRET }}
+          ZONE: ${{ github.event.inputs.zone || matrix.zone }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE:-}" ] || [ -z "${SYNC_SECRET:-}" ]; then
+            echo "::error::SUPABASE_FUNCTIONS_URL ou EVENT_SYNC_SECRET manquant"
+            exit 1
+          fi
+
+          # --fail-with-body : on veut le corps de la réponse ET un code de
+          # sortie non nul. Sans lui, une erreur 502 passait pour un succès.
+          reponse=$(curl --silent --show-error --fail-with-body \
+            --max-time 600 \
+            --header "Authorization: Bearer ${SERVICE_KEY}" \
+            --header "x-sync-secret: ${SYNC_SECRET}" \
+            --request POST \
+            "${BASE}/sync-datatourisme?area=${ZONE}") || {
+              echo "::error::synchronisation de ${ZONE} en échec"
+              echo "${reponse:-}"
+              exit 1
+            }
+
+          echo "${reponse}"
+          echo "### Zone ${ZONE}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```json' >> "${GITHUB_STEP_SUMMARY}"
+          echo "${reponse}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"

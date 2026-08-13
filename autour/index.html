@@ -1558,7 +1558,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="donnees.js?v=c3559619"></script>
 <script src="aide.js?v=1b6bc619"></script>
 <script src="signaux.js?v=319acaa9"></script>
-<script src="temporel.js?v=feebfc4c"></script>
+<script src="temporel.js?v=babdb878"></script>
 <script src="explications.js?v=ea344e6e"></script>
 <script src="events.js?v=2a03415f"></script>
 <script src="core.js?v=4c5d133a"></script>
@@ -3050,6 +3050,74 @@ async function chargerPublications(lat,lng){
   return (data||[]).map(versLieu);
 }
 
+/* ---- Les événements de la couche canonique -------------------------------
+
+   D'OÙ VIENNENT LES ÉVÉNEMENTS, MAINTENANT.
+
+   Ils venaient de DATAtourisme, appelée depuis le navigateur au moment où
+   quelqu'un ouvrait Autour. L'écran attendait donc un fournisseur tiers pour
+   se remplir, et une panne chez lui était une panne ici.
+
+   Le sens de la flèche est inversé : `sync-datatourisme` lit le catalogue
+   côté serveur, à froid, normalise, déduplique et range dans `events`. Cette
+   page ne connaît plus qu'une porte, `evenements_proches`, et elle répond
+   même si DATAtourisme est injoignable — avec des données un peu plus
+   vieilles, ce que le journal de synchronisation sait dire.
+
+   Le statut temporel arrive CALCULÉ. On ne le recalcule pas : `temporel.js`
+   se contente de le traduire (voir STATUTS_CANONIQUES). Deux moteurs qui
+   répondent chacun de leur côté finissent par diverger, et c'est toujours
+   quelqu'un qui se déplace pour rien qui paie l'écart.
+
+   Les publications Autour ne sont PAS demandées ici : elles continuent
+   d'arriver par `publications_proches`, qui porte la propriété, les places et
+   le prix. Les demander des deux côtés afficherait deux fois le même
+   événement. */
+function versEvenementCanonique(e){
+  const debut = e.start_at ? new Date(e.start_at).getTime() : null;
+  const fin = e.end_at ? new Date(e.end_at).getTime() : null;
+  return normaliserItem({
+    id:"evt"+e.id, dbId:e.id,
+    cat:e.category || "event",
+    titre:e.title,
+    description:e.description || "",
+    adresse:e.place_name || e.address || "",
+    cp:[e.city, e.insee_code].filter(Boolean).join(" ") || commune,
+    lat:e.lat, lng:e.lng,
+    debutLe:debut, finLe:fin,
+    timezone:e.timezone || "Europe/Paris",
+    /* Le verdict de la base, transmis intact. C'est lui qui décide de
+       « Maintenant », pas la date ci-dessus. */
+    temporalStatus:e.temporal_status,
+    dateConfidence:e.date_confidence,
+    isTemporary:true,
+    annule:!!e.cancelled,
+    status:e.cancelled ? "cancelled" : "active",
+    par:e.primary_source === "datatourisme" ? "DATAtourisme" : "Autour",
+    url:"",   // une fiche Autour ne redirige pas vers une URL fournisseur
+    image:e.image_url || "",
+    imageSource:e.image_url ? "datatourisme_licence" : "",
+    majLe:e.last_synced_at || null,
+  }, e.primary_source || "datatourisme");
+}
+
+async function chargerEvenementsCanoniques(lat,lng){
+  if(!sbLecture) return [];
+  const b = emprisePublications(lat, lng);
+  PERF.requete("supabase_evenements");
+  const { data, error } = await sbLecture.rpc("evenements_proches", {
+    p_sud:Number(b.s), p_ouest:Number(b.o),
+    p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+  });
+  if(error){
+    /* Une couche indisponible ne vide pas la carte : les autres sources
+       restent, et l'utilisateur voit moins plutôt que rien. */
+    console.error("Lecture des événements :", error.message);
+    return [];
+  }
+  return (data||[]).map(versEvenementCanonique).filter(Boolean);
+}
+
 const Store = {
   get dispo(){ return !!sb; },
   /* Dépose l'affiche dans le bucket « evenements », sous le dossier de son
@@ -3575,7 +3643,22 @@ async function vraisLieux(lat,lng,bornes,opts){
 /* DATAtourisme passe exclusivement par notre fonction Vercel : la clé n'est
    ni dans cette page, ni dans une URL, ni dans un repli navigateur. La route
    arrondit déjà ses coordonnées côté serveur ; le client les arrondit aussi
-   pour que quelques mètres de déplacement réemploient la même entrée CDN. */
+   pour que quelques mètres de déplacement réemploient la même entrée CDN.
+
+   CETTE ROUTE NE SERT PLUS QU'AUX LIEUX PERMANENTS.
+
+   Elle rendait aussi les événements du catalogue. Ils arrivent désormais par
+   la couche canonique (`evenements_proches`), déjà normalisés, datés et
+   dédupliqués côté serveur. Les garder ici produirait deux fois le même
+   événement — une fois avec un statut temporel calculé en base, une fois avec
+   un statut deviné dans le navigateur — et c'est précisément la divergence
+   qu'on cherche à supprimer.
+
+   Le filtre est posé ici plutôt que dans `/api/datatourisme` : la route reste
+   un miroir fidèle du catalogue, et c'est l'application qui décide de ce
+   qu'elle en prend. Les musées, parcs et monuments continuent d'arriver
+   normalement — ils répondent à « qu'est-ce qu'il y a autour de moi ? », pas à
+   « qu'est-ce qui se passe maintenant ? ». */
 let relaisDatatourisme = null;
 async function lieuxDatatourisme(lat,lng,signal){
   if(relaisDatatourisme === false) return [];
@@ -3585,7 +3668,8 @@ async function lieuxDatatourisme(lat,lng,signal){
     PERF.requete("datatourisme");
     const places = await fournisseur.nearby(lat,lng,{signal});
     relaisDatatourisme = true;
-    return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
+    return places.map(p=>AutourProviders.versInterne(p))
+      .filter(l=>l && !estTemporaire(l));
   }catch(e){ return []; }
 }
 
@@ -4654,6 +4738,14 @@ function chargerZone(lat, lng, opts){
       PERF.jalon("supabase_publications_ready");
     })
   );
+  if(!o.cats && !o.osmSeulement) travaux.push(
+    connecter().then(()=>chargerEvenementsCanoniques(lat,lng)).then(evts=>{
+      if(!generationCourante(generation) || !evts || !evts.length) return;
+      sourceExploitable = true;
+      fusionner(evts,"external");
+      PERF.jalon("supabase_evenements_ready");
+    })
+  );
   let promesse;
   promesse = Promise.allSettled(travaux).finally(()=>{
     if(chargementsZone.get(cle) === promesse) chargementsZone.delete(cle);
@@ -4740,6 +4832,16 @@ function chargerDonneesTemporaires(lat, lng, opts){
       if(!generationCourante(generation) || !Array.isArray(pubs)) return;
       sourceExploitable = true;
       if(pubs.length) fusionner(pubs,"user");
+    })
+  );
+  /* La couche canonique est demandée même quand les publications ne le sont
+     pas : ce sont deux jeux distincts, et c'est elle qui porte les événements
+     institutionnels. */
+  travaux.push(
+    connecter().then(()=>chargerEvenementsCanoniques(lat,lng)).then(evts=>{
+      if(!generationCourante(generation) || !Array.isArray(evts)) return;
+      sourceExploitable = true;
+      if(evts.length) fusionner(evts,"external");
     })
   );
   let promesse;
@@ -5279,6 +5381,16 @@ function chargerLeDemarrage(rapide){
         if(!generationCourante(generation) || !pubs || !pubs.length) return;
         fusionner(pubs,"user");
         sourcePrete("supabase_publications_ready");
+      }),
+
+    /* Au démarrage à froid, c'est la source d'événements la plus rapide : une
+       seule requête vers notre propre base, sans détour par un catalogue
+       tiers. Elle a donc le même budget que les publications. */
+    avecDelai(connecter().then(()=>chargerEvenementsCanoniques(lat,lng)),4500,[],signal)
+      .then(evts=>{
+        if(!generationCourante(generation) || !evts || !evts.length) return;
+        fusionner(evts,"external");
+        sourcePrete("supabase_evenements_ready");
       }),
 
     avecDelai(connecter().then(()=>Promise.allSettled([rafraichirCanaux(), chargerFavoris()])),4500,[],signal)
