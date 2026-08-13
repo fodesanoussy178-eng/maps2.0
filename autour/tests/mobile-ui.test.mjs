@@ -46,7 +46,7 @@ test("les résultats sont rendus avant la demande de précision",()=>{
   assert.match(html,/data-testid="primary-results"/);
   // l'aide, elle, fait exactement l'inverse et c'est voulu : on ne commence
   // pas par des structures, on commence par la question
-  assert.match(html,/corps\.innerHTML = sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
+  assert.match(html,/: sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
 });
 
 test("les couches et actions tactiles essentielles ont un contrat central",()=>{
@@ -1566,7 +1566,7 @@ test("Aide est une entrée principale, nommée et distincte du cœur",()=>{
 });
 
 test("Aide commence par la question, jamais par des structures",()=>{
-  assert.match(html,/corps\.innerHTML = sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
+  assert.match(html,/: sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
   assert.match(html,/<p class="ab-titre">De quoi as-tu besoin&nbsp;\?<\/p>/);
   // entrer dans l'aide repart toujours de la question
   assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsAide = \[\]; intentionsSanteAide = \[\]; \}/);

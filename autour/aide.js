@@ -512,11 +512,180 @@
 
   const estUrgent = (phrase) => URGENCE.test(String(phrase || ""));
 
+  /* ===================================================================
+     « Mon vélo est cassé » n'est pas une demande d'aide sociale
+
+     Le champ libre d'Aide accepte n'importe quelle phrase, et c'est voulu :
+     personne ne doit avoir à choisir une catégorie avant de pouvoir dire ce
+     qui lui arrive. Mais toute phrase n'appartient pas à Aide.
+
+     Ce que faisait le code : une phrase non reconnue tombait sur « autre » et
+     l'écran affichait les structures qui orientent — CCAS, associations,
+     France Services. Quelqu'un qui vient de taper « mon vélo est crevé » se
+     voyait donc proposer un centre communal d'action sociale. C'est absurde
+     pour lui, et c'est pire que ça : ça dilue Aide, qui doit rester l'endroit
+     où l'on va quand on dort dehors ou qu'on n'a plus de quoi manger.
+
+     La traduction se fait ici, pas dans la tête de l'utilisateur. On ne lui
+     demande jamais « dans quelle catégorie classez-vous votre demande ? ».
+
+     LA RÈGLE DE PRUDENCE : une réparation n'est reconnue que si un OBJET
+     identifiable est nommé. Un symptôme sans objet reste dans Aide. « J'ai
+     mal », « je suis cassé », « ça ne va plus » ne partent pas chez un
+     réparateur — ces phrases-là parlent de la personne, pas d'une chose. Et
+     un besoin social reconnu l'emporte toujours : dans le doute, on garde la
+     personne dans Aide plutôt que de l'envoyer acheter quelque chose.
+     =================================================================== */
+
+  /* Ce qui casse, et chez qui on le fait réparer. Le libellé est ce que la
+     personne lira ; la requête est ce qu'Explorer cherchera. */
+  const OBJETS_REPARABLES = Object.freeze([
+    { id: "velo", mots: ["velo", "velos", "bicyclette", "vtt", "trottinette"],
+      requete: "réparateur de vélos", libelle: "une réparation de vélo" },
+    { id: "telephone", mots: ["telephone", "portable", "smartphone", "iphone", "mobile", "ecran casse"],
+      requete: "réparation téléphone", libelle: "une réparation de téléphone" },
+    { id: "informatique", mots: ["ordinateur", "ordi", "pc", "laptop", "tablette", "imprimante"],
+      requete: "réparation informatique", libelle: "une réparation informatique" },
+    { id: "voiture", mots: ["voiture", "auto", "automobile", "moteur", "pneu", "batterie de voiture"],
+      requete: "garage automobile", libelle: "un garage" },
+    { id: "serrure", mots: ["serrure", "cle", "cles", "verrou", "porte claquee", "enferme dehors"],
+      requete: "serrurier", libelle: "un serrurier" },
+    { id: "plomberie", mots: ["robinet", "fuite d eau", "plomberie", "chasse d eau", "canalisation", "chauffe eau"],
+      requete: "plombier", libelle: "un plombier" },
+    { id: "electricite", mots: ["prise electrique", "electricite", "compteur", "disjoncteur", "tableau electrique"],
+      requete: "électricien", libelle: "un électricien" },
+    { id: "chaussures", mots: ["chaussure", "chaussures", "basket", "baskets", "semelle", "talon"],
+      requete: "cordonnier", libelle: "un cordonnier" },
+    { id: "couture", mots: ["fermeture eclair", "ourlet", "retouche", "couture", "pantalon dechire"],
+      requete: "retouche couture", libelle: "une retouche" },
+    { id: "lunettes", mots: ["lunettes", "verre casse", "monture"],
+      requete: "opticien", libelle: "un opticien" },
+    { id: "montre", mots: ["montre", "horloge", "pile de montre"],
+      requete: "horloger", libelle: "un horloger" },
+    { id: "electromenager", mots: ["machine a laver", "lave linge", "lave vaisselle", "frigo",
+                                   "refrigerateur", "four", "aspirateur", "television", "tele"],
+      requete: "réparation électroménager", libelle: "une réparation d’électroménager" },
+  ]);
+
+  /* Le signe qu'on parle d'une chose abîmée, pas d'une situation. Les mots
+     sont volontairement peu nombreux : mieux vaut laisser une réparation dans
+     Aide que d'envoyer quelqu'un en détresse chez un commerçant. */
+  /* LES ACCORDS SONT ÉCRITS, PAS DEVINÉS.
+     `contient` (comprendre.js) compare des MOTS ENTIERS : « bloque » ne
+     reconnaît pas « bloquée », et « casse » ne reconnaît pas « cassées ». Une
+     première version ne listait que le masculin singulier et laissait donc
+     « ma serrure est bloquée » dans Aide. Chaque forme utile est écrite ici —
+     c'est verbeux, mais un radical tronqué attraperait « bloc » ou « case »,
+     ce qui est bien pire qu'une liste longue. */
+  const SIGNES_PANNE = Object.freeze([
+    "casse", "cassee", "cassees", "casses",
+    "en panne", "panne", "creve", "crevee", "creves", "crevees",
+    "abime", "abimee", "abimes", "abimees",
+    "ne marche plus", "ne fonctionne plus", "marche plus", "fonctionne plus",
+    "ne demarre plus", "demarre plus",
+    "repare", "reparer", "reparation", "reparations", "reparateur",
+    "depanner", "depannage",
+    "fuit", "fuite", "bloque", "bloquee", "bloques", "bloquees",
+    "coince", "coincee", "hs", "foutu", "foutue", "pete", "petee",
+    "raye", "rayee", "troue", "trouee", "trouees", "troues",
+  ]);
+
+  /* Certaines demandes ne sont pas des pannes mais restent du ressort
+     d'Explorer : on cherche un commerce ou un service, pas une structure
+     sociale. Elles exigent une intention de recherche explicite. */
+  const SERVICES_EXPLORER = Object.freeze([
+    { id: "coiffeur", mots: ["coiffeur", "coiffeuse", "me faire couper les cheveux"],
+      requete: "coiffeur", libelle: "un coiffeur" },
+    { id: "pressing", mots: ["pressing", "nettoyage a sec", "laverie automatique"],
+      requete: "pressing laverie", libelle: "un pressing" },
+    { id: "veterinaire", mots: ["veterinaire", "mon chien est malade", "mon chat est malade"],
+      requete: "vétérinaire", libelle: "un vétérinaire" },
+  ]);
+
+  const VERBES_RECHERCHE = Object.freeze([
+    "je cherche", "ou trouver", "ou est", "je voudrais trouver", "j ai besoin d un",
+    "j ai besoin d une", "il me faut", "trouver un", "trouver une",
+  ]);
+
+  function trouverDans(t, familles) {
+    for (const famille of familles) {
+      // l'expression la plus longue d'abord : « batterie de voiture » avant « voiture »
+      const mots = famille.mots.slice().sort((a, b) => b.length - a.length);
+      for (const m of mots) {
+        if (contient(t, m)) return { famille, mot: m };
+      }
+    }
+    return null;
+  }
+
+  /* Rend le domaine d'une phrase :
+
+       { domaine:"aide" }                       — un besoin social, reconnu ou non
+       { domaine:"explorer", requete, libelle } — une réparation ou un service
+
+     `domaine:"aide"` est le défaut, et c'est délibéré : ce champ est celui
+     d'Aide, et une phrase qu'on ne sait pas lire ne doit pas éjecter la
+     personne vers un moteur de recherche de commerces. */
+  function domaineDeLaPhrase(phrase) {
+    const t = sansAccents(phrase);
+    if (!t) return { domaine: "aide", raison: "vide" };
+
+    // une urgence ferme la question tout de suite
+    if (estUrgent(phrase)) return { domaine: "aide", raison: "urgence" };
+
+    // une panne : il faut ET un objet nommé ET un signe de panne
+    const objet = trouverDans(t, OBJETS_REPARABLES);
+    const panne = !!objet && SIGNES_PANNE.some((s) => contient(t, s));
+
+    /* L'ORDRE COMPTE, ET IL A COÛTÉ UN BUG.
+       « Ma machine à laver est en panne » contient « laver », qui est un mot
+       du besoin « hygiène » (douche, laverie). Faire gagner le besoin social
+       dès qu'il est reconnu renvoyait donc cette phrase vers des douches
+       publiques.
+
+       On distingue la force du signal : `besoinsDepuisPhrase` pèse 1 ou plus
+       une EXPRESSION (« rien a manger », « je dors dehors »), et seulement .8
+       un mot isolé qui peut appartenir à deux mondes. Une expression
+       l'emporte toujours ; un mot isolé cède devant une panne caractérisée. */
+    const besoins = besoinsDepuisPhrase(phrase);
+    const besoinExplicite = besoins.some((b) => b.poids >= 1);
+    if (besoinExplicite) return { domaine: "aide", raison: "besoin" };
+
+    if (panne) {
+      return {
+        domaine: "explorer", raison: "reparation",
+        objet: objet.famille.id,
+        requete: objet.famille.requete,
+        libelle: objet.famille.libelle,
+      };
+    }
+
+    if (besoins.length) return { domaine: "aide", raison: "besoin" };
+
+    // un service explicitement cherché
+    const service = trouverDans(t, SERVICES_EXPLORER);
+    if (service && (VERBES_RECHERCHE.some((v) => contient(t, v)) ||
+                    SIGNES_PANNE.some((s) => contient(t, s)) ||
+                    service.mot === t.trim())) {
+      return {
+        domaine: "explorer", raison: "service",
+        objet: service.famille.id,
+        requete: service.famille.requete,
+        libelle: service.famille.libelle,
+      };
+    }
+
+    // un objet nommé sans signe de panne : on ne conclut pas. « J'ai vendu mon
+    // vélo » n'est pas une demande de réparation.
+    return { domaine: "aide", raison: "inconnu" };
+  }
+
   root.AutourAide = Object.freeze({
     BESOINS, BESOINS_GRILLE, BESOIN_DE, CONDITIONS, CATEGORIES_DIRECTES,
     SOUS_INTENTIONS_SANTE, besoinsDepuisPhrase, intentionsSanteDepuisPhrase,
     ageDepuisPhrase, pertinence, pertinenceSante, pourquoi,
     conditionDe, convient, estSolution, estSolutionSante, accesAdapteSante,
     rendezVousDe, estUrgent,
+    OBJETS_REPARABLES, SERVICES_EXPLORER, domaineDeLaPhrase,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
