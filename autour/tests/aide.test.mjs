@@ -93,9 +93,23 @@ test("une correspondance de réseau est sûre, une parenté de catégorie ne l'e
     categories: ["asso"]}, "travail");
   assert.ok(asso.poids > 0 && asso.poids < 1);
   assert.ok(!asso.sur, "une simple catégorie n'est pas une certitude");
+  assert.equal(asso.direct, false, "une association générique n'est pas une réponse ciblée");
+  assert.equal(A.estSolution({titre: "Association du quartier", cat: "asso"}, ["travail"]), false);
+  assert.equal(A.estSolution({titre: "Mission Locale", cat: "emploi"}, ["travail"]), true);
+  assert.equal(A.estSolution({titre: "Atelier cuisine du quartier", cat: "food",
+    description: "Apprenez à cuisiner ensemble."}, ["manger"]), false,
+  "un atelier culinaire n'est pas une aide alimentaire sans source qui l'atteste");
 
   const hors = A.pertinence({titre: "Le Bistrot", cat: "resto"}, "travail");
   assert.equal(hors.poids, 0);
+});
+
+test("le rendez-vous est affiché seulement lorsqu'une source l'affirme", () => {
+  assert.deepEqual(A.rendezVousDe({tags:{appointment:"no"}}),
+    {label:"Sans rendez-vous", source:"OpenStreetMap"});
+  assert.deepEqual(A.rendezVousDe({description:"Accueil sur rendez-vous"}),
+    {label:"Sur rendez-vous", source:"Structure"});
+  assert.equal(A.rendezVousDe({titre:"Maison du quartier"}), null);
 });
 
 /* ==========================================================================

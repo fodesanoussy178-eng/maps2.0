@@ -67,7 +67,7 @@
     Object.freeze({id: "retard", label: "Annoncer un retard", annonce: true}),
     Object.freeze({id: "places", label: "Limiter les places", champ: "places"}),
     Object.freeze({id: "annonce", label: "Envoyer une annonce", annonce: true}),
-    Object.freeze({id: "annulation", label: "Annuler l’événement", champ: "annule", danger: true}),
+    Object.freeze({id: "annulation", label: "Annuler l’événement", champ: "status", danger: true}),
   ]);
 
   function actionsPour(canal, moi) {

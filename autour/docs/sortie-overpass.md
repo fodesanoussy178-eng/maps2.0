@@ -7,16 +7,21 @@ faudrait déplacer, dans quel ordre, et ce que ça coûte.
 
 ## Ce que le client demande aujourd'hui
 
-Cinq appels sortants vers `overpass-api.de` existent dans `index.html`. Ils
-passent tous par la même fonction `overpass(q, msMax, signal)`.
+Deux parcours de requête vers Overpass existent dans `index.html` : le
+chargement généraliste (avec un repli si la première requête expire) et le
+chargement ciblé par catégorie. Ils passent par la même fonction
+`overpass(q, msMax, signal)`.
 
 | Où | Requête | Volume | Déclenché par |
 |---|---|---|---|
 | `vraisLieux()` | `nwr(bbox)[k~"^(v\|v)$"]` sur ~40 couples clé/valeur, `out center 300` | jusqu'à 300 objets | ouverture de l'app, déplacement de carte (350 ms de repos), changement de zone |
 | `chargerPourCats()` | même forme, restreinte aux catégories demandées | ~300 objets | ouverture d'un besoin, recherche par catégorie |
 | aide (`chargerAide`) | `social_facility`, `amenity=social_*`, `office=charity`… | ~200 objets | activation du mode Aide, puis rechargement au-delà de 5 km |
-| arrêts (`lignesAutour`) | `nwr[public_transport=stop_position\|platform]` + `rel(bn)[type=route]` | 2 requêtes | couche transports, calcul d'itinéraire |
 | repli (`q2`) | version dégradée de `q1` quand la première expire | — | timeout de 14 s |
+
+Les arrêts et stations utiles à la découverte sont inclus dans les catégories
+du chargement généraliste. Il n'existe plus de requête spécialisée pour
+calculer des lignes ou des correspondances.
 
 Ordres de grandeur mesurés en local sur une zone dense (Tourcoing centre,
 rayon 2,5 km) : **43 objets bruts** pour la requête généraliste, **1,4 s**

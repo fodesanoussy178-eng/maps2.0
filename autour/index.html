@@ -71,6 +71,10 @@ button{font-family:inherit;cursor:pointer}
 input{font-family:inherit;font-size:16px}
 
 #map{position:absolute;inset:0;background:var(--sol)}
+#google-map-background{position:absolute;inset:0;z-index:0;background:var(--sol)}
+#map.avec-google-map .leaflet-container{position:relative;z-index:1;background:transparent;pointer-events:none}
+#map.avec-google-map .leaflet-marker-pane{pointer-events:auto}
+#map.avec-google-map .leaflet-ville-pane{opacity:0}
 .leaflet-container{font-family:inherit;background:var(--sol)}
 /* La carte est un décor : ni boutons +/-, ni bandeau d'attribution posé
    dessus. Le zoom se fait au pinch, et l'attribution — légalement due —
@@ -413,6 +417,11 @@ input{font-family:inherit;font-size:16px}
 .aa-tete{display:flex;align-items:center;gap:9px}
 .aa-emoji{font-size:19px;line-height:1}
 .aa-nom{flex:1;min-width:0;font-size:15.5px;font-weight:750;line-height:1.25}
+.aa-visuel{position:relative;display:grid;place-items:center;width:58px;height:48px;flex:0 0 58px;
+  overflow:hidden;border-radius:10px;background:color-mix(in srgb,var(--teinte) 13%,#fff)}
+.aa-visuel i{font-style:normal;font-size:23px;line-height:1;opacity:.82}
+.aa-visuel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .18s ease}
+.aa-visuel img.vue{opacity:1}
 .aa-quoi{margin:7px 0 0;font-size:13.5px;line-height:1.45;color:var(--ink)}
 .aa-quand{margin:7px 0 0;font-size:13.5px;font-weight:750;color:var(--ink2)}
 .aa-quand.chaud{color:#1B7F4C}
@@ -425,6 +434,14 @@ input{font-family:inherit;font-size:16px}
 .aa-hors{margin:7px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
 .aa-bas{margin:8px 0 0;font-size:12.5px;color:var(--ink2)}
 .aa-verif{margin:6px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+.aide-couverture{position:relative;display:grid;place-items:center;height:190px;margin:-18px -18px 18px;
+  overflow:hidden;border-radius:18px 18px 13px 13px;background:color-mix(in srgb,var(--teinte) 14%,#fff)}
+.aide-couverture>span{font-size:56px;line-height:1;opacity:.82}
+.aide-couverture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.aide-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:1;max-width:75%;padding:3px 6px;
+  border-radius:5px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.2}
+dl.faits-aide>div{align-items:start}
+dl.faits-aide dd{max-width:63%;line-height:1.4}
 .as-plus{width:100%;min-height:48px;margin-top:12px;border:1px solid var(--bord);
   border-radius:12px;background:#fff;font-size:14.5px;font-weight:700;color:var(--ink)}
 .as-vide-titre{margin:0 0 4px;font-size:16px;font-weight:750;line-height:1.35}
@@ -605,6 +622,10 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .rc-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
   object-fit:cover;opacity:0;transition:opacity .18s ease}
 .rc-photo img.vue{opacity:1}
+.rc-photo figcaption{position:absolute;right:4px;bottom:4px;z-index:3;max-width:92%;padding:2px 4px;
+  overflow:hidden;border-radius:4px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.15;
+  white-space:nowrap;text-overflow:ellipsis}
+.rc-photo figcaption a{color:inherit;text-decoration:underline}
 .rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 11px 12px}
 .rc-haut{display:flex;align-items:center;justify-content:space-between;gap:6px}
 /* le cœur des cartes : 30 px de large, sous le seuil du pouce. On garde le
@@ -678,7 +699,7 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   font-size:14.5px;font-weight:700}
 .lien-fort{font-weight:700;color:var(--violet)}
 
-/* ---- Prochains départs -------------------------------------------------- */
+/* ---- Couche transports ------------------------------------------------- */
 .tr-bloc{display:flex;align-items:center;gap:12px;margin:16px 0 8px;padding:13px 14px;
   border-radius:14px;background:var(--violet-doux)}
 .tr-icone{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#fff;
@@ -686,10 +707,6 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .tr-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .tr-titre{font-size:14.5px;font-weight:700;color:var(--violet)}
 .tr-lignes{font-size:13px;color:var(--ink)}
-.tr-lignes b{font-weight:750}
-.tr-vide{color:var(--ink2);font-size:12.5px}
-.tr-tout{flex-shrink:0;padding:8px 13px;border:1px solid var(--bord);border-radius:99px;
-  background:#fff;font-size:13px;font-weight:650}
 
 #suggestions{position:absolute;left:14px;right:14px;top:calc(100% - 6px);z-index:610;
   max-height:46vh;overflow-y:auto;
@@ -813,9 +830,14 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   box-shadow:0 -3px 18px rgba(20,30,25,.13);
   transition:height .22s ease,max-height .22s ease}
 /* À l'accueil la feuille est l'écran lui-même : elle occupe toute la largeur
-   et se passe de barre de titre, le titre étant dans le corps. */
+   et se passe de barre de titre, le titre étant dans le corps. La croix reste
+   toutefois atteignable sur téléphone : la carte doit pouvoir redevenir
+   pleine sans imposer un geste de défilement ou un tap sur la carte. */
 #feuilleBesoins.accueil{left:0;right:0;border-left:0;border-right:0}
-#feuilleBesoins.accueil .fb-tete{display:none}
+#feuilleBesoins.accueil .fb-tete{position:absolute;z-index:3;top:0;right:10px;
+  display:flex;width:44px;min-height:44px;padding:0;background:transparent}
+#feuilleBesoins.accueil .fb-titre,#feuilleBesoins.accueil .fb-retour{display:none}
+#feuilleBesoins.accueil .fb-x{box-shadow:0 2px 8px rgba(20,30,25,.14)}
 /* À l'accueil, la poignée et le titre coûtent une recommandation entière :
    on les resserre pour qu'une troisième carte tienne au-dessus du pli. */
 /* le trait reste fin — c'est la zone de frappe qui doit faire 44 px, pas le
@@ -867,6 +889,10 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .fb-statut{margin:4px 0 10px;padding:11px 12px;border-radius:12px;background:#fff;
   border:1px solid var(--bord);font-size:13px;line-height:1.4;color:var(--ink2)}
 .fb-statut.erreur{border-color:#E6B3AA;background:#FFF4F1;color:#713127}
+.fb-statut.partiel{display:flex;align-items:center;gap:10px;margin-top:10px;
+  border-color:rgba(20,30,25,.10);background:rgba(44,58,51,.045);color:var(--ink2)}
+.fb-statut.partiel span{flex:1;min-width:0}
+.fb-statut.partiel button{flex-shrink:0;margin-top:0;background:#fff}
 .fb-statut button{min-height:44px;margin-top:8px;padding:8px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;color:var(--ink);font-weight:700}
 .fb-plus{display:block;margin:8px 0 4px;padding:9px 0;border-top:1px solid var(--bord);
@@ -886,6 +912,14 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .ac-item:active{opacity:.6}
 .ac-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#fff;
   border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
+.ac-photo{position:relative;display:grid;place-items:center;flex-shrink:0;width:46px;height:46px;
+  overflow:hidden;border-radius:11px;background:var(--teinte,#5D6B63)}
+.ac-photo::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.91))}
+.ac-photo i{position:relative;z-index:1;font-style:normal;font-size:17px}
+.ac-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .18s ease}
+.ac-photo img.vue{opacity:1}
 .ac-txt{flex:1;min-width:0}
 .ac-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -921,7 +955,9 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
    Priorité mobile conservée : ces règles ne s'ajoutent qu'au-delà de 1100px. */
 @media (min-width:1100px){
   :root{
-    --panneau:400px;        /* panneau de résultats, temporaire */
+    --panneau:530px;        /* largeur de la référence desktop */
+    --marge-desktop:28px;
+    --decalage-desktop:calc(var(--panneau) + (var(--marge-desktop) * 2));
     --nav-height:0px;       /* la navigation flotte : rien à réserver */
   }
 
@@ -931,11 +967,14 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 
   /* Navigation : une pastille flottante en bas à gauche, pas un rail
      pleine hauteur. Même produit qu'en mobile, autre disposition. */
-  #navBas{top:auto;bottom:20px;left:calc(var(--panneau) + 40px);right:auto;width:auto;
-    flex-direction:row;gap:2px;padding:6px;
+  #navBas{top:auto;bottom:var(--marge-desktop);left:var(--decalage-desktop);right:auto;width:440px;
+    min-height:92px;flex-direction:row;gap:2px;padding:7px;
     border-top:0;border-radius:99px;
     box-shadow:0 6px 26px rgba(20,30,25,.20)}
-  .nb{flex:0 0 auto;gap:4px;padding:8px 14px;border-radius:99px;font-size:12px}
+  .nb{flex:1 1 0;gap:5px;padding:9px 8px;border-radius:99px;font-size:15.5px}
+  .nb svg{width:25px;height:25px}
+  .nb-plus{width:46px;height:46px;border-radius:15px}
+  .nb-plus svg{width:23px;height:23px}
   .nb.actif{background:var(--violet-doux)}
 
   /* ---- Lecture de gauche à droite ---------------------------------------
@@ -946,61 +985,148 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
      la feuille monte du bas, et c'est la bonne géométrie pour un pouce. */
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
   #feuilleBesoins.reduite{
-    left:20px;right:auto;top:calc(var(--safe-t) + 20px);bottom:20px;
+    left:var(--marge-desktop);right:auto;top:calc(var(--safe-t) + var(--marge-desktop));
+    bottom:var(--marge-desktop);
     width:var(--panneau);height:auto;max-height:none;transform:none;
-    border:1px solid var(--bord);border-radius:22px;
+    border:1px solid var(--bord);border-radius:28px;
     box-shadow:0 8px 34px rgba(20,30,25,.18)}
 
   /* L'en-tête et la recherche passent donc à droite du panneau : ils étaient
      à gauche, exactement là où il se trouve maintenant. */
-  #appHeader{left:calc(var(--panneau) + 40px);right:auto;top:calc(var(--safe-t) + 20px);
-    width:auto;max-width:520px}
-  body:not(.sheet-open) #appHeader{left:20px}
-  #btnLieu{flex:0 0 auto;max-width:340px}
+  #appHeader{left:var(--decalage-desktop);right:auto;
+    top:calc(var(--safe-t) + var(--marge-desktop));width:auto;max-width:600px;gap:10px}
+  body:not(.sheet-open) #appHeader{left:var(--marge-desktop)}
+  #btnLieu{flex:0 0 auto;max-width:380px;height:58px;padding:0 20px;font-size:17px}
+  .hd-icone{width:58px;height:58px}
+  .hd-icone svg{width:23px;height:23px}
 
-  #rechercheOverlay{left:calc(var(--panneau) + 40px);right:auto;
-    top:calc(var(--safe-t) + 20px);
-    width:min(520px,calc(100vw - var(--panneau) - 60px));
-    border-radius:22px;padding:16px}
-  body:not(.sheet-open) #rechercheOverlay{left:20px;
-    width:min(520px,calc(100vw - 40px))}
+  #rechercheOverlay{left:var(--decalage-desktop);right:auto;
+    top:calc(var(--safe-t) + var(--marge-desktop));
+    width:min(694px,calc(100vw - var(--decalage-desktop) - var(--marge-desktop)));
+    border-radius:28px;padding:20px 22px 18px}
+  body:not(.sheet-open) #rechercheOverlay{left:var(--marge-desktop);
+    width:min(694px,calc(100vw - (var(--marge-desktop) * 2)))}
+  .ro-barre{gap:14px}
+  .ro-barre > svg{width:23px;height:23px;margin-left:18px}
+  .ro-barre input{height:62px;padding:0 54px 0 54px;font-size:18px}
+  .ro-barre input::placeholder{font-size:18px}
+  .icone-btn{right:76px;width:48px;height:48px}
+  .icone-btn svg{width:20px;height:20px}
+  .hd-filtres{width:62px;height:62px}
+  .hd-filtres svg{width:23px;height:23px}
+  #rechercheOverlay .pills{gap:8px;margin:12px -22px 0;padding-inline:22px}
+  #rechercheOverlay .rc{height:45px;padding:0 15px;gap:7px;font-size:15.5px}
+  #rechercheOverlay .rc em{font-size:17px}
+  #rechercheOverlay #filtresHumains{margin-inline:-22px;padding-inline:22px}
   .fb-poignee{display:none}
-  .fb-tete{padding-top:10px;border-radius:22px 22px 0 0}
+  .fb-tete{min-height:72px;padding:10px 16px 8px;border-radius:28px 28px 0 0;background:#fff}
+  .fb-titre{font-size:22px;font-weight:800}
+  .fb-retour,.fb-x{width:56px;height:56px;font-size:18px}
+  .fb-retour{font-size:29px}
+  .fb-corps{padding:0 22px 26px}
   /* la croix doit rester visible même sur l'accueil : c'est elle qui rend
      l'espace à la carte */
-  #feuilleBesoins.accueil .fb-tete{display:flex}
-  #feuilleBesoins.accueil .fb-titre{opacity:0}
+  #feuilleBesoins.accueil .fb-tete{position:relative;top:auto;right:auto;
+    display:flex;width:auto;min-height:72px;padding:10px 16px 8px;background:#fff}
+  #feuilleBesoins.accueil .fb-titre{display:block;opacity:0}
+
+  /* Le panneau de découverte reprend le rythme ample de la référence, sans
+     dupliquer aucun contenu : ce sont toujours les mêmes boutons et cartes. */
+  .br{gap:9px;padding-bottom:12px}
+  .br-b{min-height:54px;padding:10px 18px;font-size:17.5px}
+  .br-b em{font-size:20px}
+  .ong-temps{gap:8px;padding-bottom:16px}
+  .ong{min-height:52px;padding:12px 19px;font-size:16.5px}
+  .aide-bloc{min-height:76px;margin-bottom:16px;padding:14px 16px;border-radius:17px}
+  .aide-bloc em{font-size:23px}
+  .aide-bloc b{font-size:17.5px}
+  .aide-bloc i{font-size:14.5px}
+  .aide-bloc u{font-size:16px}
+  .rc-tete{padding:2px 0 12px}
+  #feuilleBesoins.accueil .rc-tete{padding:0 0 12px}
+  #feuilleBesoins.accueil .rc-tete strong,.rc-tete strong{font-size:22px}
+  .rc-tout{font-size:17px}
 
   /* Le carousel devient une liste verticale : sur grand écran on fait
      défiler vers le bas, pas latéralement. */
-  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none}
+  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:10px}
   .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
-  .rc-photo{width:96px;height:auto;min-height:96px;flex-shrink:0}
-  .rc-corps{flex:1;min-width:0}
+  .rc-photo,.rc-colonne .rc-photo{width:118px;height:auto;min-height:118px;flex-shrink:0}
+  .rc-corps{flex:1;min-width:0;padding:14px 16px 15px;gap:4px}
+  .rc-cats{font-size:13px}
+  .rc-nom{font-size:17.5px;line-height:1.18}
+  .rc-quand{font-size:15.5px}
+  .rc-min,.rc-note{font-size:14.5px}
+  .rc-trajet{font-size:14px}
   .rc-nom{min-height:0}
+  .tr-bloc{min-height:86px;margin:20px 0 10px;padding:15px 17px;border-radius:17px}
+  .tr-icone{width:44px;height:44px;font-size:21px}
+  .tr-titre{font-size:17px}
+  .tr-lignes{font-size:14.5px}
+  .fb-pied{gap:18px;margin-top:24px;padding-top:17px}
+  .fb-pied button{font-size:14.5px}
+
+  /* Exploration d'une catégorie : même liste réelle, dimensionnée comme le
+     classement numéroté de la référence. */
+  .fb-resultats-tete{margin:4px 2px 8px}
+  .fb-resultats-tete strong{font-size:18px}
+  .fb-resultats-tete span{font-size:13.5px;letter-spacing:.12em}
+  .sq{gap:10px;padding-bottom:12px}
+  .sq-dit{font-size:16px}
+  .sq-carte{min-height:118px;padding:15px 16px;border-radius:18px}
+  .sq-img{width:86px;height:86px;border-radius:15px}
+  .sq-txt{gap:10px}
+  .sq-txt i{height:16px}
+  .ac-item{min-height:76px;padding:13px 3px;gap:14px}
+  .ac-emoji{width:40px;height:40px;font-size:16px}
+  .ac-photo{width:58px;height:58px;border-radius:13px}
+  .ac-nom{font-size:17.5px;font-weight:700}
+  .ac-sous{font-size:14.5px}
+  .ac-dist{font-size:18px}
+  .fb-plus{font-size:14px;padding:12px 0}
+  .fb-section{margin-top:20px;font-size:13px;letter-spacing:.14em}
+  .bn{min-height:58px;font-size:17px;border-radius:16px}
 
   /* Les flottants longent le bord droit : le panneau est à gauche, ils n'ont
      plus à s'écarter pour lui. */
-  #btnTransports,#btnAide{right:20px}
-  #btnTransports{bottom:44px}
-  #btnAide{bottom:96px}
+  #btnTransports,#btnAide{right:var(--marge-desktop)}
+  #btnTransports{bottom:var(--marge-desktop);width:58px;height:58px;
+    background:var(--violet);border-color:var(--violet);color:#fff}
+  #btnTransports.actif{box-shadow:0 0 0 4px rgba(124,58,237,.20),0 3px 14px rgba(20,30,25,.22)}
+  #btnTransports svg{width:23px;height:23px}
+  #btnAide{bottom:98px;min-height:58px;padding:0 20px 0 16px;gap:9px;
+    background:var(--aide);border-color:var(--aide);color:#fff}
+  #btnAide b{font-size:17px}
+  #btnAide svg{width:21px;height:21px}
   /* l'attribution se pose sous le panneau, dans le coin bas droit de la carte */
-  #attribution{left:auto;right:20px;bottom:16px}
-  #credits{left:auto;right:20px;width:min(420px,40vw);bottom:56px}
+  #attribution{left:auto;right:var(--marge-desktop);bottom:8px;font-size:13px}
+  #credits{left:auto;right:var(--marge-desktop);width:min(420px,40vw);bottom:72px}
+
+  /* Les marqueurs deviennent de vrais repères légendés sur grand écran. Le
+     moteur de collision continue de décider quelles étiquettes restent. */
+  .poi-rond{width:40px;height:40px;font-size:20px}
+  .poi-eti{margin-left:-10px;padding:6px 14px 6px 18px;border-radius:0 12px 12px 0;
+    max-width:240px}
+  .poi-eti b{font-size:15.5px}
+  .poi-eti span{font-size:13.5px}
+  .poi-eti.a-gauche{margin-right:-10px;padding:6px 18px 6px 14px;
+    border-radius:12px 0 0 12px}
+  .moi-in b{width:20px;height:20px}
 
   /* La fiche compacte se pose en bas au centre de la carte disponible. */
   #ficheCompacte{left:50%;right:auto;transform:translateX(-50%);
     width:min(460px,calc(100vw - 40px));bottom:20px}
   body.sheet-open #ficheCompacte{
-    left:calc((100vw + var(--panneau) + 40px) / 2);}
+    left:calc((100vw + var(--decalage-desktop)) / 2);}
 
-  #bandeauGeo,#bandeauVide{left:auto;right:20px;width:min(520px,45vw)}
+  #bandeauGeo,#bandeauVide{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
   #charge{left:50%}
   #filtresHumains{width:auto;max-width:none}
   /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
      que dessous — il y a la place, et le centre appartient à la carte */
-  #btnAutourDeMoi{left:auto;right:20px;transform:none;
-    margin-left:0;top:calc(var(--safe-t) + 26px)}
+  #btnAutourDeMoi{left:auto;right:var(--marge-desktop);transform:none;
+    margin-left:0;top:calc(var(--safe-t) + var(--marge-desktop));height:48px;
+    padding:0 18px;font-size:15px}
   #btnAutourDeMoi:active{transform:scale(.96)}
 }
 
@@ -1022,11 +1148,6 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .nav-x{flex-shrink:0;width:44px;height:44px;border:0;border-radius:50%;background:var(--paper);
   color:var(--ink);font-size:14px;display:grid;place-items:center}
 body.nav .leaflet-control-zoom{display:none}
-#navEtapes{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);z-index:700;
-  max-height:42%;overflow-y:auto;padding:6px 15px;border:1px solid var(--bord);
-  border-radius:14px;background:#fff;box-shadow:0 3px 16px rgba(20,30,25,.2);
-  animation:monte .3s cubic-bezier(.2,.9,.3,1)}
-
 .filtres{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 16px);z-index:600;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent);
   mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent)}
@@ -1126,25 +1247,21 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
 .trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
+.trajet-interne-titre{margin-bottom:8px;font-size:14px;font-weight:750}
 .trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
 .trajet-temps button{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper);font:inherit;cursor:pointer}
 .trajet-temps button.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
-.trajet-reco{display:flex;flex-direction:column;gap:3px;margin-bottom:11px;padding:11px 13px;
-  border-radius:3px;background:rgba(255,74,23,.08);border:1px solid rgba(255,74,23,.25)}
-.trajet-reco:empty{display:none}
-.reco-titre{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;color:var(--signal)}
-.reco-mode{font-size:15px;font-weight:700;line-height:1.25}
-.reco-co2{font-size:11.5px;color:#1B7F3B;font-weight:600}
-.trajet-etapes:not(:empty){margin-top:12px;border-top:1px solid rgba(20,30,25,.13)}
-.etape{display:flex;align-items:flex-start;gap:10px;padding:9px 0;
-  border-bottom:1px solid rgba(20,30,25,.09)}
-.etape:last-child{border-bottom:0}
-.etape-ic{flex-shrink:0;width:22px;text-align:center;font-size:15px;line-height:1.3}
-.etape-txt{flex:1;min-width:0;font-size:13.5px;font-weight:600;line-height:1.3}
-.etape-sous{display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--ink2)}
-.etape-min{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
-  font-weight:700;color:var(--ink2);padding-top:2px}
+.trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
+.trajet-externes{display:grid;gap:10px;margin-top:16px;padding-top:14px;
+  border-top:1px solid rgba(20,30,25,.13)}
+.trajet-externe{padding:12px;border:1px solid var(--bord);border-radius:12px;background:var(--paper)}
+.trajet-externe strong,.trajet-externe>span{display:block}
+.trajet-externe strong{font-size:14px}
+.trajet-externe>span{margin-top:2px;font-size:12px;color:var(--ink2)}
+.trajet-liens{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.trajet-liens a{min-height:44px;padding:0 12px;display:inline-flex;align-items:center;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:12px;font-weight:750;text-decoration:none}
 .prix-n{font-weight:700;color:#1B7F3B}
 .horaires{margin:0 0 16px;padding:11px 14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
 .horaires summary{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
@@ -1172,20 +1289,6 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
    est sur la fiche. Sans cette limite, une seule entrée occupait l'écran. */
 .ac-expli{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
   overflow:hidden;font-size:12px;line-height:1.35;color:var(--ink2);margin-top:2px}
-.trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
-.trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
-.trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
-  font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2)}
-.velo-station{display:flex;align-items:center;gap:8px;padding:8px 0;
-  border-top:1px solid rgba(20,30,25,.13);font-size:13px}
-.velo-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.velo-dispo{font-weight:700;color:var(--signal)}
-.velo-dist{color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:11px}
-/* Le mode écrit en toutes lettres à côté du nom : l'emoji seul se confond
-   d'un réseau à l'autre, et c'est ce qui se lisait de travers. */
-.arret-mode{font-style:normal;font-size:11px;color:var(--ink2);
-  font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.04em}
-
 dl.faits{margin:16px 0 18px}
 dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
   border-top:1px solid rgba(20,30,25,.13)}
@@ -1339,7 +1442,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
   <b>Aide</b>
 </button>
-<button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
+<button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les arrêts et stations">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
 </button>
 
@@ -1418,7 +1521,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <span class="nav-txt" id="navTxt"></span>
   <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
 </div>
-<div id="navEtapes" hidden></div>
 
 
 <div id="viseur" hidden>
@@ -1451,14 +1553,18 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" async data-leaflet></script>
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
-<script src="donnees.js?v=9024fc47"></script>
-<script src="aide.js"></script>
+<script src="donnees.js?v=c3559619"></script>
+<script src="aide.js?v=7d6979ed"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=feebfc4c"></script>
-<script src="explications.js?v=4f3ec1ed"></script>
-<script src="events.js?v=6c291809"></script>
-<script src="core.js?v=fcb497c1"></script>
-<script src="transit.js?v=17e44189"></script>
+<script src="explications.js?v=ea344e6e"></script>
+<script src="events.js?v=2a03415f"></script>
+<script src="core.js?v=df39db3b"></script>
+<script src="providers/normaliser.js?v=b35171d0"></script>
+<script src="providers/googlePlaces.js?v=73f76b90"></script>
+<script src="providers/datatourisme.js?v=6f242f4e"></script>
+<script src="providers/osm.js?v=ce966e3f"></script>
+<script src="mapProviders/googleMaps.js?v=0ea702cc"></script>
 <script>
 function panne(titre, corps){
   const p = document.getElementById("panne");
@@ -1476,6 +1582,14 @@ const COMPRENDRE = window.AutourComprendre;
 const SIGNAUX = window.AutourSignaux;
 const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
+
+/* Cette normalisation appartenait historiquement au bloc GBFS. Le transport
+   interne a disparu, mais la recherche, le classement et la déduplication
+   l'utilisent toujours : elle doit donc vivre avec leurs dépendances communes. */
+function sansAccents(s){
+  if(COMPRENDRE && COMPRENDRE.sansAccents) return COMPRENDRE.sansAccents(s);
+  return String(s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
 
 const journal = {
   info(...a){ if(window.__autourDebug) console.info(...a); },
@@ -1501,6 +1615,7 @@ const {
   matchesCategory,
   dedupeItems,
   groupLogicalPlaces,
+  isDiscoveryCandidate,
   parseSearchQuery,
   isAvailableNow,
   rankResults,
@@ -1535,8 +1650,8 @@ let canauxAMoi = [];
      · "point"  — à quelques mètres. On peut parler en minutes de marche.
      · "ville"  — à quelques kilomètres. On ne peut rien promettre de précis.
 
-   Déclaré ici parce que le préchargement des itinéraires, juste en dessous,
-   est le premier à le lire. */
+   Déclaré ici parce que le démarrage et les premiers rendus le lisent
+   immédiatement. */
 let originePosition = null;          // "gps" | "server" | "manual" | null
 let precisionPosition = null;        // "point" | "ville" | null
 const positionConnue = ()=>originePosition !== null;
@@ -1743,6 +1858,9 @@ function estFavori(l){
 async function chargerFavoris(){
   if(favorisCharges) return;
   if(!(await connecter())) return;
+  // Sans session, il n'existe encore aucun favori : la lecture publique ne
+  // doit pas créer silencieusement un compte anonyme.
+  if(!moiId) return;
   favorisCharges = true;
   const lignes = await Store.favoris();
   favorisIds.clear();
@@ -1758,8 +1876,8 @@ async function basculerFavori(l){
   if(etait) favorisIds.delete(cle); else favorisIds.add(cle);
   majCoeurs();
 
-  // l'identité anonyme n'est réclamée qu'ici, au moment où elle sert
-  if(!(await connecter())){
+  // l'identité anonyme n'est créée qu'ici, au moment où elle sert
+  if(!(await assurerSessionAnonyme())){
     if(etait) favorisIds.add(cle); else favorisIds.delete(cle);
     majCoeurs();
     toast("Favoris indisponibles hors connexion");
@@ -1986,51 +2104,6 @@ const quandLibre = (f)=> window.requestIdleCallback
   : setTimeout(f, 400);
 
 
-const TRANSIT = window.AutourTransit;
-const etaParLieu = new Map();
-let etaEnVol = null;
-
-/* La clé inclut le quart d'heure : un ETA calculé il y a 40 min ne décrit
-   plus le prochain passage. */
-function cleEta(l, centre){
-  return [l.id, Math.round(centre[0]*2000), Math.round(centre[1]*2000),
-    Math.floor(Date.now()/900000)].join(",");
-}
-
-function etaConnu(l, centre){
-  return etaParLieu.get(cleEta(l, centre)) || null;
-}
-
-/* Ne demande d'itinéraire que pour le haut de liste : c'est le seul endroit
-   où l'ordre se joue, et chaque appel coûte une requête réseau. */
-function prechargerEta(classement, centre, auRetour){
-  /* Pas d'itinéraire depuis un point qu'on n'a pas. La position déduite par le
-     serveur désigne la ville à quelques kilomètres près : elle suffit à choisir
-     un quartier, pas à écrire « à 4 minutes ». On attend le vrai point plutôt
-     que d'afficher une durée fausse. */
-  if(!TRANSIT || !positionMoi || !positionPrecise()) return;
-  const cibles = classement.slice(0,12).filter(l=>!etaParLieu.has(cleEta(l, centre)));
-  if(!cibles.length) return;
-  if(etaEnVol) etaEnVol.abort();
-  const ctrl = new AbortController();
-  etaEnVol = ctrl;
-  Promise.all(cibles.map(l=>
-    TRANSIT.planTrip({
-      from:centre, to:[Number(l.latitude ?? l.lat), Number(l.longitude ?? l.lng)],
-      departAt:Date.now(), signal:ctrl.signal,
-    }).then(eta=>{ etaParLieu.set(cleEta(l, centre), eta || null); })
-      // un réseau muet dégrade la précision, pas l'écran. On mémorise
-      // l'échec : sans cette trace, le reclassement redemanderait les mêmes
-      // itinéraires et rappellerait majFeuille2 en boucle.
-      .catch(()=>{ if(!ctrl.signal.aborted) etaParLieu.set(cleEta(l, centre), null); })
-  )).then(()=>{
-    if(ctrl.signal.aborted) return;
-    etaEnVol = null;
-    PERF.jalon("transport_ready");
-    if(typeof auRetour === "function") auRetour();
-  });
-}
-
 /* Le responsive décrit uniquement la présentation. Les requêtes et le
    classement ne dépendent jamais d'un userAgent ni d'un modèle d'appareil. */
 function useResponsiveLayout(onChange){
@@ -2071,6 +2144,9 @@ function useResponsiveLayout(onChange){
 }
 
 let responsiveLayoutState = {isMobile:false,isTablet:false,isDesktop:true,isTouch:false};
+/* Le premier callback responsive peut être exécuté dès la première frame.
+   La référence doit donc sortir de la zone morte temporelle avant son abonnement. */
+let map;
 const responsiveLayout = useResponsiveLayout(layout=>{
   responsiveLayoutState = layout;
   document.body.dataset.layout = layout.isMobile ? "mobile" : layout.isTablet ? "tablet" : "desktop";
@@ -2096,16 +2172,31 @@ const NOMS_COUCHES = Object.freeze({
   searchOverlay:"searchOverlay",
 });
 
+/* Sur desktop, l'exploration d'un besoin garde la recherche visible à côté
+   du panneau, comme un outil de la carte et non comme une modale. Sur mobile
+   elle conserve son comportement superposé et exclusif. La déclaration est
+   placée ici pour que le gestionnaire de couches puisse partager cette règle. */
+function rechercheDockeeDesktopDemandee(){
+  return responsiveLayoutState.isDesktop && !modeNav && !modePose &&
+    feuilleNiveau !== null && feuilleNiveau !== "racine" &&
+    feuilleNiveau !== "plus" && feuilleNiveau !== "aide" &&
+    !!BESOIN_DE(feuilleNiveau);
+}
+
 /* Une seule couche principale reste interactive. La sheet peut être suspendue
    derrière une fiche, mais elle est alors hidden et restaurée à la fermeture. */
 const layerManager = {
   stack:[],
   activate(name){
     const confirmation = name === NOMS_COUCHES.confirmationDialog;
-    if(!confirmation) this.stack = this.stack.filter(x=>x===NOMS_COUCHES.confirmationDialog);
+    const rechercheDockee = name === NOMS_COUCHES.searchOverlay &&
+      rechercheDockeeDesktopDemandee();
+    if(!confirmation) this.stack = this.stack.filter(x=>
+      x === NOMS_COUCHES.confirmationDialog ||
+      (rechercheDockee && x === NOMS_COUCHES.mainSheet));
     if(!this.stack.includes(name)) this.stack.push(name);
     const sheet = document.getElementById("feuilleBesoins");
-    if(name !== NOMS_COUCHES.mainSheet && sheet && !sheet.hidden){
+    if(name !== NOMS_COUCHES.mainSheet && !rechercheDockee && sheet && !sheet.hidden){
       sheet.dataset.suspended = "true";
       sheet.hidden = true;
     }
@@ -2303,16 +2394,14 @@ const JAMAIS_AUTO = new Set(["ecole","mairie"]);
    plusieurs centaines par quartier — bouches de métro, arrêts par sens,
    stations de vélo — et ils noyaient les lieux qu'on venait chercher.
 
-   Ils continuent d'être CHARGÉS : l'ETA porte-à-porte, les prochains départs
-   et les itinéraires en dépendent, et cette passe ne retire aucune donnée.
-   Ils ne sont simplement plus DESSINÉS tant qu'on ne les a pas demandés —
-   couche transport allumée, recherche de transport, ou itinéraire en cours. */
+   Ils continuent d'être CHARGÉS pour la découverte et les informations de
+   lieu. Ils ne sont simplement pas DESSINÉS tant qu'on ne les a pas demandés
+   — couche transport allumée ou recherche explicite de transport. */
 const CATS_TRANSPORT = new Set(["metro","bus","tram","train","velo"]);
 let coucheTransport = false;      // allumée par le bouton transports
-let itineraireOuvert = false;     // une fiche affiche un trajet
 
 function transportsDemandes(ctx){
-  if(coucheTransport || modeNav || itineraireOuvert) return true;
+  if(coucheTransport) return true;
   // une catégorie de transport explicitement choisie, ou tapée en toutes lettres
   if(catsActives && [...catsActives].some(c=>CATS_TRANSPORT.has(c))) return true;
   if(CATS_TRANSPORT.has(filtreActif)) return true;
@@ -2704,24 +2793,17 @@ const TAGS_PARTAGES = [
 /*  Publications partagées                                            */
 /* ================================================================== */
 
-/* Identité anonyme : aucun formulaire, aucune adresse mail. Elle sert
-   uniquement à ce que chacun puisse retirer ce qu'il a publié et à ce qu'un
-   compte qui abuse puisse être bloqué. Exiger une inscription écarterait en
-   premier les personnes que l'aide alimentaire concerne. */
+/* Identité anonyme : aucun compte à remplir, aucune adresse mail. Explorer et
+   lire restent publics. Une session n'est créée qu'au premier geste qui doit
+   appartenir à quelqu'un (favori, participation ou publication). Pour publier,
+   le seul renseignement demandé est un prénom ou pseudo d'affichage ; l'uid
+   Supabase, jamais ce pseudo, reste l'unique preuve de propriété. */
 const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
 const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
-/* Clé transport (api.navitia.io) : elle agrège les GTFS déclarés sur
-   transport.data.gouv.fr et le temps réel des réseaux qui le publient, donc
-   elle vaut pour tout le territoire et pas pour une ville. Tant qu'elle est
-   vide, aucun provider transport ne s'enregistre et les temps affichés sont
-   des temps de marche — jamais un horaire inventé. */
-const CLE_TRANSPORT = "";
-if(window.AutourTransit) window.AutourTransit.configure({
-  navitia: CLE_TRANSPORT ? {token:CLE_TRANSPORT} : null,
-});
-
-let sb = null, moiId = null;
+const CLE_PSEUDO_CREATEUR = "autour:creator_name";
+let sb = null, moiId = null, monPseudo = "";
+try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
    chemin critique du premier affichage. */
@@ -2741,18 +2823,13 @@ function chargerSupabase(){
 }
 
 async function connecter(){
-  if(sb && moiId) return sb;
+  if(sb) return sb;
   if(pConnexion) return pConnexion;
   pConnexion = (async()=>{
     if(!(await chargerSupabase())) return null;
     try{
       sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
-      let { data:{ session } } = await sb.auth.getSession();
-      if(!session){
-        const { data, error } = await sb.auth.signInAnonymously();
-        if(error) throw error;
-        session = data.session;
-      }
+      const { data:{ session } } = await sb.auth.getSession();
       moiId = session && session.user ? session.user.id : null;
       return sb;
     }catch(e){
@@ -2766,13 +2843,59 @@ async function connecter(){
   return resultat;
 }
 
+let pSessionAnonyme = null;
+async function assurerSessionAnonyme(){
+  if(!(await connecter())) return null;
+  if(moiId) return sb;
+  if(pSessionAnonyme) return pSessionAnonyme;
+  pSessionAnonyme = (async()=>{
+    try{
+      const { data, error } = await sb.auth.signInAnonymously();
+      if(error) throw error;
+      moiId = data && data.session && data.session.user ? data.session.user.id : null;
+      return moiId ? sb : null;
+    }catch(e){
+      console.error("Identité anonyme indisponible :", e.message || e);
+      return null;
+    }finally{
+      pSessionAnonyme = null;
+    }
+  })();
+  return pSessionAnonyme;
+}
+
+/* Demandé une seule fois au moment de la première publication. Le pseudo est
+   local et purement présentatif ; perdre cette valeur ne donne ni ne retire la
+   propriété, qui reste attachée à auth.uid() côté base. */
+async function assurerIdentitePublication(){
+  if(!(await connecter())) return null;
+  let pseudo = monPseudo;
+  if(!pseudo){
+    pseudo = String(prompt("Ton prénom ou pseudo ?") || "").trim().slice(0,50);
+    if(!pseudo) return null;
+  }
+  if(!moiId && !(await assurerSessionAnonyme())) return null;
+  monPseudo = pseudo;
+  try{ localStorage.setItem(CLE_PSEUDO_CREATEUR, pseudo); }catch(e){}
+  return { id:moiId, name:pseudo };
+}
+
+function estPublicationAMoi(l){
+  return !!(l && l.dbId && moiId && l.creatorId === moiId);
+}
+
 function versLieu(p){
+  /* `created_by` est le propriétaire canonique. `creator_id` demeure lu pour
+     les réponses RPC antérieures à la migration : il ne sert jamais à donner
+     une propriété à une publication qui n'en avait pas. */
+  const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
     description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
-    par: p.verifie ? "Structure vérifiée" : "Habitant du quartier",
-    verifie: p.verifie, mien: !!(moiId && p.auteur === moiId),
+    par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
+    creatorId:createdBy, creatorName:p.creator_name || "",
+    verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
     lat:p.lat, lng:p.lng,
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
@@ -2781,7 +2904,8 @@ function versLieu(p){
     /* Une annulation était enregistrée en base, écrite dans le canal, et
        perdue ici : la carte et la fiche affichaient l'événement comme s'il
        avait lieu. Quelqu'un se déplaçait pour rien. */
-    annule: !!p.annule
+    status:p.status || (p.annule ? "cancelled" : "active"),
+    annule: p.status === "cancelled" || !!p.annule
   }, "autour");
 }
 
@@ -2851,8 +2975,11 @@ const Store = {
   },
 
   async publier(l){
-    if(!sb) return null;
+    const identite = await assurerIdentitePublication();
+    if(!sb || !identite) return null;
     const { data, error } = await sb.from("publications").insert({
+      creator_id:identite.id, created_by:identite.id,
+      creator_name:identite.name, status:"active",
       cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
       gratuit:l.gratuit, prix:l.prix, places:l.places,
       lat:l.lat, lng:l.lng,
@@ -2870,10 +2997,19 @@ const Store = {
     return versLieu(data);
   },
   async supprimer(dbId){
-    if(!sb || !dbId) return false;
-    const { error } = await sb.from("publications").delete().eq("id", dbId);
+    if(!sb || !dbId || !moiId) return false;
+    const { data, error } = await sb.from("publications").delete()
+      .eq("id", dbId).select("id");
     if(error){ console.error("Suppression refusée :", error.message); return false; }
-    return true;
+    return !!(data && data.length === 1);
+  },
+
+  async annuler(dbId){
+    if(!sb || !dbId || !moiId) return false;
+    const { data, error } = await sb.from("publications")
+      .update({status:"cancelled"}).eq("id", dbId).select("id,status");
+    if(error){ console.error("Annulation refusée :", error.message); return false; }
+    return !!(data && data.length === 1 && data[0].status === "cancelled");
   },
 
   /* ---- Favoris ------------------------------------------------------------
@@ -2890,7 +3026,7 @@ const Store = {
   },
 
   async ajouterFavori(l){
-    if(!sb) return false;
+    if(!(await assurerSessionAnonyme())) return false;
     const ligne = {
       membre: moiId,
       publication_id: l.dbId || null,
@@ -2909,7 +3045,7 @@ const Store = {
   },
 
   async retirerFavori(l){
-    if(!sb) return false;
+    if(!(await assurerSessionAnonyme())) return false;
     const requete = sb.from("favoris").delete().eq("membre", moiId);
     const { error } = l.dbId
       ? await requete.eq("publication_id", l.dbId)
@@ -2924,7 +3060,7 @@ const Store = {
 
   // Les canaux où j'ai une raison d'être : créé, inscrit, ou suivi.
   async mesCanaux(){
-    if(!sb) return [];
+    if(!sb || !moiId) return [];
     const { data, error } = await sb.rpc("mes_canaux");
     if(error){ console.error("Canaux indisponibles :", error.message); return []; }
     return data || [];
@@ -2949,10 +3085,15 @@ const Store = {
      déclencheur qui observe la modification. On ne modifie donc que
      l'événement, et l'annonce suit toute seule. */
   async modifierEvenement(dbId, champs){
-    if(!sb || !dbId) return false;
-    const { error } = await sb.from("publications").update(champs).eq("id", dbId);
+    if(!sb || !dbId || !moiId) return false;
+    const permis = new Set(["titre","adresse","cp","quand","gratuit","prix","places",
+                            "lat","lng","image_url","debut_le","fin_le"]);
+    const propres = Object.fromEntries(Object.entries(champs || {}).filter(([cle])=>permis.has(cle)));
+    if(!Object.keys(propres).length) return false;
+    const { data, error } = await sb.from("publications")
+      .update(propres).eq("id", dbId).select("id");
     if(error){ console.error("Modification refusée :", error.message); return false; }
-    return true;
+    return !!(data && data.length === 1);
   },
 
   // Annonce libre et courte, réservée à l'administrateur par la RLS.
@@ -2967,7 +3108,7 @@ const Store = {
   },
 
   async rejoindre(channelId, role){
-    if(!sb || !channelId) return false;
+    if(!channelId || !(await assurerSessionAnonyme())) return false;
     const { error } = await sb.from("event_participants")
       .insert({channel_id:channelId, membre:moiId, role:role || "participant"});
     // déjà inscrit : ce n'est pas une erreur pour l'utilisateur
@@ -2987,10 +3128,13 @@ const Store = {
 
 /* ================================================================== */
 
-let permanentPlaces=[], externalEvents=[], userPublications=[];
+/* Chaque flux reste séparé jusqu'à la fusion finale : une mise à jour
+   DATAtourisme ne peut ainsi jamais effacer un lieu OSM ou une publication
+   Autour déjà visible. */
+let permanentPlaces=[], datatourismePlaces=[], externalEvents=[], userPublications=[];
 let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
-let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
+let coucheVille, moi, positionMoi=null, commune="ton quartier";
 
 /* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
    false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
@@ -3014,7 +3158,6 @@ function idsEpingles(){
   return [...publicationsEpinglees.keys()];
 }
 let routes=[]; // {couche, base}
-let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
 let modeNav = false;   // itinéraire plein écran : la carte n'affiche que le trajet
 
@@ -3129,7 +3272,10 @@ async function overpassRelaye(q, msMax, signal){
     clearTimeout(t);
     // 404 : pas de fonction déployée ici. On note et on n'y revient plus.
     if(r.status === 404 || r.status === 405){ relaisLieux = false; return undefined; }
-    if(!r.ok) return null;            // 503 : Overpass muet, le relais l'a dit
+    // Une erreur de validation ne changera pas par un autre chemin. Une panne
+    // du relais, elle, ne doit pas condamner la carte : le client possède encore
+    // son chemin direct et une quatrième instance de secours.
+    if(!r.ok) return r.status >= 500 ? undefined : null;
     const j = await r.json();
     relaisLieux = true;
     PERF.jalon("relais_lieux");
@@ -3142,6 +3288,8 @@ async function overpassRelaye(q, msMax, signal){
 }
 
 async function overpass(q, msMax, signal, viaRelais){
+  const debut = Date.now();
+  const budget = msMax || 14000;
   const simule = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) &&
     new URLSearchParams(location.search).get("simulateOverpassFailure") === "1";
   if(simule){
@@ -3155,11 +3303,18 @@ async function overpass(q, msMax, signal, viaRelais){
     const parRelais = await overpassRelaye(q, msMax, signal);
     if(parRelais !== undefined) return parRelais;
   }
-  for(const url of SERVEURS){
+  for(let i=0;i<SERVEURS.length;i++){
+    const url = SERVEURS[i];
     if(signal && signal.aborted) return null;
+    // `msMax` est un budget TOTAL. L'ancien code l'accordait à chaque serveur :
+    // une demande de 7 s pouvait donc rester en vol près d'une demi-minute.
+    const restant = budget - (Date.now()-debut);
+    if(restant < 600) break;
+    const serveursRestants = SERVEURS.length-i;
+    const delaiTentative = Math.max(500, Math.floor(restant/serveursRestants));
     try{
       const stop = new AbortController();
-      const t = setTimeout(()=>stop.abort(), msMax||14000);
+      const t = setTimeout(()=>stop.abort(), delaiTentative);
       // une nouvelle zone demandée annule vraiment la précédente : avant, la
       // requête partait quand même et seul son résultat était jeté
       if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
@@ -3172,7 +3327,10 @@ async function overpass(q, msMax, signal, viaRelais){
       if(j && j.elements) return j.elements;
     }catch(e){ journal.warn("Overpass injoignable :", url, e.name||e); }
   }
-  console.error("Overpass : aucun serveur n’a répondu");
+  // Overpass est un enrichissement opportuniste : ses relais publics peuvent
+  // être saturés. L'absence de réponse déclenche le repli déjà affiché, ce
+  // n'est donc pas une erreur applicative à envoyer dans la console visiteur.
+  journal.warn("Overpass : aucun serveur n’a répondu");
   return null;
 }
 
@@ -3270,7 +3428,7 @@ async function vraisLieux(lat,lng,bornes,opts){
     const regle = REQUETES.find(([k,v])=>t[k]===v);
     if(!regle) return null;
     const cat = affinerCategorie(regle[2], t.name, t);
-    return normaliserItem({
+    const brut = {
       id:"osm"+e.type+e.id, cat,
       titre: t.name || CATS[cat].label,
       description:t.description || t.note || "", tags:t,
@@ -3281,14 +3439,43 @@ async function vraisLieux(lat,lng,bornes,opts){
       quand: t.opening_hours || "Voir sur place",
       cuisine: t.cuisine || "",              // turkish, african, pizza…
       tel: t.phone || t["contact:phone"] || "",
+      url: t.website || t["contact:website"] || "",
       pmr: t.wheelchair === "yes" ? true : (t.wheelchair === "no" ? false : undefined),
       service: preciserService(t.name),      // Mission locale ≠ France Travail
       solidaire: estSolidaire(t.name, regle[1]==="charity" || /^(social_facility|social_centre)$/.test(regle[1])
                               || regle[0] === "social_facility"),
       gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
-      places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon
-    }, "openstreetmap");
+      places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon,
+      idOsm:e.type+e.id
+    };
+    const fournisseur = window.AutourProviders && AutourProviders.osm;
+    const normalise = fournisseur ? fournisseur.normaliser(brut) : null;
+    return normaliserItem(normalise ? Object.assign({},brut,AutourProviders.versInterne(normalise)) : brut, "openstreetmap");
   }).filter(Boolean);
+}
+
+/* DATAtourisme passe exclusivement par notre fonction Vercel : la clé n'est
+   ni dans cette page, ni dans une URL, ni dans un repli navigateur. La route
+   arrondit déjà ses coordonnées côté serveur ; le client les arrondit aussi
+   pour que quelques mètres de déplacement réemploient la même entrée CDN. */
+let relaisDatatourisme = null;
+const datatourismeEnVol = new Map();
+async function lieuxDatatourisme(lat,lng,signal){
+  if(relaisDatatourisme === false) return [];
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(datatourismeEnVol.has(cle)) return datatourismeEnVol.get(cle);
+  const promesse = (async()=>{
+    try{
+      const fournisseur = window.AutourProviders && AutourProviders.datatourisme;
+      if(!fournisseur) return [];
+      const places = await fournisseur.nearby(lat,lng,{signal});
+      relaisDatatourisme = true;
+      return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
+    }catch(e){ return []; }
+  })();
+  datatourismeEnVol.set(cle,promesse);
+  promesse.finally(()=>datatourismeEnVol.delete(cle));
+  return promesse;
 }
 
 /* Événements locaux publiés sur les agendas officiels OpenAgenda. La clé est
@@ -3424,7 +3611,6 @@ async function communeRelayee(lat,lng){
     if(!r.ok) return null;
     const j = await r.json();
     relaisCommune = true;
-    if(j && j.pays) paysISO = j.pays;
     PERF.jalon("nominatim_done");
     return (j && j.commune) || null;
   }catch(e){ return undefined; }
@@ -3440,7 +3626,6 @@ async function nomCommune(lat,lng){
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
     const j = await r.json(); const a=j.address||{};
-    paysISO = (a.country_code||"").toUpperCase();
     PERF.jalon("nominatim_done");
     return a.city||a.town||a.village||a.municipality||a.suburb||"ton quartier";
   }catch(e){ return "ton quartier"; }
@@ -3591,6 +3776,62 @@ const FONDS = [
       attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'} }
 ];
 
+/* Google Maps devient le fond principal dès que Places est disponible. Leaflet
+   garde, pendant la migration, son calque de marqueurs et son moteur de
+   collisions ; il ne fournit alors ni tuiles ni données Google. En cas
+   d'échec du SDK (clé non autorisée, réseau hors ligne), CARTO/OSM restent un
+   repli autonome et le provider Places ne renvoie rien. */
+let promesseCarteGoogle = null;
+let fondAutonomePose = false;
+function attributionFondAutonome(){
+  const attribution = document.querySelector("#attribution span");
+  if(attribution) attribution.innerHTML = '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/attributions">CARTO</a>';
+  const credits = document.getElementById("credits");
+  if(credits) credits.textContent = "© OSM · CARTO";
+}
+function remettreFondAutonome(){
+  if(!map || fondAutonomePose) return Promise.resolve(null);
+  // Le repli suit toujours la zone déjà affichée. On ne fabrique jamais une
+  // ville par défaut : sans position connue, la carte Leaflet a déjà un
+  // centre, qui est le seul repère honnête à conserver.
+  const centre = positionMoi || [map.getCenter().lat,map.getCenter().lng];
+  if(!centre || !Number.isFinite(centre[0]) || !Number.isFinite(centre[1])) return Promise.resolve(null);
+  fondAutonomePose = true;
+  return poserFond().then(fond=>{
+    if(fond) return fond;
+    quandLibre(()=>geometrieVille(centre[0],centre[1]).then(geo=>{
+      if(geo && geo.length) dessinerVille(geo); else grilleSecours(centre[0],centre[1]);
+    }));
+    return null;
+  });
+}
+window.addEventListener("autour:google-map-failed", ()=>{
+  promesseCarteGoogle = Promise.resolve(false);
+  attributionFondAutonome();
+  remettreFondAutonome();
+});
+function preparerCarteGoogle(centre, zoom){
+  const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
+  if(!fournisseur || !CLE_GOOGLE) return Promise.resolve(false);
+  promesseCarteGoogle = fournisseur.activer(document.getElementById("map"), centre, zoom, CLE_GOOGLE)
+    .then(ok=>{
+      if(ok){
+        const attribution = document.querySelector("#attribution span");
+        if(attribution) attribution.innerHTML = "© Google";
+        const credits = document.getElementById("credits");
+        if(credits) credits.textContent = "© Google · Données des fournisseurs";
+        if(map && fournisseur.lierLeaflet) fournisseur.lierLeaflet(map);
+      }
+      return ok;
+    }).catch(()=>false);
+  return promesseCarteGoogle;
+}
+async function googleMapsActif(){
+  if(!promesseCarteGoogle) return false;
+  const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
+  return !!(await promesseCarteGoogle) && !!(fournisseur && fournisseur.estActif && fournisseur.estActif());
+}
+
 /* renvoie true dès qu'un fournisseur affiche vraiment des tuiles */
 function essayerFond(f){
   return new Promise(resolve=>{
@@ -3732,12 +3973,49 @@ function journaliserPipeline(source, brut, classes, dedupliques){
   });
 }
 
+/* Dernier filet de fusion : les sources peuvent arriver dans n'importe quel
+   ordre et certaines étiquettes OSM ne se classent pas exactement comme leur
+   type Google. Pour un établissement de restauration à moins de 80 m, le nom
+   commercial fortement compatible reste une preuve suffisante. */
+function estGooglePlaces(l){
+  return !!(l && (l.source === "google_places" || l.idGoogle ||
+    (l.sourceRefs && l.sourceRefs.googlePlaceId)));
+}
+function familleDedupLieu(l){
+  return ["resto","fastfood","cafe","bar"].includes(l && l.cat) ? "restauration" : (l && l.cat);
+}
+function fusionnerFichesFournisseurs(candidats){
+  const fusionnes=[];
+  (candidats||[]).forEach(l=>{
+    const i=fusionnes.findIndex(existant=>{
+      if(!l || !existant || estTemporaire(l) || estTemporaire(existant)) return false;
+      if(estGooglePlaces(l) === estGooglePlaces(existant)) return false;
+      if(familleDedupLieu(l) !== familleDedupLieu(existant)) return false;
+      const proches=distanceM(l.lat,l.lng,existant.lat,existant.lng) <= 80;
+      return proches && (nomsLieuxCompatibles(l.titre,existant.titre) ||
+        adressesLieuxCompatibles(l.adresse,existant.adresse));
+    });
+    if(i<0){ fusionnes.push(l); return; }
+    const existant=fusionnes[i], google=estGooglePlaces(l)?l:existant, autre=google===l?existant:l;
+    const merged=Object.assign({},autre,google);
+    merged.sources=[...new Set([...(autre.sources||[autre.source]),...(google.sources||[google.source])])];
+    merged.categories=[...new Set([...(autre.categories||[]),...(google.categories||[])])];
+    merged.sourceRefs=Object.assign({},autre.sourceRefs||{},google.sourceRefs||{});
+    ["adresse","tel","url","horaires","description","image","imageSource"].forEach(cle=>{
+      merged[cle]=google[cle] || autre[cle] || "";
+    });
+    fusionnes[i]=merged;
+  });
+  return fusionnes;
+}
+
 function reconstruireLieux(){
-  lieux = dedupeItems([
+  lieux = fusionnerFichesFournisseurs(dedupeItems([
     ...permanentPlaces,
+    ...datatourismePlaces,
     ...externalEvents,
     ...userPublications
-  ], distanceM);
+  ], distanceM));
   publies = userPublications;
   indexPerime = true;
 }
@@ -3765,14 +4043,18 @@ function fusionner(nouveaux, flux, opts){
   const o = opts || {};
   const type = flux || "permanent";
   const source = nouveaux[0] && nouveaux[0].source || type;
-  const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source)).filter(l=>!estPasse(l));
+  const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source))
+    // une annulation reste une information utile et distincte d'une suppression
+    .filter(l=>l.annule || !estPasse(l));
   const courant = type === "external" ? externalEvents
-    : type === "user" ? userPublications : permanentPlaces;
+    : type === "user" ? userPublications
+    : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
   const parId = new Map(courant.map(l=>[l.id,l]));
   classes.forEach(l=>parId.set(l.id,l));
   const dedupliques = dedupeItems([...parId.values()], distanceM);
   if(type === "external") externalEvents = dedupliques;
   else if(type === "user") userPublications = dedupliques;
+  else if(type === "datatourisme") datatourismePlaces = dedupliques;
   else permanentPlaces = dedupliques;
   reconstruireLieux();
   journaliserPipeline(source, nouveaux.length, classes, dedupliques);
@@ -3795,7 +4077,7 @@ function fusionner(nouveaux, flux, opts){
 /* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
    l'affiche instantanément, sans réinterroger Overpass. */
 const CACHE_HEURES = 24;
-const cleCache = (lat,lng)=>"autour:lieux:v4:"+lat.toFixed(3)+","+lng.toFixed(3);
+const cleCache = (lat,lng)=>"autour:lieux:v5:"+lat.toFixed(3)+","+lng.toFixed(3);
 
 function lireCacheLieux(lat,lng){
   try{
@@ -3818,7 +4100,7 @@ function lireCacheProche(lat,lng){
   try{
     for(let i = 0; i < localStorage.length; i += 1){
       const cle = localStorage.key(i);
-      if(!cle || cle.indexOf("autour:lieux:v4:") !== 0) continue;
+      if(!cle || cle.indexOf("autour:lieux:v5:") !== 0) continue;
       const [cLat,cLng] = cle.slice(16).split(",").map(Number);
       if(!Number.isFinite(cLat) || !Number.isFinite(cLng)) continue;
       const d = distanceM(lat,lng,cLat,cLng);
@@ -3883,9 +4165,13 @@ const RAPIDE_RAYON_M = 2000;
 /* Les champs qui servent à dessiner une carte et à la reclasser. Le reste
    (description, mots-clés, géométrie) pèse sans rien apporter au premier
    affichage : on ne l'écrit pas. */
-const CHAMPS_RAPIDE = ["id","cat","categories","titre","adresse","cp","lat","lng",
-  "note","avis","prixN","prix","gratuit","quand","cuisine","tags","pmr","source",
-  "par","isTemporary","debutLe","finLe","idGoogle","service","solidaire","sansNom"];
+const CHAMPS_RAPIDE = ["id","autourId","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
+  "note","avis","prix","gratuit","quand","cuisine","tags","pmr","source","sourceRefs",
+  "par","isTemporary","debutLe","finLe","service","solidaire","sansNom"];
+
+function estContenuGoogle(l){
+  return !!(l && (l.source === "google_places" || (l.sourceRefs && l.sourceRefs.googlePlaceId)));
+}
 
 function alleger(l){
   const out = {};
@@ -3906,12 +4192,15 @@ function memoriserJeuRapide(choisis, reserve){
       const vus = new Set();
       const garder = [];
       [...choisis, ...(reserve || [])].forEach(l=>{
+        // Les contenus Places restent transitoires : ni photo, ni horaires,
+        // ni fiche ne sont recopiés dans le cache Autour.
+        if(estContenuGoogle(l)) return;
         if(!l || vus.has(l.id) || garder.length >= RAPIDE_MAX) return;
         vus.add(l.id); garder.push(alleger(l));
       });
       localStorage.setItem(CLE_RAPIDE, JSON.stringify({
         t:Date.now(), zone:positionMoi, commune,
-        choisis:choisis.map(l=>l.id), lieux:garder,
+        choisis:choisis.filter(l=>!estContenuGoogle(l)).map(l=>l.id), lieux:garder,
       }));
     }catch(e){ /* quota plein : le cache de tuiles reste, on ne casse rien */ }
   });
@@ -3964,6 +4253,13 @@ function lireJeuRapide(lat,lng){
   try{
     const o = JSON.parse(localStorage.getItem(CLE_RAPIDE) || "null");
     if(!o || !o.lieux || !o.lieux.length) return null;
+    const lieuxSansGoogle = o.lieux.filter(l=>!estContenuGoogle(l));
+    if(lieuxSansGoogle.length !== o.lieux.length){
+      o.lieux = lieuxSansGoogle;
+      o.choisis = (o.choisis || []).filter(id=>lieuxSansGoogle.some(l=>l.id===id));
+      try{ localStorage.setItem(CLE_RAPIDE,JSON.stringify(o)); }catch(e){}
+    }
+    if(!o.lieux.length) return null;
     if(Date.now() - o.t > RAPIDE_HEURES*3600*1000) return null;
     // le jeu décrit une zone : à l'autre bout de la France il ne décrit rien
     if(lat != null && o.zone &&
@@ -3987,7 +4283,7 @@ function tuilesCache(){
   try{
     for(let i = 0; i < localStorage.length; i += 1){
       const cle = localStorage.key(i);
-      if(!cle || cle.indexOf("autour:lieux:v4:") !== 0) continue;
+      if(!cle || cle.indexOf("autour:lieux:v5:") !== 0) continue;
       let t = 0;
       try{ t = (JSON.parse(localStorage.getItem(cle)) || {}).t || 0; }catch(e){}
       tuiles.push({cle, t});
@@ -4084,8 +4380,8 @@ function chargerZone(lat, lng, opts){
   // allSettled : une source lente ou en panne ne retient pas les autres
   /* UNE VILLE LOINTAINE NE COÛTE PAS UNE VILLE ENTIÈRE.
      Quelqu'un à Lille qui tape « Marseille » déclenchait la même requête que
-     s'il y était : toute l'emprise affichée, trois cents objets, et Google
-     par-dessus — pour cinq cartes qu'il regardera dix secondes. On demande donc
+   s'il y était : toute l'emprise affichée, trois cents objets par-dessus —
+   pour cinq cartes qu'il regardera dix secondes. On demande donc
      un rayon autour du centre plutôt que l'emprise entière, et beaucoup moins
      d'objets. La profondeur est réservée à l'endroit où l'on est vraiment. */
   const regl = o.reglages || REGIMES[regimePoint(lat, lng)];
@@ -4100,17 +4396,26 @@ function chargerZone(lat, lng, opts){
       performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
     })
   ];
-  /* Google ne sert qu'à enrichir les lieux courants : inutile de le relancer
-     quand on va simplement chercher les toilettes ou les écoles — ni pour une
-     ville qu'on regarde de loin, où ses notes et ses horaires ne serviront à
-     personne et où chaque appel est facturé. */
+  /* Une source touristique complémentaire, en parallèle d'OSM : elle ne
+     bloque jamais l'écran et son échec garde exactement les données déjà là.
+     La passe générale suffit ; rouvrir une catégorie ne redemande pas les
+     mêmes cinquante POI touristiques. */
+  if(!o.cats) travaux.push(
+    lieuxDatatourisme(lat,lng,signal).then(r=>{
+      if(signal.aborted || !r || !r.length) return;
+      fusionner(r,"datatourisme");
+      PERF.jalon("datatourisme_done");
+    })
+  );
+  /* Places complète les candidats courants seulement lorsque la carte Google
+     est réellement active. L'échec reste isolé : OSM, DATAtourisme et les
+     publications continuent sans écran vide. */
   if(!o.cats && large) travaux.push(
     notesGoogle(lat,lng,{signal}).then(f=>{
-      if(signal.aborted || !f) return;
-      greffeNotes(lieux, f);
+      if(signal.aborted || !f || !f.length) return;
+      greffeNotes(lieux,f);
       ajouterLieuxGoogle(f);
-      performance.mark("zone:google");
-      performance.measure("lieux Google", "zone:debut", "zone:google");
+      PERF.jalon("google_pret");
     })
   );
   const promesse = Promise.allSettled(travaux).finally(()=>{
@@ -4441,6 +4746,8 @@ function installerCarte(){
   // gauche (#attribution), le détail complet derrière le « ⓘ ».
   map = L.map("map",{zoomControl:false, attributionControl:false, tap:false, preferCanvas:true})
         .setView(centre, partage ? 17 : 16);
+  const fournisseurGoogle = window.AutourMapProviders && AutourMapProviders.googleMaps;
+  if(fournisseurGoogle && fournisseurGoogle.estActif()) fournisseurGoogle.lierLeaflet(map);
   map.createPane("villePane"); map.getPane("villePane").style.zIndex = 200;
   map.createPane("ruesPane");  map.getPane("ruesPane").style.zIndex = 350;
   map.getPane("ruesPane").style.pointerEvents = "none";
@@ -4459,6 +4766,8 @@ function installerCarte(){
   document.body.classList.toggle("loin", map.getZoom() < 15);
   let minuteurRendu;
   map.on("moveend zoomend", ()=>{
+    const fournisseurGoogleActif = window.AutourMapProviders && AutourMapProviders.googleMaps;
+    if(fournisseurGoogleActif) fournisseurGoogleActif.synchroniserDepuisLeaflet(map);
     document.body.classList.toggle("loin", map.getZoom() < 15);
     majEpaisseurs(); majEtiquettes(); majBoutons(); resoudreCollisions();
     // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
@@ -4476,6 +4785,7 @@ function installerCarte(){
   });
   // toucher la carte referme la feuille : la carte reprend tout l'écran
   map.on("click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
+  window.addEventListener("autour:google-map-click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
 
   // tout ce qui a été demandé pendant l'absence de carte se joue maintenant
   rejouerSurLaCarte();
@@ -4493,12 +4803,10 @@ function installerCarte(){
      réclamée. On revient au comportement d'avant : `poserFond()` est appelé
      dans la foulée de `L.map()`, exactement comme il l'était dans `demarrer()`. */
   const [lat,lng] = positionMoi;
-  poserFond().then(fond=>{
-    if(fond) return;
-    // aucun fournisseur de tuiles : on dessine la ville nous-mêmes
-    quandLibre(()=>geometrieVille(lat,lng).then(geo=>{
-      if(geo && geo.length) dessinerVille(geo); else grilleSecours(lat,lng);
-    }));
+  (promesseCarteGoogle || Promise.resolve(false)).then(googleActif=>{
+    const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
+    if(googleActif && fournisseur && fournisseur.estActif && fournisseur.estActif()) return;
+    return remettreFondAutonome();
   });
   // ça, en revanche, c'est bien du confort différable
   quandLibre(()=>prechargerCategories());
@@ -4549,7 +4857,6 @@ async function demarrer(coords){
     // le nom sert à chercher les agendas et à étiqueter des adresses ; il n'est
     // jamais affiché comme « tu es ici » tant que la précision est « ville »
     if(duServeur.ville) commune = duServeur.ville;
-    if(duServeur.pays) paysISO = duServeur.pays;
     PERF.jalon("position_server");
   }
   else { originePosition = null; precisionPosition = null; positionMoi = [48.8566,2.3522]; }
@@ -4561,6 +4868,10 @@ async function demarrer(coords){
   const centre = partage && partage.lat != null
     ? [partage.lat, partage.lng] : positionMoi;
   carteEnAttente = {centre, partage};
+  // Le SDK est demandé en parallèle du premier rendu. `notesGoogle` attend
+  // cette promesse : aucun contenu Places n'est injecté tant que la vraie
+  // carte Google n'est pas prête sous les marqueurs Autour.
+  preparerCarteGoogle(centre, partage ? 17 : 16);
 
   /* La coquille — en-tête, navigation, bouton Aide, attribution — n'est plus
      masquée dans le HTML. Elle l'était, et c'était JavaScript qui la révélait :
@@ -4664,9 +4975,9 @@ function chargerLeDemarrage(rapide){
     nomCommune(lat,lng).then(n=>{ if(n) commune = n; }),
 
     notesGoogle(lat,lng).then(fiches=>{
-      if(!fiches) return;
-      greffeNotes(lieux, fiches);      // notes et ouvert/fermé sur les lieux OSM
-      ajouterLieuxGoogle(fiches);      // + les commerces que OSM ne connaît pas
+      if(!fiches || !fiches.length) return;
+      greffeNotes(lieux,fiches);
+      ajouterLieuxGoogle(fiches);
       charge(null);
       PERF.jalon("google_pret");
     }),
@@ -4993,7 +5304,8 @@ function ouvrirFicheCompacte(l){
 
   const etiquettes = etiquettesLisibles(l);
   const ligne2 = [
-    l.note ? "⭐ "+l.note.toFixed(1).replace(".",",") : null,
+    l.note ? "⭐ "+l.note.toFixed(1).replace(".",",")+
+      (l.avis ? " ("+Number(l.avis).toLocaleString("fr-FR")+" avis)" : "") : null,
     ...etiquettes,
   ].filter(Boolean).join(" · ");
   // l'annulation passe devant tout le reste : c'est la seule chose qui compte,
@@ -5012,7 +5324,7 @@ function ouvrirFicheCompacte(l){
     ["🚲", min(VITESSES_KMH.velo)],
   ].filter(([,m])=>m != null).map(([e,m])=>e+" "+m+" min").join("  ");
 
-  const mien = !!(l.dbId && moiId && l.auteur === moiId);
+  const mien = estPublicationAMoi(l);
   // un lieu d'aide dit à quoi il sert dès la fiche posée sur la carte :
   // ouvrir le détail pour comprendre ce qu'est un CCAS est un pas de trop
   const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 130) : "";
@@ -5049,8 +5361,7 @@ function fermerFicheCompacte(){
    (début de séance), sinon la fermeture, sinon le temps de trajet. */
 function sousTitreMarqueur(l){
   const heure = (t)=>heureLocale(t, l);
-  const centre = positionMoi;
-  const eta = centre ? etaConnu(l, centre) : null;
+  const eta = positionPrecise() ? l.rankEta : null;
   const trajet = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
 
   // pour un événement, la date qui compte est la prochaine occurrence réelle,
@@ -5238,7 +5549,12 @@ function majBandeauVide(retenus){
   const videReel = retenus === 0 && lieux.length > 0 && !montrerFermes && !rechercheEnCours();
   // tant qu'on ignore où se trouve la personne, on ne peut pas affirmer qu'il
   // n'y a rien autour d'elle : on ne sait même pas de quel « autour » il s'agit
-  const montrer = (erreurPartielle || (videReel && positionConnue()))
+  // Une source secondaire en panne n'est pas un écran vide. Si la carte montre
+  // déjà des lieux, le grand bandeau donnait l'impression que tout avait échoué.
+  // Et quand la feuille est ouverte, elle porte elle-même un état compact : on
+  // évite le doublon visible dans la référence de production.
+  const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;
+  const montrer = (erreurSansResultat || (videReel && positionConnue()))
     && !modeNav && $("#bandeauGeo").hidden;
   b.hidden = !montrer;
   if(!montrer) return;
@@ -5276,6 +5592,15 @@ function limiterMarqueurs(liste){
   return liste.filter(l=>retenus.has(l.id));
 }
 
+/* Un marqueur reste en place pendant les petits mouvements de carte, mais les
+   données Places peuvent arriver après son premier dessin. Cette empreinte
+   évite un redessin massif tout en mettant à jour son nom, son statut ou sa
+   position quand une source meilleure enrichit le même lieu. */
+function empreinteMarqueur(l){
+  return [l.titre,l.cat,l.lat,l.lng,l.ouvert,l.ferme,l.note,l.avis,l.envoi,l.annule]
+    .map(v=>v==null?"":String(v)).join("|");
+}
+
 function rendre(){
   if(!map) return;
   majIndexEvenements();
@@ -5300,12 +5625,15 @@ function rendre(){
       garder.add(l.id);
       const existant = marqueurs.get(l.id);
       if(existant){
-        /* Un marqueur posé n'est pas redessiné — c'est ce qui garde la carte
-           fluide. Une publication en cours d'envoi, elle, change d'état sans
-           changer d'identité : son affiche doit suivre. */
-        if(existant._envoi !== l.envoi){
+        const empreinte=empreinteMarqueur(l);
+        existant._lieu=l;
+        /* Pas de reconstruction à chaque rendu : on ne remplace l'icône que
+           si les informations réellement visibles ont changé. */
+        if(existant._empreinte !== empreinte){
+          existant._empreinte=empreinte;
           existant._envoi = l.envoi;
-          existant.setIcon(L.divIcon({className:"mk mk-eph", html:htmlMarqueur(l), iconSize:[0,0]}));
+          existant.setLatLng([l.lat,l.lng]);
+          existant.setIcon(L.divIcon({className:"mk "+(estTemporaire(l)?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}));
         }
         return;
       }
@@ -5314,11 +5642,13 @@ function rendre(){
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
+      m._lieu=l; m._envoi=l.envoi; m._empreinte=empreinteMarqueur(l);
       m.on("click", ()=>{
+        const courant=m._lieu;
         // une affiche qui n'est pas partie se retente d'un appui : c'est le
         // geste qu'on fait naturellement quand on lit « Réessayer »
-        if(l.envoi === "echec"){ reessayerPublication(l.id); return; }
-        mettreAJourProfil("clic", l.cat); ouvrirFicheCompacte(l);
+        if(courant.envoi === "echec"){ reessayerPublication(courant.id); return; }
+        mettreAJourProfil("clic", courant.cat); ouvrirFicheCompacte(courant);
       });
       marqueurs.set(l.id,m);
       return;
@@ -5407,9 +5737,6 @@ function fermerFeuille(options){
   const coucheFermee = typeFeuille === "publication" ? NOMS_COUCHES.publishModal : NOMS_COUCHES.placeDetails;
   pileEcrans = [];
   typeFeuille = null;
-  // l'itinéraire se referme avec la fiche : les arrêts n'ont plus de raison
-  // d'occuper la carte
-  if(itineraireOuvert){ itineraireOuvert = false; rendre(); }
   if(!o.preserverPublication) publicationModifiee = false;
   $("#voile").hidden=true; $("#feuille").hidden=true;
   $("#abandonVoile").hidden=true;
@@ -5577,14 +5904,10 @@ function basculerGarde(id){
 }
 
 /* ---- « À quoi ça sert ? » -----------------------------------------------
-   Le texte vient du moteur d'explications : d'abord ce que Google publie sur
-   CE lieu, sinon ce qu'OpenStreetMap en dit, sinon ce que fait ce type de
-   structure. La provenance est écrite : une explication de réseau ne doit pas
-   se lire comme une phrase écrite par l'antenne du coin.
-
-   Le descriptif Google arrive après coup — il se demande lieu par lieu — donc
-   la fiche s'ouvre avec l'explication générique et la remplace si mieux
-   arrive. Personne n'attend devant un écran vide. */
+   Le texte vient du moteur d'explications : d'abord ce que publie la source
+   ouverte ou la structure, sinon ce qu'OpenStreetMap en dit, sinon ce que fait
+   ce type de structure. La provenance est écrite : une explication de réseau
+   ne doit pas se lire comme une phrase écrite par l'antenne du coin. */
 function blocExplication(l){
   if(!EXPLIQUE) return "";
   const e = EXPLIQUE.explication(l);
@@ -5597,19 +5920,16 @@ function blocExplication(l){
     '</section>';
 }
 
-/* Va chercher le descriptif du lieu chez Google et remplace le texte
-   générique s'il en existe un. Réservé aux lieux d'aide et fait une seule
-   fois par lieu : ces résumés sont facturés à part. */
+/* Les informations sociales d'une fiche Aide restent celles du réseau ou de
+   la structure. Google peut compléter une fiche commerciale, jamais inventer
+   des conditions d'accès, un public accueilli ou une gratuité. */
 function completerExplication(l){
-  if(!EXPLIQUE || !l || !l.idGoogle || l.resumeGoogle) return;
-  if(!SET_AIDE.has(l.cat)) return;
+  if(!l || !l.idGoogle || estFicheAide(l) || l.description) return;
   descriptifGoogle(l.idGoogle).then(texte=>{
     if(!texte) return;
-    l.resumeGoogle = texte;
-    const bloc = $("#expliBloc");
-    // la fiche a pu être refermée entre-temps, ou en montrer une autre
-    if(!bloc || bloc.dataset.pour !== String(l.id)) return;
-    bloc.outerHTML = blocExplication(l);
+    l.description=texte;
+    const bloc=$("#expliBloc");
+    if(bloc && bloc.dataset.pour===String(l.id)) bloc.outerHTML=blocExplication(l);
   });
 }
 
@@ -5621,14 +5941,114 @@ function noteVacances(l){
     ' : l’établissement est sans doute fermé.</p>';
 }
 
+function urlSiteSure(value){
+  if(!value) return "";
+  try{
+    const url = new URL(String(value));
+    return /^https?:$/.test(url.protocol) ? url.href : "";
+  }catch(e){ return ""; }
+}
+
+function estFicheAide(l){
+  return !!(modeAide && l && (SET_AIDE.has(l.cat) || l.aideRaison));
+}
+
+function attributionPhoto(l){
+  const brut = l && l.imageAttribution;
+  const auteurs = Array.isArray(brut) ? brut : (brut ? [{name:brut,url:""}] : []);
+  if(!auteurs.length) return "";
+  return auteurs.map(a=>{
+    const nom = esc(a && a.name || "");
+    const url = urlSiteSure(a && a.url);
+    return url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener">© '+nom+'</a>' : '© '+nom;
+  }).join(" · ");
+}
+
+/* Une image est un fait, pas une décoration : les fiches Aide n'emploient que
+   les images DATAtourisme avec licence ouverte explicite, celles fournies par
+   une structure vérifiée, ou une photo Google affichée avec la carte Google.
+   Les autres sources gardent la couverture graphique de catégorie, sans
+   aucune pénalité dans le classement. */
+function photoAutoriseeAide(l){
+  if(!l || !l.image) return "";
+  const origine = l.imageSource || "";
+  return ["google_places", "datatourisme_licence", "structure", "autour_verifie"].includes(origine) ? l.image : "";
+}
+
+function couvertureAide(l, c){
+  const photo = photoAutoriseeAide(l);
+  const teinte = COULEURS_CAT[l.cat] || "#B82A3A";
+  return '<figure class="aide-couverture" style="--teinte:'+teinte+'">'+
+    '<span aria-hidden="true">'+c.emoji+'</span>'+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt="">' : '')+
+    (photo && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
+    '</figure>';
+}
+
+function couvertureLieu(l, c){
+  if(!l || !l.image) return "";
+  return '<figure class="aide-couverture" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+    '<span aria-hidden="true">'+c.emoji+'</span><img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt="">'+
+    (l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
+}
+
+function sourceAide(l){
+  const source = l && (l.source || ((l.sources || [])[0])) || "";
+  const libelles = {
+    openstreetmap:"OpenStreetMap", google_places:"Google Maps", datatourisme:"DATAtourisme",
+    autour:"Autour", openagenda:"Agenda officiel",
+  };
+  return libelles[source] || (l && l.par) || "Source non renseignée";
+}
+
+function dateMiseAJourAide(l){
+  const brute = l && (l.updated_at || l.updatedAt || l.horairesVusLe || l.prixVuLe || l.created_at);
+  const date = brute ? new Date(brute) : null;
+  return date && Number.isFinite(date.getTime())
+    ? date.toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"}) : "";
+}
+
+function statutAide(l){
+  if(estTemporaire(l)){
+    return TEMPS.libelleTemporel(l, Date.now(), {disponibilite:(x,t)=>dispoDe(x, null, t)});
+  }
+  return libelleOuverture(l);
+}
+
+function faitsAide(l){
+  const explication = EXPLIQUE ? EXPLIQUE.explication(l) : null;
+  const condition = AIDE ? AIDE.conditionDe(l) : null;
+  const rendezVous = AIDE ? AIDE.rendezVousDe(l) : null;
+  const cout = l.gratuit === true ? "Gratuit" : Number.isFinite(Number(l.prix)) ? Number(l.prix)+" €" : "Non renseigné";
+  const faits = [
+    [estTemporaire(l) ? "Quand" : "Statut", statutAide(l)],
+    ["Horaires", libelleHoraires(l)],
+    ["Public accueilli", explication && explication.public],
+    ["Conditions d’accès", condition && condition.texte],
+    ["Rendez-vous", rendezVous && rendezVous.label],
+    ["Coût", cout],
+    ["Source", sourceAide(l)],
+    ["Dernière mise à jour", dateMiseAJourAide(l)],
+  ].filter(([,valeur])=>!!valeur);
+  return '<dl class="faits faits-aide">'+faits.map(([titre, valeur])=>
+    '<div><dt>'+esc(titre)+'</dt><dd>'+esc(valeur)+'</dd></div>').join("")+'</dl>';
+}
+
 function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
   const c = CATS[l.cat]||CATS.event;
+  const mien = estPublicationAMoi(l);
+  const ficheAide = estFicheAide(l);
+  const prix = l.gratuit === true ? "Gratuit" : Number.isFinite(Number(l.prix)) ? Number(l.prix)+" €" : "";
+  const site = urlSiteSure(l.url);
 
   ouvrirFeuille(
+    (ficheAide ? couvertureAide(l, c) : couvertureLieu(l, c))+
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
-    '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+(l.gratuit?'Gratuit':l.prix+' €')+'</span></div>'+
+    (prix ? '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+esc(prix)+'</span>' : '')+'</div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
+    (l.annule ? '<p class="non-verifie"><b>Annulé par l’organisateur.</b> '+
+      'La publication reste visible pour éviter un déplacement inutile.</p>' : '')+
     /* L'essentiel d'abord — où, combien de temps, ouvert, quelle réputation —
        puis les quatre gestes utiles. Le détail vit plus bas. */
     '<p class="resume">'+
@@ -5640,10 +6060,11 @@ function ouvrirDetail(id){
       (l.pmr === true ? '<span title="Accessible en fauteuil">♿</span>' : '')+
     '</p>'+
     '<div class="actions">'+
-      '<button class="act act-1" id="btnYAller">Y aller</button>'+
+      '<button class="act act-1" id="btnYAller">'+(ficheAide?'Itinéraire':'Y aller')+'</button>'+
       (l.tel ? '<a class="act" href="tel:'+esc(l.tel.replace(/\s/g,""))+'">Appeler</a>' : '')+
+      (ficheAide && site ? '<a class="act" href="'+esc(site)+'" target="_blank" rel="noopener">Site web</a>' : '')+
       '<button class="act" id="btnPartLieu">Partager</button>'+
-      '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Enregistré':'Enregistrer')+'</button>'+
+      '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Favori ajouté':'Favori')+'</button>'+
     '</div>'+
     (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
     // « CCAS », « Mission locale », « Banque alimentaire » : des noms qui ne
@@ -5657,18 +6078,18 @@ function ouvrirDetail(id){
     (estTemporaire(l) && !l.verifie && /alimentaire|collecte|hebergement/.test(l.cat)
       ? '<p class="non-verifie">Annonce publiée par un habitant, non vérifiée. '+
         'Renseigne-toi avant de te déplacer.</p>' : '')+
-    '<address class="adresse"><span class="ad-rue">'+esc(l.adresse)+'</span>'+
-    '<span class="ad-ville">'+esc(l.cp)+'</span>'+
+    '<address class="adresse"><span class="ad-rue">'+esc(l.adresse || "")+'</span>'+
+    '<span class="ad-ville">'+esc(l.cp || "")+'</span>'+
     '</address>'+
     '<div class="trajet" id="trajet" hidden></div>'+
-    '<dl class="faits">'+
+    (ficheAide ? faitsAide(l) : '<dl class="faits">'+
       '<div><dt>Quand</dt><dd>'+
         (l.ouvert === true  ? '<span class="ouvert">Ouvert</span> · ' :
          l.ouvert === false ? '<span class="ferme">Fermé</span> · '   : '')+
         esc(libelleHoraires(l))+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
       '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
-    '</dl>'+
+    '</dl>')+
     horairesSemaine(l)+
     (l.gratuit ? '' :
       '<div class="sans-billet">Le paiement se fait sur place, entre vous. '+
@@ -5678,8 +6099,10 @@ function ouvrirDetail(id){
     '<div id="canalBloc"></div>'+
     '<div class="liens">'+
     '<button id="btnInviter" class="lien-fort">Partager / Inviter</button>'+
-    (l.mien
-      ? '<button id="btnSupprimer" class="lien-danger">Supprimer</button>'
+    (mien
+      ? '<button id="btnModifier">Modifier</button>'+
+        (l.annule ? '' : '<button id="btnAnnuler" class="lien-danger">Annuler</button>')+
+        '<button id="btnSupprimer" class="lien-danger">Supprimer définitivement</button>'
       : '<button id="btnSignal">Signaler</button>')+
     '</div>'
   );
@@ -5687,6 +6110,20 @@ function ouvrirDetail(id){
   if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
   completerExplication(l);
   if(l.dbId) chargerCanal(l);
+
+  const modifier = $("#btnModifier");
+  if(modifier) modifier.onclick = async ()=>{
+    await chargerCanal(l);
+    const actions = $("#canalBloc");
+    if(actions){
+      actions.scrollIntoView({behavior:"smooth", block:"start"});
+      const premier = actions.querySelector("[data-act]");
+      if(premier) premier.focus();
+    }
+    toast("Choisis ce que tu veux modifier");
+  };
+  const annuler = $("#btnAnnuler");
+  if(annuler) annuler.onclick = ()=>annulerPublication(l);
 
   /* Suppression en deux temps : un appui demande confirmation, le second
      supprime. Rien d'irréversible sur un simple effleurement. */
@@ -5707,49 +6144,34 @@ function ouvrirDetail(id){
   };
   $("#btnPartLieu").onclick=()=>partagerLieu(l);
   $("#btnGarder").onclick=(e)=>{
-    e.target.textContent = basculerGarde(l.id) ? "Enregistré" : "Enregistrer";
+    e.target.textContent = basculerGarde(l.id) ? (ficheAide ? "Favori ajouté" : "Enregistré") : (ficheAide ? "Favori" : "Enregistrer");
     e.target.classList.toggle("act-on", estGarde(l.id));
   };
   $("#btnYAller").onclick=()=>afficherTrajet(l);
 }
 
-/* ================================================================== */
-/*  Trajet : itinéraires réels via OSRM (routage public, sans clé),   */
-/*  avec repli en ligne droite estimée quand OSRM ne répond pas       */
-/* ================================================================== */
-
-const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // repli si OSRM injoignable
-const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", metro:"🚇", tram:"🚊", bus:"🚌",
-                     train:"🚆", ferry:"⛴️" };
-/* Le libellé dit le mode réel. Un tram annoncé « Bus » envoie chercher un
-   arrêt qui n'existe pas — c'est arrivé. */
-const LABEL_MODE = { pied:"À pied", velo:"Vélo", voiture:"Voiture", metro:"Métro", tram:"Tram",
-                     bus:"Bus", train:"Train", ferry:"Bateau" };
-
-/* grammes de CO₂ par voyageur et par km — ordres de grandeur ADEME */
-const CO2_PAR_KM = { pied:0, velo:0, metro:5, tram:5, bus:100, voiture:193, train:25, ferry:120 };
-/* à temps comparable, on met en avant le mode le plus sobre (rang le plus bas) */
-const RANG_ECO   = { pied:1, velo:2, metro:4, tram:5, bus:6, voiture:9 };
-
-/* On n'impose jamais un choix : on met en avant le mode le plus sobre parmi
-   ceux qui restent raisonnables en temps — 25 % ou 5 minutes de plus que le
-   plus rapide. Un vélo à 8 min passe donc devant une voiture à 7 min. */
-function recommander(options){
-  if(!options.length) return 0;
-  let iRapide = 0;
-  options.forEach((o,i)=>{ if(o.min < options[iRapide].min) iRapide = i; });
-  const marge = options[iRapide].min + Math.max(5, options[iRapide].min * 0.25);
-  let iBest = iRapide;
-  options.forEach((o,i)=>{
-    if(o.min <= marge && (RANG_ECO[o.mode]||9) < (RANG_ECO[options[iBest].mode]||9)) iBest = i;
-  });
-  return iBest;
+async function annulerPublication(l){
+  if(!l || !estPublicationAMoi(l)) return false;
+  if(!confirm("Annuler l’événement ? Il restera visible avec la mention « Annulé par l’organisateur » et les participants seront prévenus.")) return false;
+  if(!(await Store.annuler(l.dbId))){ toast("Annulation impossible"); return false; }
+  l.status = "cancelled";
+  l.annule = true;
+  userPublications.forEach(p=>{ if(p.dbId === l.dbId){ p.status="cancelled"; p.annule=true; } });
+  reconstruireLieux();
+  rendre(); dessinerFiltres();
+  ouvrirDetail(l.id);
+  toast("Événement annulé · il reste visible");
+  return true;
 }
 
-function economieCO2(mode, metres){
-  const g = (CO2_PAR_KM.voiture - (CO2_PAR_KM[mode]||0)) * (metres/1000);
-  return g > 5 ? Math.round(g) : 0;
-}
+/* ================================================================== */
+/*  Trajet : marche et vélo internes via OSRM. Voiture et transports */
+/*  sont délégués aux applications qui maintiennent ces réseaux.      */
+/* ================================================================== */
+
+const VITESSES_KMH = { pied:4.5, velo:15 }; // repli si OSRM est injoignable
+const EMOJI_MODE = { pied:"🚶", velo:"🚲" };
+const LABEL_MODE = { pied:"À pied", velo:"Vélo" };
 
 /* ---- mode navigation : la carte prend tout l'écran, seul le trajet reste ---- */
 function entrerNav(option, titre){
@@ -5762,20 +6184,6 @@ function entrerNav(option, titre){
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
   $("#navBarre").hidden = false;
-  // en navigation, les étapes restent visibles : c'est là qu'on lit où descendre
-  const pas = $("#navEtapes");
-  if(option.etapes && option.etapes.length){
-    pas.innerHTML = option.etapes.map(e=>
-      '<div class="etape">'+
-        '<span class="etape-ic">'+e.ic+'</span>'+
-        '<span class="etape-txt">'+esc(e.txt)+
-          (e.sous ? '<span class="etape-sous">'+esc(e.sous)+'</span>' : '')+'</span>'+
-        '<span class="etape-min">'+e.min+' min</span>'+
-      '</div>').join("");
-    pas.hidden = false;
-  }else{
-    pas.innerHTML = ""; pas.hidden = true;
-  }
   rendre();                              // les autres marqueurs s'effacent
   dessinerSegments(option.segments);     // recadrage sur la totalité du parcours
 }
@@ -5785,7 +6193,6 @@ function quitterNav(){
   modeNav = false;
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
-  $("#navEtapes").hidden = true;
   ["#navBas","#appHeader","#btnTransports","#attribution"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   majFiltres(); majRaccourcis();
@@ -5800,8 +6207,7 @@ function quitterNav(){
    estimation à vol d'oiseau s'ils ne répondent pas */
 const OSRM_PROFILS = {
   pied:    "https://routing.openstreetmap.de/routed-foot/route/v1/foot/",
-  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/",
-  voiture: "https://routing.openstreetmap.de/routed-car/route/v1/driving/"
+  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/"
 };
 
 function tempsTrajetMinutes(distanceMetres, kmh){
@@ -5874,463 +6280,109 @@ function rendreOptions(options, iActif){
   ).join("");
 }
 
+function coordonneeItineraire(point){
+  return Number(point[0]).toFixed(6)+","+Number(point[1]).toFixed(6);
+}
+
+/* Les liens sont de simples ancres : aucun SDK, listener ou état partagé.
+   Google Maps et Apple Plans reçoivent origine et destination ; Waze ouvre la
+   destination et utilise la position courante, conformément à son URL publique. */
+function urlItineraireExterne(fournisseur, mode, depart, destination){
+  const origine = depart ? coordonneeItineraire(depart) : "";
+  const arrivee = coordonneeItineraire(destination);
+  if(fournisseur === "google"){
+    return "https://www.google.com/maps/dir/?api=1"+
+      (origine ? "&origin="+encodeURIComponent(origine) : "")+
+      "&destination="+encodeURIComponent(arrivee)+
+      "&travelmode="+(mode === "transit" ? "transit" : "driving");
+  }
+  if(fournisseur === "apple"){
+    return "https://maps.apple.com/?"+
+      (origine ? "saddr="+encodeURIComponent(origine)+"&" : "")+
+      "daddr="+encodeURIComponent(arrivee)+
+      "&dirflg="+(mode === "transit" ? "r" : "d");
+  }
+  return "https://www.waze.com/ul?ll="+encodeURIComponent(arrivee)+"&navigate=yes";
+}
+
+function liensItinerairesExternes(depart, destination){
+  const lien = (label, fournisseur, mode)=>
+    '<a class="trajet-lien" target="_blank" rel="noopener" data-provider="'+fournisseur+'" href="'+
+      esc(urlItineraireExterne(fournisseur, mode, depart, destination))+'">'+label+'</a>';
+  return '<div class="trajet-externes">'+
+    '<section class="trajet-externe"><strong>🚗 Voiture</strong>'+
+      '<span>Ouvrir l’itinéraire</span><div class="trajet-liens">'+
+        lien("Google Maps", "google", "driving")+
+        lien("Apple Plans", "apple", "driving")+
+        lien("Waze", "waze", "driving")+
+      '</div></section>'+
+    '<section class="trajet-externe"><strong>🚌 Transports</strong>'+
+      '<span>Voir en transports</span><div class="trajet-liens">'+
+        lien("Google Maps", "google", "transit")+
+        lien("Apple Plans", "apple", "transit")+
+      '</div></section>'+
+    '</div>';
+}
+
 async function afficherTrajet(l){
   const panneau = $("#trajet");
   if(!panneau) return;
-  const dest = [l.lat, l.lng];
-  // consulter un itinéraire rend les arrêts pertinents : c'est le moment où
-  // savoir quel métro passe où sert vraiment
-  itineraireOuvert = true;
-  rendre();
+  if(!positionConnue()){ toast("Choisis un point de départ pour calculer le trajet."); return; }
+
+  /* Une réponse OSRM d'une ancienne fiche ne doit jamais repeindre celle qui
+     vient d'être ouverte. Un simple numéro de demande suffit : aucun listener,
+     minuteur ou état de navigation supplémentaire. */
+  const numeroDemande = (afficherTrajet.numeroDemande || 0) + 1;
+  afficherTrajet.numeroDemande = numeroDemande;
 
   const depart = positionMoi;
+  const dest = [l.lat, l.lng];
+  const dVol = distanceM(depart[0],depart[1],dest[0],dest[1]);
+  const droit = (profil)=>({ coords:[depart,dest], reel:false,
+    min:tempsTrajetMinutes(dVol, VITESSES_KMH[profil]) });
+  const options = [
+    {mode:"pied", min:droit("pied").min, segments:[droit("pied")]},
+    {mode:"velo", min:droit("velo").min, segments:[droit("velo")]},
+  ];
+  let iActif = 0;
 
   panneau.hidden = false;
   panneau.innerHTML =
-    '<div class="trajet-reco" id="trajetReco"></div>'+
+    '<p class="trajet-interne-titre">Itinéraires dans Autour</p>'+
     '<div class="trajet-temps" id="trajetTemps"></div>'+
-    '<div class="trajet-etapes" id="trajetEtapes"></div>'+
-    '<p class="trajet-aide" id="trajetAide">Estimation immédiate · calcul par les rues en cours…</p>'+
-    '<div id="trajetInfos"><p class="trajet-charge">Recherche des vélos et des transports…</p></div>';
-
-  /* --- 1. Affichage instantané : estimation à vol d'oiseau, zéro attente --- */
-  const dVol = distanceM(depart[0],depart[1],dest[0],dest[1]);
-  const droit = (profil)=>({ coords:[depart,dest], reel:false,
-    min: tempsTrajetMinutes(dVol, VITESSES_KMH[profil]||15) });
-
-  const options = [
-    { mode:"pied",    min:droit("pied").min,    segments:[droit("pied")] },
-    { mode:"voiture", min:droit("voiture").min, segments:[droit("voiture")] }
-  ];
-  let iActif = 0, choisiParToi = false;
+    '<p class="trajet-aide" id="trajetAide">Calcul des parcours à pied et à vélo…</p>'+
+    liensItinerairesExternes(depart, dest);
 
   const peindre = ()=>{
+    if(numeroDemande !== afficherTrajet.numeroDemande) return false;
     const zone = $("#trajetTemps");
-    if(!zone) return false;                       // feuille refermée entre-temps
+    if(!zone) return false;
     zone.innerHTML = rendreOptions(options, iActif);
-    zone.querySelectorAll("[data-opt]").forEach(b=>
-      b.onclick=()=>{
-        iActif = Number(b.dataset.opt); choisiParToi = true;
-        peindre();
-        entrerNav(options[iActif], l.titre);   // plein écran, comme Plans ou Maps
-      });
-    // étapes détaillées : où monter, où descendre, comment finir
-    const pas = $("#trajetEtapes");
-    if(pas){
-      const et = options[iActif].etapes;
-      pas.innerHTML = et ? et.map(e=>
-        '<div class="etape">'+
-          '<span class="etape-ic">'+e.ic+'</span>'+
-          '<span class="etape-txt">'+esc(e.txt)+
-            (e.sous ? '<span class="etape-sous">'+esc(e.sous)+'</span>' : '')+'</span>'+
-          '<span class="etape-min">'+e.min+' min</span>'+
-        '</div>').join("") : "";
-    }
+    zone.querySelectorAll("[data-opt]").forEach(b=>b.onclick=()=>{
+      iActif = Number(b.dataset.opt);
+      peindre();
+      entrerNav(options[iActif], l.titre);
+    });
     dessinerSegments(options[iActif].segments);
     return true;
   };
-  /* ne réordonne le choix par défaut que tant que tu n'as rien touché toi-même */
-  const rafraichir = ()=>{
-    if(!choisiParToi) iActif = recommander(options);
-    const ok = peindre();
-    const reco = $("#trajetReco");
-    if(ok && reco){
-      const o = options[iActif], eco = economieCO2(o.mode, dVol);
-      reco.innerHTML = '<span class="reco-titre">⭐ Recommandé</span>'+
-        '<span class="reco-mode">'+EMOJI_MODE[o.mode]+' '+LABEL_MODE[o.mode]+' — '+o.min+' min</span>'+
-        (eco ? '<span class="reco-co2">💚 '+eco+' g de CO₂ évités par rapport à la voiture</span>' : '');
-    }
-    return ok;
-  };
-  rafraichir();
+  peindre();
 
-  /* --- 2. En arrière-plan : itinéraires réellement routés par les rues --- */
+  /* Deux requêtes indépendantes seulement. Elles ne touchent ni au classement,
+     ni aux données de transport affichées dans Explorer. */
   Promise.all([
     segmentTrajet("pied", depart, dest),
-    segmentTrajet("voiture", depart, dest)
-  ]).then(([sp,sv])=>{
-    options[0] = { mode:"pied",    min:sp.min, segments:[sp] };
-    options[1] = { mode:"voiture", min:sv.min, segments:[sv] };
-    if(!rafraichir()) return;
+    segmentTrajet("velo", depart, dest),
+  ]).then(([pied, velo])=>{
+    options[0] = {mode:"pied", min:pied.min, segments:[pied]};
+    options[1] = {mode:"velo", min:velo.min, segments:[velo]};
+    if(!peindre()) return;
     const aide = $("#trajetAide");
-    if(aide) aide.textContent = (sp.reel || sv.reel)
-      ? "Touche une option pour voir son trajet. Les traits pleins suivent les rues (OSRM) ; les pointillés sont une estimation à vol d’oiseau."
-      : "Itinéraires routés indisponibles : les temps affichés sont estimés à vol d’oiseau.";
-  });
-
-  /* --- 3. En arrière-plan : vélos en libre-service et transports en commun --- */
-  Promise.all([
-    stationsVeloProchesCache(depart[0], depart[1]),
-    arretsProchesCache(depart[0], depart[1]),
-    arretsAvecRepli(dest[0], dest[1]),     // pour savoir à quel arrêt descendre
-    // les lignes qui passent réellement à chaque bout : sans elles, on ne
-    // propose aucun trajet en transport
-    lignesAutour(depart[0], depart[1]),
-    lignesAutour(dest[0], dest[1])
-  ]).then(async ([stations, arrets, arretsArrivee, lignesDepart, lignesArrivee])=>{
-    const lignesCommunes = TRANSIT.sharedLines(lignesDepart, lignesArrivee);
-    const zone = $("#trajetInfos");
-    if(!zone) return;
-
-    if(stations && stations.length){
-      const s = stations[0];
-      const [segMarche, segVelo] = await Promise.all([
-        segmentTrajet("pied", depart, [s.lat,s.lng]),
-        segmentTrajet("velo", [s.lat,s.lng], dest)
-      ]);
-      options.push({ mode:"velo", min:segMarche.min+segVelo.min, segments:[segMarche,segVelo] });
-    }
-
-    /* Un trajet en transport n'est proposé que si une ligne dessert VRAIMENT
-       les deux extrémités. Auparavant on prenait l'arrêt le plus proche de
-       chaque côté, du même type, et on affirmait qu'on pouvait aller de l'un à
-       l'autre : c'est ce qui faisait dire « monter à telle station, descendre
-       à telle autre » entre deux points qu'aucune ligne ne relie. */
-    if(arrets && arrets.length && lignesCommunes.length){
-      // un choix par MODE réellement desservi, tiré des lignes communes
-      const modesDesservis = [...new Set(lignesCommunes.map(x=>x.mode))];
-      const parType = {}, parTypeArrivee = {};
-      arrets.forEach(a=>{ if(a.type && !parType[a.type]) parType[a.type]=a; });
-      (arretsArrivee||[]).forEach(a=>{ if(a.type && !parTypeArrivee[a.type]) parTypeArrivee[a.type]=a; });
-
-      for(const type of modesDesservis){
-        const monte   = parType[type];
-        const descend = parTypeArrivee[type];   // où descendre, côté arrivée
-        if(!monte || !descend) continue;        // pas d'arrêt de ce mode aux deux bouts
-        // sans arrêt utile près du but, prendre ce mode ne rapproche de rien :
-        // on exige que descendre là gagne au moins 300 m de marche
-        const gain = distanceM(monte.lat,monte.lng,dest[0],dest[1]) -
-                     distanceM(descend.lat,descend.lng,dest[0],dest[1]);
-        if(gain < 300) continue;
-        const lignes = lignesCommunes.filter(x=>x.mode === type);
-        const nomLignes = lignes.slice(0,3).map(x=>x.label).join(", ");
-
-        const [versArret, depuisArret] = await Promise.all([
-          segmentTrajet("pied", depart, [monte.lat,monte.lng]),
-          segmentTrajet("pied", [descend.lat,descend.lng], dest)
-        ]);
-        const minRoule = tempsTrajetMinutes(
-          distanceM(monte.lat,monte.lng,descend.lat,descend.lng),
-          VITESSE_TRANSPORT_KMH[type] || 18);
-        const attente = ATTENTE_MIN[type] || 5;
-
-        options.push({
-          mode:type,
-          min: versArret.min + attente + minRoule + depuisArret.min,
-          lignes:nomLignes,
-          etapes:[
-            {ic:"🚶", txt:"Marcher jusqu’à "+monte.nom, min:versArret.min,
-             sous:formatDist(monte.dist)},
-            // le mode est nommé, et la ligne aussi : « Monter » sans dire quoi
-            // prendre laissait deviner, et deviner était souvent faux
-            {ic:EMOJI_MODE[type], txt:LABEL_MODE[type]+" "+nomLignes+" à "+monte.nom, min:attente,
-             sous:"attente moyenne estimée · sens à vérifier sur place"},
-            {ic:"🏁", txt:"Descendre à "+descend.nom, min:minRoule,
-             sous:formatDist(distanceM(monte.lat,monte.lng,descend.lat,descend.lng))+
-                  " · durée estimée, correspondances non vérifiées"},
-            {ic:"🚶", txt:"Finir à pied jusqu’à "+l.titre, min:depuisArret.min,
-             sous:formatDist(descend.dist)}
-          ],
-          segments:[
-            versArret,
-            {coords:[[monte.lat,monte.lng],[descend.lat,descend.lng]], reel:false},
-            depuisArret
-          ]
-        });
-      }
-    }
-    if(!rafraichir()) return;
-
-    let html = "";
-    if(stations && stations.length){
-      html += '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
-        stations.map(s=>
-          '<div class="velo-station">'+
-            '<span class="velo-nom">'+esc(s.nom)+'</span>'+
-            '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
-            '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
-          '</div>'
-        ).join("");
-    }
-    if(arrets && arrets.length){
-      html += '<p class="trajet-soustitre">Arrêts de transport à proximité</p>'+
-        arrets.slice(0,5).map(a=>
-          '<div class="velo-station">'+
-            // sans type connu, on ne colle pas d'icône de mode : une puce
-            // neutre vaut mieux qu'un pictogramme faux
-            '<span class="velo-nom">'+(a.type ? EMOJI_MODE[a.type]+' ' : '📍 ')+esc(a.nom)+
-              (a.type ? ' <i class="arret-mode">'+esc(LABEL_MODE[a.type])+'</i>' : '')+'</span>'+
-            '<span class="velo-dist">'+formatDist(a.dist)+'</span>'+
-          '</div>'
-        ).join("");
-      /* Dire pourquoi aucun trajet n'est proposé vaut mieux que de n'en
-         proposer aucun sans explication — et infiniment mieux que d'en
-         inventer un, ce que faisait la version précédente. */
-      if(!lignesCommunes.length){
-        html += '<p class="trajet-aide">'+
-          (lignesDepart && lignesArrivee
-            ? 'Aucune ligne ne dessert à la fois ces arrêts et le point d’arrivée '+
-              'd’après OpenStreetMap : aucun trajet en transport n’est proposé ici.'
-            : 'Lignes de transport non consultables pour le moment : aucun trajet '+
-              'en transport n’est proposé plutôt qu’un trajet approximatif.')+
-          '</p>';
-      }
-    }
-    const zone2 = $("#trajetInfos");
-    if(zone2) zone2.innerHTML = html ||
-      '<p class="trajet-vide">Aucun vélo en libre-service ni arrêt trouvé dans un rayon d’un kilomètre.</p>';
+    if(aide) aide.textContent = (pied.reel || velo.reel)
+      ? "Touche À pied ou Vélo pour ouvrir le parcours dans Autour."
+      : "Routage indisponible : les temps sont estimés à vol d’oiseau.";
   });
 }
-
-/* ================================================================== */
-/*  Vélos en libre-service : détection auto via GBFS (partout où ça existe) */
-/* ================================================================== */
-
-let SYSTEMES_GBFS = null;
-
-function sansAccents(s){
-  return (s||"").normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();
-}
-
-/* Lecture simple d'une ligne CSV (gère les champs entre guillemets) */
-function ligneCSV(l){
-  const champs = l.match(/(".*?"|[^,]*)(?=,|$)/g) || [];
-  return champs.map(c=>c.replace(/^"|"$/g,"").trim());
-}
-
-async function chargerSystemesGBFS(){
-  if(SYSTEMES_GBFS) return SYSTEMES_GBFS;
-  try{
-    const r = await fetch("https://raw.githubusercontent.com/MobilityData/gbfs/master/systems.csv");
-    if(!r.ok){ SYSTEMES_GBFS = []; return SYSTEMES_GBFS; }
-    const lignes = (await r.text()).split("\n").filter(Boolean);
-    const entetes = ligneCSV(lignes[0]);
-    const iPays = entetes.indexOf("Country Code"),
-          iNom = entetes.indexOf("Name"), iLieu = entetes.indexOf("Location"),
-          iUrl = entetes.indexOf("Auto-Discovery URL");
-    SYSTEMES_GBFS = iUrl<0 ? [] : lignes.slice(1).map(l=>{
-      const champs = ligneCSV(l);
-      return { pays:(champs[iPays]||"").toUpperCase(), nom:champs[iNom]||"", lieu:champs[iLieu]||"", url:champs[iUrl]||"" };
-    }).filter(s=>s.url);
-  }catch(e){ SYSTEMES_GBFS = []; }
-  return SYSTEMES_GBFS;
-}
-
-/* cherche un réseau GBFS dont le nom ou la localisation correspond à la commune détectée ;
-   si rien ne correspond textuellement (le nom du réseau ne contient pas toujours celui
-   de la ville), on élargit au pays et on vérifie avec la vraie position des stations */
-async function stationsVeloProches(lat,lng){
-  try{
-    const systemes = await chargerSystemesGBFS();
-    if(!systemes.length) return null;
-    const cible = sansAccents(commune);
-    let candidats = cible ? systemes.filter(s=>
-      sansAccents(s.lieu).includes(cible) || sansAccents(s.nom).includes(cible)) : [];
-
-    if(!candidats.length && paysISO){
-      candidats = systemes.filter(s=>s.pays===paysISO).slice(0,20);
-    }
-    if(!candidats.length) return null;
-
-    for(const sys of candidats){
-      const stations = await stationsDuSysteme(sys.url, lat, lng);
-      if(stations && stations.length) return stations;
-    }
-    return null;
-  }catch(e){ return null; }
-}
-
-async function stationsDuSysteme(urlDecouverte, lat, lng){
-  try{
-    const r = await fetch(urlDecouverte);
-    if(!r.ok) return null;
-    const j = await r.json();
-    const langues = j.data ? Object.keys(j.data) : [];
-    if(!langues.length) return null;
-    const feeds = j.data[langues[0]].feeds || [];
-    const urlInfo = (feeds.find(f=>f.name==="station_information")||{}).url;
-    const urlStatut = (feeds.find(f=>f.name==="station_status")||{}).url;
-    if(!urlInfo || !urlStatut) return null;
-
-    const [ri, rs] = await Promise.all([fetch(urlInfo), fetch(urlStatut)]);
-    if(!ri.ok || !rs.ok) return null;
-    const [ji, js] = await Promise.all([ri.json(), rs.json()]);
-
-    const statuts = new Map((js.data.stations||[]).map(s=>[s.station_id, s]));
-    return (ji.data.stations||[])
-      .map(s=>{
-        const st = statuts.get(s.station_id);
-        const velos = st ? (st.num_bikes_available ?? st.num_vehicles_available ?? 0) : 0;
-        if(!velos) return null;
-        const dist = distanceM(lat, lng, s.lat, s.lon);
-        if(dist > 1500) return null;
-        return { nom: s.name || "Station", velos, dist, lat:s.lat, lng:s.lon };
-      })
-      .filter(Boolean)
-      .sort((a,b)=>a.dist-b.dist)
-      .slice(0,5);
-  }catch(e){ return null; }
-}
-
-/* ================================================================== */
-/*  Arrêts de transport en commun (métro, tram, bus) à proximité      */
-/* ================================================================== */
-
-/* Le mode d'un arrêt se lit dans les tags qui l'encodent, et nulle part
-   ailleurs. L'ancienne règle rangeait en « bus » tout ce qu'elle ne
-   reconnaissait pas, et en « métro » toute gare ferroviaire : d'où des arrêts
-   de bus annoncés là où il n'y en a pas, et des gares SNCF présentées comme
-   des stations de métro. Quand les tags ne disent rien, le type reste nul —
-   l'arrêt est alors montré comme information, jamais comme un mode à prendre. */
-const ETIQUETTE_ARRET = { metro:"Station de métro", tram:"Arrêt de tram",
-                          bus:"Arrêt de bus", train:"Gare" };
-
-function typeArret(t){
-  const tags = t || {};
-  const rail = tags.railway || "";
-  if(rail === "tram_stop" || tags.tram === "yes" || tags.light_rail === "yes") return "tram";
-  if(rail === "subway_entrance" || tags.station === "subway" || tags.subway === "yes") return "metro";
-  if(rail === "station" || rail === "halt"){
-    // une gare reste une gare : seule la présence d'un marqueur métro la
-    // requalifie, et il est traité juste au-dessus
-    return tags.train === "no" ? null : "train";
-  }
-  if(tags.highway === "bus_stop" || tags.amenity === "bus_station" || tags.bus === "yes") return "bus";
-  return null;                       // on ne devine pas
-}
-
-const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16, train:60, ferry:15 };
-/* attente moyenne à l'arrêt, faute d'horaires temps réel accessibles partout */
-const ATTENTE_MIN = { metro:4, tram:5, bus:7, train:12, ferry:12 };
-
-async function arretsProches(lat,lng){
-  try{
-    // rayons larges : un métro à 1 km reste pertinent, et les arrêts sont
-    // étiquetés de façons très variables selon les villes — on ratisse large
-    const q = `[out:json][timeout:20];(
-node(around:1500,${lat},${lng})[railway~"^(station|halt|subway_entrance)$"];
-node(around:1500,${lat},${lng})[station=subway];
-node(around:1500,${lat},${lng})[railway=tram_stop];
-node(around:1500,${lat},${lng})[public_transport=station];
-node(around:800,${lat},${lng})[highway=bus_stop];
-node(around:800,${lat},${lng})[amenity=bus_station];
-node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
-);out body 60;`;
-    const els = await overpass(q, 8000);
-    if(!els || !els.length) return null;
-    const arrets = els.map(e=>{
-      const t = e.tags||{};
-      const type = typeArret(t);
-      return {
-        type,
-        nom: t.name || (type ? ETIQUETTE_ARRET[type] : "Arrêt"),
-        lat:e.lat, lng:e.lon, dist: distanceM(lat,lng,e.lat,e.lon)
-      };
-    }).sort((a,b)=>a.dist-b.dist);
-
-    // une station de métro a souvent plusieurs bouches : on ne garde que la plus proche
-    const vus = new Set();
-    return arrets.filter(a=>{
-      const cle = a.type+"|"+a.nom;
-      if(vus.has(cle)) return false;
-      vus.add(cle); return true;
-    });
-  }catch(e){ return null; }
-}
-
-/* Overpass reste injoignable sur certains réseaux, et sans lui la carte
-   annonçait « aucun arrêt de transport » au milieu d'une métropole qui en est
-   couverte. Google connaît ces arrêts : on lui demande quand OSM se tait. */
-const TYPES_ARRET = ["bus_station","transit_station","subway_station",
-                     "light_rail_station","train_station"];
-/* transit_station est générique chez Google : il ne dit pas le mode. Le ranger
-   en « bus » fabriquait des arrêts de bus. Sans mode connu, pas de mode. */
-const ARRET_GOOGLE = {
-  subway_station:"metro", train_station:"train", light_rail_station:"tram",
-  bus_station:"bus", bus_stop:"bus", transit_station:null
-};
-
-async function arretsGoogle(lat,lng){
-  if(!CLE_GOOGLE) return null;
-  try{
-    const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "X-Goog-Api-Key":CLE_GOOGLE,
-                "X-Goog-FieldMask":"places.displayName,places.location,places.primaryType" },
-      body:JSON.stringify({ maxResultCount:20, includedTypes:TYPES_ARRET,
-        locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1200}} })
-    });
-    if(!r.ok){ console.error("Arrêts Google : HTTP", r.status); return null; }
-    const j = await r.json();
-    const vus = new Set();
-    return (j.places||[]).map(p=>{
-      const nom = (p.displayName&&p.displayName.text) || "Arrêt";
-      // « || "bus" » transformait tout type inconnu en arrêt de bus
-      const type = Object.prototype.hasOwnProperty.call(ARRET_GOOGLE, p.primaryType)
-        ? ARRET_GOOGLE[p.primaryType] : null;
-      return { type, nom, lat:p.location.latitude, lng:p.location.longitude,
-               dist: distanceM(lat,lng,p.location.latitude,p.location.longitude) };
-    }).filter(a=>{
-      const c = a.type+"|"+a.nom;
-      if(vus.has(c)) return false; vus.add(c); return true;
-    }).sort((a,b)=>a.dist-b.dist);
-  }catch(e){ console.error("Arrêts Google :", e); return null; }
-}
-
-/* la position de l'utilisateur ne change pas pendant la session : on évite
-   de refaire les mêmes requêtes réseau à chaque clic sur "Y aller" */
-/* on ne met en cache qu'un résultat utile : si Overpass a échoué ou n'a rien
-   renvoyé (panne passagère, quota), le prochain "Y aller" retentera au lieu
-   de rester bloqué sur "aucun arrêt détecté" pour toute la session */
-let CACHE_VELO = null, CACHE_TRANSPORT = null;
-async function stationsVeloProchesCache(lat,lng){
-  if(!CACHE_VELO || !CACHE_VELO.length) CACHE_VELO = await stationsVeloProches(lat,lng);
-  return CACHE_VELO;
-}
-/* Le repli Google n'était branché que sur les arrêts de départ : ceux de
-   l'arrivée restaient tributaires d'Overpass, donc aucune option métro ou bus
-   n'était jamais proposée quand il ne répond pas. */
-async function arretsAvecRepli(lat,lng){
-  let a = await arretsProches(lat,lng);
-  if(!a || !a.length) a = await arretsGoogle(lat,lng);
-  return a;
-}
-
-/* ---- Quelles lignes desservent ce point ? --------------------------------
-   Une ligne est une relation `type=route` dans OpenStreetMap, dont les arrêts
-   sont membres. On demande les relations qui contiennent un arrêt proche : ce
-   sont, réellement, les lignes qui passent là.
-
-   C'est ce qui manquait pour arrêter d'inventer des trajets. */
-const RAYON_LIGNES = 500;
-
-async function lignesAutour(lat,lng){
-  try{
-    const q = `[out:json][timeout:20];(
-node(around:${RAYON_LIGNES},${lat},${lng})["public_transport"~"^(stop_position|platform|station)$"];
-node(around:${RAYON_LIGNES},${lat},${lng})["highway"="bus_stop"];
-node(around:${RAYON_LIGNES},${lat},${lng})["railway"~"^(tram_stop|station|halt|subway_entrance)$"];
-)->.arrets;
-rel(bn.arrets)["type"="route"]["route"~"^(bus|tram|subway|light_rail|train|trolleybus|ferry)$"];
-out tags;`;
-    const els = await overpass(q, 12000);
-    if(!els) return null;                 // réseau muet : on ne conclut rien
-    return TRANSIT.linesFromRelations(els);
-  }catch(e){ return null; }
-}
-
-async function arretsProchesCache(lat,lng){
-  if(CACHE_TRANSPORT && CACHE_TRANSPORT.length) return CACHE_TRANSPORT;
-  CACHE_TRANSPORT = await arretsProches(lat,lng);
-  // OSM muet : on interroge Google plutôt que d'annoncer qu'il n'y a rien
-  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length){
-    CACHE_TRANSPORT = await arretsGoogle(lat,lng);
-    if(CACHE_TRANSPORT && CACHE_TRANSPORT.length)
-      journal.info("Transports : "+CACHE_TRANSPORT.length+" arrêt(s) via Google (OSM muet)");
-  }
-  return CACHE_TRANSPORT;
-}
-
 /* Un lien qui ouvre vraiment le lieu chez l'autre personne, au lieu de la
    déposer sur la carte sans contexte. */
 /* ---- Adresses partageables ----------------------------------------------
@@ -6469,10 +6521,8 @@ async function actionCreateur(id, l, canal){
     return chargerCanal(l);
   }
   if(id === "annulation"){
-    // un événement annulé reste affiché : le masquer ferait venir les gens
-    if(!confirm("Annuler l’événement ? Les participants seront prévenus.")) return;
-    toast(await Store.modifierEvenement(l.dbId,{annule:true}) ? "Événement annulé" : "Annulation impossible");
-    return chargerCanal(l);
+    // Annuler change le cycle de vie ; supprimer reste un geste séparé.
+    return annulerPublication(l);
   }
 }
 
@@ -6848,6 +6898,11 @@ function marquerPublication(id, etat){
 
 async function publier(){
   const b=brouillon;
+  /* La première publication est le seul moment où l'on demande un nom. La
+     session anonyme naît juste après ; si l'un ou l'autre échoue, rien n'est
+     affiché comme publié et le brouillon reste ouvert. */
+  const identite = await assurerIdentitePublication();
+  if(!identite){ toast("Publication annulée"); return; }
   const debut = new Date(b.date+"T"+(b.heure||"00:00")+":00");
   let fin = b.fin ? new Date(b.date+"T"+b.fin+":00") : null;
   if(fin && fin <= debut) fin.setDate(fin.getDate()+1);
@@ -6856,7 +6911,9 @@ async function publier(){
     adresse:(b.adresse||"").trim()||"Sur place",
     cp:commune, quand:libelleQuand(b)||"Bientôt",
     gratuit:b.gratuit, prix:b.gratuit?0:b.prix,
-    places:b.limite?b.places:null, qr:b.qr, par:"Anonyme", lat:b.lat, lng:b.lng,
+    places:b.limite?b.places:null, qr:b.qr, par:identite.name,
+    creatorId:identite.id, creatorName:identite.name, mien:true, status:"active",
+    lat:b.lat, lng:b.lng,
     debutLe:Number.isFinite(debut.getTime()) ? debut.getTime() : null,
     finLe:fin && Number.isFinite(fin.getTime()) ? fin.getTime() : null,
     // l'aperçu local de l'affiche, le temps que le vrai fichier monte
@@ -6932,373 +6989,221 @@ async function reessayerPublication(id){
 /*  Classement d'une catégorie                                        */
 /* ================================================================== */
 
-/* ---- Clé Google Places -------------------------------------------------
-   Elle est publique, et elle ne peut pas ne pas l'être : le navigateur doit
-   l'envoyer à chaque appel, et elle voyage aussi dans l'URL des photos. Aucune
-   obfuscation ne change ça — la seule protection réelle est une restriction
-   posée côté Google Cloud, sur le domaine appelant.
+/* ======================================================================
+   Fournisseur Google Places (façade de compatibilité)
 
-   À configurer une fois, dans la console Google Cloud (voir docs/cle-google.md) :
-     · Restriction d'application → Sites web (référents HTTP)
-       https://autour.vercel.app/*  et  https://*.vercel.app/*  (préproductions)
-     · Restriction d'API → Places API (New) uniquement
-     · Quota journalier plafonné, pour qu'un abus reste borné
-
-   Sans clé, l'application reste entièrement utilisable : pas de notes, pas de
-   photos, pas de descriptif Google — le classement se fait sur la distance,
-   les horaires et les événements, ce qui est honnête et déjà utile. */
+   La page ne lit plus aucune réponse Places : le provider la normalise dans
+   le contrat Autour (`autourId`, `name`, `photos`, `sourceRefs`…), puis cette
+   façade alimente le noyau historique. La clé est une clé navigateur
+   restreinte aux référents et aux SDK/API Google nécessaires ; ce n'est pas
+   une clé serveur et aucun autre secret n'est envoyé au navigateur.
+   ====================================================================== */
 const CLE_GOOGLE = "AIzaSyAFjDL4NtNNaTFhD-tbN4escj8xQ9Mpio4";
-
+const GOOGLE_CONFIG = Object.freeze({apiKey:CLE_GOOGLE, defaultCategory:"commerce"});
 const TYPES_RESTO = ["restaurant","cafe","bar","bakery","meal_takeaway"];
-
-/* Les notes mesurent la satisfaction, pas le prix. Pour « ce qui coûte le
-   moins cher », le seul signal honnête est priceLevel, que Google calcule à
-   partir des tarifs constatés — on ne le déduit pas des commentaires. */
-const NIVEAU_PRIX = {
-  PRICE_LEVEL_FREE:0, PRICE_LEVEL_INEXPENSIVE:1, PRICE_LEVEL_MODERATE:2,
-  PRICE_LEVEL_EXPENSIVE:3, PRICE_LEVEL_VERY_EXPENSIVE:4
-};
+const NIVEAU_PRIX = window.AutourProviders && AutourProviders.googlePlaces
+  ? AutourProviders.googlePlaces.niveauxPrix : {};
 const SYMBOLE_PRIX = ["Gratuit","€","€€","€€€","€€€€"];
-/* catégories où parler de prix a un sens */
 const AVEC_PRIX = new Set(["resto","fastfood","cafe","bar","commerce","friperie","marche"]);
+const CAT_GOOGLE = window.AutourProviders && AutourProviders.googlePlaces
+  ? AutourProviders.googlePlaces.typesVersCategorie : {};
 
-/* types Google → catégories de l'app, pour les lieux absents d'OpenStreetMap */
-const CAT_GOOGLE = {
-  restaurant:"resto", pizza_restaurant:"resto", meal_delivery:"resto",
-  fast_food_restaurant:"fastfood", meal_takeaway:"fastfood", hamburger_restaurant:"fastfood",
-  cafe:"cafe", bakery:"cafe", coffee_shop:"cafe",
-  bar:"bar", pub:"bar", night_club:"concert",
-  movie_theater:"cinema", performing_arts_theater:"spectacle",
-  library:"biblio", museum:"musee", art_gallery:"musee", park:"parc",
-  coworking_space:"coworking",
-  hospital:"sante", pharmacy:"sante", doctor:"sante", drugstore:"sante",
-  local_government_office:"mairie", city_hall:"mairie", post_office:"mairie",
-  government_office:"emploi", employment_agency:"emploi",
-  association_or_organization:"asso", non_profit_organization:"asso",
-  social_services_organization:"asso", welfare_organization:"asso",
-  school:"ecole", university:"ecole", primary_school:"ecole", secondary_school:"ecole",
-  library:"biblio", tourist_attraction:"musee",
-  // un supermarché est un commerce, jamais de l'aide alimentaire : confondre
-  // les deux enverrait quelqu'un qui cherche à manger vers une caisse
-  supermarket:"commerce", grocery_store:"commerce", convenience_store:"commerce",
-  clothing_store:"friperie", thrift_store:"friperie", store:"commerce"
-};
-
-/* URL média d'une photo de lieu. Hauteur bornée : une carte de 88 px n'a
-   pas besoin d'un original de 4000 px sur un réseau mobile. */
-function photoGoogle(p){
-  const photo = (p.photos || [])[0];
-  if(!photo || !photo.name) return "";
-  return "https://places.googleapis.com/v1/"+photo.name+
-    "/media?maxHeightPx=400&skipHttpRedirect=false&key="+CLE_GOOGLE;
+function providerGoogle(){
+  return window.AutourProviders && AutourProviders.googlePlaces;
+}
+function ficheGoogleInterne(fiche){
+  const p = window.AutourProviders && AutourProviders.versInterne
+    ? AutourProviders.versInterne(fiche) : null;
+  if(!p) return null;
+  return Object.assign(p, {
+    nom:p.titre, type:(fiche && fiche.primaryType) || "", adresse:p.adresse || p.titre,
+    image:p.image || "", idGoogle:(p.sourceRefs || {}).googlePlaceId || p.idGoogle || "",
+    descriptionSource:p.description ? "google" : "",
+  });
+}
+function photoGoogle(place){
+  const fournisseur = providerGoogle();
+  return fournisseur && fournisseur.normaliserPlace
+    ? ((ficheGoogleInterne(fournisseur.normaliserPlace(place, GOOGLE_CONFIG)) || {}).image || "") : "";
+}
+function mapperPlace(place){
+  const fournisseur = providerGoogle();
+  return fournisseur ? ficheGoogleInterne(fournisseur.normaliserPlace(place, GOOGLE_CONFIG)) : null;
 }
 
-function mapperPlace(p){
-  return {
-    // l'identifiant Google : c'est lui qui permettra d'aller chercher, à la
-    // demande, le descriptif du lieu sans le payer pour toute une zone
-    idGoogle: p.id || (typeof p.name === "string" && p.name.indexOf("places/") === 0
-      ? p.name.slice("places/".length) : ""),
-    resumeGoogle: EXPLIQUE ? EXPLIQUE.resumeGoogle(p) : "",
-    nom:(p.displayName&&p.displayName.text)||"",
-    lat:p.location.latitude, lng:p.location.longitude,
-    note:p.rating, avis:p.userRatingCount,
-    ouvert: p.currentOpeningHours ? p.currentOpeningHours.openNow : undefined,
-    prixN: NIVEAU_PRIX[p.priceLevel],
-    cuisine: /_restaurant$/.test(p.primaryType||"")
-      ? (p.primaryType||"").replace(/_restaurant$/,"") : "",
-    horaires: (p.regularOpeningHours||{}).weekdayDescriptions || null,
-    tel: p.nationalPhoneNumber || "",
-    pmr: (p.accessibilityOptions||{}).wheelchairAccessibleEntrance,
-    type: p.primaryType || "", adresse: p.formattedAddress || "",
-    image: photoGoogle(p)
-  };
-}
-
-/* Une application de découverte doit donner envie avant de faire lire :
-   sans places.photos, toutes les cartes retombaient sur un emoji. */
-const CHAMPS_PLACE = "places.id,places.displayName,places.location,places.rating,"+
-  "places.photos,"+
-  "places.userRatingCount,places.currentOpeningHours.openNow,"+
-  "places.primaryType,places.formattedAddress,places.priceLevel,"+
-  "places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,"+
-  "places.accessibilityOptions.wheelchairAccessibleEntrance";
-
-/* ---- Le descriptif d'un lieu, demandé lieu par lieu ----------------------
-   Les résumés de Google (éditorial et généré) sont facturés dans une formule
-   plus chère que le reste. Les demander pour les vingt fiches de chaque zone
-   coûterait cher pour un texte que personne ne lira. On ne les demande donc
-   que lorsqu'une fiche s'ouvre vraiment, une fois par lieu, et on garde la
-   réponse : c'est un texte qui ne change pas d'un jour à l'autre.
-
-   Un échec n'est pas un problème : l'explication générique prend le relais. */
-const CHAMPS_DESCRIPTIF = "id,generativeSummary,editorialSummary";
-/* `generativeSummary` n'est pas ouvert à toutes les clés ni à tous les pays.
-   Quand l'API le refuse, elle refuse la requête entière : on redemande alors
-   le seul résumé éditorial plutôt que de perdre le descriptif. */
-const CHAMPS_DESCRIPTIF_SOBRE = "id,editorialSummary";
-let champsDescriptif = CHAMPS_DESCRIPTIF;
-const CLE_DESCRIPTIF = "autour.descriptif.";
-const descriptifs = new Map();
-
-function descriptifEnCache(idGoogle){
-  if(descriptifs.has(idGoogle)) return descriptifs.get(idGoogle);
-  try{
-    const brut = localStorage.getItem(CLE_DESCRIPTIF+idGoogle);
-    if(brut != null){ descriptifs.set(idGoogle, brut); return brut; }
-  }catch(e){ /* stockage indisponible : on redemandera, sans casser l'écran */ }
-  return null;
-}
-
+/* Les descriptions et compléments restent volatils : aucune réponse Places
+   n'est recopiée dans le stockage local ou dans Supabase. */
 async function descriptifGoogle(idGoogle){
-  if(!CLE_GOOGLE || !idGoogle) return "";
-  const connu = descriptifEnCache(idGoogle);
-  if(connu != null) return connu;
-
-  const demander = (champs)=>fetch(
-    "https://places.googleapis.com/v1/places/"+encodeURIComponent(idGoogle)+"?languageCode=fr",
-    {headers:{"X-Goog-Api-Key":CLE_GOOGLE, "X-Goog-FieldMask":champs}});
-
+  const fournisseur = providerGoogle();
+  if(!fournisseur || !idGoogle) return "";
   try{
-    let r = await demander(champsDescriptif);
-    // champ refusé : on retombe sur le résumé éditorial, une fois pour toutes
-    if(r.status === 400 && champsDescriptif !== CHAMPS_DESCRIPTIF_SOBRE){
-      journal.warn("Descriptif Google : résumé généré indisponible, repli sur l’éditorial");
-      champsDescriptif = CHAMPS_DESCRIPTIF_SOBRE;
-      r = await demander(champsDescriptif);
-    }
-    if(!r.ok){
-      journal.warn("Descriptif Google: HTTP", r.status);
-      // une erreur du client ne se corrigera pas en réessayant : on retient
-      // l'absence pour ne pas relancer la même requête à chaque ouverture.
-      // Une panne serveur, si.
-      if(r.status < 500) descriptifs.set(idGoogle, "");
-      return "";
-    }
-    const texte = EXPLIQUE ? EXPLIQUE.resumeGoogle(await r.json()) : "";
-    descriptifs.set(idGoogle, texte);
-    // on mémorise aussi l'absence de résumé : la redemander coûterait autant
-    try{ localStorage.setItem(CLE_DESCRIPTIF+idGoogle, texte); }catch(e){}
-    return texte;
-  }catch(e){ console.error("Descriptif Google:", e); return ""; }
+    const fiche = await fournisseur.details(idGoogle, GOOGLE_CONFIG);
+    return fiche && fiche.description || "";
+  }catch(e){ journal.warn("Descriptif Google indisponible"); return ""; }
 }
-
-/* ---- Enrichir, mais seulement ce qui va être montré ----------------------
-   Demander le prix et les horaires de Google pour tous les lieux d'une zone,
-   c'est payer vingt fiches pour en afficher cinq — et facturer une formule
-   chère à chaque déplacement de carte. On n'enrichit donc que les MEILLEURS
-   candidats d'un classement, et seulement quand ce qui manque change vraiment
-   la réponse : inutile d'aller chercher un prix si personne n'a parlé de
-   budget.
-
-   Chaque lieu n'est demandé qu'une fois, et le résultat est conservé. */
-const CHAMPS_ENRICHI = "id,priceLevel,priceRange,regularOpeningHours,currentOpeningHours";
-const enrichis = new Map();
-const MAX_ENRICHIS = 5;
-
 async function enrichirGoogle(idGoogle){
-  if(!CLE_GOOGLE || !idGoogle) return null;
-  if(enrichis.has(idGoogle)) return enrichis.get(idGoogle);
-  try{
-    const r = await fetch("https://places.googleapis.com/v1/places/"+
-      encodeURIComponent(idGoogle)+"?languageCode=fr",
-      {headers:{"X-Goog-Api-Key":CLE_GOOGLE, "X-Goog-FieldMask":CHAMPS_ENRICHI}});
-    if(!r.ok){
-      journal.warn("Enrichissement Google: HTTP", r.status);
-      if(r.status < 500) enrichis.set(idGoogle, null);   // inutile de réessayer
-      return null;
-    }
-    const j = await r.json();
-    const vu = DONNEES ? DONNEES.maintenant() : new Date().toISOString();
-    const fiche = {
-      prixN: NIVEAU_PRIX[j.priceLevel],
-      prixMin: j.priceRange && j.priceRange.startPrice ? Number(j.priceRange.startPrice.units) : null,
-      prixMax: j.priceRange && j.priceRange.endPrice ? Number(j.priceRange.endPrice.units) : null,
-      horaires: (j.regularOpeningHours||{}).weekdayDescriptions || null,
-      ouvert: j.currentOpeningHours ? j.currentOpeningHours.openNow : undefined,
-      vuLe: vu,
-    };
-    enrichis.set(idGoogle, fiche);
-    return fiche;
-  }catch(e){ console.error("Enrichissement Google:", e); return null; }
+  const fournisseur = providerGoogle();
+  if(!fournisseur || !idGoogle) return null;
+  try{ return ficheGoogleInterne(await fournisseur.details(idGoogle, GOOGLE_CONFIG)); }
+  catch(e){ journal.warn("Enrichissement Google indisponible"); return null; }
 }
-
-/* Complète les premiers résultats d'un classement, puis redessine. Rien
-   n'attend : la liste est déjà à l'écran quand les compléments arrivent. */
+const MAX_ENRICHIS = 5;
 function enrichirCandidats(classement, intention, redessiner){
-  if(!CLE_GOOGLE || !DONNEES || !Array.isArray(classement)) return;
-  const aDemander = [];
-  for(const l of classement){
-    if(aDemander.length >= MAX_ENRICHIS) break;
-    if(!l.idGoogle || enrichis.has(l.idGoogle)) continue;
-    // ce qui manque ET qui a été demandé : rien d'autre ne justifie un appel
-    if(!DONNEES.manque(l, intention, {disponibilite:(x,t)=>dispoDe(x, null, t)}).length) continue;
-    aDemander.push(l);
-  }
-  if(!aDemander.length) return;
-  journal.info("Enrichissement Google :", aDemander.length, "candidat(s) sur", classement.length);
-  Promise.all(aDemander.map(l=>enrichirGoogle(l.idGoogle).then(f=>{
-    if(!f) return;
-    const cible = lieux.find(x=>x.id === l.id) || l;
-    if(f.prixN != null) cible.prixN = f.prixN;
-    if(f.prixMin != null && cible.prix == null) cible.prix = f.prixMin;
-    if(f.horaires && !cible.horaires) cible.horaires = f.horaires;
-    if(f.ouvert !== undefined) cible.ouvert = f.ouvert;
-    cible.prixVuLe = f.vuLe; cible.horairesVusLe = f.vuLe;
-  }))).then(()=>{ if(typeof redessiner === "function") redessiner(); });
+  if(!DONNEES || !Array.isArray(classement)) return;
+  const aDemander = classement.filter(l=>l.idGoogle &&
+    DONNEES.manque(l, intention, {disponibilite:(x,t)=>dispoDe(x, null, t)}).length).slice(0,MAX_ENRICHIS);
+  Promise.all(aDemander.map(async l=>{
+    const f = await enrichirGoogle(l.idGoogle); if(!f) return;
+    ["prixN","horaires","ouvert","tel","url","note","avis","image"].forEach(cle=>{
+      if(f[cle] != null && f[cle] !== "") l[cle] = f[cle];
+    });
+  })).then(()=>{ if(typeof redessiner === "function") redessiner(); });
 }
-
-/* Recherche libre chez Google. OpenStreetMap ignore beaucoup d'équipements
-   publics (une mission locale y est rarement cartographiée) alors que Google
-   sait où ils sont : on l'interroge quand notre propre base ne suffit pas. */
 async function chercherGoogle(q, lat, lng){
-  if(!CLE_GOOGLE) return [];
-  try{
-    const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "X-Goog-Api-Key":CLE_GOOGLE,
-        "X-Goog-FieldMask":CHAMPS_PLACE
-      },
-      body:JSON.stringify({
-        textQuery:q, languageCode:"fr", maxResultCount:12,
-        locationBias:{circle:{center:{latitude:lat,longitude:lng},radius:6000}}
-      })
-    });
-    if(!r.ok){ console.error("Recherche Google: HTTP", r.status, await r.text()); return []; }
-    const j = await r.json();
-    journal.info("Recherche Google «"+q+"» :", (j.places||[]).length, "résultat(s)");
-    return (j.places||[]).map(mapperPlace);
-  }catch(e){ console.error("Recherche Google:", e); return []; }
+  const fournisseur = providerGoogle();
+  if(!fournisseur || !(await googleMapsActif())) return [];
+  try{ return (await fournisseur.search(q,lat,lng,GOOGLE_CONFIG)).map(ficheGoogleInterne).filter(Boolean); }
+  catch(e){ journal.warn("Recherche Google indisponible"); return []; }
 }
-
-async function placesGoogle(lat, lng, types, signal){
-  const corps = {
-    maxResultCount:20,
-    locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:1500}}
-  };
-  if(types) corps.includedTypes = types;
-  const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-    method:"POST", signal,
-    headers:{
-      "Content-Type":"application/json",
-      "X-Goog-Api-Key":CLE_GOOGLE,
-      "X-Goog-FieldMask":CHAMPS_PLACE
-    },
-    body:JSON.stringify(corps)
-  });
-  if(!r.ok){ console.error("Google Places: réponse HTTP", r.status, await r.text()); return []; }
-  const j = await r.json();
-  return (j.places||[]).map(mapperPlace);
+async function placesGoogle(lat,lng,types,signal){
+  const fournisseur = providerGoogle();
+  if(!fournisseur || !(await googleMapsActif())) return [];
+  try{ return (await fournisseur.nearby(lat,lng,GOOGLE_CONFIG,{types,signal})).map(ficheGoogleInterne).filter(Boolean); }
+  catch(e){ if(!(e && e.name === "AbortError")) journal.warn("Google Places indisponible"); return []; }
 }
-
-/* Une requête généraliste suffit à l'ouverture. La passe ciblée restauration
-   coûtait une seconde requête facturée à chaque zone alors que personne
-   n'avait encore demandé à manger : elle part maintenant quand on ouvre
-   « Manger », et pas avant. */
-async function notesGoogle(lat, lng, opts){
-  if(!CLE_GOOGLE) return null;
+async function notesGoogle(lat,lng,opts){
   const o = opts || {};
-  try{
-    const listes = [placesGoogle(lat, lng, null, o.signal)];
-    if(o.resto) listes.push(placesGoogle(lat, lng, TYPES_RESTO, o.signal));
-    const recus = await Promise.all(listes);
-    const uniques = new Map();
-    recus.flat().forEach(f=>{ if(f.nom) uniques.set(f.nom+"|"+f.lat.toFixed(4), f); });
-    const fiches = [...uniques.values()];
-    journal.info("Google Places :", fiches.length, "fiche(s) reçue(s)");
-    return fiches;
-  }catch(e){
-    if(e && e.name === "AbortError") return null;
-    console.error("notesGoogle: échec de la requête", e); return null;
-  }
+  const listes = [placesGoogle(lat,lng,null,o.signal)];
+  if(o.resto) listes.push(placesGoogle(lat,lng,TYPES_RESTO,o.signal));
+  const fiches = (await Promise.all(listes)).flat();
+  const uniques = new Map();
+  fiches.forEach(f=>{ if(f && f.nom) uniques.set(f.idGoogle || f.nom+"|"+f.lat.toFixed(4),f); });
+  return [...uniques.values()];
 }
-
-/* Complément restauration, déclenché seulement quand le besoin « Manger »
-   s'ouvre. Une fois par zone : on ne repaie pas à chaque aller-retour. */
 const zonesResto = new Set();
-function completerRestauration(){
-  if(!positionMoi || !CLE_GOOGLE) return;
-  const [lat,lng] = positionMoi;
-  const cle = lat.toFixed(2)+","+lng.toFixed(2);
-  if(zonesResto.has(cle)) return;
+function completerRestauration(opts){
+  if(!positionMoi) return Promise.resolve([]);
+  const o=opts||{}, [lat,lng]=positionMoi, cle=lat.toFixed(2)+","+lng.toFixed(2);
+  if(o.force) zonesResto.delete(cle);
+  if(zonesResto.has(cle)) return Promise.resolve([]);
   zonesResto.add(cle);
-  placesGoogle(lat, lng, TYPES_RESTO)
-    .then(f=>{ if(f && f.length){ greffeNotes(lieux, f); ajouterLieuxGoogle(f); majAccueil(); } })
-    .catch(()=>{});
+  return placesGoogle(lat,lng,TYPES_RESTO).then(f=>{
+    if(!f.length){ zonesResto.delete(cle); return []; }
+    greffeNotes(lieux,f); ajouterLieuxGoogle(f); majAccueil();
+    if(feuilleNiveau === "manger") majFeuille2();
+    return f;
+  }).catch(()=>{ zonesResto.delete(cle); return []; });
 }
-
-/* Les commerces connus de Google mais absents d'OpenStreetMap : sans eux, la
-   liste des restos serait amputée de tout ce qui n'est pas cartographié. */
-function ajouterLieuxGoogle(fiches, catDefaut){
-  if(!fiches) return 0;
-  const aAjouter = [];
-  fiches.forEach(f=>{
-    if(!f.nom) return;
-    // le nom tranche mieux que le type : Google range la Mission locale en
-    // « organisation à but non lucratif », ce qui la noierait dans les assos
-    const service = preciserService(f.nom);
-    let cat = affinerCategorie(CAT_GOOGLE[f.type] || f.autourCat || catDefaut, f.nom);
-    if(/Mission locale|France Travail|Cap emploi|Maison de l’emploi/.test(service)) cat = "emploi";
-    else if(!cat && service) cat = "asso";
-    if(!cat) return;
-    const deja = lieux.some(l=>
-      distanceM(l.lat,l.lng,f.lat,f.lng) < 80 &&
-      sansAccents(l.titre) === sansAccents(f.nom));
-    if(deja) return;
-    aAjouter.push(normaliserItem({
-      id:"g"+hash(f.nom+f.lat), cat, titre:f.nom,
-      description:f.description || "", type:f.type,
-      idGoogle:f.idGoogle || "", resumeGoogle:f.resumeGoogle || "",
-      adresse:f.adresse || f.nom, cp:commune,
-      quand:"Voir sur place", gratuit:true, prix:0,
-      places:null, qr:false, par:"Google Maps",
-      lat:f.lat, lng:f.lng, note:f.note, avis:f.avis, ouvert:f.ouvert,
-      prixN:f.prixN, cuisine:f.cuisine, service, horaires:f.horaires,
-      // un lieu ramené par une recherche de réseau d'aide l'est par construction
-      solidaire: f.solidaire === true || estSolidaire(f.nom, false),
-      tel:f.tel, pmr:f.pmr
-    }, "google_places"));
-  });
-  const ajoutes = aAjouter.length;
-  if(ajoutes) fusionner(aAjouter, "permanent");
-  if(ajoutes) journal.info("Google Places :", ajoutes, "lieu(x) ajouté(s)");
-  return ajoutes;
-}
-
-/* rapproche chaque lieu OSM de la fiche Google la plus proche (< 150 m) */
-function greffeNotes(liste, fiches){
-  if(!fiches) return;
-  liste.forEach(l=>{
-    let meilleur=null, dMin=150;
-    const nomL = sansAccents(l.titre);
-    fiches.forEach(f=>{
-      const d = distanceM(l.lat,l.lng,f.lat,f.lng);
-      if(d > 400) return;
-      // un nom qui correspond l'emporte sur la simple proximité : deux
-      // restaurants mitoyens ne doivent pas hériter de la note l'un de l'autre
-      const nomF = sansAccents(f.nom);
-      const memeNom = nomL && nomF && (nomL.includes(nomF) || nomF.includes(nomL));
-      const score = memeNom ? d/4 : d;
-      if(score < dMin){ dMin = score; meilleur = f; }
+function ajouterLieuxGoogle(fiches,catDefaut){
+  const ajouts=[];
+  (fiches||[]).forEach(f=>{
+    if(!f || !f.nom) return;
+    const service=preciserService(f.nom);
+    let cat=affinerCategorie(CAT_GOOGLE[f.type] || f.cat || f.autourCat || catDefaut,f.nom);
+    if(/Mission locale|France Travail|Cap emploi|Maison de l’emploi/.test(service)) cat="emploi";
+    else if(!cat && service) cat="asso";
+    const dejaPresent=lieux.find(l=>{
+      if(!l || estTemporaire(l) || distanceM(l.lat,l.lng,f.lat,f.lng)>=80) return false;
+      const memeAdresse=adressesLieuxCompatibles(l.adresse,f.adresse);
+      return (memeAdresse || nomsLieuxCompatibles(l.titre,f.nom)) &&
+        (memeAdresse || familleDedupLieu(l)===familleDedupLieu({cat}));
     });
-    if(meilleur){
-      l.note = meilleur.note; l.avis = meilleur.avis;
-      l.ouvert = meilleur.ouvert;                       // ouvert / fermé maintenant
-      if(meilleur.prixN != null) l.prixN = meilleur.prixN;
-      if(meilleur.horaires) l.horaires = meilleur.horaires;
-      if(meilleur.tel) l.tel = meilleur.tel;
-      if(meilleur.pmr != null) l.pmr = meilleur.pmr;
-      // la photo ne remplace jamais celle d'un événement déjà illustré
-      if(meilleur.image && !l.image) l.image = meilleur.image;
-      // l'identifiant Google voyage avec le reste : c'est ce qui permet
-      // d'aller chercher le descriptif d'un lieu venu d'OpenStreetMap
-      if(meilleur.idGoogle && !l.idGoogle) l.idGoogle = meilleur.idGoogle;
-      if(meilleur.resumeGoogle && !l.resumeGoogle) l.resumeGoogle = meilleur.resumeGoogle;
+    if(!cat || dejaPresent){
+      if(dejaPresent){
+        appliquerFicheGoogle(dejaPresent,f);
+        const canonique=permanentPlaces.find(l=>l.id===dejaPresent.id);
+        if(canonique && canonique!==dejaPresent) appliquerFicheGoogle(canonique,f);
+        rendre();
+      }
+      return;
     }
+    ajouts.push(normaliserItem(Object.assign({},f,{id:f.id || f.autourId,cat,titre:f.nom,
+      description:f.description||"",quand:"Voir sur place",gratuit:true,prix:0,places:null,qr:false,
+      par:"Google Maps",service,solidaire:f.solidaire===true||estSolidaire(f.nom,false),
+      imageSource:f.imageSource||"google_places"}),"google_places"));
   });
-  rendre();                     // les pastilles reflètent aussitôt les nouvelles infos
+  if(ajouts.length) fusionner(ajouts,"permanent");
+  return ajouts.length;
+}
+function nomsLieuxCompatibles(nomA,nomB){
+  const nettoyer=nom=>sansAccents(nom||"").replace(/[^a-z0-9]+/g," ").trim();
+  const a=nettoyer(nomA),b=nettoyer(nomB); if(!a||!b) return false;
+  if(a===b) return true;
+  const ignorer=new Set(["le","la","les","de","du","des","chez","restaurant","resto","cafe","bar","brasserie","snack","fast","food","boulangerie"]);
+  const mots=nom=>[...new Set(nom.split(/\s+/).filter(m=>m.length>2&&!ignorer.has(m)))];
+  const aa=mots(a),bb=mots(b), communs=aa.filter(m=>bb.includes(m));
+  if(aa.length===1 && bb.length===1 ? communs[0] && communs[0].length>=5
+    : communs.length>=2 && communs.length/Math.min(aa.length,bb.length)>=2/3) return true;
+  /* Une saisie OSM peut contenir une faute isolée alors que Places ajoute un
+     suffixe de zone. Ce n'est pas une permission de fusionner deux homonymes :
+     on exige le même premier mot, un autre mot long identique et une seule
+     paire de mots suffisamment proche. */
+  const distanceEdition=(x,y)=>{
+    const ligne=Array.from({length:y.length+1},(_,i)=>i);
+    for(let i=1;i<=x.length;i++){
+      let diagonal=ligne[0]; ligne[0]=i;
+      for(let j=1;j<=y.length;j++){
+        const precedent=ligne[j];
+        ligne[j]=Math.min(ligne[j]+1,ligne[j-1]+1,diagonal+(x[i-1]===y[j-1]?0:1));
+        diagonal=precedent;
+      }
+    }
+    return ligne[y.length];
+  };
+  const premierCommun=a.split(/\s+/)[0]===b.split(/\s+/)[0] && a.split(/\s+/)[0].length>=4;
+  const autreCommun=communs.some(m=>m.length>=5);
+  const fauteIsolee=aa.some(x=>x.length>=5 && bb.some(y=>y.length>=5 &&
+    distanceEdition(x,y)<=Math.max(1,Math.floor(Math.max(x.length,y.length)*.2))));
+  if(premierCommun && autreCommun && fauteIsolee) return true;
+  /* La comparaison ci-dessus privilégie l'absence de faux positif. Entre une
+     fiche OSM et Places, on peut aussi rencontrer une unique faute de frappe
+     ou une ville ajoutée au nom commercial. À moins de 80 m (appelant), le
+     premier mot doit être identique et le préfixe compact quasi identique. */
+  const premierA=a.split(/\s+/)[0], premierB=b.split(/\s+/)[0];
+  const compactA=a.replace(/\s/g,""), compactB=b.replace(/\s/g,"");
+  if(!premierA || premierA.length<4 || premierA!==premierB || Math.min(compactA.length,compactB.length)<12) return false;
+  const court=compactA.length<=compactB.length?compactA:compactB;
+  const long=compactA.length<=compactB.length?compactB:compactA;
+  let ligne=Array.from({length:court.length+1},(_,i)=>i);
+  for(let i=1;i<=court.length;i++){
+    let diagonal=ligne[0]; ligne[0]=i;
+    for(let j=1;j<=court.length;j++){
+      const precedent=ligne[j];
+      ligne[j]=Math.min(ligne[j]+1,ligne[j-1]+1,diagonal+(court[i-1]===long[j-1]?0:1));
+      diagonal=precedent;
+    }
+  }
+  return 1-ligne[court.length]/court.length>=.9;
+}
+function adressesLieuxCompatibles(adresseA,adresseB){
+  const nettoyer=adresse=>sansAccents(adresse||"").replace(/[^a-z0-9]+/g," ").trim();
+  const a=nettoyer(adresseA),b=nettoyer(adresseB);
+  return a.length>=8 && b.length>=8 && (a.includes(b) || b.includes(a));
+}
+function appliquerFicheGoogle(l,f){
+  if(!l||!f) return;
+  // La géométrie Places devient la référence d'un établissement homonyme :
+  // l'identité reste Autour, les références OSM et Google restent toutes deux
+  // attachées à la fiche pour permettre un futur changement de fournisseur.
+  if(Number.isFinite(Number(f.lat)) && Number.isFinite(Number(f.lng))){ l.lat=f.lat; l.lng=f.lng; }
+  // Le nom de Places est le nom commercial affiché par défaut. Une publication
+  // Autour garde cependant exactement le titre choisi par son créateur.
+  if(l.source!=="autour" && !l.dbId && f.nom){ l.titre=f.nom; l.title=f.nom; }
+  ["note","avis","ouvert","prixN","horaires","tel","url","pmr","idGoogle","description"].forEach(cle=>{
+    if(f[cle] != null && f[cle] !== "") l[cle]=f[cle];
+  });
+  if(f.image && !l.image){ l.image=f.image; l.imageSource=f.imageSource||"google_places"; }
+  l.sourceRefs=Object.assign({},l.sourceRefs||{},f.sourceRefs||{},f.idGoogle?{googlePlaceId:f.idGoogle}:{});
+}
+function greffeNotes(liste,fiches){
+  (liste||[]).forEach(l=>{
+    let meilleur=null,dMin=150;
+    (fiches||[]).forEach(f=>{ const d=distanceM(l.lat,l.lng,f.lat,f.lng);
+      if(d<dMin && (nomsLieuxCompatibles(l.titre,f.nom) || adressesLieuxCompatibles(l.adresse,f.adresse))){dMin=d;meilleur=f;} });
+    if(meilleur){ appliquerFicheGoogle(l,meilleur);
+      const canonique=permanentPlaces.find(x=>x.id===l.id); if(canonique&&canonique!==l) appliquerFicheGoogle(canonique,meilleur); }
+  });
+  rendre();
 }
 
 function distanceM(lat1,lng1,lat2,lng2){
@@ -7512,9 +7417,6 @@ const RESEAUX_AIDE = [
   { q:"bains-douches municipaux",   cat:"toilettes" },
 ];
 
-/* Ces adresses ne bougent quasiment jamais : on les garde une semaine plutôt
-   que de relancer dix recherches facturées à chaque ouverture de l'app. */
-const cleAide = (lat,lng)=>"autour:aide:"+lat.toFixed(2)+","+lng.toFixed(2);
 /* Où l'aide a déjà été cherchée. Un simple booléen suffisait tant qu'on
    restait chez soi : dès qu'on regardait une autre commune, plus rien
    n'était chargé et l'écran d'aide restait celui du point de départ. On
@@ -7542,24 +7444,21 @@ async function chargerAide(lat,lng){
 }
 
 async function chargerAideVraiment(lat,lng){
-
-  try{
-    const brut = localStorage.getItem(cleAide(lat,lng));
-    if(brut){
-      const o = JSON.parse(brut);
-      if(Date.now() - o.t < 7*24*3600*1000){
-        // Un seul pipeline de fusion/rendu pour tout le cache. Auparavant,
-        // chaque adresse reconstruisait tous les marqueurs et bloquait le clic.
-        const fiches = o.l.map(x=>Object.assign({},x.f,{autourCat:x.cat}));
-        ajouterLieuxGoogle(fiches);
-        return;
-      }
-    }
-  }catch(e){}
-
   charge("Recherche des points d’aide…");
+  /* Les sources sociales et ouvertes passent d'abord. Elles portent les
+     catégories et conditions d'accès ; Google ne sert ensuite qu'à compléter
+     une structure correspondante (position, téléphone, site, horaires, photo). */
+  const [osm, tourisme] = await Promise.all([
+    vraisLieux(lat,lng,null,{cats:CATS_AIDE,rayon:9000,limite:180}),
+    lieuxDatatourisme(lat,lng)
+  ]);
+  if(osm && osm.length) fusionner(osm,"permanent");
+  if(tourisme && tourisme.length) fusionner(tourisme,"datatourisme");
+
   const garder = [];
-  await Promise.all(RESEAUX_AIDE.map(async r=>{
+  const choix = typeof sousAideChoisi === "function" ? sousAideChoisi() : null;
+  const reseaux = RESEAUX_AIDE.filter(r=>!choix || (choix.cats || []).includes(r.cat)).slice(0,6);
+  await Promise.all(reseaux.map(async r=>{
     const res = await chercherGoogle(r.q, lat, lng);
     res.forEach(f=>{
       // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
@@ -7570,10 +7469,7 @@ async function chargerAideVraiment(lat,lng){
     });
   }));
   charge(null);
-
-  try{ localStorage.setItem(cleAide(lat,lng), JSON.stringify({t:Date.now(), l:garder})); }
-  catch(e){}
-  journal.info("Aide sociale :", garder.length, "point(s) trouvé(s)");
+  journal.info("Aide sociale :", garder.length, "complément(s) Google ;", (osm||[]).length, "source(s) ouvertes");
   majAccueil();
 }
 
@@ -7818,7 +7714,7 @@ const POIDS = {
 
 /* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé ---- */
 const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
-                      ignores:{}, transport:"pied", vu:0 };
+                      ignores:{}, vu:0 };
 let PROFIL = (()=>{
   try{ return Object.assign({}, PROFIL_VIDE,
        JSON.parse(localStorage.getItem("autour:profil")||"{}")); }
@@ -7846,7 +7742,6 @@ function mettreAJourProfil(action, valeur){
   }
   if(action === "ignore" && valeur)
     PROFIL.ignores[valeur] = (PROFIL.ignores[valeur]||0) + 1;
-  if(action === "transport" && valeur) PROFIL.transport = valeur;
   enregistrerProfil();
 }
 
@@ -7982,6 +7877,7 @@ const POIDS_AIDE = {
   proximite:      90,   // 3. proximité, décroissance douce
   DECROISSANCE: 1600,   // on marche plus loin pour manger que pour un café
   urgence:        13,   // 4. multiplié par le niveau d'urgence (1 à 5)
+  pertinence:     165,  // un réseau spécialisé gagne sur une catégorie large
   solidaire:      25,
   verifie:        18,
   ferme:        -140,
@@ -8034,6 +7930,17 @@ function scoreAide(l, ctx){
   s += u * POIDS_AIDE.urgence;
   if(u >= 5) raisons.push([u*POIDS_AIDE.urgence,"Service d’urgence"]);
 
+  const besoins = besoinsSelectionnesAide();
+  if(AIDE && besoins.length){
+    const p = besoins.map(id=>AIDE.pertinence(l, id, {large:true}))
+      .filter(x=>x.direct).sort((a,b)=>b.poids-a.poids)[0];
+    if(p){
+      const valeur = p.poids * POIDS_AIDE.pertinence;
+      s += valeur;
+      raisons.push([valeur, p.raison]);
+    }
+  }
+
   if(l.solidaire){ s += POIDS_AIDE.solidaire; raisons.push([POIDS_AIDE.solidaire,"Structure solidaire"]); }
   // le service n'ajoute pas de points — il n'y a pas de raison de mieux
   // classer une Mission locale qu'un CCAS — mais il passe devant la distance
@@ -8054,16 +7961,32 @@ function catsAideActives(){
   return s ? new Set(s.cats) : SET_AIDE;
 }
 
+function besoinsSelectionnesAide(){
+  return besoinsAide.length ? besoinsAide :
+    (sousAide && sousAide !== "urgence" ? [sousAide] : []);
+}
+
+/* Une catégorie large comme « association » sert à charger les données, mais
+   ne suffit pas à recommander une structure pour un besoin précis. Le contrat
+   est identique pour le panneau et les marqueurs : aucune solution hors sujet
+   ne peut apparaître sur l'un sans apparaître sur l'autre. */
+function estSolutionAideLiee(l){
+  const choix = sousAideChoisi();
+  if(choix && choix.urgentSeul) return niveauUrgence(l) >= 5;
+  const besoins = besoinsSelectionnesAide();
+  if(!besoins.length) return correspondUneCategorie(l, catsAideActives());
+  return !!(AIDE && AIDE.estSolution(l, besoins));
+}
+
 function proposableAuto(l, ctx){
   // une publication toute fraîche est proposable par construction : c'est la
   // personne devant l'écran qui vient de l'écrire
   if(publicationsEpinglees.has(l.id)) return true;
   if(modeAide){
-    // même ici, ce qu'on cherche par son nom ou qu'on choisit dans Explorer
-    // reste trouvable : le mode change les priorités, il n'enferme personne
-    if(demandeExplicite(l, ctx)) return true;
-    // pour le reste, la ville s'efface : on ne propose que ce qui aide
-    if(!correspondUneCategorie(l,catsAideActives())) return false;
+    // Un besoin sélectionné ferme vraiment la sélection : une association
+    // voisine mais non reliée à « Logement » ou « Santé » ne prend jamais la
+    // place d'une solution dans le panneau ni sur la carte.
+    if(!estSolutionAideLiee(l)) return false;
     const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
     if(s && s.solidaireSeul && !l.solidaire) return false;
     // « Urgence » ne montre que ce qui reçoit en urgence : un club de sport
@@ -8074,7 +7997,7 @@ function proposableAuto(l, ctx){
   if(demandeExplicite(l, ctx)) return true;
   if(JAMAIS_AUTO.has(l.cat)) return false;
   // un arrêt n'est pas une destination : il reste chargé, mais ne se dessine
-  // que si on a allumé la couche, cherché un transport ou ouvert un itinéraire
+  // que si on a allumé la couche ou cherché explicitement un transport
   if(CATS_TRANSPORT.has(l.cat) && !transportsDemandes(ctx)) return false;
   // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
   // demain, l'information de Google ne dit plus rien du moment regardé.
@@ -8260,13 +8183,7 @@ function classementFeuille(){
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
-    // l'ETA réel pilote l'ordre ET l'exclusion : un lieu fermé à l'arrivée
-    // n'est pas un résultat, même s'il est le plus proche
-    etaFor:l=>etaConnu(l, centre),
   });
-  // les itinéraires manquants arrivent après coup : on redessine la feuille
-  // une fois, avec le vrai ordre
-  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau !== null) majFeuille2(); });
   return classement;
 }
 
@@ -8349,6 +8266,7 @@ function fermerFeuille2(options){
   delete f.dataset.suspended;
   reglerFeuilleDeplie(false);
   layerManager.deactivate(NOMS_COUCHES.mainSheet);
+  synchroniserRechercheDesktop();
   majRaccourcis();
   if(o.nettoyerHistorique !== false && historiqueFeuilleBesoins){
     historiqueFeuilleBesoins=false;
@@ -8368,10 +8286,12 @@ function majFeuille2(){
   const f = $("#feuilleBesoins");
   if(!f || feuilleNiveau === null || modeNav || modePose){
     if(f) f.hidden = true;
+    synchroniserRechercheDesktop();
     synchroniserHauteurFeuille();
     return;
   }
   f.hidden = false;
+  synchroniserRechercheDesktop();
 
   const corps = $("#fbCorps");
   const retour = $("#fbRetour");
@@ -8396,7 +8316,10 @@ function majFeuille2(){
     retour.hidden = true;
     // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
-    let reco = recommandationsAccueil(12);
+    /* Sur desktop, la référence montre un aperçu de sept cartes puis les
+       transports et les liens. « Voir tout » conserve l'accès au classement
+       complet ; le mobile garde son défilement progressif plus long. */
+    let reco = recommandationsAccueil(7);
   // le classement peut ne rien rendre au tout début (aucun ETA, aucun horaire) :
   // on montre alors l'échantillon varié du cache plutôt qu'un écran vide
   if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
@@ -8407,10 +8330,10 @@ function majFeuille2(){
       besoinsRapidesHTML()+
       ongletsTemps()+
       blocAideAccueil()+
+      '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
+        '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
       (reco.length
-        ? '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
-            '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
-          '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
+        ? '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
             reco.map(carteRecommandation).join("")+'</div>'
         : statutGroupeHTML())+
       (creneau === "maintenant" ? blocTransports() : "")+
@@ -8463,6 +8386,11 @@ function piedFeuille(){
    alors que ça veut dire qu'on n'a rien trouvé. La nuance compte, et les
    sorties doivent être là. */
 function messageVide(type){
+  /* Sans point de départ, « cette zone » serait une affirmation vide. Les
+     choix suivants sont disponibles immédiatement, sans attendre Overpass,
+     Google, la géolocalisation ni une quelconque donnée inventée. */
+  if(!positionConnue()) return '<div class="fb-vide" data-vide="inconnu">'+
+    '<p>Je ne sais pas encore où chercher.</p>'+blocOuRegarder()+'</div>';
   return '<div class="fb-vide" data-vide="'+esc(type||"autre")+'">'+
     'Je n’ai rien trouvé dans cette zone. Ça ne veut pas dire qu’il n’y a rien.'+
     '<div class="etat-vide-actions">'+
@@ -8485,10 +8413,21 @@ function squeletteHTML(n){
 }
 
 function statutRechercheHTML(nombreResultats){
-  // tant que ça charge, on ne dit jamais qu'il n'y a rien : on ne le sait pas
-  if(rechercheEnCours()) return squeletteHTML(3);
+  // Quand des résultats issus du cache ou d'une première source sont déjà là,
+  // ils restent au premier plan. Trois squelettes au-dessus d'eux donnaient
+  // l'impression que la liste n'avait pas chargé alors qu'elle était utilisable.
+  if(rechercheEnCours()) return nombreResultats
+    ? '<div class="fb-statut partiel" role="status"><span>Mise à jour des résultats…</span></div>'
+    : squeletteHTML(3);
   if(rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED && !positionMoi)
     return '<div class="fb-statut">Active ta position ou choisis un endroit sur la carte.</div>';
+  const sourceIndisponible = rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.NETWORK_ERROR ||
+    rechercheEtat.events === SEARCH_STATES.NETWORK_ERROR || etatErreurPartielle();
+  if(nombreResultats && sourceIndisponible)
+    return '<div class="fb-statut partiel"><span>Résultats disponibles · mise à jour incomplète</span>'+
+      '<button data-etat-action="retry">Actualiser</button></div>';
   if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE || rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE)
     return '<div class="fb-statut erreur">Certains lieux n’ont pas pu être chargés. Réessayer.'+
       '<br><button data-etat-action="retry">Réessayer</button></div>';
@@ -8500,36 +8439,84 @@ function statutRechercheHTML(nombreResultats){
       '<br><button data-etat-action="retry">Réessayer</button></div>';
   if(!nombreResultats)
     return '<div class="fb-statut">Rien d’ouvert à proximité pour le moment.'+
-      '<br><button data-etat-action="all">Tout voir</button></div>';
+      '<br><button data-etat-action="all">Voir tous les lieux</button>'+
+      '<button data-etat-action="aide">Trouver de l’aide</button></div>';
   return "";
+}
+
+/* La distance seule remplirait l'aperçu Manger de cinq lignes OSM sans photo,
+   note ni horaire alors que Google vient de fournir des fiches complètes à
+   quelques minutes de là. On garde trois places pour les premiers du vrai
+   classement et on réserve au plus deux places à des résultats documentés.
+   Leur ordre relatif reste celui du classement : la donnée ne devient jamais
+   un passe-droit illimité sur la proximité. */
+function selectionResultatsFeuille(classement, limite){
+  const items = classement.slice(0, limite);
+  if(feuilleNiveau !== "manger" || items.length < limite) return items;
+  const complet = l=>!!(l && l.image && Number.isFinite(Number(l.note)) &&
+    Number(l.avis) > 0 && Array.isArray(l.horaires) && l.horaires.length);
+  const objectif = Math.min(2, classement.filter(complet).length);
+  let presents = items.filter(complet).length;
+  if(presents >= objectif) return items;
+  const deja = new Set(items.map(l=>l.id));
+  const candidats = classement.filter(l=>complet(l) && !deja.has(l.id));
+  for(const candidat of candidats){
+    const aRemplacer = items.map((l,i)=>({l,i})).reverse().find(x=>!complet(x.l));
+    if(!aRemplacer) break;
+    items[aRemplacer.i] = candidat;
+    presents += 1;
+    if(presents >= objectif) break;
+  }
+  const rang = new Map(classement.map((l,i)=>[l.id,i]));
+  return items.sort((a,b)=>(rang.get(a.id)||0)-(rang.get(b.id)||0));
 }
 
 /* Les cinq meilleures recommandations appartiennent à l'intention ouverte,
    pas à une ancienne sélection d'accueil. Elles précèdent toujours les menus. */
 function blocResultats(){
   const classement = classementFeuille();
-  const items = classement.slice(0,5);
+  const items = selectionResultatsFeuille(classement,5);
   const statut = statutRechercheHTML(items.length);
-  if(!items.length) return statut;
+  const chargement = rechercheEnCours();
   const ouverts = classement.filter(l=>l.ouvert === true || (l.isTemporary && isAvailableNow(l,Date.now()))).length;
+  /* Les cinq emplacements existent déjà pendant leur chargement : garder leur
+     titre stabilise la hiérarchie et évite que tout le panneau saute quand les
+     données arrivent. Il s'agit d'une capacité d'aperçu, pas d'un faux compte
+     de résultats confirmés. */
+  const nombreAffiche = items.length || (chargement ? 5 : 0);
   const entete = '<div class="fb-resultats-tete" data-testid="primary-results">'+
-    '<strong>'+items.length+' '+(items.length>1?'solutions':'solution')+' près de toi</strong>'+
+    '<strong>'+nombreAffiche+' '+(nombreAffiche>1?'solutions':'solution')+' près de toi</strong>'+
     '<span>'+(ouverts ? ouverts+' '+(ouverts>1?'ouvertes':'ouverte') : 'Les mieux classées')+'</span></div>';
-  return entete+statut+items.map((l,index)=>{
+  if(!items.length) return (nombreAffiche ? entete : "")+statut;
+  const liste = items.map((l,index)=>{
     const c = CATS[l.cat] || {emoji:"📍"};
     const bouts = ['<span class="raison">'+esc(l.rankReason)+'</span>'];
-    if(l.note) bouts.push("★ "+l.note.toFixed(1));
+    if(l.note) bouts.push("★ "+l.note.toFixed(1)+
+      (l.avis ? " ("+Number(l.avis).toLocaleString("fr-FR")+" avis)" : ""));
     // dans l'aide, le nom seul ne suffit pas : « CCAS » ne dit rien tant
     // qu'on n'a pas eu besoin d'un CCAS. Une ligne dit à quoi ça sert.
     const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 110) : "";
+    /* Les petites lignes de résultat n'ont pas la place d'afficher une
+       attribution complète. Une photo Places reste donc réservée à la carte
+       de recommandation et à la fiche, où son crédit est réellement visible. */
+    const photoVisible = l.image && !(l.imageSource === "google_places" && l.imageAttribution);
+    const photo = photoVisible
+      ? '<span class="ac-photo" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+          '<i>'+c.emoji+'</i><img loading="lazy" decoding="async" fetchpriority="low" alt="" '+
+          'src="'+esc(l.image)+'" onload="this.classList.add(\'vue\')" onerror="this.remove()"></span>'
+      : '';
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+(index+1)+'</span>'+
+      photo+
       '<span class="ac-txt"><span class="ac-nom">'+esc(l.titre)+'</span>'+
       (aQuoi ? '<span class="ac-expli">'+esc(aQuoi)+'</span>' : '')+
       '<span class="ac-sous">'+bouts.join(" · ")+'</span></span>'+
       '<span class="ac-dist" aria-hidden="true">'+c.emoji+'</span></button>';
   }).join("")+(classement.length>5
     ? '<span class="fb-plus">Fais défiler pour préciser · '+(classement.length-5)+' autres résultats</span>' : "");
+  // Les erreurs non bloquantes et la mise à jour se lisent après les réponses,
+  // jamais avant elles. Si la liste est vide, l'état reste naturellement seul.
+  return entete+liste+statut;
 }
 
 /* ---- « Pour toi, maintenant » -------------------------------------------
@@ -8537,12 +8524,11 @@ function blocResultats(){
    quoi que ce soit : il propose. Le classement est le même que celui des
    besoins, sans filtre de catégorie — donc soumis aux mêmes règles
    d'ouverture, d'ETA et de faisabilité. */
-/* Ce que l'accueil considère. Les catégories de transport en sont exclues :
-   « Vélo » est un sous-besoin légitime de Bouger, mais une station de vélos
-   n'est pas une réponse à « qu'est-ce que je peux faire maintenant ». Elles
-   restent accessibles par Bouger → Vélo et par le bouton transports. */
+/* Ce que l'accueil considère. Aide, services et transport gardent leur entrée
+   dédiée : les mélanger à Explorer faisait remonter un hôtel ou un lycée au
+   seul motif qu'il est proche. */
 const CATS_ACCUEIL = ()=>[...new Set(
-  BESOINS_PRINCIPAUX.flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : CATS_AIDE))]
+  BESOINS_PRINCIPAUX.filter(b=>!b.aide).flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []))]
   .filter(c=>!CATS_TRANSPORT.has(c));
 
 function recommandationsAccueil(limite){
@@ -8558,11 +8544,11 @@ function recommandationsAccueil(limite){
      éphémères hors de « maintenant », et on les range par date réelle. */
   const groupe = creneau === "maintenant";
   const candidats = groupe
-    ? lieux.filter(nomExploitable)
+    ? lieux.filter(l=>nomExploitable(l) && isDiscoveryCandidate(l))
     : lieux.filter(l=>estTemporaire(l) && nomExploitable(l));
 
   const classement = rankResults(candidats,{
-    intent:"sortir",
+    intent:groupe ? "explorer" : "sortir",
     intention:intentionCourante,
     /* Une recherche qui a posé des catégories les impose ici aussi : sans ça,
        « un endroit calme où travailler » reposait le filtre puis affichait les
@@ -8579,18 +8565,15 @@ function recommandationsAccueil(limite){
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
-    etaFor:l=>etaConnu(l, centre),
   });
 
   if(!groupe){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
     const retenus = classement.filter(l=>sections.includes(l.rankSection))
       .sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
-    prechargerEta(retenus, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
     return retenus.slice(0, limite || 12);
   }
 
-  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
   return avecEpingles(classement).slice(0, limite || 12);
@@ -8753,15 +8736,17 @@ function enteteBesoinAide(titre){
 function solutionsAide(limite){
   const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre || !AIDE) return [];
-  const besoins = besoinsAide.length ? besoinsAide : (sousAide && sousAide !== "urgence" ? [sousAide] : []);
+  const besoins = besoinsSelectionnesAide();
   const choix = sousAideChoisi();
-  let candidats = lieux.filter(nomExploitable);
-  if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
+  let candidats = lieux.filter(l=>nomExploitable(l) && estSolutionAideLiee(l));
 
   const classement = rankResults(candidats, {
     intent:"aide",
     intention:intentionCourante,
-    categories:categoriesClassementFeuille(),
+    // le filtrage métier est déjà fait ci-dessus ; toutes les catégories
+    // d'aide restent admises ici pour qu'un réseau connu, rangé « asso », ne
+    // soit pas éliminé par son seul tag technique.
+    categories:[...new Set([...CATS_AIDE, "mairie", "friperie", "food"])],
     position:centre,
     now:Date.now(),
     // en aide, on ne cache jamais ce qui est fermé : savoir qu'un guichet
@@ -8769,7 +8754,6 @@ function solutionsAide(limite){
     nowOnly:false,
     radius:Math.max(rayonRecherche, 6000),
     distanceBetween:distanceM,
-    etaFor:l=>etaConnu(l, centre),
   });
 
   // pertinence du besoin : elle passe devant tout le reste du tri
@@ -8780,9 +8764,9 @@ function solutionsAide(limite){
        (poids, précision). */
     const vus = besoins.map(id=>{
       const p = AIDE.pertinence(l, id, {large:true});
-      return {poids:p.poids, raison:p.raison, sur:!!p.sur,
+      return {poids:p.poids, raison:p.raison, sur:!!p.sur, direct:!!p.direct,
               precis: p.sur || (id !== "jeunes" && id !== "autre")};
-    }).filter(x=>x.poids > 0)
+    }).filter(x=>x.poids > 0 && x.direct)
       .sort((a,b)=> b.poids - a.poids || (b.precis?1:0) - (a.precis?1:0));
     const meilleur = vus[0];
     if(!besoins.length) return {l, poids: SET_AIDE.has(l.cat) ? .5 : 0, raison:"", sur:false};
@@ -8791,34 +8775,34 @@ function solutionsAide(limite){
   }).filter(x=>x.poids > 0);
 
   notes.sort((a,b)=>
+    // Lien réel au besoin, puis disponibilité / horizon, puis marche : une
+    // association voisine ne gagne jamais sur une permanence adaptée.
     b.poids - a.poids ||
-    // une opportunité qui a lieu maintenant passe devant un guichet fermé ;
-    // un rendez-vous dans trois mois passe derrière tout le monde
-    rangTemporelAide(b.l) - rangTemporelAide(a.l) ||
+    prioriteDisponibiliteAide(b.l) - prioriteDisponibiliteAide(a.l) ||
     (a.l.rankDistance||0) - (b.l.rankDistance||0));
 
   return notes.slice(0, limite || 5)
     .map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
 }
 
-/* Le rang temporel d'une solution d'aide, du plus utile au moins utile :
-     3 — ça a lieu maintenant, ou c'est ouvert ;
-     2 — c'est un lieu permanent qui rouvrira ;
-     1 — c'est un événement à venir dans les jours qui viennent ;
-     0 — c'est un événement lointain, ou on ne sait rien.
-   Un forum emploi dans trois mois ne doit pas passer devant une permanence
-   qui ouvre demain matin. */
-function rangTemporelAide(l){
+/* Une aide ponctuelle n'a de valeur que si l'on peut encore s'y présenter :
+   en cours, imminente, aujourd'hui, demain, semaine, puis plus tard. Les
+   structures permanentes ouvertes restent juste derrière les deux premiers
+   cas et avant celles dont les horaires sont inconnus. */
+function prioriteDisponibiliteAide(l){
   if(estTemporaire(l)){
     const etat = statutTemps(l);
-    if(TEMPS.estMaintenant(etat.statut)) return 3;
-    const section = TEMPS.sectionTemporelle(etat, Date.now());
-    return section === "a_venir" ? 0 : 1;
+    if(etat.statut === TEMPS.STATUTS.EN_COURS) return 60;
+    if(etat.statut === TEMPS.STATUTS.IMMINENT) return 50;
+    if(etat.statut === TEMPS.STATUTS.PLUS_TARD) return 40;
+    if(etat.statut !== TEMPS.STATUTS.A_VENIR || etat.debut == null) return 0;
+    const jours = Math.round((etat.debut - Date.now()) / 86400000);
+    return jours <= 1 ? 30 : jours <= 7 ? 20 : 10;
   }
   const d = dispoDe(l);
-  if(d && d.isOpenNow) return 3;
-  if(d && d.status !== "unknown") return 2;
-  return 2;                       // horaires inconnus : un lieu reste un lieu
+  if(d && d.isOpenNow) return 35;
+  if(d && d.status !== "unknown") return 25;
+  return 20;
 }
 
 function ouvertOuImminent(l){
@@ -8834,6 +8818,7 @@ function ouvertOuImminent(l){
 function carteAide(l){
   favorisEnMemoire.set(cleFavori(l), l);
   const c = CATS[l.cat] || {emoji:"🤝"};
+  const photo = photoAutoriseeAide(l);
   const eph = estTemporaire(l);
   const quand = eph
     ? TEMPS.libelleTemporel(l, Date.now(), {disponibilite:(x,t)=>dispoDe(x, null, t)})
@@ -8852,7 +8837,10 @@ function carteAide(l){
 
   return '<div class="ac-aide" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
     '<div class="aa-tete"><span class="aa-emoji">'+c.emoji+'</span>'+
-      '<span class="aa-nom">'+esc(l.titre)+'</span>'+boutonCoeur(l)+'</div>'+
+      '<span class="aa-nom">'+esc(l.titre)+'</span>'+boutonCoeur(l)+
+      '<span class="aa-visuel" style="--teinte:'+(COULEURS_CAT[l.cat]||"#B82A3A")+'"><i>'+c.emoji+'</i>'+
+        (photo ? '<img loading="lazy" decoding="async" alt="" src="'+esc(photo)+'" onload="this.classList.add(\'vue\')">' : '')+
+      '</span></div>'+
     (expl && expl.texte
       ? '<p class="aa-quoi">'+esc(EXPLIQUE.resumeCourt(l, 150))+'</p>' : '')+
     '<p class="aa-quand'+(chaud?' chaud':'')+'">'+esc(quand)+
@@ -9093,13 +9081,14 @@ function carteRecommandation(l){
   // <img loading="lazy"> plutôt qu'un background : le navigateur ne télécharge
   // que ce qui approche du viewport, et les résultats s'affichent sans
   // attendre la moindre image. La tuile teintée sert de placeholder.
-  const visuel = '<span class="rc-photo rc-photo-vide" style="--teinte:'+teinte+'">'+
+  const visuel = '<figure class="rc-photo rc-photo-vide" style="--teinte:'+teinte+'">'+
       '<i>'+c.emoji+'</i>'+
       (l.image
         ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image)+'" '+
           'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')">'
         : '')+
-    '</span>';
+      (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
+    '</figure>';
 
   const minutes = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
   /* Le détail du trajet n'a d'intérêt que s'il APPREND quelque chose : quand
@@ -9160,28 +9149,15 @@ function carteRecommandation(l){
     '</span></div>';
 }
 
-/* ---- Prochains départs --------------------------------------------------
-   Tant qu'aucune source transport n'est branchée, on n'affiche pas de faux
-   horaires : le bandeau dit ce qu'il en est, et rien de plus. */
+/* Les arrêts restent des données de découverte. Le bouton Transport révèle
+   leur couche ; il ne lance plus de moteur de départs ou de correspondances. */
 function blocTransports(){
-  const passages = prochainsPassages();
-  const corps = passages.length
-    ? '<span class="tr-lignes">'+passages.map(p=>
-        '<b>'+esc(p.ligne)+'</b> : '+p.minutes+' min').join(" • ")+'</span>'
-    : '<span class="tr-lignes tr-vide">Aucune donnée temps réel disponible ici</span>';
+  if(!coucheTransport) return "";
   return '<div class="tr-bloc">'+
     '<span class="tr-icone" aria-hidden="true">🚌</span>'+
-    '<span class="tr-txt"><span class="tr-titre">Prochains départs à proximité</span>'+corps+'</span>'+
-    (passages.length ? '<button class="tr-tout" data-tr="tout">Voir tous</button>' : '')+
+    '<span class="tr-txt"><span class="tr-titre">Transports autour de toi</span>'+
+      '<span class="tr-lignes">Arrêts et stations affichés sur la carte</span></span>'+
     '</div>';
-}
-
-/* Passages fournis par la couche transport quand un provider temps réel est
-   enregistré. Aucun provider ⇒ liste vide, jamais un horaire inventé. */
-function prochainsPassages(){
-  const T = window.AutourTransit;
-  if(!T || !positionMoi || typeof T.nextDepartures !== "function") return [];
-  try{ return T.nextDepartures(positionMoi) || []; }catch(e){ return []; }
 }
 
 function brancherFeuille2(){
@@ -9281,12 +9257,6 @@ function brancherFeuille2(){
     ouvrirFeuille2(id);
   });
 
-  corps.querySelectorAll("[data-tr]").forEach(b=>b.onclick=()=>{
-    // pas d'écran transport dédié tant qu'aucune source n'est branchée :
-    // on déplie la feuille plutôt que d'ouvrir une page vide
-    reglerFeuilleDeplie(true);
-  });
-
   corps.querySelectorAll("[data-bn]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.bn;
     if(id === "aide"){ if(!modeAide) basculerAide(); ouvrirFeuille2("aide"); return; }
@@ -9319,6 +9289,11 @@ function brancherFeuille2(){
 
   corps.querySelectorAll("[data-etat-action]").forEach(b=>b.onclick=()=>{
     const action = b.dataset.etatAction;
+    if(action === "aide"){
+      if(!modeAide) basculerAide();
+      ouvrirFeuille2("aide");
+      return;
+    }
     if(action === "all"){
       filtreMaintenant = false;
       montrerFermes = true;
@@ -9329,6 +9304,7 @@ function brancherFeuille2(){
     rechercheEtat.overpass = SEARCH_STATES.IDLE;
     definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
     chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
+    if(feuilleNiveau === "manger") completerRestauration({force:true});
   });
 
   corps.querySelectorAll("[data-elargir]").forEach(b=>b.onclick=elargirZone);
@@ -9395,7 +9371,7 @@ function majRaccourcis(){
      et son seul foyer est le bouton filtres. */
   const ordre = BESOINS_PRINCIPAUX.filter(b=>b.id !== "aide");
   z.innerHTML = ordre.map(b=>{
-    const actif = feuilleNiveau === b.id && catsActives;
+    const actif = feuilleNiveau === b.id;
     return '<button class="rc'+(actif?" actif":"")+'" data-rc="'+b.id+'">'+
       '<em>'+b.emoji+'</em>'+esc(b.label.replace(" autour de moi",""))+
       '</button>';
@@ -9406,7 +9382,9 @@ function majRaccourcis(){
     if(id === "plus"){
       if(modeAide) basculerAide();
       if(feuilleNiveau === "plus"){ fermerFeuille2(); return; }
-      ouvrirFeuille2("plus"); return;
+      ouvrirFeuille2("plus");
+      if(!rechercheDockeeDesktopDemandee()) fermerRecherche({force:true});
+      return;
     }
     if(id === "aide"){
       if(modeAide){ basculerAide(); fermerFeuille2(); return; }
@@ -9415,6 +9393,9 @@ function majRaccourcis(){
     if(modeAide) basculerAide();
     if(feuilleNiveau === id){ fermerFeuille2(); return; }
     ouvrirFeuille2(id);
+    /* Sur téléphone, le choix rend l'écran à la feuille. Sur desktop, la
+       recherche devient au contraire le bloc docké de la référence. */
+    if(!rechercheDockeeDesktopDemandee()) fermerRecherche({force:true});
   });
 }
 
@@ -9737,10 +9718,10 @@ function toutAfficher(){
   rendre();
 }
 
-/* Ce que l'accueil garde. Cinq lignes au maximum, mais surtout : aucune
+/* Ce que l'accueil garde. Sept recommandations au maximum, mais surtout : aucune
    ligne de remplissage. Une proposition qui ne passe pas la barre est une
    proposition en moins, pas une proposition médiocre de plus. */
-const ACCUEIL_MAX = 5;
+const ACCUEIL_MAX = 7;
 const ACCUEIL_SEUIL = 55;
 
 function majAccueil(){
@@ -9783,7 +9764,7 @@ function majAccueil(){
   if(epingles.length){
     const vus = new Set();
     epingles.forEach(id=>{
-      if(vus.has(id)) return;
+      if(vus.has(id) || choisis.length >= ACCUEIL_MAX) return;
       // la version classée si elle existe (elle porte le trajet et l'horaire),
       // sinon l'objet brut — mais dans tous les cas, à l'écran
       const l = notes.find(x=>x.id === id) || lieux.find(x=>x.id === id);
@@ -9811,6 +9792,19 @@ function majAccueil(){
     const ev = notes.find(l=>estTemporaire(l));
     if(ev) choisis.push(ev);
     notes.forEach(l=>{ if(choisis.length < ACCUEIL_MAX && !choisis.includes(l)) choisis.push(l); });
+  }
+
+  /* La feuille et la carte doivent raconter exactement la même sélection.
+     Le moteur commun écarte les événements terminés et les lieux fermés quand
+     leurs horaires le disent, puis impose l'ordre temporel des événements.
+     L'ancien score historique reste utile pour le jeu rapide, mais ne décide
+     plus seul des marqueurs de « Pour toi, maintenant ». */
+  if(!modeAide && creneau === "maintenant"){
+    const pourToi = recommandationsAccueil(ACCUEIL_MAX);
+    if(pourToi.length){
+      choisis.length = 0;
+      choisis.push(...pourToi.slice(0,ACCUEIL_MAX));
+    }
   }
 
   selectionAccueil = choisis.map(l=>l.id);
@@ -9865,7 +9859,6 @@ function appliquerPosition(p, opts){
     // contraire : on efface, on ne corrige pas
     villeDetectee = null;
     commune = "ton quartier";
-    etaParLieu.clear();
     $("#hdVille").textContent = "Autour de toi";
   }
   majEnteteLieu();
@@ -9966,6 +9959,8 @@ document.addEventListener("visibilitychange", ()=>{
   if(geoDejaAutorisee()){ veillerSurLaPosition(); suivreMaPosition({silencieux:true}); }
 });
 
+let localisationEnCours = false;
+
 function suivreMaPosition(opts){
   const o = opts || {};
   if(!navigator.geolocation){
@@ -9973,10 +9968,15 @@ function suivreMaPosition(opts){
     etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
     return;
   }
+  // Le démarrage, le bouton et le retour au premier plan peuvent se croiser.
+  // Une seule demande navigateur à la fois évite les réponses dans le désordre.
+  if(localisationEnCours) return;
+  localisationEnCours = true;
   definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
   PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
     p=>{
+      localisationEnCours = false;
       PERF.jalon("geolocation_ready");
       PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
       appliquerPosition(p, {discret: !!o.silencieux});
@@ -9984,6 +9984,7 @@ function suivreMaPosition(opts){
       veillerSurLaPosition();
     },
     (err)=>{
+      localisationEnCours = false;
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
       if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
@@ -10009,21 +10010,17 @@ function proposerPosition(){
       : "Active ta position ou choisis un endroit sur la carte.", true);
 }
 
-/* Au démarrage, on ne force jamais la boîte de dialogue du navigateur.
-   · déjà autorisée → on relance la mesure tout de suite, en silence. Safari ne
-     répondant pas à `permissions.query`, c'est notre propre trace qui le dit ;
-     sans elle, quelqu'un ayant déjà accepté aurait dû réappuyer à chaque
-     ouverture.
-   · jamais demandée → on propose, et c'est un geste qui déclenche la demande.
-     Une boîte de dialogue qui surgit sans qu'on ait rien fait est refusée par
-     réflexe, et sur iOS elle est souvent ignorée purement et simplement.
-   · refusée → on le dit, sans insister. */
+/* La demande part dès l'ouverture, en parallèle du premier rendu. Le temps de
+   répondre au navigateur, la coquille, la carte et les caches se stabilisent.
+   Une permission déjà refusée n'est jamais redemandée : le bandeau conserve
+   alors le choix manuel. Safari ne répondant pas toujours à
+   `permissions.query`, notre trace locale distingue une autorisation déjà
+   obtenue d'un premier démarrage. */
 async function demarrerLocalisation(){
   const etatPerm = await permissionPosition();
   PERF.jalon("permission_" + etatPerm);
-  if(etatPerm === "granted"){ suivreMaPosition(); return; }
-  if(etatPerm === "absent"){ suivreMaPosition(); return; }   // dira ce qu'il faut
-  proposerPosition();
+  if(etatPerm === "denied"){ proposerPosition(); return; }
+  suivreMaPosition();
 }
 
 $("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
@@ -10050,6 +10047,10 @@ $("#videOk").onclick=()=>{
    position connue et se corrige silencieusement quand la vraie arrive. */
 performance.mark("autour:script");
 PERF.jalon("script");
+/* `demarrer()` peut appeler majEnteteLieu immédiatement en mode de test : ce
+   vocabulaire doit donc exister avant le premier démarrage, pas seulement plus
+   bas avec les gestionnaires de navigation. */
+const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
 const positionTest = positionLocaleDeTest();
 if(!positionTest) demarrerLocalisation();
 demarrer(positionTest || positionMemorisee());
@@ -10066,12 +10067,39 @@ function ouvrirRecherche(){
   layerManager.activate(NOMS_COUCHES.searchOverlay);
   requestAnimationFrame(()=>$("#rech").focus());
 }
-function fermerRecherche(){
-  $("#rechercheOverlay").hidden = true;
-  $("#appHeader").hidden = false;
+function fermerRecherche(options){
+  const force = !!(options && options.force);
+  const dockee = !force && rechercheDockeeDesktopDemandee();
+  $("#rechercheOverlay").hidden = !dockee;
+  $("#appHeader").hidden = dockee;
   $("#suggestions").hidden = true;
   layerManager.deactivate(NOMS_COUCHES.searchOverlay);
 }
+
+/* Le grand bloc de recherche de l'état catégorie est le même formulaire que
+   la loupe de l'accueil. Il apparaît sans voler le focus, reste branché aux
+   suggestions et filtres, puis redevient une superposition sur téléphone. */
+function synchroniserRechercheDesktop(){
+  const overlay = $("#rechercheOverlay");
+  const header = $("#appHeader");
+  if(!overlay || !header) return;
+  const etaitDockee = overlay.classList.contains("recherche-dockee");
+  const dockee = rechercheDockeeDesktopDemandee();
+  overlay.classList.toggle("recherche-dockee", dockee);
+  if(dockee){
+    overlay.hidden = false;
+    header.hidden = true;
+    majRaccourcis();
+    return;
+  }
+  if(etaitDockee){
+    overlay.hidden = true;
+    header.hidden = false;
+    $("#suggestions").hidden = true;
+    layerManager.deactivate(NOMS_COUCHES.searchOverlay);
+  }
+}
+responsiveLayout.subscribe(()=>synchroniserRechercheDesktop());
 $("#btnLoupe").onclick = ouvrirRecherche;
 $("#btnFermerRech").onclick=()=>{
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
@@ -10226,7 +10254,7 @@ async function lancerRecherche(){
   const q = (champ.value || "").trim();
   if(!q) return;
   champ.blur();                 // referme le clavier avant de bouger la carte
-  fermerRecherche();
+  fermerRecherche({force:true});
   zoneAffichee = null;          // une nouvelle recherche remplace la précédente
   intentionCourante = null;     // et son interprétation avec elle
 
@@ -10374,7 +10402,6 @@ function remplirResultatsZone(nom, intention){
     nowOnly:filtreMaintenant && !montrerFermes,
     radius:rayonRecherche,
     distanceBetween:distanceM,
-    etaFor:l=>etaConnu(l, centre),
     /* Quand l'intention a déjà été traduite en catégories, c'est LE filtre :
        repasser son texte ici en ajoutait un second, qui écartait tout ce dont
        le nom ne contient pas les mots tapés. « restaurant indien » ne laissait
@@ -10440,12 +10467,9 @@ $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
 
-/* Le bouton transport ouvre la feuille sur l'accueil, où vit le bandeau des
-   prochains départs : une seule surface, pas un écran de plus. */
-/* Le bouton transports fait deux choses d'un seul geste, et c'est voulu :
-   il allume la couche des arrêts sur la carte ET ouvre les prochains départs.
-   Un second appui éteint la couche. Sans cet interrupteur, les arrêts ne
-   seraient plus atteignables du tout depuis Explorer. */
+/* Le bouton transports allume la couche des arrêts et ouvre l'accueil pour
+   expliquer ce qui vient d'apparaître. Un second appui range la couche. Sans
+   cet interrupteur, les arrêts ne seraient plus atteignables dans Explorer. */
 /* Aide : un interrupteur, comme la couche transport. Le même geste entre et
    sort du mode, et son état se voit sans avoir à ouvrir quoi que ce soit. */
 $("#btnAide").onclick=()=>{
@@ -10582,8 +10606,6 @@ function ouvrirCanaux(){
 /* Ce que l'en-tête dit du lieu regardé. Tant que personne n'a donné sa
    position ni choisi de ville, il le dit — au lieu de faire croire que le
    point affiché est « autour de toi ». */
-const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
-
 function majEnteteLieu(){
   const v = $("#hdVille");
   if(!v) return;

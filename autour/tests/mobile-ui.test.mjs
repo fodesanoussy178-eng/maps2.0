@@ -17,6 +17,8 @@ const signaux = await readFile(new URL("../signaux.js",import.meta.url),"utf8");
 const aide = await readFile(new URL("../aide.js",import.meta.url),"utf8");
 const donnees = await readFile(new URL("../donnees.js",import.meta.url),"utf8");
 const explications = await readFile(new URL("../explications.js",import.meta.url),"utf8");
+const googlePlaces = await readFile(new URL("../providers/googlePlaces.js",import.meta.url),"utf8");
+const googleMaps = await readFile(new URL("../mapProviders/googleMaps.js",import.meta.url),"utf8");
 
 test("le viewport et les breakpoints responsive ne dépendent pas du userAgent",()=>{
   assert.match(html,/<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" \/>/);
@@ -73,12 +75,12 @@ test("le parcours de publication couvre les six familles annoncées",()=>{
   assert.match(html,/const eph=Object\.entries\(CATS\)\.filter\(\(\[,c\]\)=>c\.eph\)/);
 });
 
-test("l’entrée dans Aide laisse peindre la feuille et fusionne le cache en lot",()=>{
+test("l’entrée dans Aide laisse peindre la feuille, privilégie les sources sociales et enrichit sans cache Places",()=>{
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
-  assert.match(html,/const fiches = o\.l\.map\(x=>Object\.assign\(\{\},x\.f,\{autourCat:x\.cat\}\)\)/);
-  assert.match(html,/ajouterLieuxGoogle\(fiches\)/);
-  assert.match(html,/CAT_GOOGLE\[f\.type\] \|\| f\.autourCat \|\| catDefaut/);
-  assert.doesNotMatch(html,/o\.l\.forEach\(x=>ajouterLieuxGoogle\(\[x\.f\], x\.cat\)\)/);
+  assert.match(html,/vraisLieux\(lat,lng,null,\{cats:CATS_AIDE,rayon:9000,limite:180\}\)/);
+  assert.match(html,/lieuxDatatourisme\(lat,lng\)/);
+  assert.match(html,/const reseaux = RESEAUX_AIDE\.filter/);
+  assert.doesNotMatch(html,/const cleAide/);
 });
 
 test("les accès principaux suivent l'intention, pas la nomenclature",()=>{
@@ -110,16 +112,11 @@ test("« Plus » est atteignable depuis les pills de l’en-tête",()=>{
   assert.match(html,/ouvrirFeuille2\(venaitDePlus \? "plus" : "racine"\)/);
 });
 
-test("le classement consomme un ETA réel et n'attend jamais le réseau",()=>{
-  assert.match(html,/etaFor:l=>etaConnu\(l, centre\)/);
-  assert.match(html,/prechargerEta\(classement, centre/);
-  // un échec d'itinéraire est mémorisé, sinon le reclassement boucle
-  assert.match(html,/etaParLieu\.set\(cleEta\(l, centre\), null\)/);
-});
-
-test("aucun horaire n'est inventé faute de clé transport",()=>{
-  assert.match(html,/const CLE_TRANSPORT = ""/);
-  assert.match(html,/navitia: CLE_TRANSPORT \? \{token:CLE_TRANSPORT\} : null/);
+test("le classement ne dépend plus du moteur de transport",()=>{
+  assert.doesNotMatch(html,/etaFor:l=>etaConnu\(l, centre\)/);
+  assert.doesNotMatch(html,/prechargerEta|etaParLieu|AutourTransit|CLE_TRANSPORT/);
+  // le moteur de recommandations reste chargé et conserve son repli stable
+  assert.match(html,/<script src="core\.js\?v=[a-f0-9]{8}"><\/script>/);
 });
 
 test("l'état ouvert/fermé a une seule source de vérité",()=>{
@@ -176,6 +173,23 @@ test("la carte est un décor : ni zoom Leaflet, ni attribution posée dessus",()
   assert.match(html,/carto\.com\/attributions/);
 });
 
+test("le repli cartographique ne fabrique pas une ville par défaut",()=>{
+  assert.doesNotMatch(html,/positionMoi \|\| \[50\.6292,3\.0573\]/);
+  assert.match(html,/const centre = positionMoi \|\| \[map\.getCenter\(\)\.lat,map\.getCenter\(\)\.lng\];/);
+});
+
+test("une fiche dont le code postal manque ne rend jamais « undefined »",()=>{
+  assert.match(html,/esc\(l\.adresse \|\| ""\)/);
+  assert.match(html,/esc\(l\.cp \|\| ""\)/);
+});
+
+test("la recherche universelle garde un seul formulaire, quel que soit le contexte",()=>{
+  assert.equal((html.match(/id="formRech"/g) || []).length, 1);
+  assert.equal((html.match(/id="rech"/g) || []).length, 1);
+  assert.match(html,/function synchroniserRechercheDesktop\(\)/);
+  assert.match(html,/lancerRecherche\(\);/);
+});
+
 test("le marqueur utilisateur est un point bleu, pas un emoji",()=>{
   assert.match(html,/<span class="moi-in"><i><\/i><b><\/b><\/span>/);
   assert.match(html,/\.moi-in b\{display:block;width:17px;height:17px;border-radius:50%;\s*\n\s*background:#1A73E8/);
@@ -207,10 +221,18 @@ test("le bottom sheet propose au lieu de poser une question",()=>{
   assert.doesNotMatch(html,/!modePose && lieux\.length\) ouvrirAccueilFeuille/);
 });
 
-test("les prochains départs n'inventent jamais d'horaire",()=>{
-  assert.match(html,/Prochains départs à proximité/);
-  assert.match(html,/Aucune donnée temps réel disponible ici/);
-  assert.match(html,/typeof T\.nextDepartures !== "function"/);
+test("« Pour toi, maintenant » peut se fermer sur mobile",()=>{
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:absolute/);
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-x\{box-shadow/);
+  assert.match(html,/\$\("#fbFermer"\)\.onclick = fermerFeuille2;/);
+  // la règle mobile est réinitialisée dans le panneau desktop
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:relative;top:auto;right:auto/);
+});
+
+test("la couche transport informe sans calculer de prochains départs",()=>{
+  assert.match(html,/Transports autour de toi/);
+  assert.match(html,/Arrêts et stations affichés sur la carte/);
+  assert.doesNotMatch(html,/Prochains départs à proximité|nextDepartures/);
 });
 
 test("les heures affichées suivent le fuseau du lieu",()=>{
@@ -260,13 +282,13 @@ test("le créateur dispose des six actions sur son événement",()=>{
   for(const a of ["horaire","lieu","retard","places","annonce","annulation"])
     assert.match(html,new RegExp('id === "'+a+'"|"'+a+'"'), a);
   // les actions modifient l'événement : le message système vient de la base
-  assert.match(html,/Store\.modifierEvenement\(l\.dbId,\{annule:true\}\)/);
+  assert.match(html,/Store\.annuler\(l\.dbId\)/);
   assert.match(html,/Store\.modifierEvenement\(l\.dbId,\{debut_le:iso\}\)/);
 });
 
 test("un événement annulé reste affiché",()=>{
-  assert.match(html,/un événement annulé reste affiché/);
-  assert.match(html,/annulé/);
+  assert.match(html,/une annulation reste une information utile et distincte d'une suppression/);
+  assert.match(html,/\.filter\(l=>l\.annule \|\| !estPasse\(l\)\)/);
 });
 
 test("le partage couvre le natif et des cibles explicites",()=>{
@@ -303,27 +325,27 @@ test("sur desktop la carte occupe toute la fenêtre, sans rail ni sidebar",()=>{
   assert.match(desktop,/--nav-height:0px/);
 
   // navigation : une pastille flottante en bas à gauche, jamais pleine hauteur
-  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:calc\(var\(--panneau\) \+ 40px\);right:auto;width:auto/);
+  assert.match(desktop,/#navBas\{top:auto;bottom:var\(--marge-desktop\);left:var\(--decalage-desktop\);right:auto;width:440px/);
   assert.match(desktop,/border-radius:99px/);
 
   /* Le panneau tient la gauche, la carte la droite : on lit ce qu'on peut
      faire avant de regarder où c'est. L'en-tête et la recherche se décalent
      donc à droite du panneau quand il est ouvert, et reviennent à gauche
      quand la carte a toute la fenêtre. */
-  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:20px;right:auto/);
-  assert.match(desktop,/#appHeader\{left:calc\(var\(--panneau\) \+ 40px\);right:auto/);
-  assert.match(desktop,/body:not\(\.sheet-open\) #appHeader\{left:20px\}/);
-  assert.match(desktop,/#rechercheOverlay\{left:calc\(var\(--panneau\) \+ 40px\);right:auto/);
+  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:var\(--marge-desktop\);right:auto/);
+  assert.match(desktop,/#appHeader\{left:var\(--decalage-desktop\);right:auto/);
+  assert.match(desktop,/body:not\(\.sheet-open\) #appHeader\{left:var\(--marge-desktop\)\}/);
+  assert.match(desktop,/#rechercheOverlay\{left:var\(--decalage-desktop\);right:auto/);
 
   // panneau de résultats : temporaire et fermable, pas une sidebar. La règle
   // .accueil est reprise explicitement, sinon sa spécificité l'emportait et
   // le panneau redevenait une feuille mobile étirée.
   assert.match(desktop,/#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie,\s*#feuilleBesoins\.reduite\{/);
   assert.match(desktop,/width:var\(--panneau\)/);
-  assert.match(html,/--panneau:400px/);
+  assert.match(html,/--panneau:530px/);
   // la croix reste atteignable même sur l'accueil : c'est elle qui rend
   // l'espace à la carte
-  assert.match(desktop,/#feuilleBesoins\.accueil \.fb-tete\{display:flex\}/);
+  assert.match(desktop,/#feuilleBesoins\.accueil \.fb-tete\{[\s\S]*?display:flex/);
 
   // le carousel horizontal devient une liste verticale
   assert.match(desktop,/\.rc-piste\{flex-direction:column/);
@@ -336,7 +358,21 @@ test("la hauteur mesurée de la navigation ne rogne pas la carte sur desktop",()
   assert.match(html,/NAV_FLOTTANTE\.matches \? "0px" : haut\+"px"/);
   assert.match(html,/setProperty\("--nav-flottante", haut\+"px"\)/);
   // l'attribution se range au-dessus de la pastille, pas dessous
-  assert.match(html,/#attribution\{left:auto;right:20px;bottom:16px\}/);
+  assert.match(html,/#attribution\{left:auto;right:var\(--marge-desktop\);bottom:8px/);
+});
+
+test("sur desktop une catégorie garde la recherche réelle à côté du panneau",()=>{
+  assert.match(html,/function rechercheDockeeDesktopDemandee\(\)/);
+  assert.match(html,/responsiveLayoutState\.isDesktop && !modeNav && !modePose/);
+  assert.match(html,/overlay\.classList\.toggle\("recherche-dockee", dockee\)/);
+  // Suggestions et panneau restent deux surfaces simultanément interactives.
+  assert.match(html,/rechercheDockee && x === NOMS_COUCHES\.mainSheet/);
+  assert.match(html,/responsiveLayout\.subscribe\(\(\)=>synchroniserRechercheDesktop\(\)\)/);
+  assert.match(html,/const actif = feuilleNiveau === b\.id;/);
+  // Même sélection sur desktop et mobile : sept recommandations et leurs
+  // marqueurs, pas un apercu différent selon la taille d'écran.
+  assert.match(html,/let reco = recommandationsAccueil\(7\)/);
+  assert.match(html,/const nombreAffiche = items\.length \|\| \(chargement \? 5 : 0\)/);
 });
 
 test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa hauteur",()=>{
@@ -351,28 +387,60 @@ test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa haut
 });
 
 test("les photos de lieux sont réellement demandées à Google",()=>{
-  // sans places.photos, toutes les cartes retombaient sur un emoji
-  assert.match(html,/"places\.photos,"/);
+  // La requête et l'URL média sont confinées au provider, pas à l'UI.
+  assert.match(html,/providers\/googlePlaces\.js\?v=/);
+  assert.match(googlePlaces,/"places\.photos"/);
   assert.match(html,/function photoGoogle/);
-  assert.match(html,/places\.googleapis\.com\/v1\/"\+photo\.name\+/);
+  assert.match(googlePlaces,/places\.googleapis\.com\/v1\//);
   // une photo de lieu ne remplace pas l'affiche d'un événement
-  assert.match(html,/if\(meilleur\.image && !l\.image\) l\.image = meilleur\.image;/);
+  assert.match(html,/if\(f\.image && !l\.image\)\{ l\.image=f\.image;/);
+  // le lieu ajouté par Google ne perd pas son image lors de la normalisation
+  assert.match(html,/imageSource:f\.imageSource\|\|"google_places"/);
+  // et le démarrage rapide la conserve pour la session suivante
+  assert.match(html,/function estContenuGoogle\(l\)\{/);
+  // les résultats de catégorie affichent la photo sans la mettre sur le chemin critique
+  assert.match(html,/class="ac-photo"/);
+  assert.match(html,/loading="lazy" decoding="async" fetchpriority="low"/);
+});
+
+test("Manger rend visibles les fiches Google complètes dès leur arrivée",()=>{
+  assert.match(html,/if\(feuilleNiveau === "manger"\) majFeuille2\(\);/);
+  assert.match(html,/function selectionResultatsFeuille\(classement, limite\)\{/);
+  assert.match(html,/const objectif = Math\.min\(2, classement\.filter\(complet\)\.length\);/);
+  assert.match(html,/const items = selectionResultatsFeuille\(classement,5\);/);
+  assert.match(html,/toLocaleString\("fr-FR"\)\+" avis\)"/);
+});
+
+test("une fiche Google n'est jamais greffée au seul prétexte qu'elle est proche",()=>{
+  assert.match(html,/function nomsLieuxCompatibles\(nomA,nomB\)\{/);
+  assert.match(html,/function adressesLieuxCompatibles\(adresseA,adresseB\)\{/);
+  assert.match(html,/nomsLieuxCompatibles\(l\.titre,f\.nom\) \|\|\s*adressesLieuxCompatibles\(l\.adresse,f\.adresse\)/);
+  assert.doesNotMatch(html,/const score = memeNom \? d\/4 : d;/);
+});
+
+test("une source partielle ne masque pas des résultats déjà utilisables",()=>{
+  assert.match(html,/if\(rechercheEnCours\(\)\) return nombreResultats/);
+  assert.match(html,/Résultats disponibles · mise à jour incomplète/);
+  assert.match(html,/return entete\+liste\+statut;/);
+  assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
+  // une tentative Google vide reste retentable, notamment depuis Manger
+  assert.match(html,/if\(!f\.length\)\{ zonesResto\.delete\(cle\); return \[\]; \}/);
+  assert.match(html,/if\(feuilleNiveau === "manger"\) completerRestauration\(\{force:true\}\);/);
 });
 
 test("les transports sont chargés mais pas dessinés sans qu'on les demande",()=>{
   assert.match(html,/const CATS_TRANSPORT = new Set\(\["metro","bus","tram","train","velo"\]\);/);
   assert.match(html,/if\(CATS_TRANSPORT\.has\(l\.cat\) && !transportsDemandes\(ctx\)\) return false;/);
-  // trois portes d'entrée, et rien d'autre
-  assert.match(html,/if\(coucheTransport \|\| modeNav \|\| itineraireOuvert\) return true;/);
+  // seules les demandes explicites ouvrent cette couche dans Explorer
+  assert.match(html,/if\(coucheTransport\) return true;/);
   assert.match(html,/if\(catsActives && \[\.\.\.catsActives\]\.some\(c=>CATS_TRANSPORT\.has\(c\)\)\) return true;/);
+  assert.match(html,/if\(CATS_TRANSPORT\.has\(filtreActif\)\) return true;/);
   assert.match(html,/return !!\(q && CATS_TRANSPORT\.has\(categorieRecherchee\(q\)\)\);/);
   // le bouton transports est un interrupteur de couche
   assert.match(html,/coucheTransport = !coucheTransport;/);
-  // ouvrir un itinéraire les rend pertinents, le refermer les range
-  assert.match(html,/itineraireOuvert = true;/);
-  assert.match(html,/if\(itineraireOuvert\)\{ itineraireOuvert = false; rendre\(\); \}/);
-  // la requête Overpass n'est PAS amputée : la donnée reste chargée
-  assert.match(html,/node\(around:800,\$\{lat\},\$\{lng\}\)\[highway=bus_stop\]/);
+  assert.doesNotMatch(html,/itineraireOuvert/);
+  // la classification OSM n'est PAS amputée : la donnée reste disponible
+  assert.match(html,/\["railway","tram_stop","tram"\], \["highway","bus_stop","bus"\]/);
 });
 
 test("le plafond de marqueurs suit l'ordre de la sélection de la carte",()=>{
@@ -536,7 +604,7 @@ test("les images du carousel sont paresseuses et n'attendent rien",()=>{
 test("les étapes de démarrage sont mesurables",()=>{
   assert.match(html,/window\.AutourPerf = PERF;/);
   for(const jalon of ["ui_ready","map_ready","geolocation_ready","cached_pois_visible",
-                      "fresh_pois_ready","transport_ready","images_ready","markers_ready"])
+                      "fresh_pois_ready","images_ready","markers_ready"])
     // le guillemet est parfois échappé dans une chaîne : on cherche le nom
     assert.match(html,new RegExp("jalon\\(.{0,2}"+jalon), jalon);
   assert.match(html,/first-contentful-paint/);
@@ -595,15 +663,18 @@ test("le cœur bascule immédiatement et se remet en place si la base refuse",()
   assert.match(html,/Impossible d’enregistrer ce favori/);
 });
 
-test("l'identité n'est réclamée qu'au moment du favori",()=>{
-  assert.match(html,/l'identité anonyme n'est réclamée qu'ici, au moment où elle sert/);
-  assert.match(html,/if\(!\(await connecter\(\)\)\)\{/);
+test("l'identité anonyme n'est créée qu'au premier geste qui en a besoin",()=>{
+  assert.match(html,/l'identité anonyme n'est créée qu'ici, au moment où elle sert/);
+  assert.match(html,/if\(!\(await assurerSessionAnonyme\(\)\)\)\{/);
+  // une simple lecture initialise le client, elle ne crée pas  un utilisateur
+  const connecter = html.slice(html.indexOf("async function connecter"), html.indexOf("let pSessionAnonyme"));
+  assert.doesNotMatch(connecter,/signInAnonymously/);
 });
 
 test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()=>{
-  assert.match(html,/mettreAJourProfil\("clic", l\.cat\); ouvrirFicheCompacte\(l\);/);
+  assert.match(html,/mettreAJourProfil\("clic", courant\.cat\); ouvrirFicheCompacte\(courant\);/);
   // sauf une affiche dont l'envoi a échoué : l'appui la retente
-  assert.match(html,/if\(l\.envoi === "echec"\)\{ reessayerPublication\(l\.id\); return; \}/);
+  assert.match(html,/if\(courant\.envoi === "echec"\)\{ reessayerPublication\(courant\.id\); return; \}/);
   assert.match(html,/function ouvrirFicheCompacte/);
   assert.match(html,/class="fc-voir">Voir/);
   // « Voir » seulement ensuite ouvre le détail
@@ -611,7 +682,7 @@ test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()
 });
 
 test("la fiche compacte propose Partager et, au créateur, Prévenir",()=>{
-  assert.match(html,/const mien = !!\(l\.dbId && moiId && l\.auteur === moiId\);/);
+  assert.match(html,/const mien = estPublicationAMoi\(l\);/);
   assert.match(html,/l\.dbId \? '<button class="fc-part">Partager<\/button>' : ''/);
   assert.match(html,/mien \? '<button class="fc-prevenir">Prévenir<\/button>' : ''/);
 });
@@ -649,13 +720,14 @@ test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
    carte construite avant la feuille de style qui place ses tuiles. Ces
    quatre contrôles tiennent les deux fermées. */
 
-test("le fond de carte est demandé dans la foulée de L.map, pas au repos",()=>{
+test("Google Maps est le fond prioritaire, avec CARTO/OSM en repli immédiat",()=>{
   const debut = html.indexOf('map = L.map("map"');
   const fin   = html.indexOf("function attendreLeaflet");
   assert.ok(debut > 0 && fin > debut);
   const corps = html.slice(debut, fin);
-  // poserFond() est appelé directement, jamais derrière un différé
-  assert.match(corps,/\n  poserFond\(\)\.then\(fond=>\{/);
+  assert.match(corps,/\(promesseCarteGoogle \|\| Promise\.resolve\(false\)\)\.then\(googleActif=>\{/);
+  assert.match(corps,/fournisseur\.estActif\(\)/);
+  assert.match(corps,/return remettreFondAutonome\(\);/);
   assert.doesNotMatch(corps,/quandLibre\(\(\)=>\{[\s\S]*poserFond\(\)/);
 });
 
@@ -1021,44 +1093,33 @@ test("la navigation nomme le produit",()=>{
     assert.match(html,new RegExp('label:"'+label.replace("À","À")+'"'), label);
 });
 
-/* ---- Trajets : ne jamais annoncer un transport qui ne circule pas ------- */
+/* ---- Trajets : moteur interne réduit à pied et vélo --------------------- */
 
-test("aucun trajet en transport sans ligne desservant les deux bouts",()=>{
-  // l'ancienne version prenait l'arrêt le plus proche de chaque côté, du même
-  // type, et affirmait qu'on pouvait aller de l'un à l'autre : elle envoyait
-  // prendre un métro entre deux stations qu'aucune ligne ne relie
-  assert.match(html,/const lignesCommunes = TRANSIT\.sharedLines\(lignesDepart, lignesArrivee\);/);
-  assert.match(html,/if\(arrets && arrets\.length && lignesCommunes\.length\)\{/);
-  // les modes proposés sortent des lignes réelles, plus des arrêts trouvés
-  assert.match(html,/const modesDesservis = \[\.\.\.new Set\(lignesCommunes\.map\(x=>x\.mode\)\)\];/);
-  assert.match(html,/for\(const type of modesDesservis\)\{/);
-  // la requête demande les relations type=route qui contiennent un arrêt proche
-  assert.match(html,/rel\(bn\.arrets\)\["type"="route"\]/);
-  assert.match(html,/function lignesAutour\(lat,lng\)/);
+test("Autour ne calcule en interne que les trajets à pied et à vélo",()=>{
+  assert.match(html,/const OSRM_PROFILS = \{\s*pied:[\s\S]*routed-foot[\s\S]*velo:[\s\S]*routed-bike/);
+  assert.match(html,/Promise\.all\(\[\s*segmentTrajet\("pied", depart, dest\),\s*segmentTrajet\("velo", depart, dest\),\s*\]\)/);
+  assert.doesNotMatch(html,/routed-car|segmentTrajet\("voiture"|mode:"voiture"/);
+  assert.match(html,/entrerNav\(options\[iActif\], l\.titre\)/);
+  assert.match(html,/if\(!positionConnue\(\)\)\{ toast\("Choisis un point de départ/);
+  // une ancienne réponse réseau ne repeint jamais la nouvelle fiche
+  assert.match(html,/numeroDemande !== afficherTrajet\.numeroDemande/);
 });
 
-test("l'étape nomme le mode et la ligne, et borne ce qu'elle affirme",()=>{
-  assert.match(html,/txt:LABEL_MODE\[type\]\+" "\+nomLignes\+" à "\+monte\.nom/);
-  assert.match(html,/sous:"attente moyenne estimée · sens à vérifier sur place"/);
-  assert.match(html,/correspondances non vérifiées/);
-  // et quand rien ne relie les deux points, on le dit au lieu de se taire
-  assert.match(html,/Aucune ligne ne dessert à la fois ces arrêts/);
+test("voiture et transports ouvrent des fournisseurs externes",()=>{
+  assert.match(html,/Ouvrir l’itinéraire/);
+  assert.match(html,/Voir en transports/);
+  assert.match(html,/https:\/\/www\.google\.com\/maps\/dir\/\?api=1/);
+  assert.match(html,/https:\/\/maps\.apple\.com\/\?/);
+  assert.match(html,/https:\/\/www\.waze\.com\/ul\?ll=/);
+  assert.match(html,/travelmode="\+\(mode === "transit" \? "transit" : "driving"\)/);
+  assert.match(html,/dirflg="\+\(mode === "transit" \? "r" : "d"\)/);
+  assert.match(html,/target="_blank" rel="noopener"/);
 });
 
-test("le mode d'un arrêt se lit dans ses tags, jamais par défaut",()=>{
-  assert.match(html,/function typeArret\(t\)\{/);
-  // une gare ferroviaire n'est pas un métro
-  assert.match(html,/if\(rail === "station" \|\| rail === "halt"\)\{/);
-  assert.match(html,/return tags\.train === "no" \? null : "train";/);
-  // un tram n'est pas un bus
-  assert.match(html,/if\(rail === "tram_stop" \|\| tags\.tram === "yes" \|\| tags\.light_rail === "yes"\) return "tram";/);
+test("les données de découverte transport restent classées par mode",()=>{
+  assert.doesNotMatch(html,/AutourTransit|Navitia|lignesAutour|sharedLines|nextDepartures/);
   assert.match(html,/\["railway","tram_stop","tram"\]/);
   assert.match(html,/\["railway","station","train"\], \["railway","halt","train"\]/);
-  // rien de reconnu : pas de type, donc pas de mode annoncé
-  assert.match(html,/return null;\s*\/\/ on ne devine pas/);
-  // Google : transit_station est générique, il ne vaut pas « bus »
-  assert.match(html,/transit_station:null/);
-  assert.doesNotMatch(html,/ARRET_GOOGLE\[p\.primaryType\] \|\| "bus"/);
   // Bus et tram ne partagent plus une seule catégorie
   assert.match(html,/tram:     \{label:"Tram"/);
   assert.match(html,/train:    \{label:"Gares"/);
@@ -1131,7 +1192,7 @@ test("une cuisine trie les résultats, elle ne les exclut pas",()=>{
 test("un événement annulé ne se lit jamais comme un événement qui a lieu",()=>{
   // la colonne, le déclencheur et le bouton existaient ; le champ se perdait
   // dans versLieu, et la carte l'affichait comme normal
-  assert.match(html,/annule: !!p\.annule/);
+  assert.match(html,/annule: p\.status === "cancelled" \|\| !!p\.annule/);
   // « Maintenant » l'écarte : le moteur temporel range une annulation en passé
   assert.match(temporel,/if \(source\.annule\) return \{ statut: STATUTS\.PASSE/);
   // sur la carte : affiche conservée mais barrée et mentionnée
@@ -1219,12 +1280,23 @@ test("le classement tranche le temps avant de calculer la pertinence",()=>{
   // la proximité ne doit jamais faire remonter un événement futur
   assert.match(core,/const survivants = \[\];/);
   assert.match(core,/if \(temporary && etat && etat\.statut === temps\.STATUTS\.PASSE\) return;/);
-  assert.match(core,/if \(ctx\.nowOnly && !isAvailableNow\(date, now\)\) return;/);
+  assert.match(core,/if \(ctx\.nowOnly\) \{/);
+  assert.match(core,/const disponible = temps && etat/);
   assert.ok(core.indexOf("survivants.push(") < core.indexOf("return survivants.map("),
     "le filtre temporel doit précéder le calcul du score");
   // le statut calculé est exposé, il n'est pas recalculé autrement ailleurs
   assert.match(core,/rankTemporal: etat \? etat\.statut : null,/);
-  assert.match(core,/rankSection: etat && temps \? temps\.sectionTemporelle\(etat, now\) : null,/);
+  assert.match(core,/rankSection: temporalSection,/);
+});
+
+test("la proximité de date des événements passe avant leur trajet",()=>{
+  assert.match(core,/function compareEventDate\(a, b\) \{/);
+  assert.match(core,/startsAt: temporalStart, temporalDistance, temporary, quality,/);
+  const tri = core.indexOf("}).filter(Boolean).sort((a, b) =>");
+  const date = core.indexOf("compareEventDate(a, b)", tri);
+  const eta = core.indexOf("compareEta(a, b)", tri);
+  assert.ok(date > 0 && eta > 0 && date < eta,
+    "l'échéance d'un événement doit être comparée avant sa proximité géographique");
 });
 
 test("une exposition fermée annonce sa réouverture, pas le début de sa période",()=>{
@@ -1252,25 +1324,13 @@ test("dans l'aide, chaque lieu dit à quoi il sert",()=>{
   assert.match(html,/\.ac-expli\{display:-webkit-box;-webkit-line-clamp:2;/);
 });
 
-test("le descriptif Google est demandé lieu par lieu, jamais par zone",()=>{
-  // ces résumés sont facturés dans une formule plus chère : les demander pour
-  // les vingt fiches de chaque zone coûterait cher pour un texte non lu
-  assert.match(html,/const CHAMPS_DESCRIPTIF = "id,generativeSummary,editorialSummary";/);
-  assert.doesNotMatch(html,/CHAMPS_PLACE = "[^"]*generativeSummary/);
-  assert.doesNotMatch(html,/CHAMPS_PLACE = "[^"]*editorialSummary/);
-  // réservé à l'aide, et une seule fois par lieu
-  assert.match(html,/if\(!SET_AIDE\.has\(l\.cat\)\) return;/);
-  assert.match(html,/if\(!EXPLIQUE \|\| !l \|\| !l\.idGoogle \|\| l\.resumeGoogle\) return;/);
-  assert.match(html,/const connu = descriptifEnCache\(idGoogle\);\s*\n\s*if\(connu != null\) return connu;/);
-  // l'identifiant Google doit être demandé pour pouvoir aller le chercher
-  assert.match(html,/CHAMPS_PLACE = "places\.id,/);
-  // un échec n'efface rien : l'explication générique reste
-  assert.match(html,/journal\.warn\("Descriptif Google: HTTP", r\.status\);/);
-  // le résumé généré n'est pas ouvert à toutes les clés : refus ⇒ repli sur
-  // l'éditorial, une fois, plutôt que perdre le descriptif
-  assert.match(html,/if\(r\.status === 400 && champsDescriptif !== CHAMPS_DESCRIPTIF_SOBRE\)\{/);
-  // une erreur client ne se réessaie pas à chaque ouverture, une panne serveur si
-  assert.match(html,/if\(r\.status < 500\) descriptifs\.set\(idGoogle, ""\);/);
+test("le descriptif Google passe par le provider et ne devient pas une donnée sociale",()=>{
+  assert.match(html,/function completerExplication\(l\)\{/);
+  assert.match(html,/if\(!l \|\| !l\.idGoogle \|\| estFicheAide\(l\) \|\| l\.description\) return;/);
+  assert.match(html,/async function descriptifGoogle\(idGoogle\)/);
+  assert.match(googlePlaces,/async function details\(placeId, config\)/);
+  assert.match(googlePlaces,/editorialSummary,generativeSummary/);
+  assert.doesNotMatch(html,/localStorage\.setItem\(CLE_DESCRIPTIF/);
 });
 
 test("aucune explication n'est écrite pour une ville en particulier",()=>{
@@ -1298,7 +1358,8 @@ test("sans position connue, l'application ne prétend pas savoir où on est",()=
   assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
   // et surtout : plus jamais « rien autour de toi » quand on ignore où est « toi »
-  assert.match(html,/const montrer = \(erreurPartielle \|\| \(videReel && positionConnue\(\)\)\)/);
+  assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
+  assert.match(html,/const montrer = \(erreurSansResultat \|\| \(videReel && positionConnue\(\)\)\)/);
   // déclaré avant son premier usage
   assert.ok(html.indexOf("let originePosition = null;") < html.indexOf("positionConnue()"),
     "originePosition doit précéder son premier usage");
@@ -1489,13 +1550,31 @@ test("Aide commence par la question, jamais par des structures",()=>{
 });
 
 test("l'aide mélange structures permanentes et opportunités temporaires",()=>{
-  assert.match(html,/function rangTemporelAide\(l\)\{/);
-  // le moteur temporel existant date les deux : pas de second moteur
-  assert.match(html,/TEMPS\.estMaintenant\(etat\.statut\)\) return 3;/);
-  assert.match(html,/return section === "a_venir" \? 0 : 1;/);
-  assert.match(html,/rangTemporelAide\(b\.l\) - rangTemporelAide\(a\.l\)/);
+  assert.match(html,/function prioriteDisponibiliteAide\(l\)\{/);
+  // en cours, imminent, aujourd'hui/demain, semaine, futur : le moteur
+  // temporel existant fournit les états, sans second moteur local
+  assert.match(html,/TEMPS\.STATUTS\.EN_COURS\) return 60;/);
+  assert.match(html,/TEMPS\.STATUTS\.IMMINENT\) return 50;/);
+  assert.match(html,/jours <= 1 \? 30 : jours <= 7 \? 20 : 10/);
+  assert.match(html,/prioriteDisponibiliteAide\(b\.l\) - prioriteDisponibiliteAide\(a\.l\)/);
   // et la carte d'aide affiche la date réelle d'un événement
   assert.match(html,/TEMPS\.libelleTemporel\(l, Date\.now\(\)/);
+});
+
+test("Aide garde uniquement les solutions liées au besoin et offre une fiche exploitable",()=>{
+  assert.match(html,/function estSolutionAideLiee\(l\)\{/);
+  assert.match(html,/AIDE\.estSolution\(l, besoins\)/);
+  assert.match(html,/let candidats = lieux\.filter\(l=>nomExploitable\(l\) && estSolutionAideLiee\(l\)\)/);
+  assert.match(html,/b\.poids - a\.poids \|\|\s*prioriteDisponibiliteAide/s);
+  // photo de source autorisée ou couverture graphique : son absence ne sert
+  // pas au classement et n'est jamais remplacée par une image inventée
+  assert.match(html,/function photoAutoriseeAide\(l\)\{/);
+  assert.match(html,/\["google_places", "datatourisme_licence", "structure", "autour_verifie"\]/);
+  assert.match(html,/function couvertureAide\(l, c\)\{/);
+  for(const action of ["Itinéraire","Appeler","Site web","Partager","Favori"])
+    assert.match(html,new RegExp(action),action);
+  for(const champ of ["Public accueilli","Conditions d’accès","Rendez-vous","Coût","Source","Dernière mise à jour"])
+    assert.match(html,new RegExp(champ),champ);
 });
 
 test("une carte d'aide dit pourquoi, à quelle condition, et ce qu'on ignore",()=>{
@@ -1531,8 +1610,7 @@ test("le mode Aide ne journalise aucune phrase",()=>{
 
 test("on n'enrichit que les meilleurs candidats, jamais une zone",()=>{
   assert.match(html,/const MAX_ENRICHIS = 5;/);
-  assert.match(html,/if\(aDemander\.length >= MAX_ENRICHIS\) break;/);
-  assert.match(html,/if\(!DONNEES\.manque\(l, intention, \{disponibilite:\(x,t\)=>dispoDe\(x, null, t\)\}\)\.length\) continue;/);
+  assert.match(html,/DONNEES\.manque\(l, intention, \{disponibilite:\(x,t\)=>dispoDe\(x, null, t\)\}\)\.length\)\.slice\(0,MAX_ENRICHIS\)/);
   // le modèle normalisé porte source, confiance et date
   assert.match(donnees,/source: null, confidence: 0, updated_at: null,/);
   assert.match(donnees,/function depassePlafond\(prix, plafond\)/);
@@ -1599,10 +1677,11 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
   assert.match(html,/function squeletteHTML\(n\)\{/);
   assert.match(html,/data-testid="squelette"/);
   assert.match(html,/On cherche ce qui vaut le détour autour de toi…/);
-  // le squelette passe AVANT tout message d'état, y compris « aucun résultat »
-  assert.match(html,/if\(rechercheEnCours\(\)\) return squeletteHTML\(3\);/);
+  // le squelette passe AVANT tout message de vide, mais seulement quand aucune
+  // réponse issue du cache ou d'une première source n'est déjà utilisable
+  assert.match(html,/if\(rechercheEnCours\(\)\) return nombreResultats/);
   const statut = html.indexOf("function statutRechercheHTML(");
-  const enCours = html.indexOf("if(rechercheEnCours()) return squeletteHTML(3);", statut);
+  const enCours = html.indexOf("if(rechercheEnCours()) return nombreResultats", statut);
   const rien = html.indexOf("Rien d’ouvert à proximité", statut);
   assert.ok(enCours > 0 && rien > 0 && enCours < rien,
     "le chargement se dit avant le vide");
@@ -1660,13 +1739,13 @@ test("un établissement scolaire fermé pour vacances n'est pas recommandé",()=
 test("sur desktop, les recommandations tiennent la gauche et la carte la droite",()=>{
   const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
                              html.indexOf("/* ---- grappes de marqueurs"));
-  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:20px;right:auto/);
+  assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:var\(--marge-desktop\);right:auto/);
   // ce qui vivait à gauche se décale à droite du panneau
-  assert.match(desktop,/#appHeader\{left:calc\(var\(--panneau\) \+ 40px\)/);
-  assert.match(desktop,/#navBas\{top:auto;bottom:20px;left:calc\(var\(--panneau\) \+ 40px\)/);
+  assert.match(desktop,/#appHeader\{left:var\(--decalage-desktop\)/);
+  assert.match(desktop,/#navBas\{top:auto;bottom:var\(--marge-desktop\);left:var\(--decalage-desktop\)/);
   // les flottants et l'attribution longent le bord droit
-  assert.match(desktop,/#attribution\{left:auto;right:20px/);
-  assert.match(desktop,/#bandeauGeo,#bandeauVide\{left:auto;right:20px/);
+  assert.match(desktop,/#attribution\{left:auto;right:var\(--marge-desktop\)/);
+  assert.match(desktop,/#bandeauGeo,#bandeauVide\{left:auto;right:var\(--marge-desktop\)/);
   // l'organisation mobile ne bouge pas : la feuille monte toujours du bas
   assert.match(html,/#feuilleBesoins\{position:absolute;left:8px;right:8px;bottom:0/);
 });
@@ -1703,12 +1782,13 @@ test("« apprécié » exige de vrais avis, en nombre",()=>{
   assert.doesNotMatch(html,/Number\(l\.note\) >= 4\.4 && Number\(l\.avis\) >= 30/);
 });
 
-test("la clé Google est documentée, et son absence ne casse rien",()=>{
-  assert.match(html,/Restriction d'application → Sites web \(référents HTTP\)/);
-  assert.match(html,/https:\/\/autour\.vercel\.app\/\*/);
-  // chaque appel vérifie la clé avant de partir
-  const gardes = (html.match(/if\(!CLE_GOOGLE/g) || []).length;
-  assert.ok(gardes >= 5, "tous les appels Google sont gardés : "+gardes);
+test("Google est isolé dans ses providers et Google Maps porte les lieux Places",()=>{
+  assert.match(html,/providers\/googlePlaces\.js\?v=/);
+  assert.match(html,/mapProviders\/googleMaps\.js\?v=/);
+  assert.doesNotMatch(html,/places\.googleapis\.com/);
+  assert.match(googlePlaces,/if \(!config \|\| !config\.apiKey\) return \[\];/);
+  assert.match(googleMaps,/maps\.googleapis\.com\/maps\/api\/js/);
+  assert.match(html,/if\(!fournisseur \|\| !\(await googleMapsActif\(\)\)\) return \[\];/);
 });
 
 /* ==========================================================================
@@ -1830,8 +1910,10 @@ test("un événement publié apparaît tout de suite, et son retard se voit",()=
   assert.match(html,/<span class="a-envoi a-echec">Non publié · Réessayer<\/span>/);
   assert.match(html,/\(l\.places!=null && !l\.annule\?'<span class="a-places">/);
   assert.match(html,/\.a-envoi\{flex-basis:100%/);
-  // un marqueur déjà posé suit le changement d'état
-  assert.match(html,/if\(existant\._envoi !== l\.envoi\)\{/);
+  // un marqueur déjà posé suit le changement d'état, sans être redessiné
+  // lors des simples mouvements de carte
+  assert.match(html,/function empreinteMarqueur\(l\)\{/);
+  assert.match(html,/if\(existant\._empreinte !== empreinte\)\{/);
   // et l'échec se retente
   assert.match(html,/async function reessayerPublication\(id\)\{/);
 });
@@ -1880,8 +1962,8 @@ test("une position de ville ne se fait pas passer pour un point GPS",()=>{
   assert.match(html,/let precisionPosition = null;\s+\/\/ "point" \| "ville" \| null/);
   assert.match(html,/const positionPrecise = \(\)=>precisionPosition === "point";/);
   assert.match(html,/const positionApprochee = \(\)=>positionConnue\(\) && !positionPrecise\(\);/);
-  // aucun temps de trajet tant qu'on n'a que la zone
-  assert.match(html,/if\(!TRANSIT \|\| !positionMoi \|\| !positionPrecise\(\)\) return;/);
+  // aucun temps de recommandation tant qu'on n'a que la zone
+  assert.doesNotMatch(html,/AutourTransit|etaParLieu|etaConnu/);
   assert.match(html,/const eta = positionPrecise\(\) \? l\.rankEta : null;/);
   assert.match(html,/const eta = positionPrecise\(\) && l\.rankEta/);
   // la vraie géolocalisation, elle, débloque la précision
@@ -1915,6 +1997,12 @@ test("le relais Overpass n'est pas un relais ouvert",()=>{
   assert.match(apiLieux,/s-maxage=86400, stale-while-revalidate=604800/);
   // plusieurs instances : une muette ne fait pas tomber la route
   assert.ok((apiLieux.match(/api\/interpreter/g)||[]).length >= 3);
+  // chaque instance reçoit son propre signal : un timeout du premier ne doit
+  // jamais annuler instantanément toutes les suivantes
+  assert.match(apiLieux,/for \(const serveur of SERVEURS\) \{[\s\S]*?const arret = AbortSignal\.timeout/);
+  assert.match(apiLieux,/const restant = DELAI_TOTAL_MS - \(Date\.now\(\) - debut\);/);
+  // si le relais entier tombe, le chemin direct du client reste un vrai repli
+  assert.match(html,/if\(!r\.ok\) return r\.status >= 500 \? undefined : null;/);
   assert.match(apiCommune,/s-maxage=2592000/);
   assert.match(apiCommune,/user-agent/i, "la politique de Nominatim demande de s'identifier");
 });
@@ -2032,7 +2120,7 @@ test("une position déduite de l'IP n'entre jamais dans localStorage",()=>{
 test("le GPS remplace l'approximation, il ne la complète pas",()=>{
   assert.match(html,/const venaitDeLApproximation = positionApprochee\(\);/);
   // tout ce qui avait été déduit de l'IP est effacé, pas corrigé
-  assert.match(html,/villeDetectee = null;\s*\n\s*commune = "ton quartier";\s*\n\s*etaParLieu\.clear\(\);/);
+  assert.match(html,/villeDetectee = null;\s*\n\s*commune = "ton quartier";/);
   // et la zone est rechargée même si le déplacement est court
   assert.match(html,/const bouge = premiereFois \|\| venaitDeLApproximation/);
   assert.match(html,/if\(venaitDeLApproximation \|\|\s*\n\s*distanceM\(c\[0\],c\[1\], dernierNom\[0\], dernierNom\[1\]\) > 2000\)/);
@@ -2046,11 +2134,16 @@ test("la permission décide du démarrage, et Safari n'est pas oublié",()=>{
   assert.match(html,/return geoDejaAutorisee\(\) \? "granted" : "prompt";/);
   assert.match(html,/const CLE_GEO_OK = "autour:geo-autorisee";/);
   assert.match(html,/noterAutorisationGeo\(true\);/);
-  // un refus efface la trace : on ne relance plus d'office
+  // un refus efface la trace et n'est pas redemandé au démarrage
   assert.match(html,/if\(err && err\.code === 1\) noterAutorisationGeo\(false\);/);
-  // accordée → on mesure tout de suite ; sinon on propose, sans forcer
-  assert.match(html,/if\(etatPerm === "granted"\)\{ suivreMaPosition\(\); return; \}/);
-  assert.match(html,/proposerPosition\(\);/);
+  assert.match(html,/if\(etatPerm === "denied"\)\{ proposerPosition\(\); return; \}/);
+  // accordée ou encore à demander : la boîte part dès le démarrage
+  assert.match(html,/if\(!positionTest\) demarrerLocalisation\(\);/);
+  assert.match(html,/suivreMaPosition\(\);\s*\n\}/);
+  // bouton, démarrage et retour au premier plan ne lancent pas trois mesures
+  assert.match(html,/let localisationEnCours = false;/);
+  assert.match(html,/if\(localisationEnCours\) return;\s*\n\s*localisationEnCours = true;/);
+  assert.match(html,/p=>\{\s*\n\s*localisationEnCours = false;/);
   assert.match(html,/\$\("#bandeauOk"\)\.textContent = "Utiliser ma position";/);
 });
 

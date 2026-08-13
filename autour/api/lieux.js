@@ -43,8 +43,9 @@ const SERVEURS = [
 const FORME = /^\[out:json\]\[timeout:\d{1,2}\];\((?:nwr(?:\(around:\d{1,5},-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?\)|\(-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?\))\[[^\];]{1,400}\];){1,40}\);out center \d{1,4};$/;
 const LONGUEUR_MAX = 4096;
 const SORTIE_MAX = 400;
-const DELAI_MS = 20000;               // côté serveur on peut attendre : c'est
-                                      // le CDN qui répondra aux suivants
+const DELAI_TOTAL_MS = 20000;         // budget total de la fonction
+const DELAI_SERVEUR_MS = 7000;        // une instance lente ne mange pas tout le
+                                      // budget et laisse une chance aux suivantes
 
 function refus(message, statut) {
   return new Response(JSON.stringify({ erreur: message }), {
@@ -63,10 +64,17 @@ export default async function handler(requete) {
   const sortie = Number((q.match(/out center (\d+);$/) || [])[1] || 0);
   if (!sortie || sortie > SORTIE_MAX) return refus("sortie non bornée", 400);
 
-  const arret = AbortSignal.timeout ? AbortSignal.timeout(DELAI_MS) : undefined;
+  const debut = Date.now();
 
   for (const serveur of SERVEURS) {
+    const restant = DELAI_TOTAL_MS - (Date.now() - debut);
+    if (restant < 1000) break;
     try {
+      /* Le signal doit être recréé à chaque tentative. Un AbortSignal déjà
+         expiré annule instantanément toutes les suivantes — l'ancien code
+         n'essayait donc réellement qu'un seul serveur quand il était lent. */
+      const delai = Math.min(DELAI_SERVEUR_MS, restant);
+      const arret = AbortSignal.timeout ? AbortSignal.timeout(delai) : undefined;
       const r = await fetch(serveur, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },

@@ -12,9 +12,9 @@
 
      Trois sources, dans cet ordre, jamais mélangées :
 
-       1. la description publiée par Google pour CE lieu (résumé éditorial ou
-          résumé généré par son IA) ;
-       2. la description publiée dans OpenStreetMap pour CE lieu ;
+       1. la description publiée par Google pour ce lieu, si elle est affichée
+          sur une carte Google ;
+       2. la description publiée par une source ouverte ou la structure ;
        3. à défaut, ce que fait CE TYPE de structure — une explication de
           réseau ou de tag, valable partout en France, affichée comme telle.
 
@@ -33,7 +33,7 @@
   });
 
   const MENTION = Object.freeze({
-    google: "Description : Google",
+    google: "Description : Google Maps",
     openstreetmap: "Description : OpenStreetMap",
     reseau: "Ce que fait ce réseau",
     type: "Ce que fait ce type de structure",
@@ -195,15 +195,11 @@
     return t;
   }
 
-  /* Le résumé publié par Google pour un lieu. Depuis ses résumés générés,
-     l'API expose deux champs distincts : on prend le plus explicatif, sans
-     jamais retomber sur les avis, qui racontent une expérience et non un
-     service. */
   function resumeGoogle(place) {
     const p = place || {};
-    const gen = p.generativeSummary || {};
-    return texteNettoye(gen.overview && gen.overview.text)
-      || texteNettoye(gen.description && gen.description.text)
+    const generative = p.generativeSummary || {};
+    return texteNettoye(generative.overview && generative.overview.text)
+      || texteNettoye(generative.description && generative.description.text)
       || texteNettoye(p.editorialSummary && p.editorialSummary.text)
       || "";
   }
@@ -242,10 +238,13 @@
     const tags = l.tags || {};
 
     const google = texteNettoye(l.resumeGoogle);
-    if (google) return { texte: google, source: SOURCES.GOOGLE, generique: false,
-                         mention: MENTION.google, public: publicDe(tags) };
-
+    if (google) return { texte:google, source:SOURCES.GOOGLE, generique:false,
+      mention:MENTION.google, public:publicDe(tags) };
     const propre = texteNettoye(l.description) || texteNettoye(tags.description) || texteNettoye(tags.note);
+    if (propre && l.descriptionSource === "google") {
+      return { texte: propre, source: SOURCES.GOOGLE, generique:false,
+        mention:MENTION.google, public:publicDe(tags) };
+    }
     if (propre) return { texte: propre, source: SOURCES.OSM, generique: false,
                          mention: MENTION.openstreetmap, public: publicDe(tags) };
 

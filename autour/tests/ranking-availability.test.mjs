@@ -55,6 +55,26 @@ test("mode « Maintenant » : un lieu ouvert maintenant mais fermé à l’arriv
   assert.deepEqual(vus, []);
 });
 
+test("le mode Maintenant réutilise le statut temporel calculé pour chaque candidat", () => {
+  const original = globalThis.AutourTemps;
+  let appels = 0;
+  globalThis.AutourTemps = Object.assign({}, original, {
+    statutTemporel(...args) {
+      appels += 1;
+      return original.statutTemporel(...args);
+    },
+  });
+  try {
+    classer([
+      lieu("ouvert-1", "Mo-Su 09:00-23:00"),
+      lieu("ouvert-2", "Mo-Su 09:00-23:00", {lat: 50.632, lng: 3.062}),
+    ], {nowOnly: true});
+  } finally {
+    globalThis.AutourTemps = original;
+  }
+  assert.equal(appels, 2, "un calcul par candidat, pas un second passage de filtre");
+});
+
 test("hors mode « Maintenant », un lieu fermé reste visible mais en fin de liste", () => {
   const ouvert = lieu("ouvert", "Mo-Su 09:00-23:00");
   const ferme  = lieu("ferme",  "Mo-Su 19:00-23:00", {lat: 50.6301, lng: 3.0601});
@@ -154,6 +174,63 @@ test("hors mode Maintenant, un événement futur est routé vers une section", (
   const par = Object.fromEntries(vus.map((l) => [l.id, l.rankSection]));
   assert.equal(par["ce-soir"], "ce_soir");
   assert.equal(par["dans-3-mois"], "a_venir");
+});
+
+test("entre événements comparables, la date passe franchement avant la distance", () => {
+  const toutProchePlusTard = Object.assign(
+    evenement("plus-tard-tout-proche", MERCREDI_MIDI + 10 * 86400000),
+    {lat: 50.6301, lng: 3.0601});
+  const demainPlusLoin = Object.assign(
+    evenement("demain-plus-loin", MERCREDI_MIDI + 24 * 3600000),
+    {lat: 50.6400, lng: 3.0700});
+  const vus = classerSorties([toutProchePlusTard, demainPlusLoin]);
+  assert.deepEqual(vus.map((l) => l.id), ["demain-plus-loin", "plus-tard-tout-proche"]);
+  assert.ok(vus[0].rankDistance > vus[1].rankDistance,
+    "l'événement prioritaire est volontairement le plus éloigné");
+});
+
+test("le 18 août remonte avant les événements des 9 et 27 septembre", () => {
+  const maintenant = paris(2026, 8, 10, 21, 45);
+  const aout18 = evenement("18-aout", paris(2026, 8, 18, 10, 0));
+  const septembre9 = evenement("9-septembre", paris(2026, 9, 9, 15, 0));
+  const septembre27 = evenement("27-septembre", paris(2026, 9, 27, 14, 0));
+  const vus = classerSorties([septembre27, septembre9, aout18], {now: maintenant});
+  assert.deepEqual(vus.map((l) => l.id), ["18-aout", "9-septembre", "27-septembre"]);
+});
+
+test("un événement lointain ne se prétend pas faisable en partant maintenant", () => {
+  const dansTroisMois = evenement("dans-3-mois", MERCREDI_MIDI + 90 * 86400000);
+  const vus = classerSorties([dansTroisMois]);
+  assert.equal(vus[0].rankOutlook, "scheduled");
+  assert.equal(vus[0].rankSection, "a_venir");
+  assert.doesNotMatch(vus[0].rankReason, /min avant le début/);
+  assert.match(vus[0].rankReason, /oct\./);
+});
+
+test("un événement dans plusieurs mois ne passe plus devant un lieu ouvert", () => {
+  const permanent = {id: "bar-ouvert", titre: "Le Bar", cat: "bar",
+    lat: 50.6305, lng: 3.0605, quand: "Mo-Su 08:00-02:00", note: 4.8, avis: 900};
+  const lointain = Object.assign(
+    evenement("festival-lointain", MERCREDI_MIDI + 90 * 86400000),
+    {lat: 50.6301, lng: 3.0601});
+  const vus = classerSorties([lointain, permanent]);
+  assert.equal(vus[0].id, "bar-ouvert");
+});
+
+test("la prochaine occurrence réelle participe au tri des séries", () => {
+  const recurrent = {
+    id: "recurrent", titre: "Atelier récurrent", cat: "concert",
+    lat: 50.640, lng: 3.070, isTemporary: true,
+    occurrences: [
+      {start: MERCREDI_MIDI - 7 * 86400000, end: MERCREDI_MIDI - 7 * 86400000 + 3600000},
+      {start: MERCREDI_MIDI + 10 * 86400000, end: MERCREDI_MIDI + 10 * 86400000 + 3600000},
+    ],
+  };
+  const plusTard = evenement("plus-tard", MERCREDI_MIDI + 20 * 86400000,
+    {lat: 50.6301, lng: 3.0601});
+  const vus = classerSorties([plusTard, recurrent]);
+  assert.deepEqual(vus.map((l) => l.id), ["recurrent", "plus-tard"]);
+  assert.equal(vus[0].rankStart, MERCREDI_MIDI + 10 * 86400000);
 });
 
 test("un événement récurrent est daté sur sa prochaine occurrence", () => {

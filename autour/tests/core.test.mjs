@@ -7,6 +7,7 @@ const {
   FAMILY_CATEGORIES,
   classifyPlace,
   dedupeItems,
+  isDiscoveryCandidate,
   isAvailableNow,
   matchesCategory,
   normalizeText,
@@ -54,6 +55,14 @@ test("les écoles ordinaires sont exclues de famille", () => {
   assert.ok(!classifyPlace({title:"Établissement",tags:{school:"primary_school"}}).includes("family"));
 });
 
+test("Explorer laisse les services ciblés hors des recommandations génériques", () => {
+  assert.equal(isDiscoveryCandidate({cat:"hebergement",categories:["hebergement","shelter"]}), false);
+  assert.equal(isDiscoveryCandidate({cat:"ecole",categories:["ecole","education"]}), false);
+  assert.equal(isDiscoveryCandidate({cat:"commerce",categories:["commerce","buy"]}), false);
+  assert.equal(isDiscoveryCandidate({cat:"marche",categories:["marche","market"]}), true);
+  assert.equal(isDiscoveryCandidate({cat:"event",isTemporary:true,categories:["event"]}), true);
+});
+
 test("les valeurs OSM avec underscore conservent le mapping éditorial", () => {
   assert.ok(classifyPlace({tags:{leisure:"swimming_pool"}}).includes("swimming_pool"));
   assert.ok(classifyPlace({tags:{leisure:"bowling_alley"}}).includes("bowling_alley"));
@@ -91,12 +100,62 @@ test("un événement jeunesse temporaire rejoint famille et événements", () =>
 });
 
 test("la déduplication fusionne les sources et les catégories", () => {
-  const osm = toCommonItem({id:"osm1",cat:"cinema",title:"Cinéma Le Fresnoy",lat:50.72,lng:3.16}, {source:"openstreetmap"});
-  const google = toCommonItem({id:"g1",cat:"cinema",title:"Cinema Le Fresnoy",lat:50.7201,lng:3.1601,note:4.7}, {source:"google_places"});
+  const osm = toCommonItem({
+    id:"osm1",cat:"cinema",title:"Cinéma Le Fresnoy",lat:50.72,lng:3.16,
+    note:null,avis:null,horaires:null,image:"",
+  }, {source:"openstreetmap"});
+  const google = toCommonItem({
+    id:"g1",cat:"cinema",title:"Cinema Le Fresnoy",lat:50.7201,lng:3.1601,
+    note:4.7,avis:812,horaires:["lundi: 10:00–22:00"],image:"https://example.test/fresnoy.jpg",
+  }, {source:"google_places"});
   const result = dedupeItems([osm,google],distance);
   assert.equal(result.length,1);
   assert.deepEqual(new Set(result[0].sources),new Set(["openstreetmap","google_places"]));
   assert.equal(result[0].note,4.7);
+  assert.equal(result[0].avis,812);
+  assert.deepEqual(result[0].horaires,["lundi: 10:00–22:00"]);
+  assert.equal(result[0].image,"https://example.test/fresnoy.jpg");
+});
+
+test("une faute OSM et un suffixe de ville Google ne dupliquent pas un commerce", () => {
+  const osm = toCommonItem({
+    id:"osm-pepe",cat:"fastfood",title:"Pepe Chiken byFast Good cuisine",lat:50.7225,lng:3.1626,
+  }, {source:"openstreetmap"});
+  const google = toCommonItem({
+    id:"google-pepe",cat:"resto",title:"Pepe Chicken By Fastgood Cuisine - Tourcoing",lat:50.72264,lng:3.16270,
+    note:4.2,avis:358,image:"https://example.test/pepe.jpg",
+  }, {source:"google_places"});
+  const result = dedupeItems([osm,google],distance);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].source, "google_places");
+  assert.deepEqual(new Set(result[0].sources), new Set(["openstreetmap","google_places"]));
+});
+
+test("la correction typographique ne fusionne ni les sources identiques ni des noms distincts", () => {
+  const osmA = toCommonItem({id:"a",cat:"fastfood",title:"Pepe Chiken",lat:50.72,lng:3.16}, {source:"openstreetmap"});
+  const osmB = toCommonItem({id:"b",cat:"fastfood",title:"Pepe Chicken",lat:50.7201,lng:3.1601}, {source:"openstreetmap"});
+  const google = toCommonItem({id:"c",cat:"fastfood",title:"Pepe Burger",lat:50.7201,lng:3.1601}, {source:"google_places"});
+  assert.equal(dedupeItems([osmA,osmB],distance).length, 2);
+  assert.equal(dedupeItems([osmA,google],distance).length, 2);
+});
+
+test("un transport et un établissement homonymes restent deux lieux", () => {
+  const station = toCommonItem({
+    id:"metro1",cat:"metro",title:"Phalempins",lat:50.72,lng:3.16,
+  }, {source:"openstreetmap"});
+  const cafe = toCommonItem({
+    id:"g2",cat:"cafe",title:"Phalempins",lat:50.7201,lng:3.1601,
+    note:3.9,avis:813,image:"https://example.test/phalempins.jpg",
+  }, {source:"google_places"});
+  const result = dedupeItems([station,cafe],distance);
+  assert.equal(result.length,2);
+  assert.deepEqual(result.map(x=>x.cat),["metro","cafe"]);
+});
+
+test("la déduplication exige aussi une catégorie commune", () => {
+  const cafe = toCommonItem({id:"cafe",cat:"cafe",title:"Le Central",lat:50.72,lng:3.16}, {source:"openstreetmap"});
+  const hotel = toCommonItem({id:"hotel",cat:"hebergement",title:"Le Central",lat:50.7201,lng:3.1601}, {source:"datatourisme"});
+  assert.equal(dedupeItems([cafe,hotel],distance).length, 2);
 });
 
 test("maintenant garde l'inconnu et le bientôt, retire le terminé", () => {
@@ -116,6 +175,42 @@ test("le classement retire les événements terminés et les doublons", () => {
   ], {intent:"sortir",position:[50.72,3.16],now,distanceBetween:distance});
   assert.equal(ranked.length,1);
   assert.match(ranked[0].rankReason,/En cours/);
+});
+
+test("les événements suivent des horizons temporels explicites avant la proximité", () => {
+  const now = Date.UTC(2026, 7, 17, 10, 0); // 17 août, 12:00 à Paris
+  const base = {cat:"concert",categories:["concert","outing"],isTemporary:true,
+    latitude:50.72,longitude:3.16,lat:50.72,lng:3.16};
+  const ranked = rankResults([
+    {...base,id:"futur",title:"Septembre",startsAt:Date.UTC(2026,8,27,12),endsAt:Date.UTC(2026,8,27,15)},
+    {...base,id:"semaine",title:"Cette semaine",startsAt:Date.UTC(2026,7,21,12),endsAt:Date.UTC(2026,7,21,15)},
+    {...base,id:"demain",title:"Demain",startsAt:Date.UTC(2026,7,18,12),endsAt:Date.UTC(2026,7,18,15)},
+    {...base,id:"aujourdhui",title:"Cet après-midi",startsAt:Date.UTC(2026,7,17,16),endsAt:Date.UTC(2026,7,17,18)},
+    {...base,id:"imminent",title:"Dans une heure",startsAt:now+3600000,endsAt:now+3*3600000},
+    {...base,id:"encours",title:"En cours",startsAt:now-3600000,endsAt:now+3600000},
+  ], {intent:"sortir",position:[50.72,3.16],now,distanceBetween:distance,
+      etaFor:(item)=>({minutes:item.id === "futur" ? 1 : 40,mode:"walk"})});
+  assert.deepEqual(ranked.map((item)=>item.id),
+    ["encours","imminent","aujourdhui","demain","semaine","futur"]);
+});
+
+test("une publication Autour pertinente précède une source catalogue équivalente", () => {
+  const base = {cat:"resto",categories:["resto","restaurant","eat"],latitude:50.72,longitude:3.16,lat:50.72,lng:3.16,ouvert:true};
+  const ranked = rankResults([
+    {...base,id:"osm",title:"Bistrot local",source:"openstreetmap"},
+    {...base,id:"autour",title:"Cantine du quartier",source:"autour",dbId:"publication-1"},
+  ], {intent:"manger",position:[50.72,3.16],nowOnly:true,distanceBetween:distance});
+  assert.deepEqual(ranked.map((item)=>item.id), ["autour","osm"]);
+});
+
+test("Explorer privilégie culture et marché sur un simple lieu proche", () => {
+  const base = {ouvert:true,latitude:50.72,longitude:3.16,lat:50.72,lng:3.16};
+  const ranked = rankResults([
+    {...base,id:"resto-proche",title:"Restaurant voisin",cat:"resto",categories:["resto","restaurant","eat"],lat:50.72001,latitude:50.72001},
+    {...base,id:"musee",title:"Musée",cat:"musee",categories:["musee","museum","culture","outing"],lat:50.7201,latitude:50.7201},
+    {...base,id:"marche",title:"Marché",cat:"marche",categories:["marche","market","eat","outing"],lat:50.7202,latitude:50.7202},
+  ], {intent:"explorer",categories:["resto","musee","culture","marche"],position:[50.72,3.16],distanceBetween:distance});
+  assert.deepEqual(ranked.map(x=>x.id), ["musee","marche","resto-proche"]);
 });
 
 test("le classement Maintenant privilégie l'ouvert et conserve les horaires inconnus", () => {
