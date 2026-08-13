@@ -112,16 +112,11 @@ test("« Plus » est atteignable depuis les pills de l’en-tête",()=>{
   assert.match(html,/ouvrirFeuille2\(venaitDePlus \? "plus" : "racine"\)/);
 });
 
-test("le classement consomme un ETA réel et n'attend jamais le réseau",()=>{
-  assert.match(html,/etaFor:l=>etaConnu\(l, centre\)/);
-  assert.match(html,/prechargerEta\(classement, centre/);
-  // un échec d'itinéraire est mémorisé, sinon le reclassement boucle
-  assert.match(html,/etaParLieu\.set\(cleEta\(l, centre\), null\)/);
-});
-
-test("aucun horaire n'est inventé faute de clé transport",()=>{
-  assert.match(html,/const CLE_TRANSPORT = ""/);
-  assert.match(html,/navitia: CLE_TRANSPORT \? \{token:CLE_TRANSPORT\} : null/);
+test("le classement ne dépend plus du moteur de transport",()=>{
+  assert.doesNotMatch(html,/etaFor:l=>etaConnu\(l, centre\)/);
+  assert.doesNotMatch(html,/prechargerEta|etaParLieu|AutourTransit|CLE_TRANSPORT/);
+  // le moteur de recommandations reste chargé et conserve son repli stable
+  assert.match(html,/<script src="core\.js\?v=[a-f0-9]{8}"><\/script>/);
 });
 
 test("l'état ouvert/fermé a une seule source de vérité",()=>{
@@ -234,10 +229,10 @@ test("« Pour toi, maintenant » peut se fermer sur mobile",()=>{
   assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:relative;top:auto;right:auto/);
 });
 
-test("les prochains départs n'inventent jamais d'horaire",()=>{
-  assert.match(html,/Prochains départs à proximité/);
-  assert.match(html,/Aucune donnée temps réel disponible ici/);
-  assert.match(html,/typeof T\.nextDepartures !== "function"/);
+test("la couche transport informe sans calculer de prochains départs",()=>{
+  assert.match(html,/Transports autour de toi/);
+  assert.match(html,/Arrêts et stations affichés sur la carte/);
+  assert.doesNotMatch(html,/Prochains départs à proximité|nextDepartures/);
 });
 
 test("les heures affichées suivent le fuseau du lieu",()=>{
@@ -418,7 +413,8 @@ test("Manger rend visibles les fiches Google complètes dès leur arrivée",()=>
 
 test("une fiche Google n'est jamais greffée au seul prétexte qu'elle est proche",()=>{
   assert.match(html,/function nomsLieuxCompatibles\(nomA,nomB\)\{/);
-  assert.match(html,/if\(d<dMin && nomsLieuxCompatibles\(l\.titre,f\.nom\)\)/);
+  assert.match(html,/function adressesLieuxCompatibles\(adresseA,adresseB\)\{/);
+  assert.match(html,/nomsLieuxCompatibles\(l\.titre,f\.nom\) \|\|\s*adressesLieuxCompatibles\(l\.adresse,f\.adresse\)/);
   assert.doesNotMatch(html,/const score = memeNom \? d\/4 : d;/);
 });
 
@@ -435,17 +431,16 @@ test("une source partielle ne masque pas des résultats déjà utilisables",()=>
 test("les transports sont chargés mais pas dessinés sans qu'on les demande",()=>{
   assert.match(html,/const CATS_TRANSPORT = new Set\(\["metro","bus","tram","train","velo"\]\);/);
   assert.match(html,/if\(CATS_TRANSPORT\.has\(l\.cat\) && !transportsDemandes\(ctx\)\) return false;/);
-  // trois portes d'entrée, et rien d'autre
-  assert.match(html,/if\(coucheTransport \|\| modeNav \|\| itineraireOuvert\) return true;/);
+  // seules les demandes explicites ouvrent cette couche dans Explorer
+  assert.match(html,/if\(coucheTransport\) return true;/);
   assert.match(html,/if\(catsActives && \[\.\.\.catsActives\]\.some\(c=>CATS_TRANSPORT\.has\(c\)\)\) return true;/);
+  assert.match(html,/if\(CATS_TRANSPORT\.has\(filtreActif\)\) return true;/);
   assert.match(html,/return !!\(q && CATS_TRANSPORT\.has\(categorieRecherchee\(q\)\)\);/);
   // le bouton transports est un interrupteur de couche
   assert.match(html,/coucheTransport = !coucheTransport;/);
-  // ouvrir un itinéraire les rend pertinents, le refermer les range
-  assert.match(html,/itineraireOuvert = true;/);
-  assert.match(html,/if\(itineraireOuvert\)\{ itineraireOuvert = false; rendre\(\); \}/);
-  // la requête Overpass n'est PAS amputée : la donnée reste chargée
-  assert.match(html,/node\(around:800,\$\{lat\},\$\{lng\}\)\[highway=bus_stop\]/);
+  assert.doesNotMatch(html,/itineraireOuvert/);
+  // la classification OSM n'est PAS amputée : la donnée reste disponible
+  assert.match(html,/\["railway","tram_stop","tram"\], \["highway","bus_stop","bus"\]/);
 });
 
 test("le plafond de marqueurs suit l'ordre de la sélection de la carte",()=>{
@@ -609,7 +604,7 @@ test("les images du carousel sont paresseuses et n'attendent rien",()=>{
 test("les étapes de démarrage sont mesurables",()=>{
   assert.match(html,/window\.AutourPerf = PERF;/);
   for(const jalon of ["ui_ready","map_ready","geolocation_ready","cached_pois_visible",
-                      "fresh_pois_ready","transport_ready","images_ready","markers_ready"])
+                      "fresh_pois_ready","images_ready","markers_ready"])
     // le guillemet est parfois échappé dans une chaîne : on cherche le nom
     assert.match(html,new RegExp("jalon\\(.{0,2}"+jalon), jalon);
   assert.match(html,/first-contentful-paint/);
@@ -677,9 +672,9 @@ test("l'identité anonyme n'est créée qu'au premier geste qui en a besoin",()=
 });
 
 test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()=>{
-  assert.match(html,/mettreAJourProfil\("clic", l\.cat\); ouvrirFicheCompacte\(l\);/);
+  assert.match(html,/mettreAJourProfil\("clic", courant\.cat\); ouvrirFicheCompacte\(courant\);/);
   // sauf une affiche dont l'envoi a échoué : l'appui la retente
-  assert.match(html,/if\(l\.envoi === "echec"\)\{ reessayerPublication\(l\.id\); return; \}/);
+  assert.match(html,/if\(courant\.envoi === "echec"\)\{ reessayerPublication\(courant\.id\); return; \}/);
   assert.match(html,/function ouvrirFicheCompacte/);
   assert.match(html,/class="fc-voir">Voir/);
   // « Voir » seulement ensuite ouvre le détail
@@ -1098,44 +1093,33 @@ test("la navigation nomme le produit",()=>{
     assert.match(html,new RegExp('label:"'+label.replace("À","À")+'"'), label);
 });
 
-/* ---- Trajets : ne jamais annoncer un transport qui ne circule pas ------- */
+/* ---- Trajets : moteur interne réduit à pied et vélo --------------------- */
 
-test("aucun trajet en transport sans ligne desservant les deux bouts",()=>{
-  // l'ancienne version prenait l'arrêt le plus proche de chaque côté, du même
-  // type, et affirmait qu'on pouvait aller de l'un à l'autre : elle envoyait
-  // prendre un métro entre deux stations qu'aucune ligne ne relie
-  assert.match(html,/const lignesCommunes = TRANSIT\.sharedLines\(lignesDepart, lignesArrivee\);/);
-  assert.match(html,/if\(arrets && arrets\.length && lignesCommunes\.length\)\{/);
-  // les modes proposés sortent des lignes réelles, plus des arrêts trouvés
-  assert.match(html,/const modesDesservis = \[\.\.\.new Set\(lignesCommunes\.map\(x=>x\.mode\)\)\];/);
-  assert.match(html,/for\(const type of modesDesservis\)\{/);
-  // la requête demande les relations type=route qui contiennent un arrêt proche
-  assert.match(html,/rel\(bn\.arrets\)\["type"="route"\]/);
-  assert.match(html,/function lignesAutour\(lat,lng\)/);
+test("Autour ne calcule en interne que les trajets à pied et à vélo",()=>{
+  assert.match(html,/const OSRM_PROFILS = \{\s*pied:[\s\S]*routed-foot[\s\S]*velo:[\s\S]*routed-bike/);
+  assert.match(html,/Promise\.all\(\[\s*segmentTrajet\("pied", depart, dest\),\s*segmentTrajet\("velo", depart, dest\),\s*\]\)/);
+  assert.doesNotMatch(html,/routed-car|segmentTrajet\("voiture"|mode:"voiture"/);
+  assert.match(html,/entrerNav\(options\[iActif\], l\.titre\)/);
+  assert.match(html,/if\(!positionConnue\(\)\)\{ toast\("Choisis un point de départ/);
+  // une ancienne réponse réseau ne repeint jamais la nouvelle fiche
+  assert.match(html,/numeroDemande !== afficherTrajet\.numeroDemande/);
 });
 
-test("l'étape nomme le mode et la ligne, et borne ce qu'elle affirme",()=>{
-  assert.match(html,/txt:LABEL_MODE\[type\]\+" "\+nomLignes\+" à "\+monte\.nom/);
-  assert.match(html,/sous:"attente moyenne estimée · sens à vérifier sur place"/);
-  assert.match(html,/correspondances non vérifiées/);
-  // et quand rien ne relie les deux points, on le dit au lieu de se taire
-  assert.match(html,/Aucune ligne ne dessert à la fois ces arrêts/);
+test("voiture et transports ouvrent des fournisseurs externes",()=>{
+  assert.match(html,/Ouvrir l’itinéraire/);
+  assert.match(html,/Voir en transports/);
+  assert.match(html,/https:\/\/www\.google\.com\/maps\/dir\/\?api=1/);
+  assert.match(html,/https:\/\/maps\.apple\.com\/\?/);
+  assert.match(html,/https:\/\/www\.waze\.com\/ul\?ll=/);
+  assert.match(html,/travelmode="\+\(mode === "transit" \? "transit" : "driving"\)/);
+  assert.match(html,/dirflg="\+\(mode === "transit" \? "r" : "d"\)/);
+  assert.match(html,/target="_blank" rel="noopener"/);
 });
 
-test("le mode d'un arrêt se lit dans ses tags, jamais par défaut",()=>{
-  assert.match(html,/function typeArret\(t\)\{/);
-  // une gare ferroviaire n'est pas un métro
-  assert.match(html,/if\(rail === "station" \|\| rail === "halt"\)\{/);
-  assert.match(html,/return tags\.train === "no" \? null : "train";/);
-  // un tram n'est pas un bus
-  assert.match(html,/if\(rail === "tram_stop" \|\| tags\.tram === "yes" \|\| tags\.light_rail === "yes"\) return "tram";/);
+test("les données de découverte transport restent classées par mode",()=>{
+  assert.doesNotMatch(html,/AutourTransit|Navitia|lignesAutour|sharedLines|nextDepartures/);
   assert.match(html,/\["railway","tram_stop","tram"\]/);
   assert.match(html,/\["railway","station","train"\], \["railway","halt","train"\]/);
-  // rien de reconnu : pas de type, donc pas de mode annoncé
-  assert.match(html,/return null;\s*\/\/ on ne devine pas/);
-  // Google : transit_station est générique, il ne vaut pas « bus »
-  assert.match(html,/transit_station:null/);
-  assert.doesNotMatch(html,/ARRET_GOOGLE\[p\.primaryType\] \|\| "bus"/);
   // Bus et tram ne partagent plus une seule catégorie
   assert.match(html,/tram:     \{label:"Tram"/);
   assert.match(html,/train:    \{label:"Gares"/);
@@ -1926,8 +1910,10 @@ test("un événement publié apparaît tout de suite, et son retard se voit",()=
   assert.match(html,/<span class="a-envoi a-echec">Non publié · Réessayer<\/span>/);
   assert.match(html,/\(l\.places!=null && !l\.annule\?'<span class="a-places">/);
   assert.match(html,/\.a-envoi\{flex-basis:100%/);
-  // un marqueur déjà posé suit le changement d'état
-  assert.match(html,/if\(existant\._envoi !== l\.envoi\)\{/);
+  // un marqueur déjà posé suit le changement d'état, sans être redessiné
+  // lors des simples mouvements de carte
+  assert.match(html,/function empreinteMarqueur\(l\)\{/);
+  assert.match(html,/if\(existant\._empreinte !== empreinte\)\{/);
   // et l'échec se retente
   assert.match(html,/async function reessayerPublication\(id\)\{/);
 });
@@ -1976,8 +1962,8 @@ test("une position de ville ne se fait pas passer pour un point GPS",()=>{
   assert.match(html,/let precisionPosition = null;\s+\/\/ "point" \| "ville" \| null/);
   assert.match(html,/const positionPrecise = \(\)=>precisionPosition === "point";/);
   assert.match(html,/const positionApprochee = \(\)=>positionConnue\(\) && !positionPrecise\(\);/);
-  // aucun temps de trajet tant qu'on n'a que la zone
-  assert.match(html,/if\(!TRANSIT \|\| !positionMoi \|\| !positionPrecise\(\)\) return;/);
+  // aucun temps de recommandation tant qu'on n'a que la zone
+  assert.doesNotMatch(html,/AutourTransit|etaParLieu|etaConnu/);
   assert.match(html,/const eta = positionPrecise\(\) \? l\.rankEta : null;/);
   assert.match(html,/const eta = positionPrecise\(\) && l\.rankEta/);
   // la vraie géolocalisation, elle, débloque la précision
@@ -2134,7 +2120,7 @@ test("une position déduite de l'IP n'entre jamais dans localStorage",()=>{
 test("le GPS remplace l'approximation, il ne la complète pas",()=>{
   assert.match(html,/const venaitDeLApproximation = positionApprochee\(\);/);
   // tout ce qui avait été déduit de l'IP est effacé, pas corrigé
-  assert.match(html,/villeDetectee = null;\s*\n\s*commune = "ton quartier";\s*\n\s*etaParLieu\.clear\(\);/);
+  assert.match(html,/villeDetectee = null;\s*\n\s*commune = "ton quartier";/);
   // et la zone est rechargée même si le déplacement est court
   assert.match(html,/const bouge = premiereFois \|\| venaitDeLApproximation/);
   assert.match(html,/if\(venaitDeLApproximation \|\|\s*\n\s*distanceM\(c\[0\],c\[1\], dernierNom\[0\], dernierNom\[1\]\) > 2000\)/);
@@ -2148,11 +2134,16 @@ test("la permission décide du démarrage, et Safari n'est pas oublié",()=>{
   assert.match(html,/return geoDejaAutorisee\(\) \? "granted" : "prompt";/);
   assert.match(html,/const CLE_GEO_OK = "autour:geo-autorisee";/);
   assert.match(html,/noterAutorisationGeo\(true\);/);
-  // un refus efface la trace : on ne relance plus d'office
+  // un refus efface la trace et n'est pas redemandé au démarrage
   assert.match(html,/if\(err && err\.code === 1\) noterAutorisationGeo\(false\);/);
-  // accordée → on mesure tout de suite ; sinon on propose, sans forcer
-  assert.match(html,/if\(etatPerm === "granted"\)\{ suivreMaPosition\(\); return; \}/);
-  assert.match(html,/proposerPosition\(\);/);
+  assert.match(html,/if\(etatPerm === "denied"\)\{ proposerPosition\(\); return; \}/);
+  // accordée ou encore à demander : la boîte part dès le démarrage
+  assert.match(html,/if\(!positionTest\) demarrerLocalisation\(\);/);
+  assert.match(html,/suivreMaPosition\(\);\s*\n\}/);
+  // bouton, démarrage et retour au premier plan ne lancent pas trois mesures
+  assert.match(html,/let localisationEnCours = false;/);
+  assert.match(html,/if\(localisationEnCours\) return;\s*\n\s*localisationEnCours = true;/);
+  assert.match(html,/p=>\{\s*\n\s*localisationEnCours = false;/);
   assert.match(html,/\$\("#bandeauOk"\)\.textContent = "Utiliser ma position";/);
 });
 

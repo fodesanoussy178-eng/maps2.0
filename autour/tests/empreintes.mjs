@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 export const MODULES = ["availability.js", "comprendre.js", "donnees.js", "aide.js", "signaux.js", "temporel.js",
-                        "explications.js", "events.js", "core.js", "transit.js", "providers/normaliser.js",
+                        "explications.js", "events.js", "core.js", "providers/normaliser.js",
                         "providers/googlePlaces.js", "providers/datatourisme.js", "providers/osm.js",
                         "mapProviders/googleMaps.js"];
 

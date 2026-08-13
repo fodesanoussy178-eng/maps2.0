@@ -699,7 +699,7 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   font-size:14.5px;font-weight:700}
 .lien-fort{font-weight:700;color:var(--violet)}
 
-/* ---- Prochains départs -------------------------------------------------- */
+/* ---- Couche transports ------------------------------------------------- */
 .tr-bloc{display:flex;align-items:center;gap:12px;margin:16px 0 8px;padding:13px 14px;
   border-radius:14px;background:var(--violet-doux)}
 .tr-icone{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#fff;
@@ -707,10 +707,6 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .tr-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .tr-titre{font-size:14.5px;font-weight:700;color:var(--violet)}
 .tr-lignes{font-size:13px;color:var(--ink)}
-.tr-lignes b{font-weight:750}
-.tr-vide{color:var(--ink2);font-size:12.5px}
-.tr-tout{flex-shrink:0;padding:8px 13px;border:1px solid var(--bord);border-radius:99px;
-  background:#fff;font-size:13px;font-weight:650}
 
 #suggestions{position:absolute;left:14px;right:14px;top:calc(100% - 6px);z-index:610;
   max-height:46vh;overflow-y:auto;
@@ -1066,7 +1062,7 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
   .tr-bloc{min-height:86px;margin:20px 0 10px;padding:15px 17px;border-radius:17px}
   .tr-icone{width:44px;height:44px;font-size:21px}
   .tr-titre{font-size:17px}
-  .tr-lignes,.tr-vide{font-size:14.5px}
+  .tr-lignes{font-size:14.5px}
   .fb-pied{gap:18px;margin-top:24px;padding-top:17px}
   .fb-pied button{font-size:14.5px}
 
@@ -1152,11 +1148,6 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 .nav-x{flex-shrink:0;width:44px;height:44px;border:0;border-radius:50%;background:var(--paper);
   color:var(--ink);font-size:14px;display:grid;place-items:center}
 body.nav .leaflet-control-zoom{display:none}
-#navEtapes{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);z-index:700;
-  max-height:42%;overflow-y:auto;padding:6px 15px;border:1px solid var(--bord);
-  border-radius:14px;background:#fff;box-shadow:0 3px 16px rgba(20,30,25,.2);
-  animation:monte .3s cubic-bezier(.2,.9,.3,1)}
-
 .filtres{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 16px);z-index:600;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent);
   mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent)}
@@ -1256,25 +1247,21 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
 .trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
+.trajet-interne-titre{margin-bottom:8px;font-size:14px;font-weight:750}
 .trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
 .trajet-temps button{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper);font:inherit;cursor:pointer}
 .trajet-temps button.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
-.trajet-reco{display:flex;flex-direction:column;gap:3px;margin-bottom:11px;padding:11px 13px;
-  border-radius:3px;background:rgba(255,74,23,.08);border:1px solid rgba(255,74,23,.25)}
-.trajet-reco:empty{display:none}
-.reco-titre{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;color:var(--signal)}
-.reco-mode{font-size:15px;font-weight:700;line-height:1.25}
-.reco-co2{font-size:11.5px;color:#1B7F3B;font-weight:600}
-.trajet-etapes:not(:empty){margin-top:12px;border-top:1px solid rgba(20,30,25,.13)}
-.etape{display:flex;align-items:flex-start;gap:10px;padding:9px 0;
-  border-bottom:1px solid rgba(20,30,25,.09)}
-.etape:last-child{border-bottom:0}
-.etape-ic{flex-shrink:0;width:22px;text-align:center;font-size:15px;line-height:1.3}
-.etape-txt{flex:1;min-width:0;font-size:13.5px;font-weight:600;line-height:1.3}
-.etape-sous{display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--ink2)}
-.etape-min{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
-  font-weight:700;color:var(--ink2);padding-top:2px}
+.trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
+.trajet-externes{display:grid;gap:10px;margin-top:16px;padding-top:14px;
+  border-top:1px solid rgba(20,30,25,.13)}
+.trajet-externe{padding:12px;border:1px solid var(--bord);border-radius:12px;background:var(--paper)}
+.trajet-externe strong,.trajet-externe>span{display:block}
+.trajet-externe strong{font-size:14px}
+.trajet-externe>span{margin-top:2px;font-size:12px;color:var(--ink2)}
+.trajet-liens{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.trajet-liens a{min-height:44px;padding:0 12px;display:inline-flex;align-items:center;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:12px;font-weight:750;text-decoration:none}
 .prix-n{font-weight:700;color:#1B7F3B}
 .horaires{margin:0 0 16px;padding:11px 14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
 .horaires summary{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
@@ -1302,20 +1289,6 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
    est sur la fiche. Sans cette limite, une seule entrée occupait l'écran. */
 .ac-expli{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
   overflow:hidden;font-size:12px;line-height:1.35;color:var(--ink2);margin-top:2px}
-.trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
-.trajet-charge,.trajet-vide{margin-top:10px;font-size:12.5px;color:var(--ink2)}
-.trajet-soustitre{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
-  font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2)}
-.velo-station{display:flex;align-items:center;gap:8px;padding:8px 0;
-  border-top:1px solid rgba(20,30,25,.13);font-size:13px}
-.velo-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.velo-dispo{font-weight:700;color:var(--signal)}
-.velo-dist{color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:11px}
-/* Le mode écrit en toutes lettres à côté du nom : l'emoji seul se confond
-   d'un réseau à l'autre, et c'est ce qui se lisait de travers. */
-.arret-mode{font-style:normal;font-size:11px;color:var(--ink2);
-  font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.04em}
-
 dl.faits{margin:16px 0 18px}
 dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
   border-top:1px solid rgba(20,30,25,.13)}
@@ -1469,7 +1442,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
   <b>Aide</b>
 </button>
-<button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les transports et les prochains départs">
+<button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les arrêts et stations">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
 </button>
 
@@ -1548,7 +1521,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <span class="nav-txt" id="navTxt"></span>
   <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
 </div>
-<div id="navEtapes" hidden></div>
 
 
 <div id="viseur" hidden>
@@ -1588,7 +1560,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="explications.js?v=ea344e6e"></script>
 <script src="events.js?v=2a03415f"></script>
 <script src="core.js?v=df39db3b"></script>
-<script src="transit.js?v=17e44189"></script>
 <script src="providers/normaliser.js?v=b35171d0"></script>
 <script src="providers/googlePlaces.js?v=73f76b90"></script>
 <script src="providers/datatourisme.js?v=6f242f4e"></script>
@@ -1611,6 +1582,14 @@ const COMPRENDRE = window.AutourComprendre;
 const SIGNAUX = window.AutourSignaux;
 const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
+
+/* Cette normalisation appartenait historiquement au bloc GBFS. Le transport
+   interne a disparu, mais la recherche, le classement et la déduplication
+   l'utilisent toujours : elle doit donc vivre avec leurs dépendances communes. */
+function sansAccents(s){
+  if(COMPRENDRE && COMPRENDRE.sansAccents) return COMPRENDRE.sansAccents(s);
+  return String(s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
 
 const journal = {
   info(...a){ if(window.__autourDebug) console.info(...a); },
@@ -1671,8 +1650,8 @@ let canauxAMoi = [];
      · "point"  — à quelques mètres. On peut parler en minutes de marche.
      · "ville"  — à quelques kilomètres. On ne peut rien promettre de précis.
 
-   Déclaré ici parce que le préchargement des itinéraires, juste en dessous,
-   est le premier à le lire. */
+   Déclaré ici parce que le démarrage et les premiers rendus le lisent
+   immédiatement. */
 let originePosition = null;          // "gps" | "server" | "manual" | null
 let precisionPosition = null;        // "point" | "ville" | null
 const positionConnue = ()=>originePosition !== null;
@@ -2125,51 +2104,6 @@ const quandLibre = (f)=> window.requestIdleCallback
   : setTimeout(f, 400);
 
 
-const TRANSIT = window.AutourTransit;
-const etaParLieu = new Map();
-let etaEnVol = null;
-
-/* La clé inclut le quart d'heure : un ETA calculé il y a 40 min ne décrit
-   plus le prochain passage. */
-function cleEta(l, centre){
-  return [l.id, Math.round(centre[0]*2000), Math.round(centre[1]*2000),
-    Math.floor(Date.now()/900000)].join(",");
-}
-
-function etaConnu(l, centre){
-  return etaParLieu.get(cleEta(l, centre)) || null;
-}
-
-/* Ne demande d'itinéraire que pour le haut de liste : c'est le seul endroit
-   où l'ordre se joue, et chaque appel coûte une requête réseau. */
-function prechargerEta(classement, centre, auRetour){
-  /* Pas d'itinéraire depuis un point qu'on n'a pas. La position déduite par le
-     serveur désigne la ville à quelques kilomètres près : elle suffit à choisir
-     un quartier, pas à écrire « à 4 minutes ». On attend le vrai point plutôt
-     que d'afficher une durée fausse. */
-  if(!TRANSIT || !positionMoi || !positionPrecise()) return;
-  const cibles = classement.slice(0,12).filter(l=>!etaParLieu.has(cleEta(l, centre)));
-  if(!cibles.length) return;
-  if(etaEnVol) etaEnVol.abort();
-  const ctrl = new AbortController();
-  etaEnVol = ctrl;
-  Promise.all(cibles.map(l=>
-    TRANSIT.planTrip({
-      from:centre, to:[Number(l.latitude ?? l.lat), Number(l.longitude ?? l.lng)],
-      departAt:Date.now(), signal:ctrl.signal,
-    }).then(eta=>{ etaParLieu.set(cleEta(l, centre), eta || null); })
-      // un réseau muet dégrade la précision, pas l'écran. On mémorise
-      // l'échec : sans cette trace, le reclassement redemanderait les mêmes
-      // itinéraires et rappellerait majFeuille2 en boucle.
-      .catch(()=>{ if(!ctrl.signal.aborted) etaParLieu.set(cleEta(l, centre), null); })
-  )).then(()=>{
-    if(ctrl.signal.aborted) return;
-    etaEnVol = null;
-    PERF.jalon("transport_ready");
-    if(typeof auRetour === "function") auRetour();
-  });
-}
-
 /* Le responsive décrit uniquement la présentation. Les requêtes et le
    classement ne dépendent jamais d'un userAgent ni d'un modèle d'appareil. */
 function useResponsiveLayout(onChange){
@@ -2210,6 +2144,9 @@ function useResponsiveLayout(onChange){
 }
 
 let responsiveLayoutState = {isMobile:false,isTablet:false,isDesktop:true,isTouch:false};
+/* Le premier callback responsive peut être exécuté dès la première frame.
+   La référence doit donc sortir de la zone morte temporelle avant son abonnement. */
+let map;
 const responsiveLayout = useResponsiveLayout(layout=>{
   responsiveLayoutState = layout;
   document.body.dataset.layout = layout.isMobile ? "mobile" : layout.isTablet ? "tablet" : "desktop";
@@ -2457,16 +2394,14 @@ const JAMAIS_AUTO = new Set(["ecole","mairie"]);
    plusieurs centaines par quartier — bouches de métro, arrêts par sens,
    stations de vélo — et ils noyaient les lieux qu'on venait chercher.
 
-   Ils continuent d'être CHARGÉS : l'ETA porte-à-porte, les prochains départs
-   et les itinéraires en dépendent, et cette passe ne retire aucune donnée.
-   Ils ne sont simplement plus DESSINÉS tant qu'on ne les a pas demandés —
-   couche transport allumée, recherche de transport, ou itinéraire en cours. */
+   Ils continuent d'être CHARGÉS pour la découverte et les informations de
+   lieu. Ils ne sont simplement pas DESSINÉS tant qu'on ne les a pas demandés
+   — couche transport allumée ou recherche explicite de transport. */
 const CATS_TRANSPORT = new Set(["metro","bus","tram","train","velo"]);
 let coucheTransport = false;      // allumée par le bouton transports
-let itineraireOuvert = false;     // une fiche affiche un trajet
 
 function transportsDemandes(ctx){
-  if(coucheTransport || modeNav || itineraireOuvert) return true;
+  if(coucheTransport) return true;
   // une catégorie de transport explicitement choisie, ou tapée en toutes lettres
   if(catsActives && [...catsActives].some(c=>CATS_TRANSPORT.has(c))) return true;
   if(CATS_TRANSPORT.has(filtreActif)) return true;
@@ -2866,16 +2801,6 @@ const TAGS_PARTAGES = [
 const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
 const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
-/* Clé transport (api.navitia.io) : elle agrège les GTFS déclarés sur
-   transport.data.gouv.fr et le temps réel des réseaux qui le publient, donc
-   elle vaut pour tout le territoire et pas pour une ville. Tant qu'elle est
-   vide, aucun provider transport ne s'enregistre et les temps affichés sont
-   des temps de marche — jamais un horaire inventé. */
-const CLE_TRANSPORT = "";
-if(window.AutourTransit) window.AutourTransit.configure({
-  navitia: CLE_TRANSPORT ? {token:CLE_TRANSPORT} : null,
-});
-
 const CLE_PSEUDO_CREATEUR = "autour:creator_name";
 let sb = null, moiId = null, monPseudo = "";
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
@@ -3209,7 +3134,7 @@ const Store = {
 let permanentPlaces=[], datatourismePlaces=[], externalEvents=[], userPublications=[];
 let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
-let map, coucheVille, moi, positionMoi=null, commune="ton quartier";
+let coucheVille, moi, positionMoi=null, commune="ton quartier";
 
 /* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
    false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
@@ -3233,7 +3158,6 @@ function idsEpingles(){
   return [...publicationsEpinglees.keys()];
 }
 let routes=[]; // {couche, base}
-let paysISO = ""; // code pays (repli quand le nom de la commune ne correspond pas au réseau de vélos)
 let ligneCouches = []; // segments dessinés sur la carte pour l'itinéraire sélectionné
 let modeNav = false;   // itinéraire plein écran : la carte n'affiche que le trajet
 
@@ -3687,7 +3611,6 @@ async function communeRelayee(lat,lng){
     if(!r.ok) return null;
     const j = await r.json();
     relaisCommune = true;
-    if(j && j.pays) paysISO = j.pays;
     PERF.jalon("nominatim_done");
     return (j && j.commune) || null;
   }catch(e){ return undefined; }
@@ -3703,7 +3626,6 @@ async function nomCommune(lat,lng){
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
     const j = await r.json(); const a=j.address||{};
-    paysISO = (a.country_code||"").toUpperCase();
     PERF.jalon("nominatim_done");
     return a.city||a.town||a.village||a.municipality||a.suburb||"ton quartier";
   }catch(e){ return "ton quartier"; }
@@ -4069,7 +3991,9 @@ function fusionnerFichesFournisseurs(candidats){
       if(!l || !existant || estTemporaire(l) || estTemporaire(existant)) return false;
       if(estGooglePlaces(l) === estGooglePlaces(existant)) return false;
       if(familleDedupLieu(l) !== familleDedupLieu(existant)) return false;
-      return distanceM(l.lat,l.lng,existant.lat,existant.lng) <= 80 && nomsLieuxCompatibles(l.titre,existant.titre);
+      const proches=distanceM(l.lat,l.lng,existant.lat,existant.lng) <= 80;
+      return proches && (nomsLieuxCompatibles(l.titre,existant.titre) ||
+        adressesLieuxCompatibles(l.adresse,existant.adresse));
     });
     if(i<0){ fusionnes.push(l); return; }
     const existant=fusionnes[i], google=estGooglePlaces(l)?l:existant, autre=google===l?existant:l;
@@ -4933,7 +4857,6 @@ async function demarrer(coords){
     // le nom sert à chercher les agendas et à étiqueter des adresses ; il n'est
     // jamais affiché comme « tu es ici » tant que la précision est « ville »
     if(duServeur.ville) commune = duServeur.ville;
-    if(duServeur.pays) paysISO = duServeur.pays;
     PERF.jalon("position_server");
   }
   else { originePosition = null; precisionPosition = null; positionMoi = [48.8566,2.3522]; }
@@ -5438,8 +5361,7 @@ function fermerFicheCompacte(){
    (début de séance), sinon la fermeture, sinon le temps de trajet. */
 function sousTitreMarqueur(l){
   const heure = (t)=>heureLocale(t, l);
-  const centre = positionMoi;
-  const eta = centre ? etaConnu(l, centre) : null;
+  const eta = positionPrecise() ? l.rankEta : null;
   const trajet = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
 
   // pour un événement, la date qui compte est la prochaine occurrence réelle,
@@ -5670,6 +5592,15 @@ function limiterMarqueurs(liste){
   return liste.filter(l=>retenus.has(l.id));
 }
 
+/* Un marqueur reste en place pendant les petits mouvements de carte, mais les
+   données Places peuvent arriver après son premier dessin. Cette empreinte
+   évite un redessin massif tout en mettant à jour son nom, son statut ou sa
+   position quand une source meilleure enrichit le même lieu. */
+function empreinteMarqueur(l){
+  return [l.titre,l.cat,l.lat,l.lng,l.ouvert,l.ferme,l.note,l.avis,l.envoi,l.annule]
+    .map(v=>v==null?"":String(v)).join("|");
+}
+
 function rendre(){
   if(!map) return;
   majIndexEvenements();
@@ -5694,12 +5625,15 @@ function rendre(){
       garder.add(l.id);
       const existant = marqueurs.get(l.id);
       if(existant){
-        /* Un marqueur posé n'est pas redessiné — c'est ce qui garde la carte
-           fluide. Une publication en cours d'envoi, elle, change d'état sans
-           changer d'identité : son affiche doit suivre. */
-        if(existant._envoi !== l.envoi){
+        const empreinte=empreinteMarqueur(l);
+        existant._lieu=l;
+        /* Pas de reconstruction à chaque rendu : on ne remplace l'icône que
+           si les informations réellement visibles ont changé. */
+        if(existant._empreinte !== empreinte){
+          existant._empreinte=empreinte;
           existant._envoi = l.envoi;
-          existant.setIcon(L.divIcon({className:"mk mk-eph", html:htmlMarqueur(l), iconSize:[0,0]}));
+          existant.setLatLng([l.lat,l.lng]);
+          existant.setIcon(L.divIcon({className:"mk "+(estTemporaire(l)?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}));
         }
         return;
       }
@@ -5708,11 +5642,13 @@ function rendre(){
         icon:L.divIcon({className:"mk "+(eph?"mk-eph":"mk-fix"), html:htmlMarqueur(l), iconSize:[0,0]}),
         riseOnHover:true, zIndexOffset: eph?200:0
       }).addTo(map);
+      m._lieu=l; m._envoi=l.envoi; m._empreinte=empreinteMarqueur(l);
       m.on("click", ()=>{
+        const courant=m._lieu;
         // une affiche qui n'est pas partie se retente d'un appui : c'est le
         // geste qu'on fait naturellement quand on lit « Réessayer »
-        if(l.envoi === "echec"){ reessayerPublication(l.id); return; }
-        mettreAJourProfil("clic", l.cat); ouvrirFicheCompacte(l);
+        if(courant.envoi === "echec"){ reessayerPublication(courant.id); return; }
+        mettreAJourProfil("clic", courant.cat); ouvrirFicheCompacte(courant);
       });
       marqueurs.set(l.id,m);
       return;
@@ -5801,9 +5737,6 @@ function fermerFeuille(options){
   const coucheFermee = typeFeuille === "publication" ? NOMS_COUCHES.publishModal : NOMS_COUCHES.placeDetails;
   pileEcrans = [];
   typeFeuille = null;
-  // l'itinéraire se referme avec la fiche : les arrêts n'ont plus de raison
-  // d'occuper la carte
-  if(itineraireOuvert){ itineraireOuvert = false; rendre(); }
   if(!o.preserverPublication) publicationModifiee = false;
   $("#voile").hidden=true; $("#feuille").hidden=true;
   $("#abandonVoile").hidden=true;
@@ -6232,42 +6165,13 @@ async function annulerPublication(l){
 }
 
 /* ================================================================== */
-/*  Trajet : itinéraires réels via OSRM (routage public, sans clé),   */
-/*  avec repli en ligne droite estimée quand OSRM ne répond pas       */
+/*  Trajet : marche et vélo internes via OSRM. Voiture et transports */
+/*  sont délégués aux applications qui maintiennent ces réseaux.      */
 /* ================================================================== */
 
-const VITESSES_KMH = { pied:4.5, velo:15, voiture:24 }; // repli si OSRM injoignable
-const EMOJI_MODE = { pied:"🚶", velo:"🚲", voiture:"🚗", metro:"🚇", tram:"🚊", bus:"🚌",
-                     train:"🚆", ferry:"⛴️" };
-/* Le libellé dit le mode réel. Un tram annoncé « Bus » envoie chercher un
-   arrêt qui n'existe pas — c'est arrivé. */
-const LABEL_MODE = { pied:"À pied", velo:"Vélo", voiture:"Voiture", metro:"Métro", tram:"Tram",
-                     bus:"Bus", train:"Train", ferry:"Bateau" };
-
-/* grammes de CO₂ par voyageur et par km — ordres de grandeur ADEME */
-const CO2_PAR_KM = { pied:0, velo:0, metro:5, tram:5, bus:100, voiture:193, train:25, ferry:120 };
-/* à temps comparable, on met en avant le mode le plus sobre (rang le plus bas) */
-const RANG_ECO   = { pied:1, velo:2, metro:4, tram:5, bus:6, voiture:9 };
-
-/* On n'impose jamais un choix : on met en avant le mode le plus sobre parmi
-   ceux qui restent raisonnables en temps — 25 % ou 5 minutes de plus que le
-   plus rapide. Un vélo à 8 min passe donc devant une voiture à 7 min. */
-function recommander(options){
-  if(!options.length) return 0;
-  let iRapide = 0;
-  options.forEach((o,i)=>{ if(o.min < options[iRapide].min) iRapide = i; });
-  const marge = options[iRapide].min + Math.max(5, options[iRapide].min * 0.25);
-  let iBest = iRapide;
-  options.forEach((o,i)=>{
-    if(o.min <= marge && (RANG_ECO[o.mode]||9) < (RANG_ECO[options[iBest].mode]||9)) iBest = i;
-  });
-  return iBest;
-}
-
-function economieCO2(mode, metres){
-  const g = (CO2_PAR_KM.voiture - (CO2_PAR_KM[mode]||0)) * (metres/1000);
-  return g > 5 ? Math.round(g) : 0;
-}
+const VITESSES_KMH = { pied:4.5, velo:15 }; // repli si OSRM est injoignable
+const EMOJI_MODE = { pied:"🚶", velo:"🚲" };
+const LABEL_MODE = { pied:"À pied", velo:"Vélo" };
 
 /* ---- mode navigation : la carte prend tout l'écran, seul le trajet reste ---- */
 function entrerNav(option, titre){
@@ -6280,20 +6184,6 @@ function entrerNav(option, titre){
   $("#navMode").textContent = EMOJI_MODE[option.mode] || "";
   $("#navTxt").textContent  = LABEL_MODE[option.mode]+" · "+option.min+" min → "+titre;
   $("#navBarre").hidden = false;
-  // en navigation, les étapes restent visibles : c'est là qu'on lit où descendre
-  const pas = $("#navEtapes");
-  if(option.etapes && option.etapes.length){
-    pas.innerHTML = option.etapes.map(e=>
-      '<div class="etape">'+
-        '<span class="etape-ic">'+e.ic+'</span>'+
-        '<span class="etape-txt">'+esc(e.txt)+
-          (e.sous ? '<span class="etape-sous">'+esc(e.sous)+'</span>' : '')+'</span>'+
-        '<span class="etape-min">'+e.min+' min</span>'+
-      '</div>').join("");
-    pas.hidden = false;
-  }else{
-    pas.innerHTML = ""; pas.hidden = true;
-  }
   rendre();                              // les autres marqueurs s'effacent
   dessinerSegments(option.segments);     // recadrage sur la totalité du parcours
 }
@@ -6303,7 +6193,6 @@ function quitterNav(){
   modeNav = false;
   document.body.classList.remove("nav");
   $("#navBarre").hidden = true;
-  $("#navEtapes").hidden = true;
   ["#navBas","#appHeader","#btnTransports","#attribution"]
     .forEach(s=>{ const el=$(s); if(el) el.hidden = false; });
   majFiltres(); majRaccourcis();
@@ -6318,8 +6207,7 @@ function quitterNav(){
    estimation à vol d'oiseau s'ils ne répondent pas */
 const OSRM_PROFILS = {
   pied:    "https://routing.openstreetmap.de/routed-foot/route/v1/foot/",
-  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/",
-  voiture: "https://routing.openstreetmap.de/routed-car/route/v1/driving/"
+  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/"
 };
 
 function tempsTrajetMinutes(distanceMetres, kmh){
@@ -6392,453 +6280,109 @@ function rendreOptions(options, iActif){
   ).join("");
 }
 
+function coordonneeItineraire(point){
+  return Number(point[0]).toFixed(6)+","+Number(point[1]).toFixed(6);
+}
+
+/* Les liens sont de simples ancres : aucun SDK, listener ou état partagé.
+   Google Maps et Apple Plans reçoivent origine et destination ; Waze ouvre la
+   destination et utilise la position courante, conformément à son URL publique. */
+function urlItineraireExterne(fournisseur, mode, depart, destination){
+  const origine = depart ? coordonneeItineraire(depart) : "";
+  const arrivee = coordonneeItineraire(destination);
+  if(fournisseur === "google"){
+    return "https://www.google.com/maps/dir/?api=1"+
+      (origine ? "&origin="+encodeURIComponent(origine) : "")+
+      "&destination="+encodeURIComponent(arrivee)+
+      "&travelmode="+(mode === "transit" ? "transit" : "driving");
+  }
+  if(fournisseur === "apple"){
+    return "https://maps.apple.com/?"+
+      (origine ? "saddr="+encodeURIComponent(origine)+"&" : "")+
+      "daddr="+encodeURIComponent(arrivee)+
+      "&dirflg="+(mode === "transit" ? "r" : "d");
+  }
+  return "https://www.waze.com/ul?ll="+encodeURIComponent(arrivee)+"&navigate=yes";
+}
+
+function liensItinerairesExternes(depart, destination){
+  const lien = (label, fournisseur, mode)=>
+    '<a class="trajet-lien" target="_blank" rel="noopener" data-provider="'+fournisseur+'" href="'+
+      esc(urlItineraireExterne(fournisseur, mode, depart, destination))+'">'+label+'</a>';
+  return '<div class="trajet-externes">'+
+    '<section class="trajet-externe"><strong>🚗 Voiture</strong>'+
+      '<span>Ouvrir l’itinéraire</span><div class="trajet-liens">'+
+        lien("Google Maps", "google", "driving")+
+        lien("Apple Plans", "apple", "driving")+
+        lien("Waze", "waze", "driving")+
+      '</div></section>'+
+    '<section class="trajet-externe"><strong>🚌 Transports</strong>'+
+      '<span>Voir en transports</span><div class="trajet-liens">'+
+        lien("Google Maps", "google", "transit")+
+        lien("Apple Plans", "apple", "transit")+
+      '</div></section>'+
+    '</div>';
+}
+
 async function afficherTrajet(l){
   const panneau = $("#trajet");
   if(!panneau) return;
-  const dest = [l.lat, l.lng];
-  // consulter un itinéraire rend les arrêts pertinents : c'est le moment où
-  // savoir quel métro passe où sert vraiment
-  itineraireOuvert = true;
-  rendre();
+  if(!positionConnue()){ toast("Choisis un point de départ pour calculer le trajet."); return; }
+
+  /* Une réponse OSRM d'une ancienne fiche ne doit jamais repeindre celle qui
+     vient d'être ouverte. Un simple numéro de demande suffit : aucun listener,
+     minuteur ou état de navigation supplémentaire. */
+  const numeroDemande = (afficherTrajet.numeroDemande || 0) + 1;
+  afficherTrajet.numeroDemande = numeroDemande;
 
   const depart = positionMoi;
+  const dest = [l.lat, l.lng];
+  const dVol = distanceM(depart[0],depart[1],dest[0],dest[1]);
+  const droit = (profil)=>({ coords:[depart,dest], reel:false,
+    min:tempsTrajetMinutes(dVol, VITESSES_KMH[profil]) });
+  const options = [
+    {mode:"pied", min:droit("pied").min, segments:[droit("pied")]},
+    {mode:"velo", min:droit("velo").min, segments:[droit("velo")]},
+  ];
+  let iActif = 0;
 
   panneau.hidden = false;
   panneau.innerHTML =
-    '<div class="trajet-reco" id="trajetReco"></div>'+
+    '<p class="trajet-interne-titre">Itinéraires dans Autour</p>'+
     '<div class="trajet-temps" id="trajetTemps"></div>'+
-    '<div class="trajet-etapes" id="trajetEtapes"></div>'+
-    '<p class="trajet-aide" id="trajetAide">Estimation immédiate · calcul par les rues en cours…</p>'+
-    '<div id="trajetInfos"><p class="trajet-charge">Recherche des vélos et des transports…</p></div>';
-
-  /* --- 1. Affichage instantané : estimation à vol d'oiseau, zéro attente --- */
-  const dVol = distanceM(depart[0],depart[1],dest[0],dest[1]);
-  const droit = (profil)=>({ coords:[depart,dest], reel:false,
-    min: tempsTrajetMinutes(dVol, VITESSES_KMH[profil]||15) });
-
-  const options = [
-    { mode:"pied",    min:droit("pied").min,    segments:[droit("pied")] },
-    { mode:"voiture", min:droit("voiture").min, segments:[droit("voiture")] }
-  ];
-  let iActif = 0, choisiParToi = false;
+    '<p class="trajet-aide" id="trajetAide">Calcul des parcours à pied et à vélo…</p>'+
+    liensItinerairesExternes(depart, dest);
 
   const peindre = ()=>{
+    if(numeroDemande !== afficherTrajet.numeroDemande) return false;
     const zone = $("#trajetTemps");
-    if(!zone) return false;                       // feuille refermée entre-temps
+    if(!zone) return false;
     zone.innerHTML = rendreOptions(options, iActif);
-    zone.querySelectorAll("[data-opt]").forEach(b=>
-      b.onclick=()=>{
-        iActif = Number(b.dataset.opt); choisiParToi = true;
-        peindre();
-        entrerNav(options[iActif], l.titre);   // plein écran, comme Plans ou Maps
-      });
-    // étapes détaillées : où monter, où descendre, comment finir
-    const pas = $("#trajetEtapes");
-    if(pas){
-      const et = options[iActif].etapes;
-      pas.innerHTML = et ? et.map(e=>
-        '<div class="etape">'+
-          '<span class="etape-ic">'+e.ic+'</span>'+
-          '<span class="etape-txt">'+esc(e.txt)+
-            (e.sous ? '<span class="etape-sous">'+esc(e.sous)+'</span>' : '')+'</span>'+
-          '<span class="etape-min">'+e.min+' min</span>'+
-        '</div>').join("") : "";
-    }
+    zone.querySelectorAll("[data-opt]").forEach(b=>b.onclick=()=>{
+      iActif = Number(b.dataset.opt);
+      peindre();
+      entrerNav(options[iActif], l.titre);
+    });
     dessinerSegments(options[iActif].segments);
     return true;
   };
-  /* ne réordonne le choix par défaut que tant que tu n'as rien touché toi-même */
-  const rafraichir = ()=>{
-    if(!choisiParToi) iActif = recommander(options);
-    const ok = peindre();
-    const reco = $("#trajetReco");
-    if(ok && reco){
-      const o = options[iActif], eco = economieCO2(o.mode, dVol);
-      reco.innerHTML = '<span class="reco-titre">⭐ Recommandé</span>'+
-        '<span class="reco-mode">'+EMOJI_MODE[o.mode]+' '+LABEL_MODE[o.mode]+' — '+o.min+' min</span>'+
-        (eco ? '<span class="reco-co2">💚 '+eco+' g de CO₂ évités par rapport à la voiture</span>' : '');
-    }
-    return ok;
-  };
-  rafraichir();
+  peindre();
 
-  /* --- 2. En arrière-plan : itinéraires réellement routés par les rues --- */
+  /* Deux requêtes indépendantes seulement. Elles ne touchent ni au classement,
+     ni aux données de transport affichées dans Explorer. */
   Promise.all([
     segmentTrajet("pied", depart, dest),
-    segmentTrajet("voiture", depart, dest)
-  ]).then(([sp,sv])=>{
-    options[0] = { mode:"pied",    min:sp.min, segments:[sp] };
-    options[1] = { mode:"voiture", min:sv.min, segments:[sv] };
-    if(!rafraichir()) return;
+    segmentTrajet("velo", depart, dest),
+  ]).then(([pied, velo])=>{
+    options[0] = {mode:"pied", min:pied.min, segments:[pied]};
+    options[1] = {mode:"velo", min:velo.min, segments:[velo]};
+    if(!peindre()) return;
     const aide = $("#trajetAide");
-    if(aide) aide.textContent = (sp.reel || sv.reel)
-      ? "Touche une option pour voir son trajet. Les traits pleins suivent les rues (OSRM) ; les pointillés sont une estimation à vol d’oiseau."
-      : "Itinéraires routés indisponibles : les temps affichés sont estimés à vol d’oiseau.";
-  });
-
-  /* --- 3. En arrière-plan : vélos en libre-service et transports en commun --- */
-  Promise.all([
-    stationsVeloProchesCache(depart[0], depart[1]),
-    arretsProchesCache(depart[0], depart[1]),
-    arretsAvecRepli(dest[0], dest[1]),     // pour savoir à quel arrêt descendre
-    // les lignes qui passent réellement à chaque bout : sans elles, on ne
-    // propose aucun trajet en transport
-    lignesAutour(depart[0], depart[1]),
-    lignesAutour(dest[0], dest[1])
-  ]).then(async ([stations, arrets, arretsArrivee, lignesDepart, lignesArrivee])=>{
-    const lignesCommunes = TRANSIT.sharedLines(lignesDepart, lignesArrivee);
-    const zone = $("#trajetInfos");
-    if(!zone) return;
-
-    if(stations && stations.length){
-      const s = stations[0];
-      const [segMarche, segVelo] = await Promise.all([
-        segmentTrajet("pied", depart, [s.lat,s.lng]),
-        segmentTrajet("velo", [s.lat,s.lng], dest)
-      ]);
-      options.push({ mode:"velo", min:segMarche.min+segVelo.min, segments:[segMarche,segVelo] });
-    }
-
-    /* Un trajet en transport n'est proposé que si une ligne dessert VRAIMENT
-       les deux extrémités. Auparavant on prenait l'arrêt le plus proche de
-       chaque côté, du même type, et on affirmait qu'on pouvait aller de l'un à
-       l'autre : c'est ce qui faisait dire « monter à telle station, descendre
-       à telle autre » entre deux points qu'aucune ligne ne relie. */
-    if(arrets && arrets.length && lignesCommunes.length){
-      // un choix par MODE réellement desservi, tiré des lignes communes
-      const modesDesservis = [...new Set(lignesCommunes.map(x=>x.mode))];
-      const parType = {}, parTypeArrivee = {};
-      arrets.forEach(a=>{ if(a.type && !parType[a.type]) parType[a.type]=a; });
-      (arretsArrivee||[]).forEach(a=>{ if(a.type && !parTypeArrivee[a.type]) parTypeArrivee[a.type]=a; });
-
-      for(const type of modesDesservis){
-        const monte   = parType[type];
-        const descend = parTypeArrivee[type];   // où descendre, côté arrivée
-        if(!monte || !descend) continue;        // pas d'arrêt de ce mode aux deux bouts
-        // sans arrêt utile près du but, prendre ce mode ne rapproche de rien :
-        // on exige que descendre là gagne au moins 300 m de marche
-        const gain = distanceM(monte.lat,monte.lng,dest[0],dest[1]) -
-                     distanceM(descend.lat,descend.lng,dest[0],dest[1]);
-        if(gain < 300) continue;
-        const lignes = lignesCommunes.filter(x=>x.mode === type);
-        const nomLignes = lignes.slice(0,3).map(x=>x.label).join(", ");
-
-        const [versArret, depuisArret] = await Promise.all([
-          segmentTrajet("pied", depart, [monte.lat,monte.lng]),
-          segmentTrajet("pied", [descend.lat,descend.lng], dest)
-        ]);
-        const minRoule = tempsTrajetMinutes(
-          distanceM(monte.lat,monte.lng,descend.lat,descend.lng),
-          VITESSE_TRANSPORT_KMH[type] || 18);
-        const attente = ATTENTE_MIN[type] || 5;
-
-        options.push({
-          mode:type,
-          min: versArret.min + attente + minRoule + depuisArret.min,
-          lignes:nomLignes,
-          etapes:[
-            {ic:"🚶", txt:"Marcher jusqu’à "+monte.nom, min:versArret.min,
-             sous:formatDist(monte.dist)},
-            // le mode est nommé, et la ligne aussi : « Monter » sans dire quoi
-            // prendre laissait deviner, et deviner était souvent faux
-            {ic:EMOJI_MODE[type], txt:LABEL_MODE[type]+" "+nomLignes+" à "+monte.nom, min:attente,
-             sous:"attente moyenne estimée · sens à vérifier sur place"},
-            {ic:"🏁", txt:"Descendre à "+descend.nom, min:minRoule,
-             sous:formatDist(distanceM(monte.lat,monte.lng,descend.lat,descend.lng))+
-                  " · durée estimée, correspondances non vérifiées"},
-            {ic:"🚶", txt:"Finir à pied jusqu’à "+l.titre, min:depuisArret.min,
-             sous:formatDist(descend.dist)}
-          ],
-          segments:[
-            versArret,
-            {coords:[[monte.lat,monte.lng],[descend.lat,descend.lng]], reel:false},
-            depuisArret
-          ]
-        });
-      }
-    }
-    if(!rafraichir()) return;
-
-    let html = "";
-    if(stations && stations.length){
-      html += '<p class="trajet-soustitre">Vélos en libre-service à proximité</p>'+
-        stations.map(s=>
-          '<div class="velo-station">'+
-            '<span class="velo-nom">'+esc(s.nom)+'</span>'+
-            '<span class="velo-dispo">'+s.velos+' vélo'+(s.velos>1?'s':'')+'</span>'+
-            '<span class="velo-dist">'+formatDist(s.dist)+'</span>'+
-          '</div>'
-        ).join("");
-    }
-    if(arrets && arrets.length){
-      html += '<p class="trajet-soustitre">Arrêts de transport à proximité</p>'+
-        arrets.slice(0,5).map(a=>
-          '<div class="velo-station">'+
-            // sans type connu, on ne colle pas d'icône de mode : une puce
-            // neutre vaut mieux qu'un pictogramme faux
-            '<span class="velo-nom">'+(a.type ? EMOJI_MODE[a.type]+' ' : '📍 ')+esc(a.nom)+
-              (a.type ? ' <i class="arret-mode">'+esc(LABEL_MODE[a.type])+'</i>' : '')+'</span>'+
-            '<span class="velo-dist">'+formatDist(a.dist)+'</span>'+
-          '</div>'
-        ).join("");
-      /* Dire pourquoi aucun trajet n'est proposé vaut mieux que de n'en
-         proposer aucun sans explication — et infiniment mieux que d'en
-         inventer un, ce que faisait la version précédente. */
-      if(!lignesCommunes.length){
-        html += '<p class="trajet-aide">'+
-          (lignesDepart && lignesArrivee
-            ? 'Aucune ligne ne dessert à la fois ces arrêts et le point d’arrivée '+
-              'd’après OpenStreetMap : aucun trajet en transport n’est proposé ici.'
-            : 'Lignes de transport non consultables pour le moment : aucun trajet '+
-              'en transport n’est proposé plutôt qu’un trajet approximatif.')+
-          '</p>';
-      }
-    }
-    const zone2 = $("#trajetInfos");
-    if(zone2) zone2.innerHTML = html ||
-      '<p class="trajet-vide">Aucun vélo en libre-service ni arrêt trouvé dans un rayon d’un kilomètre.</p>';
+    if(aide) aide.textContent = (pied.reel || velo.reel)
+      ? "Touche À pied ou Vélo pour ouvrir le parcours dans Autour."
+      : "Routage indisponible : les temps sont estimés à vol d’oiseau.";
   });
 }
-
-/* ================================================================== */
-/*  Vélos en libre-service : détection auto via GBFS (partout où ça existe) */
-/* ================================================================== */
-
-let SYSTEMES_GBFS = null;
-
-function sansAccents(s){
-  return (s||"").normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();
-}
-
-/* Lecture simple d'une ligne CSV (gère les champs entre guillemets) */
-function ligneCSV(l){
-  const champs = l.match(/(".*?"|[^,]*)(?=,|$)/g) || [];
-  return champs.map(c=>c.replace(/^"|"$/g,"").trim());
-}
-
-async function chargerSystemesGBFS(){
-  if(SYSTEMES_GBFS) return SYSTEMES_GBFS;
-  try{
-    const r = await fetch("https://raw.githubusercontent.com/MobilityData/gbfs/master/systems.csv");
-    if(!r.ok){ SYSTEMES_GBFS = []; return SYSTEMES_GBFS; }
-    const lignes = (await r.text()).split("\n").filter(Boolean);
-    const entetes = ligneCSV(lignes[0]);
-    const iPays = entetes.indexOf("Country Code"),
-          iNom = entetes.indexOf("Name"), iLieu = entetes.indexOf("Location"),
-          iUrl = entetes.indexOf("Auto-Discovery URL");
-    SYSTEMES_GBFS = iUrl<0 ? [] : lignes.slice(1).map(l=>{
-      const champs = ligneCSV(l);
-      return { pays:(champs[iPays]||"").toUpperCase(), nom:champs[iNom]||"", lieu:champs[iLieu]||"", url:champs[iUrl]||"" };
-    }).filter(s=>s.url);
-  }catch(e){ SYSTEMES_GBFS = []; }
-  return SYSTEMES_GBFS;
-}
-
-/* cherche un réseau GBFS dont le nom ou la localisation correspond à la commune détectée ;
-   si rien ne correspond textuellement (le nom du réseau ne contient pas toujours celui
-   de la ville), on élargit au pays et on vérifie avec la vraie position des stations */
-async function stationsVeloProches(lat,lng){
-  try{
-    const systemes = await chargerSystemesGBFS();
-    if(!systemes.length) return null;
-    const cible = sansAccents(commune);
-    let candidats = cible ? systemes.filter(s=>
-      sansAccents(s.lieu).includes(cible) || sansAccents(s.nom).includes(cible)) : [];
-
-    if(!candidats.length && paysISO){
-      candidats = systemes.filter(s=>s.pays===paysISO).slice(0,20);
-    }
-    if(!candidats.length) return null;
-
-    for(const sys of candidats){
-      const stations = await stationsDuSysteme(sys.url, lat, lng);
-      if(stations && stations.length) return stations;
-    }
-    return null;
-  }catch(e){ return null; }
-}
-
-async function stationsDuSysteme(urlDecouverte, lat, lng){
-  try{
-    const r = await fetch(urlDecouverte);
-    if(!r.ok) return null;
-    const j = await r.json();
-    const langues = j.data ? Object.keys(j.data) : [];
-    if(!langues.length) return null;
-    const feeds = j.data[langues[0]].feeds || [];
-    const urlInfo = (feeds.find(f=>f.name==="station_information")||{}).url;
-    const urlStatut = (feeds.find(f=>f.name==="station_status")||{}).url;
-    if(!urlInfo || !urlStatut) return null;
-
-    const [ri, rs] = await Promise.all([fetch(urlInfo), fetch(urlStatut)]);
-    if(!ri.ok || !rs.ok) return null;
-    const [ji, js] = await Promise.all([ri.json(), rs.json()]);
-
-    const statuts = new Map((js.data.stations||[]).map(s=>[s.station_id, s]));
-    return (ji.data.stations||[])
-      .map(s=>{
-        const st = statuts.get(s.station_id);
-        const velos = st ? (st.num_bikes_available ?? st.num_vehicles_available ?? 0) : 0;
-        if(!velos) return null;
-        const dist = distanceM(lat, lng, s.lat, s.lon);
-        if(dist > 1500) return null;
-        return { nom: s.name || "Station", velos, dist, lat:s.lat, lng:s.lon };
-      })
-      .filter(Boolean)
-      .sort((a,b)=>a.dist-b.dist)
-      .slice(0,5);
-  }catch(e){ return null; }
-}
-
-/* ================================================================== */
-/*  Arrêts de transport en commun (métro, tram, bus) à proximité      */
-/* ================================================================== */
-
-/* Le mode d'un arrêt se lit dans les tags qui l'encodent, et nulle part
-   ailleurs. L'ancienne règle rangeait en « bus » tout ce qu'elle ne
-   reconnaissait pas, et en « métro » toute gare ferroviaire : d'où des arrêts
-   de bus annoncés là où il n'y en a pas, et des gares SNCF présentées comme
-   des stations de métro. Quand les tags ne disent rien, le type reste nul —
-   l'arrêt est alors montré comme information, jamais comme un mode à prendre. */
-const ETIQUETTE_ARRET = { metro:"Station de métro", tram:"Arrêt de tram",
-                          bus:"Arrêt de bus", train:"Gare" };
-
-function typeArret(t){
-  const tags = t || {};
-  const rail = tags.railway || "";
-  if(rail === "tram_stop" || tags.tram === "yes" || tags.light_rail === "yes") return "tram";
-  if(rail === "subway_entrance" || tags.station === "subway" || tags.subway === "yes") return "metro";
-  if(rail === "station" || rail === "halt"){
-    // une gare reste une gare : seule la présence d'un marqueur métro la
-    // requalifie, et il est traité juste au-dessus
-    return tags.train === "no" ? null : "train";
-  }
-  if(tags.highway === "bus_stop" || tags.amenity === "bus_station" || tags.bus === "yes") return "bus";
-  return null;                       // on ne devine pas
-}
-
-const VITESSE_TRANSPORT_KMH = { metro:28, tram:18, bus:16, train:60, ferry:15 };
-/* attente moyenne à l'arrêt, faute d'horaires temps réel accessibles partout */
-const ATTENTE_MIN = { metro:4, tram:5, bus:7, train:12, ferry:12 };
-
-async function arretsProches(lat,lng){
-  try{
-    // rayons larges : un métro à 1 km reste pertinent, et les arrêts sont
-    // étiquetés de façons très variables selon les villes — on ratisse large
-    const q = `[out:json][timeout:20];(
-node(around:1500,${lat},${lng})[railway~"^(station|halt|subway_entrance)$"];
-node(around:1500,${lat},${lng})[station=subway];
-node(around:1500,${lat},${lng})[railway=tram_stop];
-node(around:1500,${lat},${lng})[public_transport=station];
-node(around:800,${lat},${lng})[highway=bus_stop];
-node(around:800,${lat},${lng})[amenity=bus_station];
-node(around:800,${lat},${lng})[public_transport=platform][bus=yes];
-);out body 60;`;
-    const els = await overpass(q, 8000);
-    if(!els || !els.length) return null;
-    const arrets = els.map(e=>{
-      const t = e.tags||{};
-      const type = typeArret(t);
-      return {
-        type,
-        nom: t.name || (type ? ETIQUETTE_ARRET[type] : "Arrêt"),
-        lat:e.lat, lng:e.lon, dist: distanceM(lat,lng,e.lat,e.lon)
-      };
-    }).sort((a,b)=>a.dist-b.dist);
-
-    // une station de métro a souvent plusieurs bouches : on ne garde que la plus proche
-    const vus = new Set();
-    return arrets.filter(a=>{
-      const cle = a.type+"|"+a.nom;
-      if(vus.has(cle)) return false;
-      vus.add(cle); return true;
-    });
-  }catch(e){ return null; }
-}
-
-/* Overpass reste injoignable sur certains réseaux, et sans lui la carte
-   annonçait « aucun arrêt de transport » au milieu d'une métropole qui en est
-   couverte. Google connaît ces arrêts : on lui demande quand OSM se tait. */
-const TYPES_ARRET = ["bus_station","transit_station","subway_station",
-                     "light_rail_station","train_station"];
-/* transit_station est générique chez Google : il ne dit pas le mode. Le ranger
-   en « bus » fabriquait des arrêts de bus. Sans mode connu, pas de mode. */
-const ARRET_GOOGLE = {
-  subway_station:"metro", train_station:"train", light_rail_station:"tram",
-  bus_station:"bus", bus_stop:"bus", transit_station:null
-};
-
-async function arretsGoogle(lat,lng){
-  try{
-    const fiches = await placesGoogle(lat,lng,TYPES_ARRET);
-    const vus = new Set();
-    return fiches.map(p=>{
-      const nom = p.nom || "Arrêt";
-      // « || "bus" » transformait tout type inconnu en arrêt de bus
-      const type = Object.prototype.hasOwnProperty.call(ARRET_GOOGLE, p.type)
-        ? ARRET_GOOGLE[p.type] : null;
-      return { type, nom, lat:p.lat, lng:p.lng, dist:distanceM(lat,lng,p.lat,p.lng) };
-    }).filter(a=>{
-      const c = a.type+"|"+a.nom;
-      if(vus.has(c)) return false; vus.add(c); return true;
-    }).sort((a,b)=>a.dist-b.dist);
-  }catch(e){ journal.warn("Arrêts Google indisponibles"); return null; }
-}
-
-/* la position de l'utilisateur ne change pas pendant la session : on évite
-   de refaire les mêmes requêtes réseau à chaque clic sur "Y aller" */
-/* on ne met en cache qu'un résultat utile : si Overpass a échoué ou n'a rien
-   renvoyé (panne passagère, quota), le prochain "Y aller" retentera au lieu
-   de rester bloqué sur "aucun arrêt détecté" pour toute la session */
-let CACHE_VELO = null, CACHE_TRANSPORT = null;
-async function stationsVeloProchesCache(lat,lng){
-  if(!CACHE_VELO || !CACHE_VELO.length) CACHE_VELO = await stationsVeloProches(lat,lng);
-  return CACHE_VELO;
-}
-/* Le repli Google n'était branché que sur les arrêts de départ : ceux de
-   l'arrivée restaient tributaires d'Overpass, donc aucune option métro ou bus
-   n'était jamais proposée quand il ne répond pas. */
-async function arretsAvecRepli(lat,lng){
-  let a = await arretsProches(lat,lng);
-  if(!a || !a.length) a = await arretsGoogle(lat,lng);
-  return a;
-}
-
-/* ---- Quelles lignes desservent ce point ? --------------------------------
-   Une ligne est une relation `type=route` dans OpenStreetMap, dont les arrêts
-   sont membres. On demande les relations qui contiennent un arrêt proche : ce
-   sont, réellement, les lignes qui passent là.
-
-   C'est ce qui manquait pour arrêter d'inventer des trajets. */
-const RAYON_LIGNES = 500;
-
-async function lignesAutour(lat,lng){
-  try{
-    const q = `[out:json][timeout:20];(
-node(around:${RAYON_LIGNES},${lat},${lng})["public_transport"~"^(stop_position|platform|station)$"];
-node(around:${RAYON_LIGNES},${lat},${lng})["highway"="bus_stop"];
-node(around:${RAYON_LIGNES},${lat},${lng})["railway"~"^(tram_stop|station|halt|subway_entrance)$"];
-)->.arrets;
-rel(bn.arrets)["type"="route"]["route"~"^(bus|tram|subway|light_rail|train|trolleybus|ferry)$"];
-out tags;`;
-    const els = await overpass(q, 12000);
-    if(!els) return null;                 // réseau muet : on ne conclut rien
-    return TRANSIT.linesFromRelations(els);
-  }catch(e){ return null; }
-}
-
-async function arretsProchesCache(lat,lng){
-  if(CACHE_TRANSPORT && CACHE_TRANSPORT.length) return CACHE_TRANSPORT;
-  CACHE_TRANSPORT = await arretsProches(lat,lng);
-  // OSM muet : on interroge Google plutôt que d'annoncer qu'il n'y a rien
-  if(!CACHE_TRANSPORT || !CACHE_TRANSPORT.length){
-    CACHE_TRANSPORT = await arretsGoogle(lat,lng);
-    if(CACHE_TRANSPORT && CACHE_TRANSPORT.length)
-      journal.info("Transports : "+CACHE_TRANSPORT.length+" arrêt(s) via Google (OSM muet)");
-  }
-  return CACHE_TRANSPORT;
-}
-
 /* Un lien qui ouvre vraiment le lieu chez l'autre personne, au lieu de la
    déposer sur la carte sans contexte. */
 /* ---- Adresses partageables ----------------------------------------------
@@ -7558,7 +7102,21 @@ function ajouterLieuxGoogle(fiches,catDefaut){
     let cat=affinerCategorie(CAT_GOOGLE[f.type] || f.cat || f.autourCat || catDefaut,f.nom);
     if(/Mission locale|France Travail|Cap emploi|Maison de l’emploi/.test(service)) cat="emploi";
     else if(!cat && service) cat="asso";
-    if(!cat || lieux.some(l=>distanceM(l.lat,l.lng,f.lat,f.lng)<80 && nomsLieuxCompatibles(l.titre,f.nom))) return;
+    const dejaPresent=lieux.find(l=>{
+      if(!l || estTemporaire(l) || distanceM(l.lat,l.lng,f.lat,f.lng)>=80) return false;
+      const memeAdresse=adressesLieuxCompatibles(l.adresse,f.adresse);
+      return (memeAdresse || nomsLieuxCompatibles(l.titre,f.nom)) &&
+        (memeAdresse || familleDedupLieu(l)===familleDedupLieu({cat}));
+    });
+    if(!cat || dejaPresent){
+      if(dejaPresent){
+        appliquerFicheGoogle(dejaPresent,f);
+        const canonique=permanentPlaces.find(l=>l.id===dejaPresent.id);
+        if(canonique && canonique!==dejaPresent) appliquerFicheGoogle(canonique,f);
+        rendre();
+      }
+      return;
+    }
     ajouts.push(normaliserItem(Object.assign({},f,{id:f.id || f.autourId,cat,titre:f.nom,
       description:f.description||"",quand:"Voir sur place",gratuit:true,prix:0,places:null,qr:false,
       par:"Google Maps",service,solidaire:f.solidaire===true||estSolidaire(f.nom,false),
@@ -7576,6 +7134,27 @@ function nomsLieuxCompatibles(nomA,nomB){
   const aa=mots(a),bb=mots(b), communs=aa.filter(m=>bb.includes(m));
   if(aa.length===1 && bb.length===1 ? communs[0] && communs[0].length>=5
     : communs.length>=2 && communs.length/Math.min(aa.length,bb.length)>=2/3) return true;
+  /* Une saisie OSM peut contenir une faute isolée alors que Places ajoute un
+     suffixe de zone. Ce n'est pas une permission de fusionner deux homonymes :
+     on exige le même premier mot, un autre mot long identique et une seule
+     paire de mots suffisamment proche. */
+  const distanceEdition=(x,y)=>{
+    const ligne=Array.from({length:y.length+1},(_,i)=>i);
+    for(let i=1;i<=x.length;i++){
+      let diagonal=ligne[0]; ligne[0]=i;
+      for(let j=1;j<=y.length;j++){
+        const precedent=ligne[j];
+        ligne[j]=Math.min(ligne[j]+1,ligne[j-1]+1,diagonal+(x[i-1]===y[j-1]?0:1));
+        diagonal=precedent;
+      }
+    }
+    return ligne[y.length];
+  };
+  const premierCommun=a.split(/\s+/)[0]===b.split(/\s+/)[0] && a.split(/\s+/)[0].length>=4;
+  const autreCommun=communs.some(m=>m.length>=5);
+  const fauteIsolee=aa.some(x=>x.length>=5 && bb.some(y=>y.length>=5 &&
+    distanceEdition(x,y)<=Math.max(1,Math.floor(Math.max(x.length,y.length)*.2))));
+  if(premierCommun && autreCommun && fauteIsolee) return true;
   /* La comparaison ci-dessus privilégie l'absence de faux positif. Entre une
      fiche OSM et Places, on peut aussi rencontrer une unique faute de frappe
      ou une ville ajoutée au nom commercial. À moins de 80 m (appelant), le
@@ -7596,6 +7175,11 @@ function nomsLieuxCompatibles(nomA,nomB){
   }
   return 1-ligne[court.length]/court.length>=.9;
 }
+function adressesLieuxCompatibles(adresseA,adresseB){
+  const nettoyer=adresse=>sansAccents(adresse||"").replace(/[^a-z0-9]+/g," ").trim();
+  const a=nettoyer(adresseA),b=nettoyer(adresseB);
+  return a.length>=8 && b.length>=8 && (a.includes(b) || b.includes(a));
+}
 function appliquerFicheGoogle(l,f){
   if(!l||!f) return;
   // La géométrie Places devient la référence d'un établissement homonyme :
@@ -7615,7 +7199,7 @@ function greffeNotes(liste,fiches){
   (liste||[]).forEach(l=>{
     let meilleur=null,dMin=150;
     (fiches||[]).forEach(f=>{ const d=distanceM(l.lat,l.lng,f.lat,f.lng);
-      if(d<dMin && nomsLieuxCompatibles(l.titre,f.nom)){dMin=d;meilleur=f;} });
+      if(d<dMin && (nomsLieuxCompatibles(l.titre,f.nom) || adressesLieuxCompatibles(l.adresse,f.adresse))){dMin=d;meilleur=f;} });
     if(meilleur){ appliquerFicheGoogle(l,meilleur);
       const canonique=permanentPlaces.find(x=>x.id===l.id); if(canonique&&canonique!==l) appliquerFicheGoogle(canonique,meilleur); }
   });
@@ -8130,7 +7714,7 @@ const POIDS = {
 
 /* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé ---- */
 const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
-                      ignores:{}, transport:"pied", vu:0 };
+                      ignores:{}, vu:0 };
 let PROFIL = (()=>{
   try{ return Object.assign({}, PROFIL_VIDE,
        JSON.parse(localStorage.getItem("autour:profil")||"{}")); }
@@ -8158,7 +7742,6 @@ function mettreAJourProfil(action, valeur){
   }
   if(action === "ignore" && valeur)
     PROFIL.ignores[valeur] = (PROFIL.ignores[valeur]||0) + 1;
-  if(action === "transport" && valeur) PROFIL.transport = valeur;
   enregistrerProfil();
 }
 
@@ -8414,7 +7997,7 @@ function proposableAuto(l, ctx){
   if(demandeExplicite(l, ctx)) return true;
   if(JAMAIS_AUTO.has(l.cat)) return false;
   // un arrêt n'est pas une destination : il reste chargé, mais ne se dessine
-  // que si on a allumé la couche, cherché un transport ou ouvert un itinéraire
+  // que si on a allumé la couche ou cherché explicitement un transport
   if(CATS_TRANSPORT.has(l.cat) && !transportsDemandes(ctx)) return false;
   // « fermé » veut dire fermé maintenant : sur le créneau de ce soir ou de
   // demain, l'information de Google ne dit plus rien du moment regardé.
@@ -8600,13 +8183,7 @@ function classementFeuille(){
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
-    // l'ETA réel pilote l'ordre ET l'exclusion : un lieu fermé à l'arrivée
-    // n'est pas un résultat, même s'il est le plus proche
-    etaFor:l=>etaConnu(l, centre),
   });
-  // les itinéraires manquants arrivent après coup : on redessine la feuille
-  // une fois, avec le vrai ordre
-  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau !== null) majFeuille2(); });
   return classement;
 }
 
@@ -8988,18 +8565,15 @@ function recommandationsAccueil(limite){
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
-    etaFor:l=>etaConnu(l, centre),
   });
 
   if(!groupe){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
     const retenus = classement.filter(l=>sections.includes(l.rankSection))
       .sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
-    prechargerEta(retenus, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
     return retenus.slice(0, limite || 12);
   }
 
-  prechargerEta(classement, centre, ()=>{ if(feuilleNiveau === "racine") majFeuille2(); });
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
   return avecEpingles(classement).slice(0, limite || 12);
@@ -9180,7 +8754,6 @@ function solutionsAide(limite){
     nowOnly:false,
     radius:Math.max(rayonRecherche, 6000),
     distanceBetween:distanceM,
-    etaFor:l=>etaConnu(l, centre),
   });
 
   // pertinence du besoin : elle passe devant tout le reste du tri
@@ -9576,28 +9149,15 @@ function carteRecommandation(l){
     '</span></div>';
 }
 
-/* ---- Prochains départs --------------------------------------------------
-   Tant qu'aucune source transport n'est branchée, on n'affiche pas de faux
-   horaires : le bandeau dit ce qu'il en est, et rien de plus. */
+/* Les arrêts restent des données de découverte. Le bouton Transport révèle
+   leur couche ; il ne lance plus de moteur de départs ou de correspondances. */
 function blocTransports(){
-  const passages = prochainsPassages();
-  const corps = passages.length
-    ? '<span class="tr-lignes">'+passages.map(p=>
-        '<b>'+esc(p.ligne)+'</b> : '+p.minutes+' min').join(" • ")+'</span>'
-    : '<span class="tr-lignes tr-vide">Aucune donnée temps réel disponible ici</span>';
+  if(!coucheTransport) return "";
   return '<div class="tr-bloc">'+
     '<span class="tr-icone" aria-hidden="true">🚌</span>'+
-    '<span class="tr-txt"><span class="tr-titre">Prochains départs à proximité</span>'+corps+'</span>'+
-    (passages.length ? '<button class="tr-tout" data-tr="tout">Voir tous</button>' : '')+
+    '<span class="tr-txt"><span class="tr-titre">Transports autour de toi</span>'+
+      '<span class="tr-lignes">Arrêts et stations affichés sur la carte</span></span>'+
     '</div>';
-}
-
-/* Passages fournis par la couche transport quand un provider temps réel est
-   enregistré. Aucun provider ⇒ liste vide, jamais un horaire inventé. */
-function prochainsPassages(){
-  const T = window.AutourTransit;
-  if(!T || !positionMoi || typeof T.nextDepartures !== "function") return [];
-  try{ return T.nextDepartures(positionMoi) || []; }catch(e){ return []; }
 }
 
 function brancherFeuille2(){
@@ -9695,12 +9255,6 @@ function brancherFeuille2(){
     const id = b.dataset.ouBesoin;
     if(id === "aide"){ if(!modeAide) basculerAide(); return; }
     ouvrirFeuille2(id);
-  });
-
-  corps.querySelectorAll("[data-tr]").forEach(b=>b.onclick=()=>{
-    // pas d'écran transport dédié tant qu'aucune source n'est branchée :
-    // on déplie la feuille plutôt que d'ouvrir une page vide
-    reglerFeuilleDeplie(true);
   });
 
   corps.querySelectorAll("[data-bn]").forEach(b=>b.onclick=()=>{
@@ -10305,7 +9859,6 @@ function appliquerPosition(p, opts){
     // contraire : on efface, on ne corrige pas
     villeDetectee = null;
     commune = "ton quartier";
-    etaParLieu.clear();
     $("#hdVille").textContent = "Autour de toi";
   }
   majEnteteLieu();
@@ -10406,6 +9959,8 @@ document.addEventListener("visibilitychange", ()=>{
   if(geoDejaAutorisee()){ veillerSurLaPosition(); suivreMaPosition({silencieux:true}); }
 });
 
+let localisationEnCours = false;
+
 function suivreMaPosition(opts){
   const o = opts || {};
   if(!navigator.geolocation){
@@ -10413,10 +9968,15 @@ function suivreMaPosition(opts){
     etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
     return;
   }
+  // Le démarrage, le bouton et le retour au premier plan peuvent se croiser.
+  // Une seule demande navigateur à la fois évite les réponses dans le désordre.
+  if(localisationEnCours) return;
+  localisationEnCours = true;
   definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
   PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
     p=>{
+      localisationEnCours = false;
       PERF.jalon("geolocation_ready");
       PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
       appliquerPosition(p, {discret: !!o.silencieux});
@@ -10424,6 +9984,7 @@ function suivreMaPosition(opts){
       veillerSurLaPosition();
     },
     (err)=>{
+      localisationEnCours = false;
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
       if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
@@ -10449,21 +10010,17 @@ function proposerPosition(){
       : "Active ta position ou choisis un endroit sur la carte.", true);
 }
 
-/* Au démarrage, on ne force jamais la boîte de dialogue du navigateur.
-   · déjà autorisée → on relance la mesure tout de suite, en silence. Safari ne
-     répondant pas à `permissions.query`, c'est notre propre trace qui le dit ;
-     sans elle, quelqu'un ayant déjà accepté aurait dû réappuyer à chaque
-     ouverture.
-   · jamais demandée → on propose, et c'est un geste qui déclenche la demande.
-     Une boîte de dialogue qui surgit sans qu'on ait rien fait est refusée par
-     réflexe, et sur iOS elle est souvent ignorée purement et simplement.
-   · refusée → on le dit, sans insister. */
+/* La demande part dès l'ouverture, en parallèle du premier rendu. Le temps de
+   répondre au navigateur, la coquille, la carte et les caches se stabilisent.
+   Une permission déjà refusée n'est jamais redemandée : le bandeau conserve
+   alors le choix manuel. Safari ne répondant pas toujours à
+   `permissions.query`, notre trace locale distingue une autorisation déjà
+   obtenue d'un premier démarrage. */
 async function demarrerLocalisation(){
   const etatPerm = await permissionPosition();
   PERF.jalon("permission_" + etatPerm);
-  if(etatPerm === "granted"){ suivreMaPosition(); return; }
-  if(etatPerm === "absent"){ suivreMaPosition(); return; }   // dira ce qu'il faut
-  proposerPosition();
+  if(etatPerm === "denied"){ proposerPosition(); return; }
+  suivreMaPosition();
 }
 
 $("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
@@ -10845,7 +10402,6 @@ function remplirResultatsZone(nom, intention){
     nowOnly:filtreMaintenant && !montrerFermes,
     radius:rayonRecherche,
     distanceBetween:distanceM,
-    etaFor:l=>etaConnu(l, centre),
     /* Quand l'intention a déjà été traduite en catégories, c'est LE filtre :
        repasser son texte ici en ajoutait un second, qui écartait tout ce dont
        le nom ne contient pas les mots tapés. « restaurant indien » ne laissait
@@ -10911,12 +10467,9 @@ $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
 
-/* Le bouton transport ouvre la feuille sur l'accueil, où vit le bandeau des
-   prochains départs : une seule surface, pas un écran de plus. */
-/* Le bouton transports fait deux choses d'un seul geste, et c'est voulu :
-   il allume la couche des arrêts sur la carte ET ouvre les prochains départs.
-   Un second appui éteint la couche. Sans cet interrupteur, les arrêts ne
-   seraient plus atteignables du tout depuis Explorer. */
+/* Le bouton transports allume la couche des arrêts et ouvre l'accueil pour
+   expliquer ce qui vient d'apparaître. Un second appui range la couche. Sans
+   cet interrupteur, les arrêts ne seraient plus atteignables dans Explorer. */
 /* Aide : un interrupteur, comme la couche transport. Le même geste entre et
    sort du mode, et son état se voit sans avoir à ouvrir quoi que ce soit. */
 $("#btnAide").onclick=()=>{

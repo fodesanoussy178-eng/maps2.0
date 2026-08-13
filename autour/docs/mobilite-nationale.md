@@ -1,4 +1,10 @@
-# Couche mobilité nationale — audit et plan d'intégration
+# Couche mobilité nationale — audit historique et pistes futures
+
+> **État produit depuis la passe de simplification.** Autour ne maintient plus
+> de moteur voiture ou transports publics. Les parcours internes sont limités
+> à la marche et au vélo. Voiture et transports ouvrent désormais Google Maps,
+> Apple Plans ou Waze. Les propositions d'architecture ci-dessous sont donc des
+> recherches archivées, pas l'architecture active du produit.
 
 Document préalable à toute implémentation. Il répond aux huit points demandés
 avant modification du code. **Aucun déploiement en production n'est proposé
@@ -17,7 +23,7 @@ ici** : chaque phase se termine par une validation explicite.
 | Élément | État constaté |
 |---|---|
 | Application | Page statique unique. `autour/index.html` ≈ 5 500 lignes, sans build ni bundler. |
-| Logique métier | `autour/core.js` : classification, déduplication, classement. `autour/transit.js` : abstraction `TransitProvider` et ETA porte-à-porte (ajoutés au commit précédent). |
+| Logique métier | `autour/core.js` : classification, déduplication, classement. `autour/index.html` : parcours internes marche/vélo et liens vers les applications externes. |
 | Tests | `node --test autour/tests/*.mjs` — 50 tests, verts. Pas de CI détectée. |
 | Backend | **Aucune Edge Function.** Le répertoire `supabase/functions` n'existe pas. |
 | Données consommées | Overpass, Nominatim, OpenAgenda, Google Places, tuiles Carto/OSM, Supabase — **toutes appelées depuis le navigateur**. |
@@ -32,15 +38,14 @@ D, E et F n'est réalisable proprement.
 
 ---
 
-## 2. Routeur actuel (marche, vélo, voiture)
+## 2. Routeur actuel (marche et vélo)
 
 Défini dans `autour/index.html:2939` :
 
 ```js
 const OSRM_PROFILS = {
   pied:    "https://routing.openstreetmap.de/routed-foot/route/v1/foot/",
-  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/",
-  voiture: "https://routing.openstreetmap.de/routed-car/route/v1/driving/"
+  velo:    "https://routing.openstreetmap.de/routed-bike/route/v1/bike/"
 };
 ```
 
@@ -54,8 +59,8 @@ const OSRM_PROFILS = {
 1. Ces serveurs sont inadaptés à un appel par résultat de recherche. Le
    classement par ETA multiplie les requêtes ; il faut un routeur maîtrisé
    ou un cache serveur agressif.
-2. OSRM ne renvoie ni horaires ni transport en commun. Le calcul
-   porte-à-porte transport ne peut pas en sortir.
+2. OSRM ne renvoie ni horaires ni transport en commun. Autour délègue donc ces
+   trajets aux applications cartographiques externes.
 3. **Le « % du trajet sur aménagement cyclable » ne peut pas venir d'OSRM.**
    Il faut croiser la géométrie de l'itinéraire avec la BNAC en PostGIS
    (`ST_Intersection` sur un tampon de quelques mètres). C'est un calcul
@@ -320,7 +325,7 @@ réelle de chaque flux.
 | `siri-lite` | `SiriLiteClient` | à la demande, cache 20–30 s | Alternative quand GTFS-RT est absent. |
 | `cycling-import` | `CyclingInfrastructureImporter` | cron hebdomadaire | Sélectionne la ressource **Parquet** la plus récente, importe en PostGIS. Jamais côté navigateur. |
 | `gbfs-refresh` | `GbfsProviderResolver` + `SharedMobilityService` | cron ~1 min sur zones actives | Rafraîchit `shared_mobility_station` pour les seuls systèmes couvrant des utilisateurs actifs. |
-| `trip-plan` | `MobilityRecommendationEngine` | à la demande | Compose l'ETA porte-à-porte et compare marche / vélo / transport. |
+| `trip-plan` | `MobilityRecommendationEngine` | non retenu dans l'architecture active | Ancienne piste pour composer un ETA porte-à-porte multimodal. |
 
 Règles communes non négociables : timeout par appel, retries avec backoff
 exponentiel, erreurs journalisées dans `mobility_resource.last_error`, et
@@ -366,8 +371,8 @@ Activer PostGIS. Créer le premier répertoire `supabase/functions`. Poser
 
 **Phase 1 — Résolution par territoire**
 `TransitDatasetResolver` : depuis une position, retrouver les datasets
-couvrants, priorité à l'autorité organisatrice locale. Brancher sur
-l'abstraction `TransitProvider` déjà en place dans `autour/transit.js`.
+couvrants, priorité à l'autorité organisatrice locale. Cette piste supposerait
+de recréer un moteur interne et n'est donc pas retenue dans le produit actuel.
 *Validation : à Lille et dans une seconde métropole, le résolveur désigne le
 bon réseau sans une ligne de code spécifique à la ville.*
 
@@ -415,13 +420,13 @@ page statique où toute clé embarquée est publique.
 
 ---
 
-## État actuel du code (déjà livré)
+## État actuel du code
 
-- `autour/transit.js` : abstraction `TransitProvider`, sélection par
-  territoire (`covers(position)`, priorité au plus spécifique), repli en
-  cascade jusqu'à la marche, composition d'ETA porte-à-porte.
-- `autour/core.js` : classement par ETA réel, exclusion des lieux fermés à
-  l'arrivée, contrôle de faisabilité des événements.
-- Aucun flux transport n'est branché : sans clé ni backend, les durées
-  affichées sont des temps de marche, déclarés « estimés ». **Rien n'est
-  présenté comme du temps réel.**
+- `autour/index.html` : routage interne OSRM marche/vélo uniquement.
+- Voiture : liens Google Maps, Apple Plans et Waze, destination renseignée.
+- Transports publics : liens Google Maps et Apple Plans, origine et destination
+  renseignées.
+- Les arrêts et stations restent classifiés pour la découverte et les fiches,
+  mais sont masqués dans Explorer tant qu'ils ne sont pas demandés.
+- `autour/core.js` reste le moteur de classement et de recommandations ; cette
+  passe ne modifie pas ses règles métier.
