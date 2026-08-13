@@ -160,14 +160,31 @@
   function lierLeaflet(instance) {
     leaflet = instance || null;
     if (!carte || !leaflet || !root.google || !root.google.maps) return;
-    carte.addListener("idle", () => {
+    /* LES MARQUEURS SE DÉCOLLAIENT DE LA CARTE PENDANT QU'ON LA DÉPLAÇAIT.
+
+       Dans ce montage, c'est Google qui reçoit les gestes : la couche Leaflet
+       est en `pointer-events:none`, seuls ses marqueurs restent cliquables.
+       Leaflet n'était resynchronisé que sur `idle`, c'est-à-dire une fois le
+       doigt relevé. Pendant tout le déplacement, les tuiles glissaient et les
+       marqueurs restaient figés à l'écran : ils se retrouvaient sur d'autres
+       rues, superposés les uns aux autres, et ne reprenaient leur place qu'à
+       la fin du geste. Vu de l'utilisateur, ça ressemble exactement à des
+       marqueurs qu'on déplace à la main.
+
+       `bounds_changed` part à chaque image du déplacement et du zoom : la
+       couche Leaflet suit Google en continu, les marqueurs restent collés à
+       leur rue. `idle` reste branché comme filet — il ferme les écarts
+       d'arrondi en fin de geste. */
+    const suivre = () => {
       if (synchronisation) return;
       const centre = carte.getCenter();
       if (!centre) return;
       synchronisation = true;
       leaflet.setView([centre.lat(), centre.lng()], carte.getZoom(), {animate:false});
       root.setTimeout(() => { synchronisation = false; }, 0);
-    });
+    };
+    carte.addListener("bounds_changed", suivre);
+    carte.addListener("idle", suivre);
     carte.addListener("click", () => root.dispatchEvent(new Event("autour:google-map-click")));
   }
 
