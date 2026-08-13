@@ -305,3 +305,54 @@ test("le garde-fou de synchronisation empêche la boucle Google ↔ Leaflet", ()
   assert.match(bloc[0], /if \(synchronisation\) return;/);
   assert.match(bloc[0], /synchronisation = true;/);
 });
+
+/* ======================================================================== */
+/*  Explorer / Maintenant : la présentation cible                           */
+/* ======================================================================== */
+
+test("un événement en cours prend une carte blanche, pas une pastille de commerce", () => {
+  assert.match(html, /class="evc"/);
+  assert.match(html, /class="evc-rond"/);
+  // icône + titre + lieu + distance et heure de fin
+  assert.match(html, /\.evc\{display:flex;align-items:center;/);
+  assert.match(html, /const bas = \[dist, fin \? "jusqu’à "\+fin : ""\]\.filter\(Boolean\)\.join\(" · "\);/);
+});
+
+test("la carte-événement passe AVANT l'affiche : un événement en cours d'abord", () => {
+  const i = html.indexOf('class="evc"');
+  const j = html.indexOf('class="affiche ');
+  assert.ok(i > 0 && j > 0 && i < j,
+    "placée après, la branche affiche capturait tous les événements et .evc n'était jamais atteinte");
+});
+
+test("seul ce qui a réellement lieu prend la carte blanche", () => {
+  assert.match(html,
+    /if\(estTemporaire\(l\) && !l\.annule && TEMPS\.estMaintenant\(statutTemps\(l\)\.statut\)\)\{/);
+});
+
+test("la liste « ⚡ Maintenant (N) » existe, compacte et comptée", () => {
+  assert.match(html, /function blocMaintenantAccueil\(\)\{/);
+  assert.match(html, /class="mn" data-testid="maintenant-liste"/);
+  assert.match(html, /<b>Maintenant<\/b>'\+\s*'<span>\('\+liste\.length\+'\)<\/span>/);
+  assert.match(html, /Voir tout \('\+liste\.length\+'\)/);
+});
+
+test("le bloc n'existe pas quand il n'y a rien, ni hors du créneau Maintenant", () => {
+  const bloc = /function blocMaintenantAccueil\(\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc);
+  assert.match(bloc[0], /if\(creneau !== "maintenant" \|\| modeAide\) return "";/);
+  assert.match(bloc[0], /if\(!liste\.length\) return "";/);
+});
+
+test("une ligne ouvre son événement, sans menu intermédiaire", () => {
+  const bloc = /corps\.querySelectorAll\("\[data-mn\]"\)[\s\S]*?\}\);/.exec(html);
+  assert.ok(bloc);
+  assert.match(bloc[0], /pousserEcran\(\(\)=>ouvrirDetail\(l\.id\)\)/);
+});
+
+test("un événement en cours n'est jamais affiché deux fois dans la feuille", () => {
+  assert.match(html, /const dejaListes = new Set\(enCours\.slice\(0, MAINTENANT_APERCU\)\.map\(l=>l\.id\)\);/);
+  assert.match(html, /reco = reco\.filter\(l=>!dejaListes\.has\(l\.id\)\);/);
+  assert.match(html, /const titre = enCours\.length \? "Autour de toi"/,
+    "deux sections nommées « maintenant » diraient la même chose deux fois");
+});
