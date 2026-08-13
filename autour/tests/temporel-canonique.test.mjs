@@ -1,0 +1,140 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import "../temporel.js";
+
+const T = globalThis.AutourTemps;
+const {STATUTS} = T;
+
+/* Même instant de référence que temporel.test.mjs : un mardi 12 août 2025,
+   14 h 00 à Paris. */
+const MAINTENANT = Date.parse("2025-08-12T14:00:00+02:00");
+const H = 3600 * 1000;
+const J = 24 * H;
+
+/* Un événement de la couche canonique : il porte `temporalStatus`, calculé par
+   Postgres. Tout l'objet de ces tests est de vérifier que le navigateur
+   n'invente rien par-dessus. */
+const canonique = (statutBase, extra) => Object.assign({
+  id: "c", titre: "Événement", isTemporary: true, timezone: "Europe/Paris",
+  temporalStatus: statutBase,
+}, extra);
+
+const statut = (item, quand) =>
+  T.statutTemporel(item, quand == null ? MAINTENANT : quand).statut;
+
+/* ======================================================================== */
+/*  Le verdict de la base fait autorité                                     */
+/* ======================================================================== */
+
+test("« now » est repris tel quel", () => {
+  assert.equal(statut(canonique("now", {debutLe: MAINTENANT - H, finLe: MAINTENANT + H})),
+    STATUTS.EN_COURS);
+});
+
+test("« past » est repris tel quel", () => {
+  assert.equal(statut(canonique("past", {debutLe: MAINTENANT - 3 * H, finLe: MAINTENANT - H})),
+    STATUTS.PASSE);
+});
+
+test("« unknown_date » est repris tel quel, même avec des dates dans l'objet", () => {
+  // la base a jugé la date insuffisante (fin absente, ou journée seule) :
+  // le navigateur ne doit pas la « rattraper » depuis debutLe/finLe
+  assert.equal(statut(canonique("unknown_date", {debutLe: MAINTENANT - H, finLe: MAINTENANT + H})),
+    STATUTS.INCONNU);
+});
+
+/* ---- La règle absolue : un événement futur n'est jamais « maintenant » -- */
+
+test("« soon » n'est JAMAIS maintenant, même à dix minutes du début", () => {
+  const etat = T.statutTemporel(
+    canonique("soon", {debutLe: MAINTENANT + 10 * 60000, finLe: MAINTENANT + 2 * H}),
+    MAINTENANT);
+  assert.equal(T.estMaintenant(etat.statut), false,
+    "la base a dit « soon » : le navigateur ne doit pas le promouvoir en imminent");
+  assert.equal(etat.statut, STATUTS.PLUS_TARD);
+});
+
+test("« upcoming » n'est jamais maintenant non plus", () => {
+  const etat = T.statutTemporel(
+    canonique("upcoming", {debutLe: MAINTENANT + 5 * J, finLe: MAINTENANT + 5 * J + 2 * H}),
+    MAINTENANT);
+  assert.equal(T.estMaintenant(etat.statut), false);
+  assert.equal(etat.statut, STATUTS.A_VENIR);
+});
+
+test("aucun statut canonique ne peut produire « imminent »", () => {
+  for (const s of ["now", "soon", "upcoming", "past", "unknown_date"]) {
+    const etat = T.statutTemporel(
+      canonique(s, {debutLe: MAINTENANT + 30 * 60000, finLe: MAINTENANT + 2 * H}), MAINTENANT);
+    assert.notEqual(etat.statut, STATUTS.IMMINENT,
+      `« ${s} » ne doit pas devenir imminent : la fenêtre d'imminence est une notion locale`);
+  }
+});
+
+test("seul « now » ouvre la porte de Maintenant", () => {
+  const dedans = ["now"].filter((s) =>
+    T.estMaintenant(T.statutTemporel(
+      canonique(s, {debutLe: MAINTENANT - H, finLe: MAINTENANT + H}), MAINTENANT).statut));
+  const dehors = ["soon", "upcoming", "past", "unknown_date"].filter((s) =>
+    T.estMaintenant(T.statutTemporel(
+      canonique(s, {debutLe: MAINTENANT - H, finLe: MAINTENANT + H}), MAINTENANT).statut));
+  assert.deepEqual(dedans, ["now"]);
+  assert.deepEqual(dehors, []);
+});
+
+/* ---- Ce qui reste une décision locale ----------------------------------- */
+
+test("« soon » et « upcoming » sont rangés par la date, dans le fuseau du lieu", () => {
+  // ce soir, 21 h : même journée locale → « plus tard aujourd'hui »
+  const ceSoir = T.statutTemporel(
+    canonique("soon", {debutLe: Date.parse("2025-08-12T21:00:00+02:00")}), MAINTENANT);
+  assert.equal(ceSoir.statut, STATUTS.PLUS_TARD);
+  assert.equal(T.sectionTemporelle(ceSoir, MAINTENANT), "ce_soir");
+
+  // samedi : le week-end, pas « à venir » en vrac
+  const samedi = T.statutTemporel(
+    canonique("upcoming", {debutLe: Date.parse("2025-08-16T16:00:00+02:00")}), MAINTENANT);
+  assert.equal(samedi.statut, STATUTS.A_VENIR);
+  assert.equal(T.sectionTemporelle(samedi, MAINTENANT), "ce_week_end");
+});
+
+test("un « soon » sans date exploitable retombe sur inconnu, pas sur à venir", () => {
+  assert.equal(statut(canonique("soon", {})), STATUTS.INCONNU);
+});
+
+test("l'état canonique se souvient du verdict de la base", () => {
+  const etat = T.statutTemporel(
+    canonique("soon", {debutLe: MAINTENANT + 3 * H}), MAINTENANT);
+  assert.equal(etat.canonique, "soon");
+});
+
+/* ---- Les libellés restent lisibles -------------------------------------- */
+
+test("un événement canonique en cours s'annonce « Maintenant »", () => {
+  assert.equal(T.libelleTemporel(
+    canonique("now", {debutLe: MAINTENANT - H, finLe: MAINTENANT + H}), MAINTENANT),
+    "Maintenant");
+});
+
+test("une date jugée insuffisante s'annonce comme telle, sans bluffer", () => {
+  assert.equal(T.libelleTemporel(
+    canonique("unknown_date", {debutLe: MAINTENANT - H}), MAINTENANT),
+    "Date à vérifier");
+});
+
+test("un événement canonique annulé le reste", () => {
+  assert.equal(T.libelleTemporel(
+    canonique("past", {debutLe: MAINTENANT - H, finLe: MAINTENANT + H, annule: true}),
+    MAINTENANT), "Annulé");
+});
+
+/* ---- Non-régression : sans statut canonique, rien ne change ------------- */
+
+test("un objet sans temporalStatus suit le moteur local, inchangé", () => {
+  const local = {id: "l", titre: "Événement", isTemporary: true, timezone: "Europe/Paris",
+    debutLe: MAINTENANT + 30 * 60000, finLe: MAINTENANT + 2 * H};
+  const etat = T.statutTemporel(local, MAINTENANT);
+  assert.equal(etat.statut, STATUTS.IMMINENT,
+    "le moteur local garde sa fenêtre d'imminence pour ce qui ne vient pas de la base");
+  assert.equal(etat.canonique, undefined);
+});
