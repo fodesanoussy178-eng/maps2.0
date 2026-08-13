@@ -285,3 +285,23 @@ test("la pastille s'efface là où la carte appartient à autre chose", () => {
   const bloc = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.match(bloc[0], /modeNav \|\| modePose \|\| modeAide/);
 });
+
+/* ======================================================================== */
+/*  Les marqueurs restent collés à la carte pendant qu'on la déplace        */
+/* ======================================================================== */
+
+test("la couche Leaflet suit Google en continu, pas seulement en fin de geste", () => {
+  const g = readFileSync(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
+  assert.match(g, /carte\.addListener\("bounds_changed", suivre\);/,
+    "sans suivi continu, les marqueurs restent figés pendant le déplacement");
+  assert.match(g, /carte\.addListener\("idle", suivre\);/,
+    "`idle` reste le filet de fin de geste");
+});
+
+test("le garde-fou de synchronisation empêche la boucle Google ↔ Leaflet", () => {
+  const g = readFileSync(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
+  const bloc = /const suivre = \(\) => \{[\s\S]*?\n    \};/.exec(g);
+  assert.ok(bloc, "le suivi doit être une fonction unique, partagée par les deux écouteurs");
+  assert.match(bloc[0], /if \(synchronisation\) return;/);
+  assert.match(bloc[0], /synchronisation = true;/);
+});
