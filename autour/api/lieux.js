@@ -18,9 +18,10 @@
        pour tout le monde et pour la semaine ;
      · une instance muette bascule sur la suivante sans que le client le sache.
 
-   Le client garde son chemin direct vers Overpass en secours : en local, sur
-   une préproduction sans fonctions, ou si cette route tombe, l'application
-   continue exactement comme avant.
+   Si le relais tombe, le client conserve Google Places, DATAtourisme,
+   Supabase, les jeux de zone et ses caches locaux. Il ne relance pas les mêmes
+   instances publiques depuis chaque téléphone : cela doublerait seulement la
+   panne et la consommation réseau.
    ======================================================================== */
 
 export const config = { runtime: "edge" };
@@ -43,15 +44,15 @@ const SERVEURS = [
 const FORME = /^\[out:json\]\[timeout:\d{1,2}\];\((?:nwr(?:\(around:\d{1,5},-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?\)|\(-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?\))\[[^\];]{1,400}\];){1,40}\);out center \d{1,4};$/;
 const LONGUEUR_MAX = 4096;
 const SORTIE_MAX = 400;
-const DELAI_TOTAL_MS = 20000;         // budget total de la fonction
-const DELAI_SERVEUR_MS = 7000;        // une instance lente ne mange pas tout le
-                                      // budget et laisse une chance aux suivantes
+const DELAI_TOTAL_MS = 9000;          // l'enrichissement ne doit pas vivre 20 s
+const DELAI_SERVEUR_MS = 7500;
+const DECALAGE_SERVEUR_MS = 350;      // requêtes couvertures, sans triple rafale
 
 function refus(message, statut) {
   return new Response(JSON.stringify({ erreur: message }), {
     status: statut,
     headers: { "content-type": "application/json; charset=utf-8",
-               "cache-control": "public, max-age=60" },
+               "cache-control": statut >= 500 ? "no-store" : "public, max-age=60" },
   });
 }
 
@@ -65,46 +66,77 @@ export default async function handler(requete) {
   if (!sortie || sortie > SORTIE_MAX) return refus("sortie non bornée", 400);
 
   const debut = Date.now();
+  const controleurs = [];
+  const attendre = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  let termine = false;
 
-  for (const serveur of SERVEURS) {
-    const restant = DELAI_TOTAL_MS - (Date.now() - debut);
-    if (restant < 1000) break;
+  /* Une instance lente ne doit plus imposer sept secondes avant même que la
+     suivante soit contactée. Les tentatives sont légèrement décalées ; la
+     première réponse JSON exploitable gagne et annule les autres. */
+  const tentatives = SERVEURS.map(async (serveur, index) => {
+    if (index) await attendre(index * DECALAGE_SERVEUR_MS);
+    if (termine) throw new Error("overpass_annule");
+    const controleur = new AbortController();
+    controleurs.push(controleur);
+    const minuteur = setTimeout(() => controleur.abort(), DELAI_SERVEUR_MS);
     try {
-      /* Le signal doit être recréé à chaque tentative. Un AbortSignal déjà
-         expiré annule instantanément toutes les suivantes — l'ancien code
-         n'essayait donc réellement qu'un seul serveur quand il était lent. */
-      const delai = Math.min(DELAI_SERVEUR_MS, restant);
-      const arret = AbortSignal.timeout ? AbortSignal.timeout(delai) : undefined;
       const r = await fetch(serveur, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: "data=" + encodeURIComponent(q),
-        signal: arret,
+        signal: controleur.signal,
       });
-      if (!r.ok) continue;                       // 429, 504 : au suivant
+      if (!r.ok) throw new Error("overpass_" + r.status);
       const j = await r.json();
-      if (!j || !Array.isArray(j.elements)) continue;
-      /* Une réponse vide n'est jamais mise en cache. Elle peut être vraie — un
-         hameau sans commerce — mais elle peut aussi venir d'une instance
-         incomplète ou tronquée, et la garder un jour coûterait un quartier
-         entier. On essaie la suivante ; si toutes disent vide, on répond 503
-         avec une minute de cache, et le client garde ce qu'il a. */
-      if (!j.elements.length) continue;
-      return new Response(JSON.stringify({ elements: j.elements }), {
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          /* Un jour de fraîcheur, une semaine de survie. Une boulangerie ne
-             déménage pas dans la journée ; et une donnée d'hier vaut
-             infiniment mieux qu'un écran vide pendant qu'on la rafraîchit. */
-          "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800",
-          "x-autour-source": "overpass",
-        },
-      });
-    } catch (e) { /* instance muette : on essaie la suivante */ }
+      if (!j || !Array.isArray(j.elements)) throw new Error("overpass_invalide");
+      return { elements:j.elements, serveur };
+    } finally { clearTimeout(minuteur); }
+  });
+
+  let gagnant = null;
+  let minuteurTotal = null;
+  const delaiTotal = new Promise((resolve, reject) => {
+    minuteurTotal = setTimeout(() => reject(new Error("overpass_delai_total")), DELAI_TOTAL_MS);
+  });
+  const annulerAmont = () => {
+    termine = true;
+    controleurs.forEach(c => c.abort());
+  };
+  if (requete.signal) requete.signal.addEventListener("abort", annulerAmont, {once:true});
+  try {
+    gagnant = await Promise.race([
+      Promise.any(tentatives),
+      delaiTotal,
+    ]);
+  } catch (e) {
+    console.warn("Autour /api/lieux : instances indisponibles", {
+      duree_ms:Date.now()-debut, raison:e && e.message || "inconnue"
+    });
+  } finally {
+    termine = true;
+    clearTimeout(minuteurTotal);
+    controleurs.forEach(c => c.abort());
+    if (requete.signal) requete.signal.removeEventListener("abort", annulerAmont);
   }
 
-  /* Toutes muettes. On répond 503 avec un cache court : le client retombe sur
-     ce qu'il a (jeu rapide, cache local, données de zone) et retentera plus
-     tard — il ne doit jamais rester devant un écran vide à cause de ça. */
+  if (gagnant) {
+    const vide = gagnant.elements.length === 0;
+    return new Response(JSON.stringify({ elements: gagnant.elements }), {
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        /* Une réponse vide valide est exploitable, mais reste fraîche moins
+           longtemps qu'un quartier peuplé. Elle ne devient plus un faux 503. */
+        "cache-control": vide
+          ? "public, s-maxage=900, stale-while-revalidate=3600"
+          : "public, s-maxage=86400, stale-while-revalidate=604800",
+        "x-autour-source": "overpass",
+        "x-autour-duration": String(Date.now()-debut),
+      },
+    });
+  }
+
+  /* Toutes muettes. On répond 503 sans le mettre en cache : le client retombe
+     sur ce qu'il a (jeu rapide, cache local, données de zone) et retentera
+     plus tard — il ne doit jamais rester devant un écran vide à cause de ça. */
   return refus("aucune instance Overpass disponible", 503);
 }

@@ -11,6 +11,36 @@ const D = globalThis.AutourDonnees;
 
 const besoins = (phrase) => A.besoinsDepuisPhrase(phrase).map((x) => x.id);
 
+const MATRICE_AIDE = Object.freeze({
+  manger: ["j’ai faim", "j’ai plus rien à manger", "nourriture gratuite",
+    "distribution alimentaire", "je dois nourrir mes enfants"],
+  logement: ["je dors dehors", "je risque l’expulsion", "j’ai pas de logement",
+    "je peux plus payer mon loyer", "hébergement ce soir"],
+  travail: ["j’ai 20 ans et pas de travail", "je cherche une formation",
+    "j’ai des dettes", "j’ai plus d’argent", "aide financière"],
+  papiers: ["je comprends rien à mes papiers", "titre de séjour", "CAF",
+    "déclaration", "j’ai besoin d’aide pour remplir un dossier"],
+  sante: ["je cherche une pharmacie", "je dois voir un médecin", "je cherche un hôpital",
+    "j’ai mal aux dents", "je n’ai pas de mutuelle", "je n’ai pas de sécurité sociale",
+    "je n’ai pas d’argent pour me soigner"],
+  jeunes: ["étudiant sans ressources", "j’ai besoin d’orientation", "je cherche le CROUS",
+    "je cherche la Mission Locale", "je cherche une bourse", "je suis en décrochage scolaire"],
+  parler: ["j’ai besoin d’un psy", "je cherche un psy gratuit", "je me sens seul",
+    "je fais de l’anxiété", "j’ai besoin d’écoute", "je suis en déprime",
+    "je fais une crise d’angoisse"],
+  famille: ["je suis enceinte", "je cherche une garde d’enfant",
+    "j’ai besoin d’aide à la parentalité", "je vis une séparation",
+    "j’ai besoin d’aide pour mes enfants"],
+  securite: ["je subis des violences", "je suis harcelé", "j’ai été agressé",
+    "j’ai besoin de protection"],
+  autre: ["je sais pas où aller", "je suis perdu et j’ai besoin d’aide",
+    "je ne connais pas les dispositifs", "quelqu’un peut m’orienter"],
+  hygiene: ["je voudrais prendre une douche", "où me laver", "j’ai besoin de toilettes",
+    "je veux laver mes vêtements"],
+  vetements: ["j’ai besoin de vêtements", "où trouver un manteau",
+    "je cherche un vestiaire", "je n’ai pas de chaussures"],
+});
+
 /* ==========================================================================
    Partir du problème : les phrases que les gens écrivent vraiment
    ======================================================================== */
@@ -32,6 +62,152 @@ test("les dix formulations demandées deviennent des besoins", () => {
     assert.ok(besoins(phrase).includes(attendu),
       phrase + " → " + besoins(phrase).join(", ") + " (attendu " + attendu + ")");
   });
+});
+
+test("toute la matrice de formulations Aide est comprise", () => {
+  Object.entries(MATRICE_AIDE).forEach(([attendu, phrases]) => {
+    phrases.forEach((phrase) => assert.ok(besoins(phrase).includes(attendu),
+      phrase + " → " + besoins(phrase).join(", ") + " (attendu " + attendu + ")"));
+  });
+});
+
+test("chaque besoin conduit à plusieurs types de solutions attestées", () => {
+  const solutions = {
+    manger: [
+      {titre:"Restos du Cœur",cat:"alimentaire"},
+      {titre:"Distribution alimentaire du quartier",cat:"collecte"},
+      {titre:"Épicerie solidaire",cat:"alimentaire"},
+    ],
+    logement: [
+      {titre:"Hébergement d’urgence",cat:"hebergement"},
+      {titre:"Action Logement",cat:"asso"},
+      {titre:"ADIL du département",cat:"asso"},
+    ],
+    travail: [
+      {titre:"Mission Locale",cat:"emploi"},
+      {titre:"France Travail",cat:"emploi"},
+      {titre:"Cap Emploi",cat:"emploi"},
+    ],
+    papiers: [
+      {titre:"France Services accès aux droits",cat:"emploi"},
+      {titre:"Préfecture",cat:"mairie"},
+      {titre:"Point d’accès au droit",cat:"asso"},
+    ],
+    jeunes: [
+      {titre:"CROUS",cat:"asso"},
+      {titre:"Mission Locale",cat:"emploi"},
+      {titre:"Point Information Jeunesse",cat:"asso"},
+    ],
+    parler: [
+      {titre:"CMP du secteur",cat:"sante"},
+      {titre:"Point écoute jeunes",cat:"asso"},
+      {titre:"SOS Amitié",cat:"asso"},
+    ],
+    famille: [
+      {titre:"CAF",cat:"asso"},
+      {titre:"PMI Protection maternelle",cat:"sante"},
+      {titre:"Planning Familial",cat:"sante"},
+    ],
+    securite: [
+      {titre:"France Victimes",cat:"asso"},
+      {titre:"Commissariat",cat:"mairie"},
+      {titre:"Planning Familial",cat:"sante"},
+    ],
+    autre: [
+      {titre:"Centre social",cat:"asso"},
+      {titre:"CCAS",cat:"mairie"},
+      {titre:"Maison France Services",cat:"mairie"},
+    ],
+    hygiene: [
+      {titre:"Bains-douches municipaux",cat:"toilettes"},
+      {titre:"Accueil de jour avec douches",cat:"asso"},
+      {titre:"Croix-Rouge - espace hygiène",cat:"asso"},
+    ],
+    vetements: [
+      {titre:"Vestiaire solidaire",cat:"friperie"},
+      {titre:"Secours Populaire - vêtements",cat:"asso"},
+      {titre:"Croix-Rouge - vestiaire",cat:"asso"},
+    ],
+  };
+  Object.entries(solutions).forEach(([besoin, lieux]) => {
+    assert.ok(lieux.length >= 3 && new Set(lieux.map((lieu) => lieu.titre)).size >= 3,
+      besoin + " doit couvrir plusieurs types de structures");
+    lieux.forEach((lieu) => assert.equal(A.estSolution(lieu,[besoin]),true,
+      lieu.titre + " doit être une solution pertinente pour " + besoin));
+  });
+});
+
+test("les catégories larges ne deviennent jamais des promesses d’aide", () => {
+  const horsSujet = [
+    [{titre:"Le Restaurant du coin",cat:"resto"},"manger"],
+    [{titre:"Association culturelle du quartier",cat:"asso"},"logement"],
+    [{titre:"Agence d’intérim",cat:"emploi"},"papiers"],
+    [{titre:"Bibliothèque municipale",cat:"biblio"},"jeunes"],
+    [{titre:"Pharmacie Centrale",cat:"sante"},"parler"],
+    [{titre:"Cabinet médical",cat:"sante"},"famille"],
+    [{titre:"Clinique privée",cat:"sante"},"securite"],
+    [{titre:"Association culturelle",cat:"asso"},"autre"],
+    [{titre:"Foyer sans service documenté",cat:"hebergement"},"hygiene"],
+    [{titre:"Boutique vintage",cat:"friperie"},"vetements"],
+  ];
+  horsSujet.forEach(([lieu, besoin]) => assert.equal(A.estSolution(lieu,[besoin]),false,
+    lieu.titre + " ne doit pas être affirmé comme aide " + besoin));
+});
+
+test("les formulations santé deviennent des sous-intentions invisibles précises", () => {
+  const cas = [
+    ["je cherche une pharmacie", "sante", ["medicaments"]],
+    ["j’ai mal aux dents", "sante", ["dentaire"]],
+    ["je dois voir un médecin", "sante", ["soins"]],
+    ["j’ai besoin d’un psy", "parler", ["mentale"]],
+    ["je cherche un psy gratuit", "parler", ["mentale", "acces"]],
+    ["je fais des crises d’angoisse", "parler", ["mentale"]],
+    ["je n’ai pas de mutuelle", "sante", ["acces"]],
+    ["je n’ai pas de sécurité sociale", "sante", ["acces"]],
+    ["je n’ai pas d’argent pour me soigner", "sante", ["soins", "acces"]],
+  ];
+  cas.forEach(([phrase, besoin, intentions]) => {
+    assert.equal(besoins(phrase)[0], besoin, phrase + " doit d'abord viser " + besoin);
+    const trouves = A.intentionsSanteDepuisPhrase(phrase).map((x) => x.id);
+    intentions.forEach((id) => assert.ok(trouves.includes(id), phrase + " doit reconnaître " + id));
+  });
+});
+
+test("les sous-intentions santé rejettent les lieux médicaux hors sujet", () => {
+  const pharmacie = {titre:"Pharmacie Centrale", cat:"sante", type:"pharmacy"};
+  const hopital = {titre:"Hôpital Saint-Louis", cat:"sante", type:"general_hospital"};
+  const dentiste = {titre:"Cabinet dentaire", cat:"sante", type:"dental_clinic"};
+  const laboratoire = {titre:"Laboratoire médical", cat:"sante", type:"medical_lab"};
+  assert.equal(A.estSolutionSante(pharmacie,["medicaments"]), true);
+  assert.equal(A.estSolutionSante(pharmacie,["mentale"]), false);
+  assert.equal(A.estSolutionSante(hopital,["hopital"]), true);
+  assert.equal(A.estSolutionSante(hopital,["dentaire"]), false);
+  assert.equal(A.estSolutionSante(dentiste,["dentaire"]), true);
+  assert.equal(A.estSolutionSante(laboratoire,["depistage"]), true);
+});
+
+test("une demande de soins gratuits exclut un cabinet privé sans preuve", () => {
+  const prive = {titre:"Cabinet Psychologue Martin", cat:"sante", type:"doctor"};
+  const cmp = {titre:"CMP Centre médico-psychologique", cat:"sante", tags:{healthcare:"psychotherapist"}};
+  const pass = {titre:"PASS - Permanence d'accès aux soins", cat:"sante"};
+  assert.equal(A.estSolutionSante(prive,["mentale"]), true,
+    "un psychologue reste pertinent quand la gratuité n'est pas demandée");
+  assert.equal(A.estSolutionSante(prive,["mentale","acces"]), false,
+    "privé ne veut jamais dire gratuit");
+  assert.equal(A.estSolutionSante(cmp,["mentale","acces"]), true);
+  assert.equal(A.estSolutionSante(pass,["soins","acces"]), true);
+  assert.equal(A.estSolutionSante({titre:"PAEJ du centre",cat:"sante"},["mentale","acces"]), false,
+    "un point d'écoute reste pertinent, mais n'est pas déclaré gratuit sans preuve locale");
+  assert.equal(A.accesAdapteSante({titre:"Cabinet médical",cat:"sante",tags:{fee:"no"}}), true,
+    "fee=no est une preuve explicite");
+});
+
+test("les publics santé mentale connus restent conditionnels", () => {
+  assert.match(A.conditionDe({titre:"CMPP de quartier"}).texte, /enfants.*adolescents/i);
+  assert.match(A.conditionDe({titre:"BAPU Lille"}).texte, /[ée]tudiants/i);
+  assert.deepEqual(A.conditionDe({titre:"PAEJ du centre"}).age, {min:12,max:25});
+  assert.equal(A.conditionDe({titre:"Psychologue privé"}), null,
+    "aucun public n'est inventé pour un cabinet privé");
 });
 
 test("l'âge n'est retenu que si la personne le donne", () => {

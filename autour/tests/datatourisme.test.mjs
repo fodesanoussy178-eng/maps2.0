@@ -117,7 +117,8 @@ test("DATAtourisme complète OSM sans bloquer ni modifier l'interface", () => {
   assert.match(index, /let permanentPlaces=\[\], datatourismePlaces=\[\], externalEvents=\[\], userPublications=\[\];/);
   assert.match(index, /\.\.\.datatourismePlaces/);
   assert.match(index, /fusionner\(r,"datatourisme"\)/);
-  assert.match(index, /if\(!o\.cats\) travaux\.push\(/);
+  assert.match(index, /if\(!o\.cats && !o\.osmSeulement\) travaux\.push\(/);
+  assert.match(index, /avecDelai\(lieuxDatatourisme\(lat,lng,signal\),4000,\[\],signal\)/);
   assert.match(index, /AutourProviders\.datatourisme/);
   assert.match(provider, /AutourProviders\.normaliser/);
   assert.match(index, /let reco = recommandationsAccueil\(7\)/);

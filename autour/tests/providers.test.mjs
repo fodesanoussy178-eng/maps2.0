@@ -44,6 +44,20 @@ test("Google Places produit le contrat Autour, pas son format brut", () => {
   assert.equal(interne.sourceRefs.googlePlaceId, "ChIJ-123");
 });
 
+test("tous les types médicaux Google Places demandés sont normalisés en santé", () => {
+  const api = providers();
+  const types = ["hospital","general_hospital","medical_center","medical_clinic",
+    "pharmacy","drugstore","doctor","dental_clinic","dentist","medical_lab","physiotherapist"];
+  types.forEach((primaryType, index) => {
+    const lieu = api.googlePlaces.normaliserPlace({
+      id:"medical-"+index, displayName:{text:"Lieu médical "+index}, primaryType,
+      types:[primaryType,"health"], location:{latitude:50.62+index/1000,longitude:3.05},
+    }, {apiKey:"browser-key"});
+    assert.equal(lieu.category,"sante",primaryType+" doit appartenir à santé");
+    assert.ok(lieu.categories.includes(primaryType),"les types bruts restent disponibles au ciblage");
+  });
+});
+
 test("l’UI charge les providers et ne contacte aucun fournisseur directement", () => {
   for (const fichier of ["providers/normaliser.js", "providers/googlePlaces.js", "providers/datatourisme.js", "providers/osm.js", "mapProviders/googleMaps.js"])
     assert.match(html, new RegExp('<script src="' + fichier.replace(/[./]/g, "\\$&") + '\\?v='));

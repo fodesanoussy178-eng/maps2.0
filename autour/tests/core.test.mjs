@@ -158,6 +158,21 @@ test("la déduplication exige aussi une catégorie commune", () => {
   assert.equal(dedupeItems([cafe,hotel],distance).length, 2);
 });
 
+test("un même identifiant reste unique si sa catégorie est affinée tardivement", () => {
+  const debut = Date.now()+3600e3;
+  const ancien = toCommonItem({
+    id:"oa42",cat:"event",title:"Concert du quartier",lat:48.85,lng:2.35,
+    isTemporary:true,debutLe:debut,
+  }, {source:"cache"});
+  const frais = toCommonItem({
+    id:"oa42",cat:"concert",title:"Concert du quartier",lat:48.85,lng:2.35,
+    isTemporary:true,debutLe:debut,
+  }, {source:"openagenda"});
+  const uniques = dedupeItems([ancien,frais],distance);
+  assert.equal(uniques.length,1);
+  assert.equal(uniques[0].id,"oa42");
+});
+
 test("maintenant garde l'inconnu et le bientôt, retire le terminé", () => {
   const now = Date.now();
   assert.equal(isAvailableNow({isTemporary:false,ouvert:undefined},now),true);

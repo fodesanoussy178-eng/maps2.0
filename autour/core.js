@@ -423,6 +423,12 @@
     (items || []).forEach((item) => {
       const found = result.findIndex((existing) => {
         if (!!existing.isTemporary !== !!item.isTemporary) return false;
+        /* Un identifiant fournisseur stable est une preuve plus forte qu'une
+           catégorie dérivée. Une fiche en cache peut être « event », puis la
+           version fraîche « concert » après enrichissement des mots-clés : ce
+           sont toujours le même événement, et l'afficher deux fois ferait
+           sauter la liste au moment où le réseau répond. */
+        if (existing.id != null && item.id != null && String(existing.id) === String(item.id)) return true;
         /* Une station et une destination peuvent porter exactement le même
            nom à la même adresse (« Phalempins »). Les fusionner donne à la
            station la photo, la note et la catégorie du café voisin, puis la
@@ -829,13 +835,10 @@
     return Math.max(1, Math.round(distance / 80));
   }
 
-  /* ---- ETA réel ----------------------------------------------------------
-     Un temps de trajet n'est utile que s'il correspond à ce que la personne
-     va réellement vivre : marche jusqu'à l'arrêt, attente, trajet,
-     correspondances, marche finale. Le classement ne consomme donc pas une
-     distance mais un ETA fourni par la couche transport (voir transit.js).
-     Sans couche transport branchée, on retombe sur la marche : c'est faux
-     pour un bus, mais c'est une durée honnête et jamais sous-estimée. */
+  /* ---- Estimation de proximité ------------------------------------------
+     Le classement utilise uniquement une estimation locale à pied lorsqu'aucun
+     temps explicite n'est fourni. Les trajets voiture et transports collectifs
+     sont désormais délégués aux applications de navigation externes. */
   const ARRIVAL_GRACE_MS = 15 * 60000;
   const EVENT_DEPARTURE_WINDOW_MS = 2 * 3600 * 1000;
 

@@ -77,9 +77,9 @@ test("le parcours de publication couvre les six familles annoncées",()=>{
 
 test("l’entrée dans Aide laisse peindre la feuille, privilégie les sources sociales et enrichit sans cache Places",()=>{
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
-  assert.match(html,/vraisLieux\(lat,lng,null,\{cats:CATS_AIDE,rayon:9000,limite:180\}\)/);
-  assert.match(html,/lieuxDatatourisme\(lat,lng\)/);
-  assert.match(html,/const reseaux = RESEAUX_AIDE\.filter/);
+  assert.match(html,/vraisLieux\(lat,lng,null,\{cats:catsContexte\.length \? catsContexte : CATS_AIDE,/);
+  assert.match(html,/lieuxDatatourisme\(lat,lng,generation\.signal\)/);
+  assert.match(html,/const reseaux = reseauxPourContexteAide\(contexte\);/);
   assert.doesNotMatch(html,/const cleAide/);
 });
 
@@ -424,7 +424,8 @@ test("une source partielle ne masque pas des résultats déjà utilisables",()=>
   assert.match(html,/return entete\+liste\+statut;/);
   assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
   // une tentative Google vide reste retentable, notamment depuis Manger
-  assert.match(html,/if\(!f\.length\)\{ zonesResto\.delete\(cle\); return \[\]; \}/);
+  assert.match(html,/if\(!generationCourante\(generation\) \|\| !f\.length\) return \[\];/);
+  assert.match(html,/zonesResto\.add\(cle\);/);
   assert.match(html,/if\(feuilleNiveau === "manger"\) completerRestauration\(\{force:true\}\);/);
 });
 
@@ -512,7 +513,7 @@ test("les étiquettes ne sortent pas de l'écran et ne se recouvrent pas",()=>{
   assert.match(html,/b\.x >= MARGE_ECRAN && b\.x \+ b\.w <= taille\.x - MARGE_ECRAN/);
   assert.match(html,/b\.y >= MARGE_ECRAN && b\.y \+ b\.h <= taille\.y - MARGE_ECRAN/);
   // seconde chance de l'autre côté de la pastille avant de s'effacer
-  assert.match(html,/eti\.classList\.add\("a-gauche"\);/);
+  assert.match(html,/d\.eti\.classList\.toggle\("a-gauche",d\.gauche\);/);
   assert.match(html,/\.poi-eti\.a-gauche\{order:-1/);
 });
 
@@ -523,7 +524,10 @@ test("les étiquettes de la carte gèrent leurs collisions",()=>{
   // lieux affichés se retrouvaient alors à égalité
   assert.match(html,/derniereSelection\.forEach\(\(x,i\)=>rang\.set\(x\.l\.id, i\)\)/);
   assert.match(html,/\.poi-eti\.masquee\{display:none\}|\.poi-eti,\.poi-eti\.masquee\{display:none\}/);
-  assert.match(html,/requestAnimationFrame\(resoudreCollisions\)/);
+  assert.match(html,/function planifierCollisions\(\)/);
+  assert.match(html,/collisionPlanifiee = requestAnimationFrame/);
+  assert.match(html,/const CELLULE_COLLISION = 128;/);
+  assert.doesNotMatch(html,/boites\.some\(/);
 });
 
 test("un système d'espacement cohérent, sans élément collé aux bords",()=>{
@@ -603,6 +607,8 @@ test("les images du carousel sont paresseuses et n'attendent rien",()=>{
 
 test("les étapes de démarrage sont mesurables",()=>{
   assert.match(html,/window\.AutourPerf = PERF;/);
+  assert.match(html,/dataset\.autourPerf = JSON\.stringify/);
+  assert.match(html,/window\.addEventListener\("unhandledrejection"/);
   for(const jalon of ["ui_ready","map_ready","geolocation_ready","cached_pois_visible",
                       "fresh_pois_ready","images_ready","markers_ready"])
     // le guillemet est parfois échappé dans une chaîne : on cherche le nom
@@ -710,8 +716,11 @@ test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
   assert.match(html,/function categoriesProbables/);
   assert.match(html,/PROFIL\.categories/);
   assert.match(html,/const parFavoris = \[\.\.\.favorisEnMemoire\.values\(\)\]/);
-  assert.match(html,/window\.requestIdleCallback \|\| \(f=>setTimeout\(f, 1200\)\)/);
-  assert.match(html,/quandLibre\(\(\)=>prechargerCategories\(\)\);/);
+  assert.match(html,/window\.requestIdleCallback[\s\S]*?timeout: 1500/);
+  assert.match(html,/const PRECHARGEMENT_CATEGORIES_MAX = 2;/);
+  assert.match(html,/const transports = new Set\(\["bus","metro","tram","train"\]\);/);
+  assert.match(html,/\.filter\(c=>!transports\.has\(c\) && !categorieEnMemoire\(c\)\)/);
+  assert.match(html,/setTimeout\(\(\)=>\{[\s\S]*?quandLibre\(\(\)=>prechargerCategories\(\)\);[\s\S]*?\},8000\);/);
 });
 
 /* ---- Le fond de carte ---------------------------------------------------
@@ -804,7 +813,7 @@ test("une ville lointaine n'est pas interrogée comme une ville où l'on est",()
   // …et l'emprise entière n'est demandée qu'en local
   assert.match(html,/large \? bornesVisibles\(\) : null/);
   // Google non plus : ses notes ne serviront à personne, et chaque appel est facturé
-  assert.match(html,/if\(!o\.cats && large\) travaux\.push\(/);
+  assert.match(html,/if\(!o\.cats && !o\.osmSeulement && large\) travaux\.push\(/);
   /* `regimePoint` protège aussi les rechargements déclenchés par la carte :
      sans lui, un déplacement vers Marseille repartait en pleine charge par la
      porte de derrière. */
@@ -1005,7 +1014,7 @@ test("le cadrage suit l'emprise réelle de la zone, bornée des deux côtés",()
   // Les laisser diverger posait la carte sur Paris au zoom 12, où chargerZone
   // refuse de partir — bon endroit, écran vide, aucune explication.
   assert.match(html,/const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;/);
-  assert.match(html,/if\(!map \|\| map\.getZoom\(\) < ZOOM_MIN_CHARGEMENT\) return Promise\.resolve\(\[\]\);/);
+  assert.match(html,/if\(!o\.sansCarte && \(!map \|\| map\.getZoom\(\) < ZOOM_MIN_CHARGEMENT\)\) return Promise\.resolve\(\[\]\);/);
   // et il doit être déclaré avant d'être lu : une zone morte temporelle ici
   // casse tout le script au démarrage
   assert.ok(html.indexOf("const ZOOM_MIN_CHARGEMENT = 13;") <
@@ -1159,9 +1168,11 @@ test("l'aide se recharge quand on regarde une autre commune",()=>{
   // un booléen à un coup : après un déplacement vers Lille, l'écran d'aide
   // montrait encore les adresses du quartier de départ
   assert.doesNotMatch(html,/let aideChargee = false;/);
-  assert.match(html,/let aideChargeeAutour = null;/);
+  assert.match(html,/const zonesAideChargees = new Map\(\);/);
+  assert.match(html,/const chargementsAideEnCours = new Map\(\);/);
   assert.match(html,/const AIDE_RAYON_RECHARGE = 5000;/);
-  assert.match(html,/distanceM\(aideChargeeAutour\[0\], aideChargeeAutour\[1\], lat, lng\) < AIDE_RAYON_RECHARGE\) return;/);
+  assert.match(html,/distanceM\(deja\[0\], deja\[1\], lat, lng\) < AIDE_RAYON_RECHARGE\) return;/);
+  assert.match(html,/cle: urgence \? "urgence"/);
   assert.match(html,/if\(modeAide\) chargerAide\(centre\[0\], centre\[1\]\);/);
 });
 
@@ -1174,6 +1185,22 @@ test("les réseaux d'aide et leurs tags couvrent ce qu'on cherche vraiment",()=>
   assert.match(html,/\["social_facility","outreach","asso"\], \["social_facility","day_centre","asso"\]/);
   assert.match(html,/\["amenity","refugee_site","hebergement"\]/);
   assert.match(html,/\["healthcare","centre","sante"\]/);
+  assert.match(html,/\["healthcare","psychotherapist","sante"\]/);
+  assert.match(html,/\["healthcare","counselling","sante"\]/);
+  for(const reseau of ["CMP centre médico-psychologique","CMPP centre médico-psycho-pédagogique",
+                       "BAPU bureau aide psychologique universitaire","Santé Psy Étudiant psychologue",
+                       "PASS permanence accès aux soins"])
+    assert.ok(html.includes(reseau),reseau+" doit être recherché dans le bon contexte");
+});
+
+test("un complément santé tardif enrichit le panneau sans le réinitialiser",()=>{
+  assert.match(html,/parCategorie\.forEach\(\(fiches,cat\)=>ajouterLieuxGoogle\(fiches,cat\)\);/);
+  assert.match(html,/coordonnerSourcesVersionnees\([\s\S]*?\(\)=>generationCourante\(generation\)\)/);
+  assert.match(html,/zonesAideChargees\.set\(contexte\.cle,\[lat,lng\]\)/);
+  assert.match(html,/if\(canonique && canonique!==dejaPresent\) appliquerFicheGoogle\(canonique,f\);\s+planifierRendu\(\{carte:true,accueil:true,feuille:true\}\);/);
+  assert.doesNotMatch(html,/description:f\.description\|\|"",quand:"Voir sur place",gratuit:true/,
+    "une fiche Google ne doit jamais devenir gratuite par défaut");
+  assert.match(html,/\(l\.gratuit === true \? 'Gratuit · ' : ''\)/);
 });
 
 test("une cuisine trie les résultats, elle ne les exclut pas",()=>{
@@ -1542,7 +1569,7 @@ test("Aide commence par la question, jamais par des structures",()=>{
   assert.match(html,/corps\.innerHTML = sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
   assert.match(html,/<p class="ab-titre">De quoi as-tu besoin&nbsp;\?<\/p>/);
   // entrer dans l'aide repart toujours de la question
-  assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsAide = \[\]; \}/);
+  assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsAide = \[\]; intentionsSanteAide = \[\]; \}/);
   assert.match(html,/\/\/ on repart toujours de la question/);
   // dix besoins, dans les mots de tout le monde, plus l'urgence à part
   assert.match(html,/const AIDE_URGENCE = \{id:"urgence"/);
@@ -1575,6 +1602,24 @@ test("Aide garde uniquement les solutions liées au besoin et offre une fiche ex
     assert.match(html,new RegExp(action),action);
   for(const champ of ["Public accueilli","Conditions d’accès","Rendez-vous","Coût","Source","Dernière mise à jour"])
     assert.match(html,new RegExp(champ),champ);
+});
+
+test("les fiches réservent la photo et les cinq actions asynchrones",()=>{
+  assert.match(html,/\.aide-couverture\{[^}]*height:190px/s);
+  assert.match(html,/function couvertureLieu\(l, c\)[\s\S]*aide-couverture'\+\(l\.image\?'':' sans-photo'\)/);
+  assert.match(html,/\.actions\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(html,/Téléphone non renseigné/);
+  assert.match(html,/Site non renseigné/);
+  assert.match(html,/\.act\[disabled\],\.act\[aria-disabled="true"\]/);
+});
+
+test("un enrichissement tardif conserve l'ancre, le scroll et le focus du panneau",()=>{
+  assert.match(html,/function instantanePanneau\(corps\)/);
+  assert.match(html,/function restaurerPanneau\(corps, instantane\)/);
+  assert.match(html,/corps\.scrollTop = instantane\.scrollTop/);
+  assert.match(html,/instantane\.decalage/);
+  assert.match(html,/focus\(\{preventScroll:true\}\)/);
+  assert.match(html,/PERF\.rendus\.panneau \+= 1/);
 });
 
 test("une carte d'aide dit pourquoi, à quelle condition, et ce qu'on ignore",()=>{
@@ -1818,8 +1863,11 @@ test("un seul rendu par image, quel que soit le nombre de sources",()=>{
   // fusionner ne redessine plus trois fois de suite
   assert.match(html,/planifierRendu\(\{carte:true, accueil:true, filtres:true\}\);/);
   assert.doesNotMatch(html,/reindexerCategories\(\);\s*\n\s*rendre\(\);\s*\n\s*dessinerFiltres\(\);/);
-  // les fonctions ne se rappellent pas entre elles pendant un lot
-  assert.match(html,/if\(feuilleNiveau !== null && !renduEnLot\) majFeuille2\(\);/);
+  // la carte ne reconstruit jamais le panneau : un zoom ne déplace aucun bouton
+  const debutRendu = html.indexOf("function rendre(){");
+  const finRendu = html.indexOf("/* ================================================================== */\n/*  Feuilles",debutRendu);
+  assert.doesNotMatch(html.slice(debutRendu,finRendu),/majFeuille2\(\)/);
+  assert.match(html,/if\(feuilleNiveau !== null\) planifierRendu\(\{feuille:true\}\);/);
   assert.match(html,/if\(renduEnLot\) return;/);
 });
 
@@ -1848,14 +1896,20 @@ test("le jeu rapide affiche les propositions de la dernière session",()=>{
 });
 
 test("Overpass n'est jamais ce qu'on attend au démarrage",()=>{
-  assert.match(html,/const OVERPASS_DELAI_BOOT = 7000;/);
-  assert.match(html,/const OVERPASS_DELAI_DEMANDE = 25000;/);
-  assert.match(html,/vraisLieux\(lat,lng,null,\{delai:OVERPASS_DELAI_BOOT,/);
-  assert.match(html,/rayon:RAYON_BOOT, limite:PLAFOND_BOOT\}\)/);
+  assert.match(html,/const OVERPASS_DELAI_BOOT = 4500;/);
+  assert.match(html,/const OVERPASS_DELAI_DEMANDE = 12000;/);
+  assert.match(html,/chargerZone\(lat,lng,\{sansCarte:true, osmSeulement:true,/);
+  assert.match(html,/reglages:\{rayon:RAYON_BOOT,limite:PLAFOND_BOOT\}\}\);/);
   assert.match(html,/const RAYON_BOOT = 900;/);
   assert.match(html,/const PLAFOND_BOOT = 90;/);
-  // et le quartier entier arrive derrière, sans rien retarder
-  assert.match(html,/PERF\.jalon\("quartier_complet"\);/);
+  const debut = html.indexOf("function chargerLeDemarrage");
+  const attente = html.indexOf("Promise.allSettled(travaux)", debut);
+  const critiques = html.slice(debut, attente);
+  assert.doesNotMatch(critiques,/vraisLieux\(/);
+  assert.match(critiques,/avecDelai\(notesGoogle\(/);
+  assert.match(critiques,/avecDelai\(lieuxDatatourisme\(/);
+  assert.match(critiques,/chargerPublications\(lat,lng\)/);
+  assert.doesNotMatch(html,/quartier_complet/);
   // le délai voyage jusqu'à la requête
   assert.match(html,/const delai = o\.delai \|\| OVERPASS_DELAI_DEMANDE;/);
   assert.doesNotMatch(html,/overpass\(`\[out:json\]\[timeout:25\];/);
@@ -1978,8 +2032,8 @@ test("Overpass et Nominatim passent par notre propre origine",()=>{
   assert.match(html,/fetch\("\/api\/lieux\?q="\+encodeURIComponent\(q\)/);
   assert.match(html,/async function communeRelayee\(lat,lng\)\{/);
   assert.match(html,/fetch\("\/api\/commune\?lat="\+lat\+"&lng="\+lng\)/);
-  // une route absente n'est demandée qu'une fois, puis on passe en direct
-  assert.match(html,/if\(r\.status === 404 \|\| r\.status === 405\)\{ relaisLieux = false; return undefined; \}/);
+  // une route absente n'est demandée qu'une fois ; les autres sources prennent le relais
+  assert.match(html,/if\(r\.status === 404 \|\| r\.status === 405\)\{[\s\S]*?relaisLieux = false;[\s\S]*?raison:"relais_absent"/);
   assert.match(html,/if\(relaisCommune === false\) return undefined;/);
   // une seule requête de commune en vol à la fois
   assert.match(html,/if\(communesEnVol\.has\(cle\)\) return communesEnVol\.get\(cle\);/);
@@ -1997,12 +2051,13 @@ test("le relais Overpass n'est pas un relais ouvert",()=>{
   assert.match(apiLieux,/s-maxage=86400, stale-while-revalidate=604800/);
   // plusieurs instances : une muette ne fait pas tomber la route
   assert.ok((apiLieux.match(/api\/interpreter/g)||[]).length >= 3);
-  // chaque instance reçoit son propre signal : un timeout du premier ne doit
-  // jamais annuler instantanément toutes les suivantes
-  assert.match(apiLieux,/for \(const serveur of SERVEURS\) \{[\s\S]*?const arret = AbortSignal\.timeout/);
-  assert.match(apiLieux,/const restant = DELAI_TOTAL_MS - \(Date\.now\(\) - debut\);/);
-  // si le relais entier tombe, le chemin direct du client reste un vrai repli
-  assert.match(html,/if\(!r\.ok\) return r\.status >= 500 \? undefined : null;/);
+  // les instances sont couvertes avec un léger décalage ; la première réponse gagne
+  assert.match(apiLieux,/const tentatives = SERVEURS\.map\(async \(serveur, index\) =>/);
+  assert.match(apiLieux,/await attendre\(index \* DECALAGE_SERVEUR_MS\)/);
+  assert.match(apiLieux,/Promise\.any\(tentatives\)/);
+  assert.match(apiLieux,/controleurs\.forEach\(c => c\.abort\(\)\)/);
+  // le client ne répète jamais une panne déjà subie par le relais
+  assert.match(html,/if\(viaRelais\)\{[\s\S]*?return overpassRelaye\(q, msMax, signal\);[\s\S]*?\}/);
   assert.match(apiCommune,/s-maxage=2592000/);
   assert.match(apiCommune,/user-agent/i, "la politique de Nominatim demande de s'identifier");
 });
@@ -2014,7 +2069,7 @@ test("au tout premier démarrage, une source qui ne dépend de personne",()=>{
   // 404 : on note et on ne redemande plus
   assert.match(html,/if\(r\.status === 404\) zonesDisponibles = false;/);
   // et surtout : rien n'est inventé quand la zone n'existe pas
-  assert.match(html,/if\(!depart \|\| !depart\.length\) return;/);
+  assert.match(html,/if\(!generationCourante\(generation\) \|\| !depart \|\| !depart\.length\) return;/);
   // le générateur existe et n'écrit rien qu'il n'ait reçu
   assert.match(zones,/aucun lieu exploitable — tuile ignorée/);
   assert.match(zones,/if \(!p\.lat \|\| !p\.lon \|\| !t\.name\) return null;/);
@@ -2069,14 +2124,12 @@ test("une instance régionale ne décide pas qu'un quartier est vide",()=>{
   // acceptaient cette réponse. Constaté en produisant les zones de Lille.
   for (const [nom, source] of [["le client", html], ["le relais", apiLieux], ["le générateur", zones]])
     assert.doesNotMatch(source, /"https:\/\/overpass\.osm\.ch/, nom+" ne doit plus l'interroger");
-  // et une réponse vide n'est plus une réponse, où qu'elle arrive
-  assert.match(apiLieux,/if \(!j\.elements\.length\) continue;/);
+  // le relais ne contient plus d'instance régionale ; une réponse vide d'une
+  // instance mondiale reste valide, mais son cache est beaucoup plus court
+  assert.match(apiLieux,/const vide = gagnant\.elements\.length === 0;/);
+  assert.match(apiLieux,/s-maxage=900, stale-while-revalidate=3600/);
   assert.match(zones,/if \(!j\.elements\.length\) \{/);
-  // surtout, le relais ne met jamais un quartier vide en cache pour la journée
-  const avantCache = apiLieux.indexOf("if (!j.elements.length) continue;");
-  const cache = apiLieux.indexOf('"cache-control": "public, s-maxage=86400');
-  assert.ok(avantCache > 0 && avantCache < cache,
-    "le garde-fou doit précéder la mise en cache");
+  assert.match(apiLieux,/vide\s*\? "public, s-maxage=900/);
 });
 
 test("une ville déduite de l'IP ne coupe pas l'accès à la vraie position",()=>{
@@ -2102,7 +2155,7 @@ test("l'adresse IP choisit une zone de données, jamais la position",()=>{
   assert.match(html,/if\(positionApprochee\(\)\)\{ v\.textContent = "Zone approximative"; return; \}/);
   // ni via le géocodage inverse, qui ne nomme que sur un vrai point
   assert.match(html,/const nommable = \(\)=>positionPrecise\(\);/);
-  assert.match(html,/if\(parRelais && nommable\(\)\)/);
+  assert.match(html,/if\(parRelais\)\{[\s\S]*?if\(nommable\(\)\)/);
   assert.match(html,/if\(nom && nommable\(\)\)/);
   // aucune durée de trajet depuis un point approximatif
   assert.match(html,/const eta = positionPrecise\(\) \? l\.rankEta : null;/);

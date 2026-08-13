@@ -6,8 +6,11 @@
     fast_food_restaurant:"fastfood", meal_takeaway:"fastfood", hamburger_restaurant:"fastfood",
     cafe:"cafe", bakery:"cafe", coffee_shop:"cafe", bar:"bar", pub:"bar", night_club:"concert",
     movie_theater:"cinema", performing_arts_theater:"spectacle", library:"biblio", museum:"musee",
-    art_gallery:"musee", park:"parc", coworking_space:"coworking", hospital:"sante", pharmacy:"sante",
-    doctor:"sante", drugstore:"sante", local_government_office:"mairie", city_hall:"mairie",
+    art_gallery:"musee", park:"parc", coworking_space:"coworking", hospital:"sante",
+    general_hospital:"sante", medical_center:"sante", medical_clinic:"sante",
+    dental_clinic:"sante", dentist:"sante", medical_lab:"sante", physiotherapist:"sante",
+    pharmacy:"sante", doctor:"sante", drugstore:"sante",
+    local_government_office:"mairie", city_hall:"mairie",
     post_office:"mairie", government_office:"emploi", employment_agency:"emploi",
     association_or_organization:"asso", non_profit_organization:"asso", social_services_organization:"asso",
     welfare_organization:"asso", school:"ecole", university:"ecole", primary_school:"ecole",
@@ -20,7 +23,7 @@
   });
   const champs = [
     "places.id", "places.displayName", "places.location", "places.rating", "places.photos",
-    "places.userRatingCount", "places.currentOpeningHours.openNow", "places.primaryType",
+    "places.userRatingCount", "places.currentOpeningHours.openNow", "places.primaryType", "places.types",
     "places.formattedAddress", "places.priceLevel", "places.regularOpeningHours.weekdayDescriptions",
     "places.nationalPhoneNumber", "places.websiteUri", "places.accessibilityOptions.wheelchairAccessibleEntrance",
   ].join(",");

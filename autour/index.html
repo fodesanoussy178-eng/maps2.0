@@ -437,6 +437,7 @@ input{font-family:inherit;font-size:16px}
 .aide-couverture{position:relative;display:grid;place-items:center;height:190px;margin:-18px -18px 18px;
   overflow:hidden;border-radius:18px 18px 13px 13px;background:color-mix(in srgb,var(--teinte) 14%,#fff)}
 .aide-couverture>span{font-size:56px;line-height:1;opacity:.82}
+.aide-couverture.sans-photo>span{font-size:28px}
 .aide-couverture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .aide-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:1;max-width:75%;padding:3px 6px;
   border-radius:5px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.2}
@@ -1237,12 +1238,13 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .resume{display:flex;flex-wrap:wrap;gap:6px 12px;margin:-8px 0 15px;font-size:13.5px;
   font-weight:600;color:var(--ink2)}
 .resume .ouvert,.resume .ferme{font-weight:700}
-.actions{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
-.act{flex:1;min-width:88px;padding:12px 10px;border:1px solid var(--bord);border-radius:99px;
+.actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:18px}
+.act{min-width:0;padding:12px 7px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px;
   font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-align:center;
   text-decoration:none;display:block;transition:transform .15s}
 .act:active{transform:scale(.95)}
+.act[disabled],.act[aria-disabled="true"]{opacity:.42;cursor:not-allowed;transform:none}
 .act-1{background:var(--signal);border-color:var(--signal);color:#fff}
 .act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
@@ -1554,14 +1556,14 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
-<script src="aide.js?v=7d6979ed"></script>
+<script src="aide.js?v=1b6bc619"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=feebfc4c"></script>
 <script src="explications.js?v=ea344e6e"></script>
 <script src="events.js?v=2a03415f"></script>
-<script src="core.js?v=df39db3b"></script>
+<script src="core.js?v=4c5d133a"></script>
 <script src="providers/normaliser.js?v=b35171d0"></script>
-<script src="providers/googlePlaces.js?v=73f76b90"></script>
+<script src="providers/googlePlaces.js?v=70338a03"></script>
 <script src="providers/datatourisme.js?v=6f242f4e"></script>
 <script src="providers/osm.js?v=ce966e3f"></script>
 <script src="mapProviders/googleMaps.js?v=0ea702cc"></script>
@@ -1968,12 +1970,37 @@ function estFerme(l){
 const PERF = {
   vus: new Set(),
   lcp: 0,
+  temps: Object.create(null),
+  rendus: {panneau:0, carte:0},
+  erreurs: 0,
+  reseau: {total:0, demarrage:0, parSource:Object.create(null)},
+  demarrageTermine: false,
+  exposer(){
+    try{
+      document.documentElement.dataset.autourPerf = JSON.stringify({
+        temps:this.temps, reseau:this.reseau, rendus:this.rendus,
+        erreurs:this.erreurs, demarrageTermine:this.demarrageTermine,
+      });
+    }catch(e){}
+  },
   jalon(nom){
     // un jalon décrit un premier instant : le remarquer cent fois le noierait
     if(this.vus.has(nom)) return;
     this.vus.add(nom);
-    try{ performance.mark("autour:"+nom); }catch(e){}
+    try{
+      this.temps[nom] = Math.round(performance.now());
+      performance.mark("autour:"+nom);
+    }catch(e){}
+    this.exposer();
   },
+  requete(source){
+    const nom = String(source || "autre");
+    this.reseau.total += 1;
+    this.reseau.parSource[nom] = (this.reseau.parSource[nom] || 0) + 1;
+    if(!this.demarrageTermine) this.reseau.demarrage += 1;
+    this.exposer();
+  },
+  finDemarrage(){ this.demarrageTermine = true; this.exposer(); },
   /* Une étape a une durée, pas seulement un instant. `mesure` la nomme pour
      qu'elle apparaisse telle quelle dans l'onglet Performance du navigateur —
      c'est ce qui permet de dire « la géolocalisation a coûté 900 ms » au lieu
@@ -2050,6 +2077,8 @@ try{
   }).observe({type:"largest-contentful-paint", buffered:true});
 }catch(e){}
 window.AutourPerf = PERF;
+window.addEventListener("error",()=>{ PERF.erreurs += 1; PERF.exposer(); });
+window.addEventListener("unhandledrejection",()=>{ PERF.erreurs += 1; PERF.exposer(); });
 
 /* ---- Un seul rendu par image ---------------------------------------------
    Chaque source de données (cache, Google, OpenStreetMap, événements,
@@ -2428,7 +2457,8 @@ const SYNONYMES = {
   alimentaire:["aide alimentaire","banque alimentaire","epicerie solidaire","soupe populaire","restos du coeur"],
   asso:["asso","association","ong","benevolat","solidarite","centre social","maison de quartier"],
   hebergement:["hebergement","dormir","abri","foyer","urgence","115","logement"],
-  sante:["sante","hopital","pharmacie","medecin","docteur","clinique","urgences"],
+  sante:["sante","hopital","pharmacie","medecin","docteur","dentiste","clinique","urgences",
+         "psy","psychologue","psychiatre","psychotherapeute","cmp","sante mentale"],
   emploi:["emploi","mission locale","france travail","pole emploi","travail","insertion","cv"],
   biblio:["bibliotheque","mediatheque","livre","lecture","etudier","salle d etude","reviser"],
   coworking:["coworking","espace de travail","bureau partage","tiers lieu","travailler"],
@@ -2724,8 +2754,12 @@ const REQUETES = [
   // -- santé
   ["amenity","hospital","sante"], ["amenity","clinic","sante"],
   ["amenity","doctors","sante"],  ["amenity","pharmacy","sante"],
-  ["amenity","health_post","sante"],
-  ["healthcare","centre","sante"],
+  ["amenity","dentist","sante"],  ["amenity","health_post","sante"],
+  ["healthcare","centre","sante"], ["healthcare","doctor","sante"],
+  ["healthcare","clinic","sante"], ["healthcare","hospital","sante"],
+  ["healthcare","pharmacy","sante"], ["healthcare","dentist","sante"],
+  ["healthcare","laboratory","sante"], ["healthcare","physiotherapist","sante"],
+  ["healthcare","psychotherapist","sante"], ["healthcare","counselling","sante"],
 
   // -- boutiques : la friperie avant les vêtements neufs, sinon elle est absorbée
   ["shop","second_hand","friperie"], ["shop","charity","friperie"],
@@ -2802,7 +2836,7 @@ const SUPABASE_URL = "https://sxnzyvcgwbwnpjnqmpkp.supabase.co";
 const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
 const CLE_PSEUDO_CREATEUR = "autour:creator_name";
-let sb = null, moiId = null, monPseudo = "";
+let sb = null, sbLecture = null, moiId = null, monPseudo = "";
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
@@ -2814,12 +2848,60 @@ function chargerSupabase(){
   if(pSupabase) return pSupabase;
   pSupabase = new Promise(ok=>{
     const el = document.createElement("script");
-    el.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
-    el.onload = ()=>ok(true);
-    el.onerror = ()=>{ journal.warn("Supabase indisponible."); ok(false); };
+    let fini = false;
+    const terminer = (disponible)=>{
+      if(fini) return;
+      fini = true;
+      clearTimeout(gardeFou);
+      ok(disponible);
+    };
+    // Version épinglée : une mise à jour du CDN ne doit pas changer le contrat
+    // Auth au milieu d'une session Autour.
+    el.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js";
+    el.onload = ()=>terminer(true);
+    el.onerror = ()=>{ journal.warn("Supabase indisponible."); terminer(false); };
+    const gardeFou = setTimeout(()=>{
+      journal.warn("Supabase trop lent : démarrage poursuivi sans lui.");
+      terminer(false);
+    }, 4000);
+    PERF.requete("supabase_sdk");
     document.head.appendChild(el);
   });
   return pSupabase;
+}
+
+function lireClaimsJwt(jeton){
+  try{
+    const partie = String(jeton || "").split(".")[1];
+    if(!partie) return null;
+    const base64 = partie.replace(/-/g,"+").replace(/_/g,"/") + "===".slice((partie.length+3)%4);
+    return JSON.parse(atob(base64));
+  }catch(e){ return null; }
+}
+
+function sessionJwtDecalee(session){
+  if(!session || !session.access_token) return false;
+  const claims = lireClaimsJwt(session.access_token);
+  if(!claims) return false;
+  const maintenant = Math.floor(Date.now()/1000);
+  // Une petite dérive d'horloge est normale. Au-delà d'une minute, PostgREST
+  // refuse le jeton avec « JWT issued at future ».
+  return Number(claims.iat) > maintenant + 60 || Number(claims.exp) <= maintenant + 30;
+}
+
+async function reparerSession(session){
+  if(!session || !sessionJwtDecalee(session)) return session || null;
+  try{
+    PERF.requete("supabase_refresh");
+    const {data,error} = await sb.auth.refreshSession(session);
+    if(error || !data || !data.session) throw error || new Error("session absente");
+    return data.session;
+  }catch(e){
+    // Le refresh token invalide reste local au navigateur. On retire uniquement
+    // cette session cassée ; aucune donnée Supabase n'est supprimée.
+    try{ await sb.auth.signOut({scope:"local"}); }catch(e2){}
+    return null;
+  }
 }
 
 async function connecter(){
@@ -2828,8 +2910,18 @@ async function connecter(){
   pConnexion = (async()=>{
     if(!(await chargerSupabase())) return null;
     try{
+      /* Les lectures publiques ne doivent jamais hériter d'un ancien JWT de
+         session. C'est lui qui faisait échouer `publications_proches` avec
+         « JWT issued at future » alors que la table est lisible publiquement. */
+      sbLecture = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE, {
+        auth:{persistSession:false, autoRefreshToken:false, detectSessionInUrl:false,
+          storageKey:"autour-public-read-v1"}
+      });
       sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_CLE);
-      const { data:{ session } } = await sb.auth.getSession();
+      PERF.requete("supabase_session");
+      const { data:{ session:sessionBrute }, error } = await sb.auth.getSession();
+      if(error) throw error;
+      const session = await reparerSession(sessionBrute);
       moiId = session && session.user ? session.user.id : null;
       return sb;
     }catch(e){
@@ -2947,9 +3039,10 @@ function emprisePublications(lat, lng){
 }
 
 async function chargerPublications(lat,lng){
-  if(!sb) return [];
+  if(!sbLecture) return [];
   const b = emprisePublications(lat, lng);
-  const { data, error } = await sb.rpc("publications_proches", {
+  PERF.requete("supabase_publications");
+  const { data, error } = await sbLecture.rpc("publications_proches", {
     p_sud:Number(b.s), p_ouest:Number(b.o),
     p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
   });
@@ -3220,11 +3313,24 @@ const rechercheEtat = {
 };
 function definirEtatRecherche(canal,etat){
   rechercheEtat[canal] = etat;
-  if(feuilleNiveau !== null) majFeuille2();
+  if(feuilleNiveau !== null) planifierRendu({feuille:true});
   // Un changement d'état ne doit pas reconstruire tous les marqueurs : les
   // chargements peuvent notifier plusieurs sources à la suite et bloqueraient
   // alors le thread principal. Seul le bandeau d'état dépend de cette valeur.
   if(map) majBandeauVide(selectionner().length);
+}
+/* Plusieurs canaux asynchrones peuvent enrichir les mêmes lieux, mais un seul
+   contexte possède l'indicateur visuel d'une ressource. Sans cet identifiant,
+   une ancienne recherche Aide pouvait remettre « vide » après qu'une nouvelle
+   zone avait déjà publié ses résultats. */
+const proprietairesEtatRecherche = new Map();
+function prendreEtatRecherche(canal,generation){
+  if(generation) proprietairesEtatRecherche.set(canal,generation.id);
+}
+function definirEtatRechercheVersionne(canal,etat,generation){
+  if(!generation || proprietairesEtatRecherche.get(canal) !== generation.id) return false;
+  definirEtatRecherche(canal,etat);
+  return true;
 }
 function rechercheEnCours(){
   return rechercheEtat.location === SEARCH_STATES.REQUESTING_LOCATION ||
@@ -3259,31 +3365,34 @@ const SERVEURS = [
    C'est la seule façon de ne pas faire dépendre le démarrage d'une instance
    publique dont on ne maîtrise ni la charge ni la disponibilité.
 
-   Si la route n'existe pas — développement local, hébergement statique sans
-   fonctions — on retombe sur l'accès direct, et rien ne change. */
+   Si la route n'existe pas — développement local ou hébergement statique sans
+   fonctions — les sources indépendantes restent disponibles. Rejouer la même
+   panne directement depuis chaque téléphone ne constitue pas un repli. */
 let relaisLieux = null;              // null = pas encore su, false = absent
+let overpassEchecsConsecutifs = 0;
 async function overpassRelaye(q, msMax, signal){
-  if(relaisLieux === false) return undefined;
+  if(relaisLieux === false) return {ok:false, elements:[], raison:"relais_absent"};
   try{
     const stop = new AbortController();
-    const t = setTimeout(()=>stop.abort(), msMax || 14000);
+    const t = setTimeout(()=>stop.abort(), msMax || 12000);
     if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
+    PERF.requete("overpass");
     const r = await fetch("/api/lieux?q="+encodeURIComponent(q), {signal:stop.signal});
     clearTimeout(t);
     // 404 : pas de fonction déployée ici. On note et on n'y revient plus.
-    if(r.status === 404 || r.status === 405){ relaisLieux = false; return undefined; }
-    // Une erreur de validation ne changera pas par un autre chemin. Une panne
-    // du relais, elle, ne doit pas condamner la carte : le client possède encore
-    // son chemin direct et une quatrième instance de secours.
-    if(!r.ok) return r.status >= 500 ? undefined : null;
+    if(r.status === 404 || r.status === 405){
+      relaisLieux = false;
+      return {ok:false, elements:[], raison:"relais_absent"};
+    }
+    if(!r.ok) return {ok:false, elements:[], raison:"http_"+r.status};
     const j = await r.json();
     relaisLieux = true;
     PERF.jalon("relais_lieux");
-    return j && Array.isArray(j.elements) ? j.elements : null;
+    return j && Array.isArray(j.elements)
+      ? {ok:true, elements:j.elements, raison:"relais"}
+      : {ok:false, elements:[], raison:"reponse_invalide"};
   }catch(e){
-    if(signal && signal.aborted) return null;
-    // le relais n'a pas répondu : on tente le chemin direct plutôt que rien
-    return undefined;
+    return {ok:false, elements:[], raison:signal && signal.aborted ? "annule" : "delai"};
   }
 }
 
@@ -3294,18 +3403,22 @@ async function overpass(q, msMax, signal, viaRelais){
     new URLSearchParams(location.search).get("simulateOverpassFailure") === "1";
   if(simule){
     journal.warn("Overpass : panne simulée pour le test local");
-    return null;
+    return {ok:false, elements:[], raison:"simulee"};
   }
   /* Seules les requêtes de LIEUX passent par le relais. Le décor de la ville
      (routes, parcs, plans d'eau) a une autre forme, que le relais refuse à
      juste titre — l'y envoyer ne produisait que des 400 avant le repli. */
   if(viaRelais){
-    const parRelais = await overpassRelaye(q, msMax, signal);
-    if(parRelais !== undefined) return parRelais;
+    /* Le relais et le client interrogeaient exactement les mêmes instances
+       publiques. Après sept secondes perdues au relais, le prétendu fallback
+       recommençait la même panne avec un budget déjà épuisé. Le vrai repli est
+       désormais constitué des jeux de zone, de Google, de DATAtourisme et des
+       publications Supabase ; aucune deuxième vague Overpass ne part d'ici. */
+    return overpassRelaye(q, msMax, signal);
   }
   for(let i=0;i<SERVEURS.length;i++){
     const url = SERVEURS[i];
-    if(signal && signal.aborted) return null;
+    if(signal && signal.aborted) return {ok:false, elements:[], raison:"annule"};
     // `msMax` est un budget TOTAL. L'ancien code l'accordait à chaque serveur :
     // une demande de 7 s pouvait donc rester en vol près d'une demi-minute.
     const restant = budget - (Date.now()-debut);
@@ -3324,14 +3437,14 @@ async function overpass(q, msMax, signal, viaRelais){
       clearTimeout(t);
       if(!r.ok){ journal.warn("Overpass", r.status, url); continue; }
       const j = await r.json();
-      if(j && j.elements) return j.elements;
+      if(j && Array.isArray(j.elements)) return {ok:true, elements:j.elements, raison:"direct"};
     }catch(e){ journal.warn("Overpass injoignable :", url, e.name||e); }
   }
   // Overpass est un enrichissement opportuniste : ses relais publics peuvent
   // être saturés. L'absence de réponse déclenche le repli déjà affiché, ce
   // n'est donc pas une erreur applicative à envoyer dans la console visiteur.
   journal.warn("Overpass : aucun serveur n’a répondu");
-  return null;
+  return {ok:false, elements:[], raison:"indisponible"};
 }
 
 /* ---------- géométrie de la ville ---------- */
@@ -3345,14 +3458,16 @@ way(around:800,${lat},${lng})[landuse~"^(grass|forest|cemetery)$"];
 way(around:800,${lat},${lng})[natural=water];
 );
 out geom;`;
-  let els = await overpass(q1, 14000);
+  let resultat = await overpass(q1, 14000);
+  let els = resultat.ok ? resultat.elements : null;
   if(els && els.length) return els;
 
   // seconde chance, encore plus petit
   const q2 = `[out:json][timeout:15];
 way(around:450,${lat},${lng})[highway~"^(primary|secondary|tertiary|residential|pedestrian)$"];
 out geom;`;
-  return await overpass(q2, 10000);
+  resultat = await overpass(q2, 10000);
+  return resultat.ok ? resultat.elements : null;
 }
 
 /* ---------- lieux remarquables ---------- */
@@ -3362,14 +3477,14 @@ out geom;`;
    la requête sans rien afficher de plus. Elles arrivent quand on ouvre le
    besoin correspondant. */
 const CATS_DEPART = new Set(["resto","fastfood","cafe","marche","bar","cinema",
-  "spectacle","concert","friperie","commerce","biblio","musee","parc","metro","bus"]);
+  "spectacle","concert","friperie","commerce","biblio","musee","parc"]);
 
 /* Combien de temps on accepte d'attendre OpenStreetMap.
    Au démarrage : sept secondes, et l'écran vit déjà sans lui.
    Sur demande explicite : vingt-cinq, parce que la personne attend un
    résultat précis et qu'un écran vide serait une réponse fausse. */
-const OVERPASS_DELAI_BOOT = 7000;
-const OVERPASS_DELAI_DEMANDE = 25000;
+const OVERPASS_DELAI_BOOT = 4500;
+const OVERPASS_DELAI_DEMANDE = 12000;
 /* Ce qu'on demande à l'ouverture : le quartier immédiat, et de quoi remplir
    cinq recommandations avec de la marge. Le reste vient au premier geste. */
 const RAYON_BOOT = 900;
@@ -3417,12 +3532,11 @@ async function vraisLieux(lat,lng,bornes,opts){
      Quand c'est la personne qui a demandé quelque chose de précis, en
      revanche, mieux vaut attendre que revenir les mains vides. */
   const delai = o.delai || OVERPASS_DELAI_DEMANDE;
-  const els = await overpass(
+  const resultat = await overpass(
     `[out:json][timeout:${Math.round(delai/1000)}];(${bloc});out center ${plafond};`,
     delai, o.signal, true);
-  if(!els){ definirEtatRecherche("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE); return []; }
-  definirEtatRecherche("overpass",SEARCH_STATES.SUCCESS);
-  return els.map(e=>{
+  if(!resultat.ok) return {ok:false, lieux:[], raison:resultat.raison};
+  const lieuxOsm = resultat.elements.map(e=>{
     const t=e.tags||{}, p=e.center||e;
     if(!p.lat||!p.lon) return null;
     const regle = REQUETES.find(([k,v])=>t[k]===v);
@@ -3444,7 +3558,10 @@ async function vraisLieux(lat,lng,bornes,opts){
       service: preciserService(t.name),      // Mission locale ≠ France Travail
       solidaire: estSolidaire(t.name, regle[1]==="charity" || /^(social_facility|social_centre)$/.test(regle[1])
                               || regle[0] === "social_facility"),
-      gratuit: t.fee!=="yes", prix: t.fee==="yes"?6:0,
+      // L'absence de `fee` ne signifie rien. Seul `fee=no` autorise Autour à
+      // écrire « Gratuit » ; `fee=yes` atteste au contraire que c'est payant.
+      gratuit: t.fee==="no" ? true : (t.fee==="yes" ? false : undefined),
+      prix: t.fee==="no" ? 0 : (t.fee==="yes" ? 6 : null),
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon,
       idOsm:e.type+e.id
     };
@@ -3452,6 +3569,7 @@ async function vraisLieux(lat,lng,bornes,opts){
     const normalise = fournisseur ? fournisseur.normaliser(brut) : null;
     return normaliserItem(normalise ? Object.assign({},brut,AutourProviders.versInterne(normalise)) : brut, "openstreetmap");
   }).filter(Boolean);
+  return {ok:true, lieux:lieuxOsm, raison:resultat.raison};
 }
 
 /* DATAtourisme passe exclusivement par notre fonction Vercel : la clé n'est
@@ -3459,23 +3577,16 @@ async function vraisLieux(lat,lng,bornes,opts){
    arrondit déjà ses coordonnées côté serveur ; le client les arrondit aussi
    pour que quelques mètres de déplacement réemploient la même entrée CDN. */
 let relaisDatatourisme = null;
-const datatourismeEnVol = new Map();
 async function lieuxDatatourisme(lat,lng,signal){
   if(relaisDatatourisme === false) return [];
-  const cle = lat.toFixed(2)+","+lng.toFixed(2);
-  if(datatourismeEnVol.has(cle)) return datatourismeEnVol.get(cle);
-  const promesse = (async()=>{
-    try{
-      const fournisseur = window.AutourProviders && AutourProviders.datatourisme;
-      if(!fournisseur) return [];
-      const places = await fournisseur.nearby(lat,lng,{signal});
-      relaisDatatourisme = true;
-      return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
-    }catch(e){ return []; }
-  })();
-  datatourismeEnVol.set(cle,promesse);
-  promesse.finally(()=>datatourismeEnVol.delete(cle));
-  return promesse;
+  try{
+    const fournisseur = window.AutourProviders && AutourProviders.datatourisme;
+    if(!fournisseur) return [];
+    PERF.requete("datatourisme");
+    const places = await fournisseur.nearby(lat,lng,{signal});
+    relaisDatatourisme = true;
+    return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
+  }catch(e){ return []; }
 }
 
 /* Événements locaux publiés sur les agendas officiels OpenAgenda. La clé est
@@ -3505,6 +3616,7 @@ async function evenementsOpenAgenda(lat,lng){
     const rechercheAgendas = new URLSearchParams({
       key:CLE_OPENAGENDA, search:ville, size:"8", official:"1"
     });
+    PERF.requete("openagenda");
     const rAgendas = await fetch("https://api.openagenda.com/v2/agendas?"+rechercheAgendas.toString());
     if(!rAgendas.ok){ console.error("OpenAgenda agendas : réponse HTTP", rAgendas.status); return null; }
     const agendas = ((await rAgendas.json()).agendas||[]).slice(0,8);
@@ -3514,6 +3626,7 @@ async function evenementsOpenAgenda(lat,lng){
       });
       params.append("relative[]","current");
       params.append("relative[]","upcoming");
+      PERF.requete("openagenda");
       const r = await fetch("https://api.openagenda.com/v2/agendas/"+agenda.uid+"/events?"+params.toString());
       if(!r.ok) throw new Error("agenda "+agenda.uid+" : HTTP "+r.status);
       return (await r.json()).events || [];
@@ -3606,6 +3719,7 @@ async function communeRelayee(lat,lng){
   if(communesEnVol.has(cle)) return communesEnVol.get(cle);
   const promesse = (async ()=>{
   try{
+    PERF.requete("commune");
     const r = await fetch("/api/commune?lat="+lat+"&lng="+lng);
     if(r.status === 404 || r.status === 405){ relaisCommune = false; return undefined; }
     if(!r.ok) return null;
@@ -3887,6 +4001,8 @@ let dernierClassement = [];
    exactement sur le lieu. Si elle ne tient d'aucun côté, elle s'efface : mieux
    vaut pas d'étiquette qu'un nom tronqué au bord de l'écran. */
 const MARGE_ECRAN = 6;
+const CELLULE_COLLISION = 128;
+let collisionPlanifiee = 0;
 
 function resoudreCollisions(){
   if(!map) return;
@@ -3901,40 +4017,75 @@ function resoudreCollisions(){
   const cadre = conteneur ? conteneur.getBoundingClientRect() : {left:0, top:0};
   const taille = map.getSize ? map.getSize() : {x:innerWidth, y:innerHeight};
 
-  const boites = [];
-  const chevauche = (a)=>boites.some(b=>
-    a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h);
+  /* Grille spatiale : une étiquette ne compare plus sa boîte à toutes les
+     précédentes, seulement à celles des cellules qu'elle touche. Le coût passe
+     de O(n²) à un voisinage borné, même avec plusieurs centaines de POI. */
+  const grille = new Map();
+  const cellules = (b)=>{
+    const out=[];
+    const x0=Math.floor(b.x/CELLULE_COLLISION), x1=Math.floor((b.x+b.w)/CELLULE_COLLISION);
+    const y0=Math.floor(b.y/CELLULE_COLLISION), y1=Math.floor((b.y+b.h)/CELLULE_COLLISION);
+    for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) out.push(x+":"+y);
+    return out;
+  };
+  const seCroisent = (a,b)=>a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h;
+  const chevauche = (b)=>{
+    const candidates = new Set();
+    cellules(b).forEach(c=>(grille.get(c)||[]).forEach(x=>candidates.add(x)));
+    return [...candidates].some(x=>seCroisent(b,x));
+  };
+  const enregistrer = (b)=>cellules(b).forEach(c=>{
+    if(!grille.has(c)) grille.set(c,[]);
+    grille.get(c).push(b);
+  });
 
-  [...marqueurs.entries()]
+  const entrees = [...marqueurs.entries()]
     .filter(([id])=>!String(id).startsWith("grappe:"))
     .sort((a,b)=>priorite(a)-priorite(b))
-    .forEach(([,m])=>{
+    .map(([,m])=>{
       const el = m.getElement && m.getElement();
       const eti = el && el.querySelector(".poi-eti");
-      if(!eti) return;
-      eti.classList.remove("masquee","a-gauche");
-      if(!assezPres){ eti.classList.add("masquee"); return; }
+      const rond = el && el.querySelector(".poi-rond");
+      return eti && rond ? {eti,rond} : null;
+    }).filter(Boolean);
 
-      // Position réelle, mesurée : le marqueur est centré par une transformée
-      // CSS, donc recalculer sa boîte à la main donnerait un résultat faux.
-      // On lit ce que le navigateur a effectivement posé.
-      const boite = ()=>{
-        const r = eti.getBoundingClientRect();
-        return {x:r.left - cadre.left, y:r.top - cadre.top, w:r.width, h:r.height};
-      };
+  // Toutes les écritures d'abord, toutes les mesures ensuite : auparavant le
+  // basculement à gauche forçait un recalcul de layout par étiquette.
+  entrees.forEach(({eti})=>eti.classList.remove("masquee","a-gauche"));
+  if(conteneur) void conteneur.offsetWidth;
+
+  const decisions=[];
+  entrees.forEach(({eti,rond})=>{
+      if(!assezPres){ decisions.push({eti,masquee:true,gauche:false}); return; }
+      const r = eti.getBoundingClientRect();
+      const rr = rond.getBoundingClientRect();
+      const droite = {x:r.left-cadre.left,y:r.top-cadre.top,w:r.width,h:r.height};
+      const recouvrement = Math.min(10,Math.max(6,rr.width*.3));
+      const gauche = {x:rr.left-cadre.left+recouvrement-r.width,
+                      y:droite.y,w:droite.w,h:droite.h};
       const tient = (b)=> b.w > 0 && b.h > 0
         && b.x >= MARGE_ECRAN && b.x + b.w <= taille.x - MARGE_ECRAN
         && b.y >= MARGE_ECRAN && b.y + b.h <= taille.y - MARGE_ECRAN;
-
-      let b = boite();
-      if(!tient(b) || chevauche(b)){
-        // seconde chance de l'autre côté de la pastille
-        eti.classList.add("a-gauche");
-        b = boite();
-        if(!tient(b) || chevauche(b)){ eti.classList.add("masquee"); return; }
+      let boite = droite, aGauche = false;
+      if(!tient(boite) || chevauche(boite)){ boite=gauche; aGauche=true; }
+      if(!tient(boite) || chevauche(boite)){
+        decisions.push({eti,masquee:true,gauche:false}); return;
       }
-      boites.push(b);
+      enregistrer(boite);
+      decisions.push({eti,masquee:false,gauche:aGauche});
     });
+  decisions.forEach(d=>{
+    d.eti.classList.toggle("a-gauche",d.gauche);
+    d.eti.classList.toggle("masquee",d.masquee);
+  });
+}
+
+function planifierCollisions(){
+  if(collisionPlanifiee) cancelAnimationFrame(collisionPlanifiee);
+  collisionPlanifiee = requestAnimationFrame(()=>{
+    collisionPlanifiee = 0;
+    resoudreCollisions();
+  });
 }
 
 function majEtiquettes(){
@@ -4072,6 +4223,30 @@ function fusionner(nouveaux, flux, opts){
     planifierRendu({carte:true, accueil:true, filtres:true});
     ouvrirLieuPartage();    // le lieu d'un lien partagé s'ouvre dès qu'il arrive
   }
+}
+
+/* Une même génération peut interroger plusieurs fournisseurs en parallèle.
+   Chaque réponse vérifie l'identifiant courant AVANT de publier ; une ancienne
+   recherche peut donc finir côté réseau, mais elle ne touche plus l'écran ni
+   l'état global. Le coordinateur rend les sources indépendantes : une panne
+   ou une réponse lente n'empêche jamais les autres de devenir visibles. */
+async function coordonnerSourcesVersionnees(sources, estCourante){
+  let exploitable = false;
+  const travaux = (sources || []).map(async source=>{
+    try{
+      const reponse = await source.charger();
+      if(!estCourante()) return false;
+      const publie = await source.publier(reponse);
+      if(!estCourante()) return false;
+      if(publie) exploitable = true;
+      return !!publie;
+    }catch(e){
+      if(estCourante() && typeof source.echec === "function") source.echec(e);
+      return false;
+    }
+  });
+  await Promise.allSettled(travaux);
+  return estCourante() && exploitable;
 }
 
 /* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
@@ -4236,6 +4411,7 @@ const RAPIDE_VOISINAGE = 25;
 async function lieuxDeZone(lat,lng){
   if(zonesDisponibles === false) return null;
   try{
+    PERF.requete("zone_statique");
     const r = await fetch("zones/"+cleZoneStatique(lat,lng)+".json");
     if(!r.ok){ if(r.status === 404) zonesDisponibles = false; return null; }
     const j = await r.json();
@@ -4327,7 +4503,33 @@ let dernierChargement = null;
 let chargementEnCours = false;
 
 const chargementsZone = new Map();
-let nombreChargementsZone = 0;
+let numeroGeneration = 0;
+const generationsActives = new Map();
+
+/* Une réponse n'a le droit de modifier l'application que si elle appartient à
+   la génération encore active de son canal. Changer de ville, recevoir le GPS
+   ou choisir une autre catégorie annule la génération précédente ; les API
+   non annulables peuvent finir, mais leur réponse est alors simplement jetée. */
+function nouvelleGeneration(canal, cle, force){
+  const precedente = generationsActives.get(canal);
+  if(!force && precedente && precedente.cle === cle && !precedente.signal.aborted) return precedente;
+  if(precedente) precedente.controleur.abort();
+  const controleur = new AbortController();
+  const generation = {id:++numeroGeneration, canal, cle, controleur, signal:controleur.signal};
+  generationsActives.set(canal,generation);
+  return generation;
+}
+function generationCourante(generation){
+  return !!generation && !generation.signal.aborted && generationsActives.get(generation.canal) === generation;
+}
+function annulerGeneration(canal){
+  const generation = generationsActives.get(canal);
+  if(generation) generation.controleur.abort();
+  generationsActives.delete(canal);
+}
+function terminerGeneration(generation){
+  if(generationCourante(generation)) generationsActives.delete(generation.canal);
+}
 
 /* Bornes de la vue, ramenées à 5 km de côté au maximum : au-delà, la requête
    pèserait autant qu'une ville entière pour un écran qu'on ne lit plus. */
@@ -4349,28 +4551,33 @@ function cleZone(lat, lng, z, cats){
 }
 
 function chargerZone(lat, lng, opts){
-  if(!map || map.getZoom() < ZOOM_MIN_CHARGEMENT) return Promise.resolve([]);
   const o = opts || {};
-  const cle = cleZone(lat, lng, map.getZoom(), o.cats);
-  if(chargementsZone.has(cle)) return chargementsZone.get(cle);
+  if(!o.sansCarte && (!map || map.getZoom() < ZOOM_MIN_CHARGEMENT)) return Promise.resolve([]);
+  const zoom = map ? map.getZoom() : 16;
+  const cle = cleZone(lat, lng, zoom, o.cats);
+  const existant = chargementsZone.get(cle);
+  if(!o.force && existant && generationCourante(existant.generation)) return existant;
+  if(existant) chargementsZone.delete(cle);
   if(!o.force && zonesVues.has(cle)) return Promise.resolve([]);
   if(!o.force && !o.cats && dernierChargement &&
      distanceM(dernierChargement[0], dernierChargement[1], lat, lng) < 800) return Promise.resolve([]);
-  zonesVues.add(cle);
 
-  // Une clé de requête ne part qu'une fois. Des quartiers différents peuvent
-  // en revanche se compléter sans s'annuler mutuellement.
-  const controleur = new AbortController();
-  const signal = controleur.signal;
-  if(!o.cats) dernierChargement = [lat,lng];
-  nombreChargementsZone++;
+  const canal = o.cats ? "zone:categories" : "zone:exploration";
+  const generation = nouvelleGeneration(canal,cle,!!o.force);
+  const signal = generation.signal;
   chargementEnCours = true;
-  definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
-  rechercheEtat.overpass = SEARCH_STATES.IDLE;
-  performance.mark("zone:debut");
+  prendreEtatRecherche("overpass",generation);
+  if(!o.osmSeulement) prendreEtatRecherche("places",generation);
+  if(generationCourante(generation)){
+    if(!o.osmSeulement) definirEtatRechercheVersionne("places",SEARCH_STATES.LOADING_PLACES,generation);
+    definirEtatRechercheVersionne("overpass",SEARCH_STATES.IDLE,generation);
+  }
+  const marqueDebut = "zone:debut:"+generation.id;
+  try{ performance.mark(marqueDebut); }catch(e){}
 
   const enCache = lireCacheProche(lat,lng);
-  if(enCache && enCache.length){
+  let sourceExploitable = !!(enCache && enCache.length);
+  if(sourceExploitable && generationCourante(generation)){
     // stale-while-revalidate : ce qu'on a s'affiche tout de suite, la mise à
     // jour arrive derrière et remplace sans vider l'écran
     fusionner(enCache);
@@ -4389,20 +4596,40 @@ function chargerZone(lat, lng, opts){
   const travaux = [
     vraisLieux(lat, lng, large ? bornesVisibles() : null,
       {signal, cats:o.cats, delai:o.delai, rayon:regl.rayon, limite:regl.limite}).then(r=>{
-      if(signal.aborted) return;
-      if(r && r.length){ fusionner(r); if(!o.cats) ecrireCacheLieux(lat,lng,r); PERF.jalon("fresh_pois_ready"); }
+      if(!generationCourante(generation)) return;
+      if(r && r.ok){
+        overpassEchecsConsecutifs = 0;
+        // Une zone ne devient « vue » qu'après une réponse Overpass valide,
+        // y compris une réponse vide légitime. Une panne reste donc retentable.
+        zonesVues.add(cle);
+        if(!o.cats) dernierChargement = [lat,lng];
+        definirEtatRechercheVersionne("overpass",SEARCH_STATES.SUCCESS,generation);
+        if(r.lieux.length){
+          sourceExploitable = true;
+          fusionner(r.lieux);
+          if(!o.cats) ecrireCacheLieux(lat,lng,r.lieux);
+          PERF.jalon("fresh_pois_ready");
+        }
+      }else{
+        if(!r || r.raison !== "annule") overpassEchecsConsecutifs += 1;
+        definirEtatRechercheVersionne("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE,generation);
+      }
       PERF.jalon("overpass_done");
-      performance.mark("zone:osm");
-      performance.measure("lieux OpenStreetMap", "zone:debut", "zone:osm");
+      try{
+        const fin = "zone:osm:"+generation.id;
+        performance.mark(fin);
+        performance.measure("lieux OpenStreetMap", marqueDebut, fin);
+      }catch(e){}
     })
   ];
   /* Une source touristique complémentaire, en parallèle d'OSM : elle ne
      bloque jamais l'écran et son échec garde exactement les données déjà là.
      La passe générale suffit ; rouvrir une catégorie ne redemande pas les
      mêmes cinquante POI touristiques. */
-  if(!o.cats) travaux.push(
+  if(!o.cats && !o.osmSeulement) travaux.push(
     lieuxDatatourisme(lat,lng,signal).then(r=>{
-      if(signal.aborted || !r || !r.length) return;
+      if(!generationCourante(generation) || !r || !r.length) return;
+      sourceExploitable = true;
       fusionner(r,"datatourisme");
       PERF.jalon("datatourisme_done");
     })
@@ -4410,24 +4637,34 @@ function chargerZone(lat, lng, opts){
   /* Places complète les candidats courants seulement lorsque la carte Google
      est réellement active. L'échec reste isolé : OSM, DATAtourisme et les
      publications continuent sans écran vide. */
-  if(!o.cats && large) travaux.push(
+  if(!o.cats && !o.osmSeulement && large) travaux.push(
     notesGoogle(lat,lng,{signal}).then(f=>{
-      if(signal.aborted || !f || !f.length) return;
+      if(!generationCourante(generation) || !f || !f.length) return;
+      sourceExploitable = true;
       greffeNotes(lieux,f);
       ajouterLieuxGoogle(f);
       PERF.jalon("google_pret");
     })
   );
-  const promesse = Promise.allSettled(travaux).finally(()=>{
-    chargementsZone.delete(cle);
-    nombreChargementsZone = Math.max(0, nombreChargementsZone-1);
-    chargementEnCours = nombreChargementsZone > 0;
-    if(!chargementEnCours){
-      if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE)
-        definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
-      else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
+  if(!o.cats && !o.osmSeulement) travaux.push(
+    connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
+      if(!generationCourante(generation) || !pubs || !pubs.length) return;
+      sourceExploitable = true;
+      fusionner(pubs,"user");
+      PERF.jalon("supabase_publications_ready");
+    })
+  );
+  let promesse;
+  promesse = Promise.allSettled(travaux).finally(()=>{
+    if(chargementsZone.get(cle) === promesse) chargementsZone.delete(cle);
+    chargementEnCours = chargementsZone.size > 0;
+    if(generationCourante(generation)){
+      if(!o.osmSeulement) definirEtatRechercheVersionne("places",sourceExploitable || lieux.length
+        ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
+      terminerGeneration(generation);
     }
   });
+  promesse.generation = generation;
   chargementsZone.set(cle, promesse);
   return promesse;
 }
@@ -4448,13 +4685,22 @@ function categoriesProbables(){
 }
 
 let prechargementFait = false;
+let prechargementEnCours = false;
+const PRECHARGEMENT_CATEGORIES_MAX = 2;
 function prechargerCategories(){
-  if(prechargementFait || !map) return;
-  prechargementFait = true;
-  const manquantes = categoriesProbables().filter(c=>!categorieEnMemoire(c)).slice(0,12);
+  if(prechargementFait || prechargementEnCours || !map || overpassEchecsConsecutifs > 0) return;
+  const transports = new Set(["bus","metro","tram","train"]);
+  const manquantes = categoriesProbables()
+    .filter(c=>!transports.has(c) && !categorieEnMemoire(c))
+    .slice(0,PRECHARGEMENT_CATEGORIES_MAX);
   if(!manquantes.length) return;
-  const differer = window.requestIdleCallback || (f=>setTimeout(f, 1200));
-  differer(()=>{ chargerPourCats(manquantes).then(()=>PERF.jalon("fresh_pois_ready")); });
+  prechargementEnCours = true;
+  chargerPourCats(manquantes).then(()=>{
+    /* Une tentative n'est pas un chargement. On ne pose cette marque qu'après
+       qu'au moins une catégorie ait réellement reçu un lieu exploitable. */
+    prechargementFait = manquantes.some(c=>categorieEnMemoire(c));
+    if(prechargementFait) PERF.jalon("fresh_pois_ready");
+  }).finally(()=>{ prechargementEnCours = false; });
 }
 
 function chargerPourCats(cats){
@@ -4472,25 +4718,45 @@ const derniersChargementsTemporaires = new Map();
 function chargerDonneesTemporaires(lat, lng, opts){
   const o = opts || {};
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
-  if(chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
+  if(!o.force && chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
   const dernier = derniersChargementsTemporaires.get(cle) || 0;
   if(!o.force && Date.now()-dernier < 5*60*1000) return Promise.resolve([]);
-  derniersChargementsTemporaires.set(cle,Date.now());
-  definirEtatRecherche("events",SEARCH_STATES.LOADING_EVENTS);
-  charge("Recherche des événements autour de ce point…");
-  const promesse = Promise.allSettled([
-    evenementsOpenAgenda(lat,lng).then(ev=>{ if(ev && ev.length) fusionner(ev,"external"); }),
-    connecter().then(()=>chargerPublications(lat,lng))
-      .then(pubs=>{ if(pubs && pubs.length) fusionner(pubs,"user"); })
-  ]).then(resultats=>{
+  const generation = nouvelleGeneration("donnees:temporaires",cle,!!o.force);
+  prendreEtatRecherche("events",generation);
+  if(generationCourante(generation)){
+    definirEtatRechercheVersionne("events",SEARCH_STATES.LOADING_EVENTS,generation);
+    charge("Recherche des événements autour de ce point…");
+  }
+  let sourceExploitable = false;
+  const travaux = [
+    evenementsOpenAgenda(lat,lng).then(ev=>{
+      if(!generationCourante(generation) || !Array.isArray(ev)) return;
+      sourceExploitable = true;
+      if(ev.length) fusionner(ev,"external");
+    })
+  ];
+  if(!o.sansPublications) travaux.push(
+    connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
+      if(!generationCourante(generation) || !Array.isArray(pubs)) return;
+      sourceExploitable = true;
+      if(pubs.length) fusionner(pubs,"user");
+    })
+  );
+  let promesse;
+  promesse = Promise.allSettled(travaux).then(resultats=>{
+    if(!generationCourante(generation)) return;
     const erreurs = resultats.filter(x=>x.status === "rejected").length;
-    if(erreurs === resultats.length) definirEtatRecherche("events",SEARCH_STATES.NETWORK_ERROR);
-    else if(erreurs) definirEtatRecherche("events",SEARCH_STATES.PARTIAL_ERROR);
-    else definirEtatRecherche("events",SEARCH_STATES.SUCCESS);
+    if(erreurs === resultats.length) definirEtatRechercheVersionne("events",SEARCH_STATES.NETWORK_ERROR,generation);
+    else if(erreurs) definirEtatRechercheVersionne("events",SEARCH_STATES.PARTIAL_ERROR,generation);
+    else definirEtatRechercheVersionne("events",SEARCH_STATES.SUCCESS,generation);
+    if(sourceExploitable) derniersChargementsTemporaires.set(cle,Date.now());
   }).finally(()=>{
-    chargementsTemporaires.delete(cle);
-    charge(null);
-    majAccueil();
+    if(chargementsTemporaires.get(cle) === promesse) chargementsTemporaires.delete(cle);
+    if(generationCourante(generation)){
+      charge(null);
+      majAccueil();
+      terminerGeneration(generation);
+    }
   });
   chargementsTemporaires.set(cle, promesse);
   return promesse;
@@ -4769,7 +5035,7 @@ function installerCarte(){
     const fournisseurGoogleActif = window.AutourMapProviders && AutourMapProviders.googleMaps;
     if(fournisseurGoogleActif) fournisseurGoogleActif.synchroniserDepuisLeaflet(map);
     document.body.classList.toggle("loin", map.getZoom() < 15);
-    majEpaisseurs(); majEtiquettes(); majBoutons(); resoudreCollisions();
+    majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions();
     // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
     // faisait saccader la carte sur téléphone
     // on ne relance rien tant que la carte bouge : un balayage de trois
@@ -4808,8 +5074,6 @@ function installerCarte(){
     if(googleActif && fournisseur && fournisseur.estActif && fournisseur.estActif()) return;
     return remettreFondAutonome();
   });
-  // ça, en revanche, c'est bien du confort différable
-  quandLibre(()=>prechargerCategories());
   return true;
 }
 
@@ -4898,7 +5162,6 @@ async function demarrer(coords){
     if(rapide.commune) commune = rapide.commune;
     fusionner(rapide.lieux, "permanent", {silencieux:true});
     selectionAccueil = rapide.choisis;
-    dernierChargement = [positionMoi[0], positionMoi[1]];
   }
   dessinerFiltres();
   majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
@@ -4928,20 +5191,34 @@ async function demarrer(coords){
 /* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
    déjà passé quelque chose de plus frais entre-temps, on ne touche à rien. */
 function demarrerSurZonePrecalculee(lat,lng){
+  const generation = nouvelleGeneration("zone:precalculee",lat.toFixed(2)+","+lng.toFixed(2));
   lieuxDeZone(lat,lng).then(depart=>{
-    if(!depart || !depart.length) return;
+    if(!generationCourante(generation) || !depart || !depart.length) return;
     if(lieux.length) return;          // le réseau a déjà répondu : tant mieux
     fusionner(depart);
     PERF.jalon("source_locale");
     PERF.jalon("premier_lieu");
     charge(null);
-  }).catch(()=>{});
+  }).catch(()=>{}).finally(()=>terminerGeneration(generation));
+}
+
+function avecDelai(promesse, ms, valeur, signal){
+  return new Promise(resolve=>{
+    let fini = false;
+    const terminer = (resultat)=>{ if(fini) return; fini=true; clearTimeout(t); resolve(resultat); };
+    const t = setTimeout(()=>terminer(valeur),ms);
+    if(signal) signal.addEventListener("abort",()=>terminer(valeur),{once:true});
+    Promise.resolve(promesse).then(terminer,()=>terminer(valeur));
+  });
 }
 
 /* Tout ce qui a besoin du réseau ou d'un vrai calcul, une fois l'écran peint.
    Les sources partent ENSEMBLE : aucune n'attend le résultat d'une autre. */
 function chargerLeDemarrage(rapide){
   const [lat,lng] = positionMoi;
+  const generation = nouvelleGeneration("demarrage",lat.toFixed(3)+","+lng.toFixed(3));
+  const signal = generation.signal;
+  prendreEtatRecherche("places",generation);
   attendreLeaflet();
 
   // le contexte : la ville s'affiche sans attendre les lieux. Mais on ne nomme
@@ -4949,9 +5226,8 @@ function chargerLeDemarrage(rapide){
   // quelqu'un qui est à Lille est pire que ne rien afficher.
   if(positionConnue()) detecterVille(lat, lng);
   dernierNom = [lat,lng];
-  dernierChargement = [lat,lng];
 
-  definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
+  definirEtatRechercheVersionne("places",SEARCH_STATES.LOADING_PLACES,generation);
   // pas de gros écran de chargement quand on a déjà quelque chose à montrer :
   // un simple « mise à jour… » discret, et les cartes précédentes restent
   if(rapide) majSignalMaj(true); else charge("Recherche autour de toi…");
@@ -4968,67 +5244,77 @@ function chargerLeDemarrage(rapide){
     PERF.jalon("premier_lieu");
   }
 
-  /* Toutes les sources en parallèle. `allSettled` : une source lente ou en
-     panne ne retient aucune autre, et le démarrage se termine quand la
-     dernière a répondu — pas quand la première a échoué. */
-  const travaux = [
-    nomCommune(lat,lng).then(n=>{ if(n) commune = n; }),
+  const sourcePrete = (nom)=>{
+    if(!generationCourante(generation)) return false;
+    charge(null);
+    definirEtatRechercheVersionne("places",SEARCH_STATES.SUCCESS,generation);
+    PERF.jalon(nom);
+    PERF.jalon("premier_lieu");
+    planifierRendu({accueil:true, carte:true, filtres:true});
+    return true;
+  };
 
-    notesGoogle(lat,lng).then(fiches=>{
-      if(!fiches || !fiches.length) return;
+  /* Google, DATAtourisme et Supabase portent les premières recommandations.
+     Chacun possède un délai borné et publie son résultat indépendamment : la
+     source la plus lente ne garde plus l'interface en état de chargement. */
+  const travaux = [
+    avecDelai(nomCommune(lat,lng),2500,null,signal)
+      .then(n=>{ if(generationCourante(generation) && n) commune = n; }),
+
+    avecDelai(notesGoogle(lat,lng,{signal}),4000,[],signal).then(fiches=>{
+      if(!generationCourante(generation) || !fiches || !fiches.length) return;
       greffeNotes(lieux,fiches);
       ajouterLieuxGoogle(fiches);
-      charge(null);
-      PERF.jalon("google_pret");
+      sourcePrete("google_pret");
     }),
 
-    // OpenStreetMap complète quand il arrive, sans bloquer l'affichage
-    vraisLieux(lat,lng,null,{delai:OVERPASS_DELAI_BOOT,
-                             rayon:RAYON_BOOT, limite:PLAFOND_BOOT}).then(reels=>{
-      if(reels && reels.length){
-        fusionner(reels);
-        ecrireCacheLieux(lat,lng,reels);
-        PERF.jalon("premier_lieu");
-      }else if(!lieux.length){
-        // plus aucun lieu inventé : mieux vaut dire qu'on n'a rien trouvé que
-        // de faire déplacer quelqu'un vers une bibliothèque qui n'existe pas
-        toast("Aucune donnée reçue · réseau ou OSM indisponible");
-      }
-      charge(null);
-      PERF.jalon("overpass_done");
-      if(rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE)
-        definirEtatRecherche("places",lieux.length ? SEARCH_STATES.PARTIAL_ERROR : SEARCH_STATES.OVERPASS_UNAVAILABLE);
-      else definirEtatRecherche("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
-      planifierRendu({accueil:true, carte:true, filtres:true});
+    avecDelai(lieuxDatatourisme(lat,lng,signal),4000,[],signal).then(reels=>{
+      if(!generationCourante(generation) || !reels || !reels.length) return;
+      fusionner(reels,"datatourisme");
+      sourcePrete("datatourisme_done");
     }),
 
-    // Supabase : favoris, canaux et publications, hors chemin critique
-    connecter().then(()=>Promise.allSettled([rafraichirCanaux(), chargerFavoris()]))
-      .then(()=>PERF.jalon("supabase_pret")),
+    avecDelai(connecter().then(()=>chargerPublications(lat,lng)),4500,[],signal)
+      .then(pubs=>{
+        if(!generationCourante(generation) || !pubs || !pubs.length) return;
+        fusionner(pubs,"user");
+        sourcePrete("supabase_publications_ready");
+      }),
+
+    avecDelai(connecter().then(()=>Promise.allSettled([rafraichirCanaux(), chargerFavoris()])),4500,[],signal)
+      .then(()=>{ if(generationCourante(generation)) PERF.jalon("supabase_pret"); }),
   ];
 
   Promise.allSettled(travaux).then(()=>{
+    if(!generationCourante(generation)) return;
+    definirEtatRechercheVersionne("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
     majSignalMaj(false);
+    charge(null);
     PERF.jalon("demarrage_termine");
     PERF.mesure("démarrage", "boot_debut", "demarrage_termine");
+    PERF.finDemarrage();
+    terminerGeneration(generation);
+    // Deux catégories au plus, et seulement bien après le démarrage. Une panne
+    // Overpass désactive ce confort plutôt que de créer une nouvelle rafale.
+    setTimeout(()=>{
+      if(positionMoi && distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
+        quandLibre(()=>prechargerCategories());
+    },8000);
   });
 
-  /* Couche éphémère, chargée à part et après les lieux : un événement de ce
-     soir n'a pas à retarder l'affichage du quartier. */
-  quandLibre(()=>chargerDonneesTemporaires(lat,lng));
+  /* OpenAgenda arrive après la stabilisation des premières sources. Le lancer
+     dans le premier `requestIdleCallback` ajoutait plusieurs requêtes pendant
+     que Google, Supabase et DATAtourisme étaient encore en vol. */
+  setTimeout(()=>{
+    if(positionMoi && distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
+      quandLibre(()=>chargerDonneesTemporaires(lat,lng,{sansPublications:true}));
+  },5000);
 
-  /* Le quartier entier, une fois que l'écran est servi. La requête d'ouverture
-     est volontairement étroite (900 m, 90 objets) ; celle-ci reprend la portée
-     normale et remplit le cache de tuiles pour le prochain lancement. Elle
-     n'affiche rien de plus tout de suite : elle prépare. */
-  quandLibre(()=>{
-    vraisLieux(lat,lng,null,{delai:OVERPASS_DELAI_DEMANDE}).then(reels=>{
-      if(!reels || !reels.length) return;
-      fusionner(reels);
-      ecrireCacheLieux(lat,lng,reels);
-      PERF.jalon("quartier_complet");
-    }).catch(()=>{});
-  });
+  /* OSM n'est plus dans `travaux` : il enrichit quand il répond et son échec ne
+     retarde ni le premier contenu, ni la fin du démarrage. Une seule requête
+     étroite part ; le quartier complet attend un déplacement ou une demande. */
+  chargerZone(lat,lng,{sansCarte:true, osmSeulement:true,
+    delai:OVERPASS_DELAI_BOOT, reglages:{rayon:RAYON_BOOT,limite:PLAFOND_BOOT}});
 }
 
 /* Seuil au-delà duquel « autour de moi » ne décrit plus ce qu'on regarde.
@@ -5461,12 +5747,24 @@ function majIndexEvenements(){
   indexPerime = false;
   indexEvenements = new Map();
   const permanents = lieux.filter(l=>!estTemporaire(l));
+  const pas = .0015; // ~165 m nord/sud : neuf cases couvrent largement 80 m
+  const grille = new Map();
+  const cellule = (lat,lng)=>Math.floor(lat/pas)+":"+Math.floor(lng/pas);
+  permanents.forEach(p=>{
+    const cle=cellule(p.lat,p.lng);
+    if(!grille.has(cle)) grille.set(cle,[]);
+    grille.get(cle).push(p);
+  });
   lieux.forEach(e=>{
     if(!estTemporaire(e)) return;
     // rattachement par proximité : comparer les noms ratait « Le Grand Mix »
     // face à « Grand Mix », et tout événement dont l'adresse est une rue
     let proche = null, dMin = 80;
-    permanents.forEach(p=>{
+    const cx=Math.floor(e.lat/pas), cy=Math.floor(e.lng/pas);
+    const candidats=[];
+    for(let x=cx-1;x<=cx+1;x++) for(let y=cy-1;y<=cy+1;y++)
+      candidats.push(...(grille.get(x+":"+y)||[]));
+    candidats.forEach(p=>{
       const d = distanceM(e.lat,e.lng,p.lat,p.lng);
       if(d < dMin){ dMin = d; proche = p; }
     });
@@ -5602,6 +5900,8 @@ function empreinteMarqueur(l){
 }
 
 function rendre(){
+  PERF.rendus.carte += 1;
+  PERF.exposer();
   if(!map) return;
   majIndexEvenements();
   if(!rendre.mesure){ rendre.mesure = true; PERF.jalon("markers_ready"); }
@@ -5613,12 +5913,10 @@ function rendre(){
   }
   const garder = new Set();
   const choisis = limiterMarqueurs(selectionner());
-  // les étiquettes se départagent une fois les marqueurs posés
-  requestAnimationFrame(resoudreCollisions);
   majBandeauVide(choisis.length);
-  // en lot, la feuille est rafraîchie une seule fois à la fin : la refaire ici
-  // reviendrait à la reconstruire deux fois pour le même écran
-  if(feuilleNiveau !== null && !renduEnLot) majFeuille2();
+  /* La carte ne reconstruit plus le panneau. Les deux consomment la même
+     sélection, mais sont planifiés séparément : un zoom ou un changement de
+     marqueur ne doit pas recréer tous les boutons et perdre le focus. */
   grouper(choisis).forEach(item=>{
     if(item.seul){
       const l = item.seul;
@@ -5677,6 +5975,9 @@ function rendre(){
   marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
   // un redessin ne doit pas effacer la mise en avant du lieu regardé
   if(lieuEnAvant) mettreEnAvant(lieuEnAvant);
+  // les étiquettes se départagent une fois les marqueurs réellement posés ; un
+  // seul frame reste en attente même si plusieurs sources arrivent ensemble.
+  planifierCollisions();
 }
 
 /* ================================================================== */
@@ -5986,10 +6287,11 @@ function couvertureAide(l, c){
 }
 
 function couvertureLieu(l, c){
-  if(!l || !l.image) return "";
-  return '<figure class="aide-couverture" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
-    '<span aria-hidden="true">'+c.emoji+'</span><img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt="">'+
-    (l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
+  if(!l) return "";
+  return '<figure class="aide-couverture'+(l.image?'':' sans-photo')+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+    '<span aria-hidden="true">'+c.emoji+'</span>'+
+    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt="">' : '')+
+    (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
 }
 
 function sourceAide(l){
@@ -6061,8 +6363,10 @@ function ouvrirDetail(id){
     '</p>'+
     '<div class="actions">'+
       '<button class="act act-1" id="btnYAller">'+(ficheAide?'Itinéraire':'Y aller')+'</button>'+
-      (l.tel ? '<a class="act" href="tel:'+esc(l.tel.replace(/\s/g,""))+'">Appeler</a>' : '')+
-      (ficheAide && site ? '<a class="act" href="'+esc(site)+'" target="_blank" rel="noopener">Site web</a>' : '')+
+      (l.tel ? '<a class="act" href="tel:'+esc(l.tel.replace(/\s/g,""))+'">Appeler</a>'
+        : '<button class="act" type="button" disabled aria-label="Téléphone non renseigné">Appeler</button>')+
+      (site ? '<a class="act" href="'+esc(site)+'" target="_blank" rel="noopener">Site web</a>'
+        : '<button class="act" type="button" disabled aria-label="Site non renseigné">Site web</button>')+
       '<button class="act" id="btnPartLieu">Partager</button>'+
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Favori ajouté':'Favori')+'</button>'+
     '</div>'+
@@ -7059,16 +7363,23 @@ function enrichirCandidats(classement, intention, redessiner){
     });
   })).then(()=>{ if(typeof redessiner === "function") redessiner(); });
 }
-async function chercherGoogle(q, lat, lng){
+async function chercherGoogle(q, lat, lng, opts){
+  const o = opts || {};
   const fournisseur = providerGoogle();
   if(!fournisseur || !(await googleMapsActif())) return [];
-  try{ return (await fournisseur.search(q,lat,lng,GOOGLE_CONFIG)).map(ficheGoogleInterne).filter(Boolean); }
-  catch(e){ journal.warn("Recherche Google indisponible"); return []; }
+  try{
+    return (await fournisseur.search(q,lat,lng,GOOGLE_CONFIG,{signal:o.signal}))
+      .map(ficheGoogleInterne).filter(Boolean);
+  }
+  catch(e){ if(!(e && e.name === "AbortError")) journal.warn("Recherche Google indisponible"); return []; }
 }
 async function placesGoogle(lat,lng,types,signal){
   const fournisseur = providerGoogle();
   if(!fournisseur || !(await googleMapsActif())) return [];
-  try{ return (await fournisseur.nearby(lat,lng,GOOGLE_CONFIG,{types,signal})).map(ficheGoogleInterne).filter(Boolean); }
+  try{
+    PERF.requete("google_places");
+    return (await fournisseur.nearby(lat,lng,GOOGLE_CONFIG,{types,signal})).map(ficheGoogleInterne).filter(Boolean);
+  }
   catch(e){ if(!(e && e.name === "AbortError")) journal.warn("Google Places indisponible"); return []; }
 }
 async function notesGoogle(lat,lng,opts){
@@ -7081,18 +7392,28 @@ async function notesGoogle(lat,lng,opts){
   return [...uniques.values()];
 }
 const zonesResto = new Set();
+const restaurationsEnCours = new Map();
 function completerRestauration(opts){
   if(!positionMoi) return Promise.resolve([]);
   const o=opts||{}, [lat,lng]=positionMoi, cle=lat.toFixed(2)+","+lng.toFixed(2);
   if(o.force) zonesResto.delete(cle);
   if(zonesResto.has(cle)) return Promise.resolve([]);
-  zonesResto.add(cle);
-  return placesGoogle(lat,lng,TYPES_RESTO).then(f=>{
-    if(!f.length){ zonesResto.delete(cle); return []; }
+  if(restaurationsEnCours.has(cle)) return restaurationsEnCours.get(cle);
+  const generation = nouvelleGeneration("zone:restauration",cle,!!o.force);
+  let promesse;
+  promesse = placesGoogle(lat,lng,TYPES_RESTO,generation.signal).then(f=>{
+    if(!generationCourante(generation) || !f.length) return [];
+    // La zone n'est retenue qu'après une réponse réellement exploitable.
+    zonesResto.add(cle);
     greffeNotes(lieux,f); ajouterLieuxGoogle(f); majAccueil();
     if(feuilleNiveau === "manger") majFeuille2();
     return f;
-  }).catch(()=>{ zonesResto.delete(cle); return []; });
+  }).catch(()=>[]).finally(()=>{
+    if(restaurationsEnCours.get(cle) === promesse) restaurationsEnCours.delete(cle);
+    terminerGeneration(generation);
+  });
+  restaurationsEnCours.set(cle,promesse);
+  return promesse;
 }
 function ajouterLieuxGoogle(fiches,catDefaut){
   const ajouts=[];
@@ -7113,12 +7434,14 @@ function ajouterLieuxGoogle(fiches,catDefaut){
         appliquerFicheGoogle(dejaPresent,f);
         const canonique=permanentPlaces.find(l=>l.id===dejaPresent.id);
         if(canonique && canonique!==dejaPresent) appliquerFicheGoogle(canonique,f);
-        rendre();
+        planifierRendu({carte:true,accueil:true,feuille:true});
       }
       return;
     }
     ajouts.push(normaliserItem(Object.assign({},f,{id:f.id || f.autourId,cat,titre:f.nom,
-      description:f.description||"",quand:"Voir sur place",gratuit:true,prix:0,places:null,qr:false,
+      description:f.description||"",quand:"Voir sur place",
+      gratuit:f.gratuit === true || f.prixN === 0 ? true : undefined,
+      prix:f.prixN === 0 ? 0 : null,places:null,qr:false,
       par:"Google Maps",service,solidaire:f.solidaire===true||estSolidaire(f.nom,false),
       imageSource:f.imageSource||"google_places"}),"google_places"));
   });
@@ -7189,7 +7512,8 @@ function appliquerFicheGoogle(l,f){
   // Le nom de Places est le nom commercial affiché par défaut. Une publication
   // Autour garde cependant exactement le titre choisi par son créateur.
   if(l.source!=="autour" && !l.dbId && f.nom){ l.titre=f.nom; l.title=f.nom; }
-  ["note","avis","ouvert","prixN","horaires","tel","url","pmr","idGoogle","description"].forEach(cle=>{
+  ["note","avis","ouvert","prixN","horaires","tel","url","pmr","idGoogle","description",
+   "accesSanteDocumente"].forEach(cle=>{
     if(f[cle] != null && f[cle] !== "") l[cle]=f[cle];
   });
   if(f.image && !l.image){ l.image=f.image; l.imageSource=f.imageSource||"google_places"; }
@@ -7203,7 +7527,7 @@ function greffeNotes(liste,fiches){
     if(meilleur){ appliquerFicheGoogle(l,meilleur);
       const canonique=permanentPlaces.find(x=>x.id===l.id); if(canonique&&canonique!==l) appliquerFicheGoogle(canonique,meilleur); }
   });
-  rendre();
+  planifierRendu({carte:true,accueil:true,feuille:true});
 }
 
 function distanceM(lat1,lng1,lat2,lng2){
@@ -7398,79 +7722,205 @@ function ouvrirResultats(q){
    qui sont l'information vitale ici : « mardi 14h-16h » vaut mieux que
    l'existence d'un point sur une carte. */
 const RESEAUX_AIDE = [
-  { q:"Restos du Cœur",             cat:"alimentaire" },
-  { q:"Banque Alimentaire",         cat:"alimentaire" },
-  { q:"épicerie solidaire",         cat:"alimentaire" },
-  { q:"distribution alimentaire",   cat:"alimentaire" },
-  { q:"Secours Populaire",          cat:"alimentaire" },
-  { q:"Secours Catholique",         cat:"asso" },
-  { q:"Croix-Rouge",                cat:"asso" },
-  { q:"CCAS action sociale",        cat:"emploi" },
-  { q:"accueil de jour sans-abri",  cat:"hebergement" },
-  { q:"hébergement d'urgence",      cat:"hebergement" },
+  { q:"Restos du Cœur",             cat:"alimentaire", besoins:["manger"], solidaire:true },
+  { q:"Banque Alimentaire",         cat:"alimentaire", besoins:["manger"], solidaire:true },
+  { q:"épicerie solidaire",         cat:"alimentaire", besoins:["manger"], solidaire:true },
+  { q:"distribution alimentaire",   cat:"alimentaire", besoins:["manger"], solidaire:true },
+  { q:"Secours Populaire",          cat:"alimentaire", besoins:["manger","vetements","autre"], solidaire:true },
+  { q:"Secours Catholique",         cat:"asso", besoins:["logement","papiers","autre"], solidaire:true },
+  { q:"Croix-Rouge",                cat:"asso", besoins:["sante","manger","vetements","autre"], solidaire:true },
+  { q:"CCAS action sociale",        cat:"emploi", besoins:["logement","travail","papiers","famille","autre"], solidaire:true },
+  { q:"accueil de jour sans-abri",  cat:"hebergement", besoins:["logement","hygiene","securite"], urgent:true, solidaire:true },
+  { q:"hébergement d'urgence",      cat:"hebergement", besoins:["logement","securite"], urgent:true, solidaire:true },
   // accès aux droits et insertion : trois guichets distincts qu'OSM range
   // sous le même tag, et qui ne reçoivent pas les mêmes personnes
-  { q:"Mission locale",             cat:"emploi" },
-  { q:"France Travail",             cat:"emploi" },
-  { q:"France Services accès aux droits", cat:"emploi" },
-  { q:"vestiaire solidaire vêtements", cat:"friperie" },
-  { q:"bains-douches municipaux",   cat:"toilettes" },
+  { q:"Mission locale",             cat:"emploi", besoins:["travail","jeunes"], solidaire:true },
+  { q:"France Travail",             cat:"emploi", besoins:["travail"] },
+  { q:"France Services accès aux droits", cat:"emploi", besoins:["papiers","autre"], solidaire:true },
+  { q:"vestiaire solidaire vêtements", cat:"friperie", besoins:["vetements","autre"], solidaire:true },
+  { q:"bains-douches municipaux",   cat:"toilettes", besoins:["hygiene","autre"], solidaire:true },
+
+  // Santé courante : ces lieux sont utiles, mais ne sont jamais présentés
+  // comme gratuits sans donnée explicite de la fiche.
+  { q:"pharmacie",                  cat:"sante", besoins:["sante"], santeIntentions:["medicaments"] },
+  { q:"hôpital urgences",           cat:"sante", besoins:["sante"], santeIntentions:["hopital"], urgent:true },
+  { q:"médecin généraliste",        cat:"sante", besoins:["sante"], santeIntentions:["soins"] },
+  { q:"centre de santé",            cat:"sante", besoins:["sante"], santeIntentions:["soins"] },
+  { q:"kinésithérapeute physiothérapeute", cat:"sante", besoins:["sante"], santeIntentions:["soins"] },
+  { q:"dentiste clinique dentaire", cat:"sante", besoins:["sante"], santeIntentions:["dentaire"] },
+  { q:"laboratoire analyses médicales", cat:"sante", besoins:["sante"], santeIntentions:["depistage"] },
+  { q:"centre de dépistage CeGIDD", cat:"sante", besoins:["sante"], santeIntentions:["depistage","sexuelle"], accesAdapte:true, solidaire:true },
+  { q:"Planning Familial",          cat:"sante", besoins:["sante","famille"], santeIntentions:["sexuelle"], solidaire:true },
+  { q:"PMI protection maternelle infantile", cat:"sante", besoins:["sante","famille"], santeIntentions:["sexuelle"], solidaire:true },
+  { q:"PASS permanence accès aux soins", cat:"sante", besoins:["sante"],
+    santeIntentions:["acces","soins","medicaments","hopital","dentaire","depistage","sexuelle"],
+    accesAdapte:true, solidaire:true },
+
+  // Soutien psychologique : Text Search complète les types Google, qui ne
+  // proposent pas de type de requête « psychologist ». Les réseaux publics ou
+  // pris en charge restent distingués d'un cabinet privé.
+  { q:"CMP centre médico-psychologique", cat:"sante", besoins:["parler"],
+    santeIntentions:["mentale","acces"], accesAdapte:true, solidaire:true },
+  { q:"CMPP centre médico-psycho-pédagogique", cat:"sante", besoins:["parler","famille","jeunes"],
+    santeIntentions:["mentale","acces"], accesAdapte:true, solidaire:true },
+  { q:"BAPU bureau aide psychologique universitaire", cat:"sante", besoins:["parler","jeunes"],
+    santeIntentions:["mentale","acces"], accesAdapte:true, solidaire:true },
+  { q:"PAEJ point accueil écoute jeunes", cat:"sante", besoins:["parler","jeunes"],
+    santeIntentions:["mentale"], solidaire:true },
+  { q:"Maison des adolescents psychologue", cat:"sante", besoins:["parler","jeunes"],
+    santeIntentions:["mentale"], solidaire:true },
+  { q:"Santé Psy Étudiant psychologue", cat:"sante", besoins:["parler","jeunes"],
+    santeIntentions:["mentale","acces"], accesAdapte:true, solidaire:true },
+  { q:"Mon soutien psy psychologue conventionné", cat:"sante", besoins:["parler"],
+    santeIntentions:["mentale"] },
 ];
 
-/* Où l'aide a déjà été cherchée. Un simple booléen suffisait tant qu'on
-   restait chez soi : dès qu'on regardait une autre commune, plus rien
-   n'était chargé et l'écran d'aide restait celui du point de départ. On
-   recharge donc quand la zone regardée s'éloigne assez pour que les points
-   trouvés ne la concernent plus. */
-let aideChargeeAutour = null;
+/* Une zone n'est chargée que pour le besoin qui l'a demandée. Une recherche
+   générale faite à l'ouverture d'Aide ne doit jamais empêcher la recherche
+   ciblée qui suit (« pharmacie », « psy », etc.). */
+const zonesAideChargees = new Map();
+const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
 let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
 
-async function chargerAide(lat,lng){
-  if(aideChargeeAutour &&
-     distanceM(aideChargeeAutour[0], aideChargeeAutour[1], lat, lng) < AIDE_RAYON_RECHARGE) return;
-  aideChargeeAutour = [lat,lng];
+function contexteAideChargement(){
+  const besoins = typeof besoinsSelectionnesAide === "function"
+    ? besoinsSelectionnesAide().slice() : [];
+  const choix = typeof sousAideChoisi === "function" ? sousAideChoisi() : null;
+  const urgence = !!(choix && choix.urgentSeul);
+  return {
+    besoins,
+    urgence,
+    santeIntentions: Array.isArray(intentionsSanteAide) ? intentionsSanteAide.slice() : [],
+    cats: choix && Array.isArray(choix.cats) ? choix.cats.slice() : CATS_AIDE.slice(),
+    cle: urgence ? "urgence" : ((besoins.slice().sort().join("+") || "general")+
+      (intentionsSanteAide.length ? "|"+intentionsSanteAide.slice().sort().join("+") : "")),
+  };
+}
+
+function reseauxPourContexteAide(contexte){
+  if(contexte.urgence) return RESEAUX_AIDE.filter(r=>r.urgent).slice(0,6);
+  if(!contexte.besoins.length) return [];
+  const principal = contexte.besoins[0];
+  const correspond = r=>(r.besoins || []).some(id=>contexte.besoins.includes(id));
+  let eligibles = [
+    ...RESEAUX_AIDE.filter(r=>(r.besoins || []).includes(principal)),
+    ...RESEAUX_AIDE.filter(r=>correspond(r) && !(r.besoins || []).includes(principal)),
+  ];
+  const intentions = contexte.santeIntentions || [];
+  const services = intentions.filter(id=>id !== "acces");
+  if(services.length)
+    eligibles = eligibles.filter(r=>(r.santeIntentions || []).some(id=>services.includes(id)));
+  if(intentions.includes("acces"))
+    eligibles = eligibles.filter(r=>r.accesAdapte === true);
+  return eligibles.slice(0,6);
+}
+
+async function chargerAide(lat,lng,options){
+  const o = options || {};
+  const contexte = contexteAideChargement();
+  const deja = zonesAideChargees.get(contexte.cle);
+  if(o.force) zonesAideChargees.delete(contexte.cle);
+  else if(deja && distanceM(deja[0], deja[1], lat, lng) < AIDE_RAYON_RECHARGE) return;
+
+  const cleChargement = lat.toFixed(2)+","+lng.toFixed(2)+"|"+contexte.cle;
+  if(!o.force && chargementsAideEnCours.has(cleChargement))
+    return chargementsAideEnCours.get(cleChargement);
+
+  const generation = nouvelleGeneration("zone:aide",cleChargement,!!o.force);
+  prendreEtatRecherche("places",generation);
+  prendreEtatRecherche("overpass",generation);
   aideEnCours = true;
-  definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
+  definirEtatRechercheVersionne("places",SEARCH_STATES.LOADING_PLACES,generation);
+  definirEtatRechercheVersionne("overpass",SEARCH_STATES.IDLE,generation);
   // Laisse la feuille s'afficher avant de normaliser un éventuel cache.
   // Le double passage rAF → tâche garantit au navigateur un premier paint.
-  await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
-  try{ await chargerAideVraiment(lat,lng); }
+  const promesse = (async()=>{
+    await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+    try{
+      const exploitable = await chargerAideVraiment(lat,lng,generation,contexte);
+      if(exploitable && generationCourante(generation))
+        zonesAideChargees.set(contexte.cle,[lat,lng]);
+    }
+    finally{
+      if(!generationCourante(generation)) return;
+      aideEnCours = false;
+      const trouve = contexte.besoins.length
+        ? lieux.some(l=>AIDE && AIDE.estSolution(l,contexte.besoins))
+        : lieux.some(l=>correspondUneCategorie(l,SET_AIDE));
+      definirEtatRechercheVersionne("places",trouve ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
+      terminerGeneration(generation);
+    }
+  })();
+  chargementsAideEnCours.set(cleChargement,promesse);
+  try{ return await promesse; }
   finally{
-    aideEnCours = false;
-    const trouve = lieux.some(l=>correspondUneCategorie(l,SET_AIDE));
-    definirEtatRecherche("places",trouve ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY);
+    if(chargementsAideEnCours.get(cleChargement) === promesse)
+      chargementsAideEnCours.delete(cleChargement);
   }
 }
 
-async function chargerAideVraiment(lat,lng){
+async function chargerAideVraiment(lat,lng,generation,contexte){
   charge("Recherche des points d’aide…");
   /* Les sources sociales et ouvertes passent d'abord. Elles portent les
      catégories et conditions d'accès ; Google ne sert ensuite qu'à compléter
      une structure correspondante (position, téléphone, site, horaires, photo). */
-  const [osm, tourisme] = await Promise.all([
-    vraisLieux(lat,lng,null,{cats:CATS_AIDE,rayon:9000,limite:180}),
-    lieuxDatatourisme(lat,lng)
-  ]);
-  if(osm && osm.length) fusionner(osm,"permanent");
-  if(tourisme && tourisme.length) fusionner(tourisme,"datatourisme");
-
-  const garder = [];
-  const choix = typeof sousAideChoisi === "function" ? sousAideChoisi() : null;
-  const reseaux = RESEAUX_AIDE.filter(r=>!choix || (choix.cats || []).includes(r.cat)).slice(0,6);
-  await Promise.all(reseaux.map(async r=>{
-    const res = await chercherGoogle(r.q, lat, lng);
-    res.forEach(f=>{
-      // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
-      if(distanceM(lat,lng,f.lat,f.lng) > 15000) return;
-      f.solidaire = true;              // trouvé en cherchant un réseau d'aide
-      garder.push({f, cat:r.cat});
-      ajouterLieuxGoogle([f], r.cat);
-    });
-  }));
-  charge(null);
-  journal.info("Aide sociale :", garder.length, "complément(s) Google ;", (osm||[]).length, "source(s) ouvertes");
-  majAccueil();
+  const catsContexte = contexte.besoins.some(id=>id === "sante" || id === "parler")
+    ? ["sante"]
+    : contexte.cats.filter(cat=>CATS_AIDE.includes(cat));
+  const reseaux = reseauxPourContexteAide(contexte);
+  const exploitable = await coordonnerSourcesVersionnees([
+    {
+      charger:()=>vraisLieux(lat,lng,null,{cats:catsContexte.length ? catsContexte : CATS_AIDE,
+        rayon:9000,limite:180,signal:generation.signal}),
+      publier:r=>{
+        const osm = r && r.ok ? r.lieux : [];
+        definirEtatRechercheVersionne("overpass",r && r.ok
+          ? SEARCH_STATES.SUCCESS : SEARCH_STATES.OVERPASS_UNAVAILABLE,generation);
+        if(osm.length) fusionner(osm,"permanent");
+        return osm.length > 0;
+      },
+      echec:()=>definirEtatRechercheVersionne("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE,generation),
+    },
+    {
+      charger:()=>lieuxDatatourisme(lat,lng,generation.signal),
+      publier:tourisme=>{
+        if(tourisme && tourisme.length) fusionner(tourisme,"datatourisme");
+        return !!(tourisme && tourisme.length);
+      },
+    },
+    {
+      charger:async()=>{
+        const garder = [];
+        await Promise.all(reseaux.map(async r=>{
+          const res = await chercherGoogle(r.q, lat, lng,{signal:generation.signal});
+          if(!generationCourante(generation)) return;
+          res.forEach(f=>{
+            // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
+            if(distanceM(lat,lng,f.lat,f.lng) > 15000) return;
+            f.solidaire = !!r.solidaire;
+            f.accesSanteDocumente = r.accesAdapte === true;
+            garder.push({f, cat:r.cat});
+          });
+        }));
+        return garder;
+      },
+      publier:garder=>{
+        const parCategorie = new Map();
+        (garder || []).forEach(({f,cat})=>{
+          if(!parCategorie.has(cat)) parCategorie.set(cat,[]);
+          parCategorie.get(cat).push(f);
+        });
+        parCategorie.forEach((fiches,cat)=>ajouterLieuxGoogle(fiches,cat));
+        return !!(garder && garder.length);
+      },
+    },
+  ], ()=>generationCourante(generation));
+  if(generationCourante(generation)){
+    charge(null);
+    majAccueil();
+  }
+  return exploitable;
 }
 
 /* « restaurant à Lille » depuis Roubaix : on détecte la ville visée, on s'y
@@ -7492,11 +7942,11 @@ function villeRecherchee(q){
        on a demandé un quartier. Un zoom fixe ne peut pas convenir aux deux. */
 const ECART_IMPORTANCE = 0.15;   // en deçà, deux résultats se valent
 
-async function geocoderVille(nom, pres){
+async function geocoderVille(nom, pres, signal){
   try{
     const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2"+
       "&limit=5&addressdetails=0&q="+encodeURIComponent(nom),
-      {headers:{"Accept-Language":"fr"}});
+      {signal,headers:{"Accept-Language":"fr"}});
     if(!r.ok) return null;
     const j = await r.json();
     if(!j.length) return null;
@@ -7525,48 +7975,59 @@ async function geocoderVille(nom, pres){
 /* Recherche dans une autre ville : on affiche les résultats de Google
    directement, au lieu de les filtrer sur les lieux déjà chargés ici. */
 async function rechercherAilleurs(phrase, ville){
+  const generation = nouvelleGeneration("recherche:ailleurs",phrase+"|"+ville,true);
   charge("Recherche à "+ville+"…");
-  const zone = await geocoderVille(ville);
-  const pos = zone ? [zone.lat, zone.lng] : null;
-  const depuis = pos || positionMoi;
-  const res = await chercherGoogle(phrase, depuis[0], depuis[1]);
-  charge(null);
-  if(!res.length){ toast("Rien trouvé à "+ville); return; }
+  try{
+    const zone = await geocoderVille(ville,null,generation.signal);
+    if(!generationCourante(generation)) return;
+    const pos = zone ? [zone.lat, zone.lng] : null;
+    const depuis = pos || positionMoi;
+    const res = await chercherGoogle(phrase, depuis[0], depuis[1],{signal:generation.signal});
+    if(!generationCourante(generation)) return;
+    charge(null);
+    if(!res.length){ toast("Rien trouvé à "+ville); return; }
 
-  if(pos){ allerVers(pos, 13, {duration:.8}); dernierChargement = pos; }
-  ajouterLieuxGoogle(res, "commerce");
+    if(pos) allerVers(pos, 13, {duration:.8});
+    ajouterLieuxGoogle(res, "commerce");
 
-  // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
-  const ids = new Set(res.map(f=>"g"+hash(f.nom+f.lat)));
-  const trouves = lieux.filter(l=>ids.has(l.id));
-  if(!trouves.length){ toast("Rien trouvé à "+ville); return; }
+    // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
+    const ids = new Set(res.map(f=>"g"+hash(f.nom+f.lat)));
+    const trouves = lieux.filter(l=>ids.has(l.id));
+    if(!trouves.length){ toast("Rien trouvé à "+ville); return; }
 
-  // le classement se fait depuis la ville visée, pas depuis ta position
-  const vrai = positionMoi;
-  positionMoi = depuis;
-  const classes = classerLieux(trouves, false);
-  positionMoi = vrai;
+    // le classement se fait depuis la ville visée, pas depuis ta position
+    const vrai = positionMoi;
+    positionMoi = depuis;
+    const classes = classerLieux(trouves, false);
+    positionMoi = vrai;
 
-  /* Même règle que pour les résultats de zone : « restaurant à Lille » tapé
-     depuis Tourcoing est une question posée de loin, et on y répond par un
-     aperçu. Ce chemin-ci affiche une liste plein écran — sans ce plafond, la
-     même recherche donnait cinq résultats par une porte et trente par l'autre. */
-  const montres = classes.slice(0, plafondPour(zone));
+    /* Même règle que pour les résultats de zone : « restaurant à Lille » tapé
+       depuis Tourcoing est une question posée de loin, et on y répond par un
+       aperçu. Ce chemin-ci affiche une liste plein écran — sans ce plafond, la
+       même recherche donnait cinq résultats par une porte et trente par l'autre. */
+    const montres = classes.slice(0, plafondPour(zone));
 
-  selectionAccueil = false;
-  fermerFeuille2();
-  pileEcrans = [];
-  pousserEcran(()=>afficherListe("📍", esc(ville), montres, false,
-    ()=>rechercherAilleurs(phrase, ville)));
+    selectionAccueil = false;
+    fermerFeuille2();
+    pileEcrans = [];
+    pousserEcran(()=>afficherListe("📍", esc(ville), montres, false,
+      ()=>rechercherAilleurs(phrase, ville)));
+  }finally{
+    if(generationCourante(generation)){
+      charge(null);
+      terminerGeneration(generation);
+    }
+  }
 }
 
 /* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
 function completerParGoogle(q, catDefaut, redessiner){
   if(!positionMoi) return;
-  chercherGoogle(q, positionMoi[0], positionMoi[1]).then(res=>{
-    if(!res.length) return;
+  const generation = nouvelleGeneration("recherche:complement",q+"|"+(catDefaut||""),true);
+  chercherGoogle(q, positionMoi[0], positionMoi[1],{signal:generation.signal}).then(res=>{
+    if(!generationCourante(generation) || !res.length) return;
     if(ajouterLieuxGoogle(res, catDefaut)) redessiner();
-  });
+  }).finally(()=>terminerGeneration(generation));
 }
 
 /* ================================================================== */
@@ -7857,6 +8318,9 @@ let sousAide = null;          // id du besoin actif, ou null
    d'elle-même. Rien de plus n'est retenu : pas de profil, pas de phrase. */
 let besoinsAide = [];
 let ageDeclare = null;
+// Sous-intentions normalisées uniquement en mémoire. Elles affinent la
+// recherche sans ajouter de cases ni conserver la phrase saisie.
+let intentionsSanteAide = [];
 
 function sousAideChoisi(){
   if(sousAide === "urgence") return AIDE_URGENCE;
@@ -7975,7 +8439,12 @@ function estSolutionAideLiee(l){
   if(choix && choix.urgentSeul) return niveauUrgence(l) >= 5;
   const besoins = besoinsSelectionnesAide();
   if(!besoins.length) return correspondUneCategorie(l, catsAideActives());
-  return !!(AIDE && AIDE.estSolution(l, besoins));
+  const liee = !!(AIDE && AIDE.estSolution(l, besoins));
+  if(!liee) return false;
+  if((sousAide === "sante" || sousAide === "parler") && AIDE.estSolutionSante)
+    return AIDE.estSolutionSante(l,intentionsSanteAide,
+      {exigerAccesAdapte:intentionsSanteAide.includes("acces")});
+  return true;
 }
 
 function proposableAuto(l, ctx){
@@ -8122,8 +8591,7 @@ let intentionCourante = null;
 function elargirZone(){
   rayonRecherche = Math.min(rayonRecherche * 2, 20000);
   surLaCarte((m)=>m.setZoom(Math.max(12, m.getZoom() - 1)), "zoom");
-  dernierChargement = null;                 // on force un nouveau tour
-  if(positionMoi) chargerZone(positionMoi[0], positionMoi[1]);
+  if(positionMoi) chargerZone(positionMoi[0], positionMoi[1], {force:true});
   toast("Zone élargie à " + Math.round(rayonRecherche/1000) + " km");
   rendre(); majAccueil();
 }
@@ -8191,6 +8659,46 @@ function reinitialiserScrollFeuille(){
   requestAnimationFrame(()=>{
     const corps = $("#fbCorps");
     if(corps) corps.scrollTo({top:0,behavior:"auto"});
+  });
+}
+
+/* Une réponse tardive peut enrichir la liste, mais elle ne doit pas déplacer
+   la carte que la personne est en train de lire. On mémorise le premier lieu
+   visible et son décalage ; après le rendu groupé, ce même lieu revient au
+   même pixel. Le focus clavier est restauré quand l'élément existe encore. */
+function instantanePanneau(corps){
+  if(!corps) return null;
+  const cadre = corps.getBoundingClientRect();
+  const ancre = [...corps.querySelectorAll("[data-ac]")]
+    .find(el=>el.getBoundingClientRect().bottom > cadre.top + 1);
+  const actif = document.activeElement && corps.contains(document.activeElement)
+    ? document.activeElement : null;
+  return {
+    niveau:feuilleNiveau,
+    scrollTop:corps.scrollTop,
+    id:ancre && ancre.getAttribute("data-ac"),
+    decalage:ancre ? ancre.getBoundingClientRect().top - cadre.top : 0,
+    focusId:actif && actif.getAttribute("data-ac"),
+  };
+}
+function restaurerPanneau(corps, instantane){
+  if(!corps || !instantane || instantane.niveau !== feuilleNiveau) return;
+  requestAnimationFrame(()=>{
+    if(instantane.niveau !== feuilleNiveau) return;
+    corps.scrollTop = instantane.scrollTop;
+    if(instantane.id){
+      const ancre = [...corps.querySelectorAll("[data-ac]")]
+        .find(el=>el.getAttribute("data-ac") === instantane.id);
+      if(ancre){
+        const delta = ancre.getBoundingClientRect().top - corps.getBoundingClientRect().top - instantane.decalage;
+        if(Math.abs(delta) > 1) corps.scrollTop += delta;
+      }
+    }
+    if(instantane.focusId){
+      const cible = [...corps.querySelectorAll("[data-ac]")]
+        .find(el=>el.getAttribute("data-ac") === instantane.focusId);
+      if(cible) cible.focus({preventScroll:true});
+    }
   });
 }
 
@@ -8290,10 +8798,13 @@ function majFeuille2(){
     synchroniserHauteurFeuille();
     return;
   }
+  PERF.rendus.panneau += 1;
+  PERF.exposer();
   f.hidden = false;
   synchroniserRechercheDesktop();
 
   const corps = $("#fbCorps");
+  const stabilite = instantanePanneau(corps);
   const retour = $("#fbRetour");
   f.classList.remove("accueil");
 
@@ -8303,6 +8814,7 @@ function majFeuille2(){
   // résultats de la recherche qu'on venait tout juste de lancer.
   if(feuilleNiveau === "racine" && zoneAffichee){
     remplirResultatsZone(zoneAffichee.nom, zoneAffichee.intention);
+    restaurerPanneau(corps, stabilite);
     synchroniserHauteurFeuille();
     return;
   }
@@ -8368,6 +8880,7 @@ function majFeuille2(){
   }
 
   brancherFeuille2();
+  restaurerPanneau(corps, stabilite);
   requestAnimationFrame(synchroniserHauteurFeuille);
 }
 
@@ -8608,6 +9121,9 @@ function avecEpingles(classement){
 function lancerBesoinAide(phrase){
   if(!AIDE) return;
   const trouves = AIDE.besoinsDepuisPhrase(phrase);
+  const santeTrouvee = trouves.some(x=>x.id === "sante" || x.id === "parler");
+  intentionsSanteAide = santeTrouvee && AIDE.intentionsSanteDepuisPhrase
+    ? AIDE.intentionsSanteDepuisPhrase(phrase).map(x=>x.id) : [];
   const age = AIDE.ageDepuisPhrase(phrase);
   if(age != null) ageDeclare = age;
   if(AIDE.estUrgent(phrase) && !trouves.length){
@@ -8617,7 +9133,7 @@ function lancerBesoinAide(phrase){
     sousAide = besoinsAide[0];
   }else{
     // rien de reconnu : on ne devine pas, on montre les structures générales
-    besoinsAide = []; sousAide = "autre";
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
     toast("Je n’ai pas bien compris. Voici les structures qui orientent.");
   }
   chargerAideSiBesoin();
@@ -8626,10 +9142,7 @@ function lancerBesoinAide(phrase){
 
 function chargerAideSiBesoin(force){
   if(!positionMoi) return;
-  if(force) aideChargeeAutour = null;
-  chargerAide(positionMoi[0], positionMoi[1]).then(()=>{
-    if(feuilleNiveau === "aide") majFeuille2();
-  }).catch(()=>{});
+  chargerAide(positionMoi[0], positionMoi[1],{force:!!force}).catch(()=>{});
 }
 
 
@@ -8676,7 +9189,7 @@ function ecranBesoinsAide(){
     /* Une note de bas de bloc, pas un paragraphe : elle doit être lue, sans
        repousser la question sous le pli. */
     '<p class="ab-secours">Danger immédiat&nbsp;: <b>15</b> · <b>17</b> · '+
-      '<b>18</b> · <b>112</b> · <b>115</b>. '+
+      '<b>18</b> · <b>112</b> · <b>115</b>. Prévention du suicide&nbsp;: <b>3114</b>. '+
       'Autour oriente, il ne remplace pas les secours.</p>'+
 
     // 2 · ce que fait Aide, en une phrase et sans mot d'administration
@@ -8856,7 +9369,7 @@ function carteAide(l){
     (cond ? '<p class="aa-cond">'+esc(cond.texte)+
       '<i>'+(cond.source === "reseau" ? "En général, dans ce réseau" : "Source : "+cond.source)+'</i></p>' : '')+
     (pour === false ? '<p class="aa-hors">Ce réseau ne correspond pas à l’âge que tu as indiqué.</p>' : '')+
-    '<p class="aa-bas">'+(l.gratuit !== false ? 'Gratuit · ' : '')+esc(l.adresse||"")+
+    '<p class="aa-bas">'+(l.gratuit === true ? 'Gratuit · ' : '')+esc(l.adresse||"")+
       (l.tel ? ' · <a href="tel:'+esc(String(l.tel).replace(/\s/g,""))+'">Appeler</a>' : '')+'</p>'+
     (fiableAide(l) ? '' : '<p class="aa-verif">À vérifier avant de se déplacer.</p>')+
     '</div>';
@@ -9200,6 +9713,7 @@ function brancherFeuille2(){
   corps.querySelectorAll("[data-sa]").forEach(b=>b.onclick=()=>{
     sousAide = b.dataset.sa;
     besoinsAide = sousAide === "urgence" ? [] : [sousAide];
+    intentionsSanteAide = sousAide === "parler" ? ["mentale"] : [];
     chargerAideSiBesoin();
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
@@ -9218,6 +9732,7 @@ function brancherFeuille2(){
     else {
       besoinsAide = besoinsAide.filter(x=>x !== id);
       if(sousAide === id) sousAide = besoinsAide[0] || null;
+      if(sousAide !== "sante" && sousAide !== "parler") intentionsSanteAide = [];
     }
     majFeuille2();
   });
@@ -9227,8 +9742,8 @@ function brancherFeuille2(){
   corps.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{
     const quoi = b.dataset.as;
     if(quoi === "ville"){ ouvrirRecherche(); const c=$("#rech"); if(c) c.placeholder = "Dans quelle ville ?"; return; }
-    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; majFeuille2(); return; }
-    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; majFeuille2(); return; }
+    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; majFeuille2(); return; }
+    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; intentionsSanteAide = []; majFeuille2(); return; }
   });
 
   // les quatre groupes de temps : un seul geste, aucune page de plus
@@ -9459,6 +9974,7 @@ function basculerAide(){
   // on repart toujours de la question : « de quoi as-tu besoin ? »
   sousAide = null;
   besoinsAide = [];
+  intentionsSanteAide = [];
   document.body.classList.toggle("aide", modeAide);
 
   // on sort de toute sélection en cours : le mode Aide repart d'une page nette
@@ -9849,6 +10365,10 @@ function appliquerPosition(p, opts){
   const regimeAvant = regimeZone(rechercheGeo);
   const bouge = premiereFois || venaitDeLApproximation || !positionMoi
     || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
+  if(bouge){
+    annulerGeneration("demarrage");
+    annulerGeneration("zone:precalculee");
+  }
   positionMoi = c;
   originePosition = "gps";
   precisionPosition = "point";     // désormais on peut parler en minutes
@@ -9879,7 +10399,10 @@ function appliquerPosition(p, opts){
     if(venaitDeLApproximation ||
        distanceM(c[0],c[1], dernierNom[0], dernierNom[1]) > 2000){
       dernierNom = c;
-      nomCommune(c[0],c[1]).then(n=>{ if(n) commune = n; });
+      const generationCommune = nouvelleGeneration("contexte:commune",c[0].toFixed(2)+","+c[1].toFixed(2),true);
+      nomCommune(c[0],c[1]).then(n=>{
+        if(generationCourante(generationCommune) && n) commune = n;
+      }).finally(()=>terminerGeneration(generationCommune));
     }
   }
   /* ARRIVER DANS LA VILLE QU'ON REGARDAIT.
@@ -10523,7 +11046,7 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   if(id === "explorer"){ if(modeAide) basculerAide(); fermerFeuille2(); ouvrirAccueilFeuille(); return; }
   if(id === "aide"){
     // on repart toujours de la question, jamais d'une liste de structures
-    if(!modeAide) basculerAide(); else { sousAide = null; besoinsAide = []; }
+    if(!modeAide) basculerAide(); else { sousAide = null; besoinsAide = []; intentionsSanteAide = []; }
     ouvrirFeuille2("aide"); return;
   }
   if(id === "creer"){ retourFormulaire=false; ouvrirCreation(); return; }
@@ -10622,15 +11145,20 @@ function majEnteteLieu(){
 async function detecterVille(lat,lng){
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(villeDetectee === cle) return;
-  villeDetectee = cle;
+  const generation = nouvelleGeneration("contexte:ville",cle);
   /* Le nom de commune est demandé même sur une zone approchée — il sert aux
      agendas et aux adresses. Mais il ne s'AFFICHE que si la position est un
      vrai point : sinon la pastille se remettrait à nommer une ville où l'on
      n'est peut-être pas. */
   const nommable = ()=>positionPrecise();
   const parRelais = await communeRelayee(lat,lng);
+  if(!generationCourante(generation)) return;
   if(parRelais !== undefined){
-    if(parRelais && nommable()){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
+    if(parRelais){
+      villeDetectee = cle;
+      if(nommable()){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
+    }
+    terminerGeneration(generation);
     return;
   }
   try{
@@ -10639,15 +11167,18 @@ async function detecterVille(lat,lng){
     const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat="+
       lat+"&lon="+lng, {signal:stop.signal, headers:{"Accept-Language":"fr"}});
     clearTimeout(t);
-    if(!r.ok) return;
+    if(!r.ok || !generationCourante(generation)) return;
     const j = await r.json();
+    if(!generationCourante(generation)) return;
     const a = j.address || {};
     const nom = a.city || a.town || a.village || a.municipality || a.county;
+    villeDetectee = cle;
     if(nom && nommable()){
       $("#hdVille").textContent = nom;
       mesurerHeader();
     }
   }catch(e){ /* silencieux : l'en-tête reste neutre plutôt que faux */ }
+  finally{ terminerGeneration(generation); }
 }
 
 /* L'ancien gros bouton noir « Que faire autour de moi ? » a disparu : la
