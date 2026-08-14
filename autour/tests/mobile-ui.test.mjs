@@ -2301,3 +2301,89 @@ test("l'instance Leaflet n'est jamais réassignée",()=>{
   // et elle est protégée contre une seconde installation
   assert.match(html,/if\(map \|\| typeof L === "undefined" \|\| !carteEnAttente\) return false;/);
 });
+
+/* ==========================================================================
+   LA RÉFÉRENCE VISUELLE
+
+   Une image de référence a fixé l'état attendu d'Autour sur grand écran :
+   panneau Explorer à gauche, pastille « Maintenant · 3 » au-dessus de la
+   carte, cinq propositions lisibles sans défiler, couleurs sobres. Ces tests
+   gardent ce qui a été repris de cette image — pas son pixel exact, mais les
+   décisions qu'elle porte, celles qui se perdent au premier refactor.
+   ========================================================================== */
+
+test("cinq propositions tiennent dans le panneau, sans défiler", () => {
+  /* Chaque ligne faisait 215 px : vignette de 118 px de haut, nom sur deux
+     lignes réservées, pastille d'état, distance, puis « Arrivée 01:22 ». Deux
+     propositions et demie par écran — une liste qu'on ne voit qu'à moitié
+     n'est pas une liste, c'est un aperçu. */
+  assert.match(html, /\.rc-photo,\.rc-colonne \.rc-photo\{width:76px;height:76px/);
+  assert.match(html, /\.rc-nom\{font-size:16px;line-height:1\.2;min-height:0;-webkit-line-clamp:1\}/);
+  // le détail du trajet vit sur la fiche du lieu, pas sur chaque ligne
+  assert.match(html, /\.rc-trajet,\.rc-arrivee\{display:none\}/);
+});
+
+test("la distance se lit en face de l'état, pas en dessous", () => {
+  assert.match(html, /\.rc-corps\{flex:1;min-width:0;padding:11px 14px;gap:1px;\s*\n\s*display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(html, /\.rc-ligne\{grid-column:2;grid-row:4;justify-self:end;margin:0\}/);
+});
+
+test("le violet reste la couleur de l'interaction, jamais celle d'une mesure", () => {
+  /* « 3 min » en violet annonçait une interaction là où il n'y a qu'une
+     mesure. La hiérarchie de la référence : violet = ce sur quoi on appuie,
+     rouge = Aide et urgence, le reste est de l'encre. */
+  assert.match(html, /\.rc-dist\{font-size:12\.5px;font-weight:750;color:var\(--ink2\)\}/);
+  assert.match(html, /\.rc-min\{font-size:12\.5px;font-weight:600;color:var\(--ink2\)\}/);
+  assert.doesNotMatch(html, /\.rc-min\{[^}]*var\(--violet\)/);
+  // la seule couleur de catégorie sur la carte : une ligne de onze pixels
+  assert.match(html, /\.rc-cats\{[^}]*color:var\(--cat,var\(--ink2\)\)\}/);
+  assert.match(html, /'<span class="rc-haut"><span class="rc-cats" style="--cat:'\+teinte\+'">'/);
+});
+
+test("un événement en cours ressort davantage qu'un lieu ouvert", () => {
+  // les deux étaient verts : le vert dit « c'est ouvert », pas « ça se passe »
+  assert.match(html, /\.rc-quand\.en-cours\{color:#C2410C\}/);
+  assert.match(html, /\.rc-pourquoi\.ouvert\{background:rgba\(27,127,76,\.10\);color:#1B7F4C\}/);
+});
+
+test("l'état d'ouverture dit jusqu'à quelle heure", () => {
+  /* « Ouvert » tout seul ne dit pas si l'on a le temps d'y aller. L'heure
+     vivait dans une ligne « Ferme à 22:00 » que la liste compacte n'affiche
+     plus : elle rejoint donc l'état lui-même. */
+  assert.match(html, /return \{t: d\.closesAtTime \? "Ouvert · jusqu’à "\+d\.closesAtTime : "Ouvert maintenant",/);
+  assert.match(html, /return \{t:"Ferme bientôt · "\+d\.closesAtTime, c:"tiede"\};/);
+});
+
+test("le cinéma annonce ses horaires d'ouverture, jamais une séance", () => {
+  /* Une séance demande un horaire fiable par salle et par film. Nous ne
+     l'avons pas, et une séance périmée envoie quelqu'un devant une porte
+     close. On dit ce qu'on sait, et on renvoie au site pour la programmation. */
+  assert.match(html, /const siteCinema = l\.cat === "cinema" && l\.url \? l\.url : "";/);
+  assert.match(html, /'<a class="rc-lien" href="'\+esc\(siteCinema\)\+'" target="_blank" rel="noopener"'/);
+  assert.match(html, /\.rc-lien\{[^}]*color:var\(--violet\)/);   // on appuie dessus : violet
+});
+
+test("chaque proposition dit où elle est", () => {
+  assert.match(html, /const ou = l\.adresse && l\.adresse !== l\.titre \? l\.adresse/);
+  // et jamais « ton quartier » comme adresse : ça ne situe rien
+  assert.match(html, /const COMMUNE_INCONNUE = "ton quartier";/);
+  assert.match(html, /l\.cp !== COMMUNE_INCONNUE/);
+  assert.match(html, /\.rc-ou\{font-size:12\.5px;color:var\(--ink2\)/);
+});
+
+test("la pastille Maintenant nomme la zone dont elle parle", () => {
+  /* « En cours près de toi » est faux dès qu'on regarde une autre ville — et
+     c'est exactement le moment où la phrase compte. */
+  assert.match(html, /\? "À " \+ zoneActive\.nom \+ " en ce moment" : "En cours près de toi";/);
+});
+
+test("le retour est écrit au bout de la liste, et il dit vers où", () => {
+  /* Le bouton flottant est en haut à droite ; quelqu'un qui vient de parcourir
+     cinq propositions a les yeux en bas du panneau. */
+  assert.match(html, /function retourVersMoiHTML\(\)\{/);
+  assert.match(html, /<i>Retourner à '\+esc\(chezMoi\)\+'<\/i>/);
+  // il passe par la seule porte de retour, celle qui rétablit la zone active
+  assert.match(html, /corps\.querySelectorAll\("\[data-retour-moi\]"\)\.forEach\(b=>b\.onclick=revenirAutourDeMoi\);/);
+  // et il ne s'affiche que s'il y a un ailleurs à quitter
+  assert.match(html, /if\(!rechercheGeo \|\| !positionMoi \|\| !positionConnue\(\)\) return "";/);
+});

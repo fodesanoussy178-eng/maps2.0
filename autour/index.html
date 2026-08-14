@@ -769,11 +769,28 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
    en voit trois ou quatre d'un coup, avec plus d'information sur chacune —
    sans devenir une liste : la carte reste là, derrière, à la moitié de
    l'écran. Les autres pistes gardent le défilement horizontal. */
+/* ---- La liste du panneau : cinq propositions doivent tenir sans défiler ---
+   Chaque ligne faisait deux cent quinze pixels : une vignette de 88 px de
+   haut, un nom sur deux lignes réservées, une pastille d'état, la distance,
+   puis « Arrivée 01:22 » sur sa propre ligne. Deux propositions et demie par
+   écran, et la question « qu'est-ce que je fais maintenant » restait sous le
+   pli. La référence tient cinq lignes dans la même hauteur : vignette carrée
+   de 76 px, quatre lignes de texte, rien d'autre.
+
+   Ce qui disparaît ici ne disparaît pas de l'application : le détail du trajet
+   et l'heure d'arrivée restent sur la fiche du lieu, où on les cherche. */
 .rc-colonne{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:8px}
-.rc-colonne .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
-.rc-colonne .rc-photo{width:88px;height:auto;min-height:88px;flex-shrink:0}
-.rc-colonne .rc-corps{flex:1;min-width:0}
-.rc-colonne .rc-nom{min-height:0}
+.rc-colonne .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:center;
+  box-shadow:0 1px 4px rgba(20,30,25,.06)}
+.rc-colonne .rc-photo{width:76px;height:76px;min-height:0;flex-shrink:0;
+  margin:9px 0 9px 9px;border-radius:12px;overflow:hidden}
+.rc-colonne .rc-corps{flex:1;min-width:0;gap:1px;padding:10px 12px}
+.rc-colonne .rc-nom{min-height:0;-webkit-line-clamp:1}
+/* L'état d'ouverture est une phrase, pas une étiquette. En pastille pleine il
+   pesait autant que le nom du lieu ; la référence l'écrit en toutes lettres,
+   coloré, sur une ligne. */
+.rc-colonne .rc-carte .rc-pourquoi{padding:0;background:none;font-size:12.5px;font-weight:750}
+.rc-colonne .rc-trajet,.rc-colonne .rc-arrivee{display:none}
 .rc-carte{flex:0 0 178px;scroll-snap-align:start;display:flex;flex-direction:column;
   border:1px solid var(--bord);border-radius:16px;background:#fff;overflow:hidden;
   text-align:left;box-shadow:0 2px 10px rgba(20,30,25,.09)}
@@ -836,14 +853,31 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 .rc-haut .coeur svg{width:19px;height:19px}
 /* 9 px en majuscules monospace : illisible dès qu'on n'a pas vingt ans et un
    écran propre. Rien ne descend plus sous 11 px dans l'application. */
+/* LA COULEUR DE CATÉGORIE VIT ICI, ET NULLE PART AILLEURS SUR LA CARTE.
+   Elle était violette pour tout le monde — donc elle ne distinguait rien, et
+   elle empruntait la couleur de l'interaction à une ligne sur laquelle on
+   n'appuie pas. Elle prend maintenant la teinte de la catégorie, et c'est le
+   seul endroit coloré de la carte : le reste est de l'encre. */
 .rc-cats{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
-  letter-spacing:.05em;color:var(--violet)}
+  letter-spacing:.05em;color:var(--cat,var(--ink2))}
 .rc-nom{font-size:14px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
   min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Où c'est : une seule ligne, jamais deux. Un nom de salle qui passe à la
+   ligne pousse l'état d'ouverture sous le pli, et c'est lui qu'on vient lire. */
+.rc-ou{font-size:12.5px;color:var(--ink2);line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rc-ligne{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
 .rc-note{font-size:12.5px;font-weight:650}
 .rc-note i{font-style:normal;font-weight:500;color:var(--ink2)}
-.rc-min{font-size:12.5px;font-weight:750;color:var(--violet)}
+.rc-mesure{display:flex;align-items:baseline;gap:7px}
+/* Le seul violet de la carte : on appuie dessus, et ça sort d'Autour. */
+.rc-lien{align-self:flex-start;margin-top:3px;font-size:12.5px;font-weight:700;
+  color:var(--violet);text-decoration:none}
+.rc-lien:hover{text-decoration:underline}
+/* La distance est la mesure forte ; le temps de marche l'accompagne. Ni l'une
+   ni l'autre n'est violette : on n'appuie pas sur une distance. */
+.rc-dist{font-size:12.5px;font-weight:750;color:var(--ink2)}
+.rc-min{font-size:12.5px;font-weight:600;color:var(--ink2)}
 .rc-trajet{font-size:12px;color:var(--ink2);margin-top:2px}
 .rc-arrivee{font-size:11.5px;color:var(--ink2)}
 /* La date réelle est ce qu'on lit en premier sur un événement ; le trajet
@@ -851,11 +885,32 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
    l'événement avait lieu maintenant, ce qui est faux la plupart du temps. */
 .rc-quand{display:block;margin-top:3px;font-size:12.5px;font-weight:750;
   color:var(--ink);line-height:1.25}
-.rc-quand.en-cours{color:#1B7F4C}
+/* UN ÉVÉNEMENT EN COURS DOIT RESSORTIR DAVANTAGE QU'UN LIEU OUVERT.
+
+   Les deux étaient verts. Le vert dit « c'est ouvert », un état permanent et
+   tranquille ; il ne dit pas « ça se passe en ce moment, et ça s'arrête à
+   23 h 30 ». La référence donne l'orange vif au temporaire et garde le vert
+   pour les horaires — c'est aussi la hiérarchie du produit : l'éphémère est
+   rare, donc précieux, donc plus visible. */
+.rc-quand.en-cours{color:#C2410C}
 .rc-quand.imminent{color:#B85C00}
 .rc-quand.flou{color:var(--ink2);font-weight:600}
 /* trajet secondaire dès qu'une date occupe la ligne forte */
 .rc-carte:has(.rc-quand) .rc-min{font-weight:600;color:var(--ink2)}
+
+/* Le retour au bout de la liste. Volontairement sobre : c'est une sortie, pas
+   une proposition — il ne prend donc ni le violet de l'interaction principale
+   ni le rouge d'Aide. */
+.rc-retour{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;
+  padding:13px 14px;border:1px solid var(--bord);border-radius:16px;background:#fff;
+  text-align:left;box-shadow:0 1px 4px rgba(20,30,25,.06)}
+.rc-retour:active{background:var(--paper)}
+.rc-retour-ic{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;
+  border-radius:50%;background:var(--paper);font-size:15px;color:var(--ink)}
+.rc-retour-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.rc-retour-txt b{font-size:14px;font-weight:750;letter-spacing:-.01em}
+.rc-retour-txt i{font-style:normal;font-size:12.5px;color:var(--ink2)}
+.rc-retour-fl{flex-shrink:0;font-size:18px;color:var(--ink2)}
 
 /* ---- Cœur des favoris --------------------------------------------------- */
 .coeur{flex-shrink:0;width:40px;height:40px;border:0;background:none;border-radius:50%;
@@ -1234,11 +1289,18 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 
   /* Le panneau de découverte reprend le rythme ample de la référence, sans
      dupliquer aucun contenu : ce sont toujours les mêmes boutons et cartes. */
-  .br{gap:9px;padding-bottom:12px}
-  .br-b{min-height:54px;padding:10px 18px;font-size:17.5px}
-  .br-b em{font-size:20px}
-  .ong-temps{gap:8px;padding-bottom:16px}
-  .ong{min-height:52px;padding:12px 19px;font-size:16.5px}
+  /* LES QUATRE DOIVENT SE VOIR, SINON IL Y EN A TROIS.
+
+     À 17,5 px dans un panneau de 530, le quatrième bouton — Favoris, puis
+     « À venir » — tombait hors du cadre. On peut le faire défiler, mais un
+     choix qu'on ne voit pas n'est pas offert : la référence montre les quatre
+     intentions et les quatre moments d'un coup d'œil. On rend donc quelques
+     pixels, ce qui reste très au-dessus de la taille mobile. */
+  .br{gap:8px;padding-bottom:12px}
+  .br-b{min-height:50px;padding:9px 14px;font-size:15.5px}
+  .br-b em{font-size:18px}
+  .ong-temps{gap:7px;padding-bottom:16px}
+  .ong{min-height:48px;padding:11px 15px;font-size:15px}
   .aide-bloc{min-height:76px;margin-bottom:16px;padding:14px 16px;border-radius:17px}
   .aide-bloc em{font-size:23px}
   .aide-bloc b{font-size:17.5px}
@@ -1251,16 +1313,46 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 
   /* Le carousel devient une liste verticale : sur grand écran on fait
      défiler vers le bas, pas latéralement. */
-  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:10px}
-  .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:stretch}
-  .rc-photo,.rc-colonne .rc-photo{width:118px;height:auto;min-height:118px;flex-shrink:0}
-  .rc-corps{flex:1;min-width:0;padding:14px 16px 15px;gap:4px}
-  .rc-cats{font-size:13px}
-  .rc-nom{font-size:17.5px;line-height:1.18}
-  .rc-quand{font-size:15.5px}
-  .rc-min,.rc-note{font-size:14.5px}
-  .rc-trajet{font-size:14px}
-  .rc-nom{min-height:0}
+  /* CINQ PROPOSITIONS DOIVENT TENIR SANS DÉFILER.
+
+     Ce bloc agrandissait tout : vignette de 118 px de haut, titre de 17,5 px,
+     et cinq lignes de texte empilées — deux cent quinze pixels par ligne, soit
+     deux propositions et demie dans un panneau de neuf cents pixels. La
+     référence en montre cinq, et c'est ce qui fait qu'on peut CHOISIR : une
+     liste qu'on ne voit qu'à moitié n'est pas une liste, c'est un aperçu.
+
+     On garde la disposition en ligne, on rend les proportions à l'échelle du
+     panneau, et on renvoie le détail du trajet à la fiche du lieu. */
+  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:8px}
+  .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:center;
+    box-shadow:0 1px 4px rgba(20,30,25,.07)}
+  .rc-photo,.rc-colonne .rc-photo{width:76px;height:76px;min-height:0;flex-shrink:0;
+    margin:10px 0 10px 10px;border-radius:13px;overflow:hidden}
+  .rc-photo-vide i{font-size:23px}
+  /* LA DISTANCE SE LIT EN FACE DE L'ÉTAT, PAS EN DESSOUS.
+
+     Empilée, elle ajoutait une troisième ligne à droite d'un vide : la carte
+     grandissait d'un rang pour dire « 240 m ». La référence la met en regard —
+     à gauche ce qui se passe, à droite à quelle distance c'est. Deux colonnes,
+     donc, et seulement à partir de la ligne d'état : le nom et le lieu gardent
+     toute la largeur. */
+  .rc-corps{flex:1;min-width:0;padding:11px 14px;gap:1px;
+    display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px}
+  .rc-haut,.rc-nom,.rc-ou{grid-column:1/-1}
+  .rc-quand,.rc-pourquoi{grid-column:1;justify-self:start}
+  .rc-ligne{grid-column:2;grid-row:4;justify-self:end;margin:0}
+  .rc-cats{font-size:11.5px}
+  .rc-nom{font-size:16px;line-height:1.2;min-height:0;-webkit-line-clamp:1}
+  .rc-ou{font-size:13px}
+  .rc-quand{font-size:13px;margin-top:2px}
+  .rc-dist,.rc-min,.rc-note{font-size:13px}
+  /* L'état d'ouverture s'écrit, il ne s'encadre pas : en pastille pleine il
+     pesait autant que le nom du lieu. */
+  .rc-carte .rc-pourquoi{padding:0;background:none;font-size:13px;font-weight:750;margin-top:2px}
+  /* Le détail du trajet et l'heure d'arrivée vivent sur la fiche du lieu, où
+     on les cherche vraiment. Ici ils faisaient deux lignes de plus pour
+     répéter « 3 min » sous une autre forme. */
+  .rc-trajet,.rc-arrivee{display:none}
   .tr-bloc{min-height:86px;margin:20px 0 10px;padding:15px 17px;border-radius:17px}
   .tr-icone{width:44px;height:44px;font-size:21px}
   .tr-titre{font-size:17px}
@@ -3860,7 +3952,12 @@ const Store = {
 let permanentPlaces=[], datatourismePlaces=[], externalEvents=[], userPublications=[];
 let lieux=[], publies=userPublications, marqueurs=new Map(), etiquettes=[];
 let filtreActif="tout", recherche="", modePose=false;
-let coucheVille, moi, positionMoi=null, commune="ton quartier";
+/* Le nom de commune tant qu'on ne le connaît pas. Il s'affiche dans des
+   phrases (« autour de ton quartier »), mais ne doit jamais servir d'adresse
+   sur une carte de résultat : « ton quartier » sous le nom d'un bar de Lille
+   ne situe rien et se lit comme une erreur. */
+const COMMUNE_INCONNUE = "ton quartier";
+let coucheVille, moi, positionMoi=null, commune=COMMUNE_INCONNUE;
 
 /* null = pas encore calculé · tableau = on n'affiche que ceux-là ·
    false = tu as demandé à tout voir, on ne revient plus en arrière tout seul */
@@ -10759,16 +10856,33 @@ function compterMaintenant(){
 /* La pastille suit le comptage, et le comptage suit le moteur temporel.
    Elle disparaît à zéro plutôt que d'afficher « Maintenant · 0 » : un compteur
    à zéro occupe la même place et demande la même lecture pour ne rien dire. */
+/* LA PASTILLE ET LE BLOC DOIVENT DIRE LE MÊME NOMBRE.
+
+   Elle comptait avec `compterMaintenant`, qui ne connaît que les événements
+   temporaires et les juge au moteur temporel. Le bloc, lui, compte avec le
+   moteur de disponibilité : événements en cours, séances, activités, lieux
+   ouverts. Deux comptages différents sous le même mot — la pastille annonçait
+   « 0 » (donc restait cachée) au-dessus d'un bloc qui proposait trois choses.
+
+   Un seul comptage désormais, celui du bloc, et il porte déjà la zone active :
+   la pastille de Lille ne compte pas ce qui se passe à Tourcoing. */
 function majBadgeMaintenant(){
   const badge = $("#badgeMaintenant");
   if(!badge) return;
-  const n = (modeNav || modePose || modeAide) ? 0 : compterMaintenant();
+  const n = (modeNav || modePose || modeAide) ? 0 : totalMaintenant();
   badge.hidden = n === 0;
   if(n === 0) return;
   const compte = $("#bmCompte");
-  if(compte) compte.textContent = String(n);
-  badge.setAttribute("aria-label",
-    n + " événement" + (n > 1 ? "s" : "") + " en cours près de toi");
+  /* Le bloc n'en montre jamais plus de trois : la pastille annonce ce qu'on
+     va effectivement voir, pas ce qui existe en base. */
+  if(compte) compte.textContent = String(Math.min(n, MAINTENANT_APERCU));
+  /* « Près de toi » est faux dès qu'on regarde une autre ville — et c'est
+     exactement le moment où la phrase compte. Elle nomme donc la zone. */
+  const sous = badge.querySelector(".bm-sous");
+  const ou = zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom
+    ? "À " + zoneActive.nom + " en ce moment" : "En cours près de toi";
+  if(sous) sous.textContent = ou;
+  badge.setAttribute("aria-label", n + " chose" + (n > 1 ? "s" : "") + " à faire — " + ou);
 }
 
 /* Ce qui a lieu MAINTENANT, en tête de la feuille et sous sa propre étiquette.
@@ -11276,9 +11390,15 @@ function raisonCourte(l){
   }
   const d = dispoDe(l);
   // « ferme bientôt » avant « ouvert » : c'est l'information qui fait partir
+  /* JUSQU'À QUELLE HEURE : c'est la moitié de l'information, et elle vivait
+     ailleurs — dans une ligne « Ferme à 22:00 » posée deux rangs plus bas, que
+     la liste compacte n'affiche plus. « Ouvert » tout seul ne dit pas si l'on
+     a le temps d'y aller ; « Ouvert · jusqu'à 22:00 » le dit. */
   if(d && d.isOpenNow && d.closesAtTime && fermeDansMoinsDUneHeure(d))
-    return {t:"Ferme bientôt", c:"tiede"};
-  if(d && d.isOpenNow) return {t:"Ouvert maintenant", c:"ouvert"};
+    return {t:"Ferme bientôt · "+d.closesAtTime, c:"tiede"};
+  if(d && d.isOpenNow)
+    return {t: d.closesAtTime ? "Ouvert · jusqu’à "+d.closesAtTime : "Ouvert maintenant",
+            c:"ouvert"};
   /* `gratuit` vaut `true` par défaut sur tout lieu OpenStreetMap sans tag
      `fee` — c'est-à-dire sur presque tous. L'afficher tel quel collait
      « Gratuit » sur des restaurants. On ne le dit que si une source le dit. */
@@ -11370,15 +11490,52 @@ function carteRecommandation(l){
     : etatQuand === TEMPS.STATUTS.IMMINENT ? " imminent"
     : etatQuand === TEMPS.STATUTS.INCONNU ? " flou" : "";
 
+  /* OÙ C'EST. Une ligne discrète sous le nom : la salle pour un concert, le
+     quartier ou la rue pour un lieu. Sans elle, cinq lignes se ressemblent —
+     « Santa », « Vice-Versa 2 », « Café Méo » ne disent pas où l'on va, et la
+     référence visuelle les fait toutes suivre de leur adresse. On ne répète
+     pas le titre quand l'adresse EST le titre : c'est le cas des lieux sans
+     nom, où la carte porterait deux fois la même chose. */
+  /* Sur un lieu OpenStreetMap sans numéro de rue, l'adresse VAUT le nom : la
+     ligne répéterait le titre. On se rabat alors sur la commune, qui situe au
+     moins le quartier. */
+  const ou = l.adresse && l.adresse !== l.titre ? l.adresse
+    : (l.cp && l.cp !== l.titre && l.cp !== COMMUNE_INCONNUE ? l.cp : "");
+
+  /* LA DISTANCE, PAS LE TEMPS DE TRAJET, EN VALEUR FORTE. « 3 min » en violet
+     annonçait une interaction là où il n'y a qu'une mesure — et le violet est
+     réservé à ce sur quoi on appuie. La référence donne « 450 m » en gris à
+     droite ; le temps de marche reste à côté, en plus discret, quand on sait
+     vraiment d'où l'on part. */
+  const d = distanceDepuisZone(l);
+  const dist = Number.isFinite(d) ? formatDist(d) : "";
+
+  /* LE CINÉMA : PAS DE SÉANCES, ET C'EST UN CHOIX.
+
+     Annoncer « Séance 21:40 » demande un horaire fiable, par salle et par
+     film, mis à jour toutes les heures. Nous ne l'avons pas. Une séance
+     inventée ou périmée envoie quelqu'un devant une porte close — c'est
+     exactement le genre de promesse qu'Autour ne tient pas.
+
+     Ce qu'on sait, on le dit : c'est un cinéma, il est ouvert jusqu'à telle
+     heure, il est à telle distance, et voici son site pour la programmation.
+     Le lien s'ouvre à côté sans quitter Autour. */
+  const siteCinema = l.cat === "cinema" && l.url ? l.url : "";
+
   // Un <button> ne peut pas en contenir un autre : le parseur extrait le cœur
   // et disloque la carte. On utilise donc un conteneur avec rôle de bouton.
   return '<div class="rc-carte'+(l.annule?' annulee':'')+'" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
     visuel+
     '<span class="rc-corps">'+
       // une annulation remplace la catégorie : c'est ce qu'il faut lire d'abord
-      '<span class="rc-haut"><span class="rc-cats">'+
+      /* La couleur de la catégorie vit ICI et nulle part ailleurs sur la carte :
+         une ligne de onze pixels. C'est ce que « avec parcimonie » veut dire —
+         assez pour reconnaître un concert d'un café d'un coup d'œil, trop peu
+         pour transformer la liste en arc-en-ciel. */
+      '<span class="rc-haut"><span class="rc-cats" style="--cat:'+teinte+'">'+
         (l.annule ? '<b class="rc-annule">Annulé</b>' : esc(cats))+'</span>'+boutonCoeur(l)+'</span>'+
       '<span class="rc-nom">'+esc(l.titre)+'</span>'+
+      (ou ? '<span class="rc-ou">'+esc(ou)+'</span>' : '')+
       (quand ? '<span class="rc-quand'+classeQuand+'" data-testid="carte-quand">'+esc(quand)+'</span>' : '')+
       (()=>{ const r = raisonCourte(l);
         // sur un événement, la date dit déjà pourquoi : pas deux fois
@@ -11387,8 +11544,14 @@ function carteRecommandation(l){
       '<span class="rc-ligne">'+
         (l.note ? '<span class="rc-note">★ '+l.note.toFixed(1).replace(".",",")+
           (l.avis?' <i>('+l.avis+')</i>':'')+'</span>' : '<span class="rc-note"></span>')+
-        (minutes ? '<span class="rc-min">'+minutes+'</span>' : '')+
+        '<span class="rc-mesure">'+
+          (dist ? '<span class="rc-dist">'+esc(dist)+'</span>' : '')+
+          (minutes ? '<span class="rc-min">'+minutes+'</span>' : '')+
+        '</span>'+
       '</span>'+
+      (siteCinema
+        ? '<a class="rc-lien" href="'+esc(siteCinema)+'" target="_blank" rel="noopener"'+
+          ' onclick="event.stopPropagation()">Voir le cinéma</a>' : '')+
       (detail.length ? '<span class="rc-trajet">'+detail.join(" ")+'</span>' : '')+
       (arrivee ? '<span class="rc-arrivee">'+esc(arrivee)+'</span>' : '')+
     '</span></div>';
@@ -11424,6 +11587,10 @@ function brancherFeuille2(){
   });
 
   corps.querySelectorAll("[data-chip]").forEach(b=>b.onclick=()=>retirerChip(b.dataset.chip));
+
+  // le retour posé en fin de liste passe par le même chemin que le bouton
+  // flottant : une seule porte pour revenir à sa zone, comme convenu
+  corps.querySelectorAll("[data-retour-moi]").forEach(b=>b.onclick=revenirAutourDeMoi);
 
   corps.querySelectorAll("[data-br]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.br;
@@ -12797,6 +12964,19 @@ function noteApercu(nom){
     'Sur place, Autour montre tout ce qu’il connaît du quartier.</p>';
 }
 
+/* Le retour, écrit en fin de liste. Il ne s'affiche que s'il y a bien un
+   ailleurs à quitter et un chez-soi connu où revenir — sans position mesurée,
+   proposer « retourner à » ne promettrait rien. */
+function retourVersMoiHTML(){
+  if(!rechercheGeo || !positionMoi || !positionConnue()) return "";
+  const chezMoi = commune && commune !== "ton quartier" ? commune : "ma position";
+  return '<button class="rc-retour" data-retour-moi="1">'+
+    '<span class="rc-retour-ic" aria-hidden="true">⌖</span>'+
+    '<span class="rc-retour-txt"><b>Revenir autour de moi</b>'+
+      '<i>Retourner à '+esc(chezMoi)+'</i></span>'+
+    '<span class="rc-retour-fl" aria-hidden="true">›</span></button>';
+}
+
 function remplirResultatsZone(nom, intention){
   const centre = centreZoneActive();
   if(!centre) return false;
@@ -12826,14 +13006,32 @@ function remplirResultatsZone(nom, intention){
   $("#feuilleBesoins").classList.add("accueil");
   const corps = $("#fbCorps");
   const titre = intention ? intention+" · "+nom : nom;
+  /* UNE VILLE CHERCHÉE RESTE EXPLORER, PAS UN AUTRE ÉCRAN.
+
+     Cette feuille ne portait qu'un titre et une liste. On perdait, en tapant
+     « Lille », tout ce qui fait l'écran d'accueil : les quatre intentions
+     (Manger, Sortir, Maintenant, Favoris) et les quatre moments (Maintenant,
+     Ce soir, Ce week-end, À venir). Or c'est exactement ce qu'on vient
+     chercher dans une ville où l'on n'est pas — « qu'est-ce que je peux y
+     faire, et quand ». La référence visuelle montre ces deux rangées au-dessus
+     de la liste : ce sont les mêmes composants que l'accueil, à l'identique. */
   corps.innerHTML =
     chipsHTML()+
+    besoinsRapidesHTML()+
+    ongletsTemps()+
     '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
       '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
     (forts.length
       ? '<div class="rc-piste" data-testid="primary-results">'+
           forts.map(carteRecommandation).join("")+'</div>'+ noteApercu(nom)
-      : '<p class="liste-vide">Les lieux de cette zone arrivent…</p>');
+      : '<p class="liste-vide">Les lieux de cette zone arrivent…</p>')+
+    /* LA SORTIE EST AU BOUT DE LA LISTE, PAS SEULEMENT DANS UN COIN DE CARTE.
+       Le bouton flottant existe en haut à droite, mais quelqu'un qui vient de
+       parcourir cinq propositions lilloises a les yeux en bas du panneau, pas
+       dans l'angle opposé de l'écran. La référence pose donc le retour là où
+       finit la lecture, et il dit vers OÙ l'on revient : « Retourner à
+       Tourcoing » se comprend sans avoir à s'en souvenir. */
+    retourVersMoiHTML();
   brancherFeuille2();
   return true;
 }
