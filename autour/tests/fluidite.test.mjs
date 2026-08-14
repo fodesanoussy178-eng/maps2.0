@@ -341,15 +341,57 @@ test("seul ce qui a réellement lieu prend la carte blanche", () => {
 test("la liste « ⚡ Maintenant (N) » existe, compacte et comptée", () => {
   assert.match(html, /function blocMaintenantAccueil\(\)\{/);
   assert.match(html, /class="mn" data-testid="maintenant-liste"/);
-  assert.match(html, /<b>Maintenant<\/b>'\+\s*'<span>\('\+liste\.length\+'\)<\/span>/);
-  assert.match(html, /Voir tout \('\+liste\.length\+'\)/);
+  assert.match(html, /<b>Maintenant<\/b>'\+/);
+  // le compteur dit COMBIEN il y en a en tout, pas combien on en montre
+  assert.match(html, /<span>\('\+combien\+'\)<\/span>/);
+  assert.match(html, /Voir tout \('\+combien\+'\)/);
 });
 
-test("le bloc n'existe pas quand il n'y a rien, ni hors du créneau Maintenant", () => {
+test("le bloc réserve sa place dès le premier rendu, dans les quatre états", () => {
+  /* CE QUI CASSAIT : la fonction rendait "" tant qu'il n'y avait rien. La
+     géolocalisation prend une seconde, les événements une autre — pendant ce
+     temps la section n'existait pas et les boutons du dessous occupaient sa
+     place. À l'arrivée des données, le bloc s'insérait et poussait tout vers
+     le bas, sous le doigt de quelqu'un qui appuyait déjà. */
   const bloc = /function blocMaintenantAccueil\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc);
+  // hors du créneau, le bloc n'a rien à dire : c'est le seul retour vide
   assert.match(bloc[0], /if\(creneau !== "maintenant" \|\| modeAide\) return "";/);
-  assert.match(bloc[0], /if\(!liste\.length\) return "";/);
+  const retoursVides = (bloc[0].match(/return "";/g) || []).length;
+  assert.equal(retoursVides, 2,
+    "un retour vide hors créneau, un si le module manque — et aucun autre");
+  assert.doesNotMatch(bloc[0], /if\(!liste\.length\) return "";/,
+    "un bloc vide doit occuper sa place, pas disparaître");
+  /* La hauteur est réservée en CSS, et sur le CORPS plutôt que sur la carte :
+     additionner une hauteur d'en-tête SUPPOSÉE donnait quatre pixels d'écart,
+     que le banc de navigateur a mesurés. L'en-tête garde sa taille naturelle,
+     le corps réserve exactement trois lignes plus le pied — et les lignes ont
+     une hauteur FIXE, pas déduite de leur contenu. */
+  assert.match(html, /\.mn-corps\{min-height:calc\(3 \* var\(--mn-ligne\) \+ var\(--mn-pied\)\)/);
+  assert.match(html, /:root\{--mn-ligne:\d+px;--mn-pied:\d+px\}/);
+  assert.match(html, /\.mn-l\{[^}]*height:var\(--mn-ligne\)/);
+  assert.match(html, /<div class="mn-corps">/);
+});
+
+test("les quatre états sont rendus, et aucun ne déplace l'interface", () => {
+  const bloc = /function blocMaintenantAccueil\(\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(bloc, /data-mn-etat="'\+esc\(etat\)\+'"/);
+  assert.match(bloc, /M\.ETATS\.READY/);
+  assert.match(bloc, /M\.ETATS\.LOADING/);
+  // pendant la collecte : un état léger et neutre, sans texte à lire
+  assert.match(bloc, /class="mn-attente" aria-hidden="true"/);
+  assert.match(html, /\.mn-attente i\{height:var\(--mn-ligne\)/);
+  // vide et erreur occupent la même hauteur que trois lignes
+  assert.match(html, /\.mn-rien\{flex:1/);
+  assert.match(bloc, /aria-busy="'\+\(etat === M\.ETATS\.LOADING\)\+'"/);
+});
+
+test("les trois emplacements ne sont jamais remplis artificiellement", () => {
+  const bloc = /function blocMaintenantAccueil\(\)\{[\s\S]*?\n\}/.exec(html)[0];
+  // on rend ce que la sélection donne, sans compléter jusqu'à trois
+  assert.match(bloc, /liste\.map\(ligneMaintenant\)/);
+  assert.doesNotMatch(bloc, /slice\(0, *MAINTENANT_APERCU\)/,
+    "la troncature appartient au module de sélection, pas à l'affichage");
 });
 
 test("une ligne ouvre son événement, sans menu intermédiaire", () => {
