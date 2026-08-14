@@ -1770,6 +1770,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="intentions.js?v=39e671d2"></script>
 <script src="comptes.js?v=9f5e8a5d"></script>
 <script src="maintenant.js?v=1b39647d"></script>
+<script src="ordonnanceur.js?v=c8368526"></script>
 <script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
@@ -9724,16 +9725,27 @@ function majFeuille2(){
     /* Sur desktop, la référence montre un aperçu de sept cartes puis les
        transports et les liens. « Voir tout » conserve l'accès au classement
        complet ; le mobile garde son défilement progressif plus long. */
-    let reco = recommandationsAccueil(7);
-    // un événement déjà listé dans « Maintenant » ne se répète pas ici
-    if(enCours.length){
-      const dejaListes = new Set(enCours.slice(0, MAINTENANT_APERCU).map(l=>l.id));
-      reco = reco.filter(l=>!dejaListes.has(l.id));
-    }
-  // le classement peut ne rien rendre au tout début (aucun ETA, aucun horaire) :
-  // on montre alors l'échantillon varié du cache plutôt qu'un écran vide
-  if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
-  if(reco.length) PERF.jalon("cached_pois_visible");
+    /* ================================================================
+       DEUX TEMPS, ET C'EST TOUT L'OBJET DE CETTE PASSE.
+
+       `recommandationsAccueil` classe l'ensemble des lieux. Le profil l'a
+       mesurée : treize appels, 3 907 ms cumulées, 443 ms pour le pire. Elle
+       vivait dans le MÊME `innerHTML` que le bloc « Maintenant » — qui, lui,
+       est prêt en quelques millisecondes. Maintenant attendait donc un
+       classement dont il n'a aucun besoin, et l'écran restait figé.
+
+       On peint donc d'abord tout ce qui est bon marché — dont « Maintenant »
+       — avec la zone de recommandations à sa place, occupée par le squelette
+       qui s'y affichait déjà. Puis on classe pendant une tranche
+       d'inactivité, et on remplace le squelette par les cartes.
+
+       Rien ne bouge au-dessus : le squelette occupe la place, et l'en-tête
+       « Voir tout » est rendue tout de suite. Ce qui change, c'est le moment
+       où le navigateur reprend la main — entre les deux, il peut peindre,
+       défiler, et enregistrer un appui. */
+    const jeton = ++generationAccueil;
+    if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
+
     corps.innerHTML =
       blocOuRegarder()+
       chipsHTML()+
@@ -9743,12 +9755,20 @@ function majFeuille2(){
       blocAideAccueil()+
       '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
         '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
-      (reco.length
-        ? '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
-            reco.map(carteRecommandation).join("")+'</div>'
-        : statutGroupeHTML())+
+      '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+
       (creneau === "maintenant" ? blocTransports() : "")+
       piedFeuille();
+
+    /* Le classement est-il déjà fait pour cet état exact ? Alors il est déjà
+       posé ci-dessus, et il n'y a rien à différer. Sans cette question, un
+       simple changement d'onglet reclasserait tout pour un résultat
+       identique. */
+    if(!recoCache || recoCache.cle !== cleReco()){
+      annulerRecoDifferee = ORDO
+        ? ORDO.differer(()=>poserRecommandations(jeton, titre),
+            {timeout:300, valide:()=>generationAccueil === jeton})
+        : (poserRecommandations(jeton, titre), null);
+    }
   }else if(feuilleNiveau === "plus"){
     $("#fbTitre").textContent = "Plus de catégories";
     retour.hidden = false;
@@ -10599,24 +10619,105 @@ function ligneMaintenant(l){
     '<span class="mn-fl" aria-hidden="true">›</span></button>';
 }
 
+const ORDO = window.AutourOrdonnanceur || null;
+
+/* ==================================================================== */
+/*  Le classement de l'accueil, différé et annulable                    */
+/* ==================================================================== */
+/* `generationAccueil` fait office de jeton : chaque rendu l'incrémente, et un
+   travail différé ne s'exécute que s'il porte encore le dernier. Sans lui,
+   changer de zone pendant un classement laissait ce classement aboutir et
+   écraser l'écran avec les lieux de la ville qu'on venait de quitter. */
+let generationAccueil = 0;
+let annulerRecoDifferee = null;
+let annulerPourToiDifferee = null;
+let recoCache = null;             // {cle, html}
+
+/* La clé décrit TOUT ce dont le classement dépend. Deux rendus qui partagent
+   cette clé partagent forcément leur résultat — c'est ce qui évite de
+   reclasser treize fois pendant un démarrage, et c'est aussi ce qui garantit
+   qu'on ne sert jamais un classement périmé. */
+function cleReco(){
+  const r = pointDeReference();
+  return [lieux.length, creneau, filtreActif, triListe,
+          montrerFermes ? 1 : 0,
+          catsActives ? [...catsActives].sort().join("+") : "",
+          filtresHumains ? [...filtresHumains].sort().join("+") : "",
+          r ? r[0].toFixed(3)+","+r[1].toFixed(3) : "?"].join("|");
+}
+
+/* Ce qu'on peut poser TOUT DE SUITE : le classement déjà calculé s'il vaut
+   encore, sinon le squelette qui s'affichait déjà pendant une recherche. La
+   zone garde ainsi la même place dans les deux cas. */
+function recoDejaCalculee(){
+  if(recoCache && recoCache.cle === cleReco()) return recoCache.html;
+  return statutGroupeHTML();
+}
+
+/* Le classement lui-même, exécuté pendant une tranche d'inactivité. Il ne
+   touche QUE la zone des recommandations : rien au-dessus ne bouge, et
+   surtout pas le bloc « Maintenant » ni la navigation. */
+function poserRecommandations(jeton, titre){
+  if(jeton !== generationAccueil) return;      // la zone a changé entre-temps
+  const corps = $("#fbCorps");
+  const zone = corps && corps.querySelector("[data-reco-zone]");
+  if(!zone) return;
+
+  const enCours = (creneau === "maintenant" && !modeAide) ? evenementsMaintenant() : [];
+  let reco = recommandationsAccueil(7);
+  // un événement déjà listé dans « Maintenant » ne se répète pas ici
+  if(enCours.length){
+    const dejaListes = new Set(enCours.slice(0, MAINTENANT_APERCU).map(l=>l.id));
+    reco = reco.filter(l=>!dejaListes.has(l.id));
+  }
+  /* le classement peut ne rien rendre au tout début (aucun ETA, aucun
+     horaire) : on montre alors l'échantillon varié du cache plutôt qu'un
+     écran vide */
+  if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
+  if(reco.length) PERF.jalon("cached_pois_visible");
+
+  const html = reco.length
+    ? '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
+        reco.map(carteRecommandation).join("")+'</div>'
+    : statutGroupeHTML();
+
+  /* Une dernière vérification APRÈS le calcul : classer cent trente lieux
+     prend des centaines de millisecondes, et la carte a pu bouger pendant ce
+     temps. Poser un résultat périmé est exactement ce qu'on cherche à éviter. */
+  if(jeton !== generationAccueil) return;
+  recoCache = {cle:cleReco(), html};
+  zone.innerHTML = html;
+  /* Les gestes de ces cartes n'existaient pas quand la feuille a été branchée :
+     on les rebranche sur la zone qu'on vient de remplir, et sur elle seule. */
+  brancherGestesRecommandations(zone);
+  PERF.jalon("recommandations_posees");
+}
+
 const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
 
 /* Ce que `maintenant.js` a besoin de savoir d'un lieu, et rien de plus. Le
    statut vient du moteur temporel, qui le tient du backend : on ne le
    recalcule pas ici, on le transmet. */
-/* Le temps qu'il faut pour y être. Sert à demander à `availability.js` si le
-   lieu sera ENCORE ouvert à l'arrivée — pas seulement s'il l'est maintenant.
-   Une estimation grossière suffit : c'est la marge par type de lieu qui fait
-   le vrai travail (arriver au musée trois minutes avant la fermeture n'est pas
-   une visite). */
-const VITESSE_APPROCHE_M_MIN = 80;          // ~5 km/h, à pied
-function arriveeEstimee(l, t, distance){
-  const d = Number.isFinite(distance) ? distance : null;
-  if(d === null) return null;
-  return t + Math.round(d / VITESSE_APPROCHE_M_MIN) * 60000;
-}
+/* LE TEMPS D'Y ALLER — NOMINAL, ET C'EST VOLONTAIRE.
 
-function versItemMaintenant(l, t, ref){
+   Sert à demander à `availability.js` si le lieu sera ENCORE ouvert à
+   l'arrivée, pas seulement s'il l'est maintenant.
+
+   Une première version le déduisait de la distance exacte. Ça paraissait plus
+   juste, et ça coûtait cher : la réponse dépendait alors du point de
+   référence, donc changeait à chaque image PENDANT que la carte vole vers sa
+   destination. La mémoire ne retenait plus rien, et l'analyse des horaires de
+   cent trente lieux repartait de zéro à chaque rendu — 539 ms mesurées, six
+   fois de suite.
+
+   Dix minutes nominales suffisent, et disent la même chose : c'est la marge
+   PAR TYPE de lieu qui fait le vrai travail (arriver au musée trois minutes
+   avant la fermeture n'est pas une visite ; `availability.js` le sait déjà).
+   Le résultat ne dépend plus que du lieu et de l'heure — donc il se retient. */
+const APPROCHE_NOMINALE_MS = 10 * 60000;
+function arriveeEstimee(t){ return t + APPROCHE_NOMINALE_MS; }
+
+function versItemMaintenant(l, t){
   /* Le verdict temporel est TRANSMIS, jamais recopié sous forme de chaîne :
      c'est `temporel.js` qui connaît le vocabulaire du backend, et lui seul. */
   const statut = statutTemps(l, t).statut;
@@ -10629,9 +10730,7 @@ function versItemMaintenant(l, t, ref){
      close ; le confondre avec le deuxième vide le bloc pour rien. */
   let ouvert = null, ouvertALArrivee = null;
   if(!evenement){
-    const d = ref && Number.isFinite(l.lat)
-      ? distanceM(ref[0], ref[1], l.lat, l.lng) : null;
-    const dispo = dispoDe(l, arriveeEstimee(l, t, d), t);
+    const dispo = dispoDe(l, arriveeEstimee(t), t);
     if(dispo){
       ouvert = dispo.status === "open" ? true
              : dispo.status === "unknown" ? null : false;
@@ -10744,20 +10843,46 @@ function contexteMaintenant(){
    clé porte donc la minute, le nombre de lieux et le point de référence — les
    trois seules choses dont le résultat dépend. */
 let itemsMemo = {cle:null, items:null};
+
+/* LA MÉMOIRE PAR LIEU, ET POURQUOI ELLE COMPTE PLUS QUE L'AUTRE.
+
+   Le profil a mesuré 530 ms pour un seul passage sur cent trente lieux, et
+   trois passages pendant un démarrage — une fusion en invalide un. Or entre
+   deux fusions, cent vingt-cinq des cent trente lieux sont EXACTEMENT les
+   mêmes : on repayait l'analyse de leurs horaires pour rien.
+
+   La mémoire par lieu porte donc sur (identifiant, minute, point de
+   référence) : les trois seules choses dont le résultat dépend. Un lieu déjà
+   vu ne coûte plus rien ; seuls les nouveaux sont analysés. Le résultat est
+   identique au millième près — c'est la même fonction, appelée une fois au
+   lieu de trois. */
+const dispoMemo = new Map();
+const DISPO_MEMO_MAX = 600;      // au-delà, on repart : ce n'est qu'un cache
+
+function itemMemoise(l, t, minute){
+  const cle = l.id + "|" + minute;
+  const vu = dispoMemo.get(cle);
+  if(vu) return vu;
+  const item = versItemMaintenant(l, t);
+  if(dispoMemo.size > DISPO_MEMO_MAX) dispoMemo.clear();
+  dispoMemo.set(cle, item);
+  return item;
+}
+
 function itemsMaintenant(ctx){
-  const ref = ctx.position;
-  const cle = Math.floor(ctx.maintenant / 60000) + "|" + lieux.length + "|" +
-    (ref ? ref[0].toFixed(3) + "," + ref[1].toFixed(3) : "?");
+  const minute = Math.floor(ctx.maintenant / 60000);
+  const cle = minute + "|" + lieux.length;
   if(itemsMemo.cle === cle) return itemsMemo.items;
-  const items = lieux.map(l=>versItemMaintenant(l, ctx.maintenant, ref));
+  const items = lieux.map(l=>itemMemoise(l, ctx.maintenant, minute));
   itemsMemo = {cle, items};
   return items;
 }
 
 /* Le nombre de lieux ne change pas toujours quand leur CONTENU change — une
    fusion peut remplacer un lieu par une meilleure version sans en changer le
-   compte. On oublie donc explicitement à chaque fusion, plutôt que d'espérer
-   que la clé le remarque. */
+   compte. On oublie donc la LISTE à chaque fusion. La mémoire par lieu, elle,
+   survit : elle est indexée par identifiant, et un lieu remplacé porte un
+   identifiant qu'on n'a pas encore vu. */
 function oublierItemsMaintenant(){ itemsMemo = {cle:null, items:null}; }
 
 function selectionMaintenant(){
@@ -11365,7 +11490,19 @@ function brancherFeuille2(){
     toast(personnalisation ? "Suggestions personnalisées" : "Préférences oubliées");
   });
 
-  corps.querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
+  brancherGestesRecommandations(corps);
+}
+
+/* Les gestes d'une carte de lieu, branchés sur un fragment plutôt que sur la
+   feuille entière. C'est ce qui permet de remplir la zone des recommandations
+   APRÈS coup — le classement arrive une tranche d'inactivité plus tard — sans
+   rebrancher tout le panneau, et sans laisser des cartes muettes. */
+function brancherGestesRecommandations(racine){
+  if(!racine) return;
+  racine.querySelectorAll('[role="button"][data-ac]').forEach(x=>x.onkeydown=e=>{
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); x.click(); }
+  });
+  racine.querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
     if(!cible) return;
     mettreAJourProfil("clic", cible.cat);
@@ -11373,6 +11510,7 @@ function brancherFeuille2(){
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(id));
   });
+  racine.querySelectorAll("[data-coeur]").forEach(()=>{});  // délégué globalement
 }
 
 /* Les quatre raccourcis du bas : le chemin court vers le même endroit. */
@@ -11823,11 +11961,38 @@ function majAccueil(){
      L'ancien score historique reste utile pour le jeu rapide, mais ne décide
      plus seul des marqueurs de « Pour toi, maintenant ». */
   if(!modeAide && creneau === "maintenant"){
-    const pourToi = recommandationsAccueil(ACCUEIL_MAX);
-    if(pourToi.length){
-      choisis.length = 0;
-      choisis.push(...pourToi.slice(0,ACCUEIL_MAX));
-    }
+    /* LE CLASSEMENT COMPLET NE BLOQUE PLUS LE FIL.
+
+       C'est le second appel à `recommandationsAccueil` — celui qui décide des
+       marqueurs — et le profil l'a mesuré à 1 169 ms pour le pire. Il vivait
+       ici, en plein milieu du rendu, si bien que « Maintenant » ne pouvait pas
+       s'afficher tant qu'il n'était pas terminé, alors qu'il n'en dépend pas.
+
+       On garde donc le choix précédent — celui du score historique, déjà
+       calculé juste au-dessus — puis on affine pendant une tranche
+       d'inactivité. La sélection finale est exactement la même ; seul le
+       moment où elle arrive change, et entre les deux la carte reste vivante.
+
+       Le jeton est celui de l'accueil : si la zone change entre-temps, ce
+       travail ne s'exécute jamais plutôt que d'imposer les marqueurs d'une
+       ville qu'on a quittée. */
+    const jetonCarte = ++generationAccueil;
+    if(annulerPourToiDifferee){ annulerPourToiDifferee(); annulerPourToiDifferee = null; }
+    const affiner = ()=>{
+      if(jetonCarte !== generationAccueil) return;
+      const pourToi = recommandationsAccueil(ACCUEIL_MAX);
+      if(!pourToi.length || jetonCarte !== generationAccueil) return;
+      const ids = pourToi.slice(0,ACCUEIL_MAX).map(l=>l.id);
+      // rien n'a changé : on ne redessine pas pour un résultat identique
+      if(ids.join("|") === (selectionAccueil || []).join("|")) return;
+      selectionAccueil = ids;
+      PERF.jalon("selection_affinee");
+      rendre();
+      if(feuilleNiveau !== null) majFeuille2();
+    };
+    annulerPourToiDifferee = ORDO
+      ? ORDO.differer(affiner, {timeout:400, valide:()=>jetonCarte === generationAccueil})
+      : (affiner(), null);
   }
 
   selectionAccueil = choisis.map(l=>l.id);

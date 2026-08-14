@@ -296,6 +296,42 @@ ok("centre dense · trois propositions, pas davantage",
 ok("zone peu dense · l'écran reste dans un état propre",
    ["ready", "empty", "error"].includes(creuse.m.etat), creuse.m.etat);
 
+/* L'INGESTION PROGRESSIVE A SES PROPRES PIÈGES.
+
+   Poser les recommandations après coup peut dupliquer une carte, ou en faire
+   disparaître une déjà affichée. On regarde donc l'écran final : chaque lieu
+   une fois, et le bloc « Maintenant » intact au-dessus. */
+{
+  const { ctx, page } = await ouvrir(navigateur, { centre: HUB, lieux: 120, evenements: 12 });
+  await page.waitForFunction(() => {
+    const e = document.querySelector('[data-testid="maintenant-liste"]');
+    return e && e.dataset.mnEtat && e.dataset.mnEtat !== "loading";
+  }, null, { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(4000);
+
+  const vu = await page.evaluate(() => {
+    const cartes = [...document.querySelectorAll("#fbCorps [data-ac]")]
+      .map((e) => e.getAttribute("data-ac"));
+    const mn = [...document.querySelectorAll('[data-testid="maintenant-liste"] [data-mn]')]
+      .map((e) => e.getAttribute("data-mn"));
+    return { cartes, mn,
+      zones: document.querySelectorAll("[data-reco-zone]").length,
+      pistes: document.querySelectorAll('[data-testid="primary-results"]').length };
+  });
+  ok("ingestion progressive · aucune carte en double",
+     new Set(vu.cartes).size === vu.cartes.length,
+     vu.cartes.length + " cartes, " + new Set(vu.cartes).size + " distinctes");
+  ok("ingestion progressive · aucune ligne de Maintenant en double",
+     new Set(vu.mn).size === vu.mn.length, vu.mn.join(", "));
+  ok("ingestion progressive · une seule zone de recommandations",
+     vu.zones === 1, String(vu.zones));
+  ok("ingestion progressive · une seule liste de résultats",
+     vu.pistes <= 1, String(vu.pistes));
+  ok("ingestion progressive · les cartes finissent par arriver",
+     vu.cartes.length >= 1, String(vu.cartes.length));
+  await ctx.close();
+}
+
 ok("aucun scénario ne reste bloqué sur « loading »",
    mesures.every((m) => m.etat !== "loading"),
    mesures.filter((m) => m.etat === "loading").map((m) => m.nom).join(", "));
@@ -325,12 +361,11 @@ console.log("  pire blocage du fil principal : " + pireBlocage + " ms  (" + pire
 console.log("  objectif : " + OBJECTIF_BLOCAGE_MS + " ms — " +
   (pireBlocage <= OBJECTIF_BLOCAGE_MS ? "tenu" : "NON TENU"));
 if (pireBlocage > OBJECTIF_BLOCAGE_MS) {
-  console.log("  pendant ce temps l'écran ne réagit à rien, et « Maintenant » ne");
-  console.log("  peut pas s'afficher : non parce qu'il attend une donnée, mais");
-  console.log("  parce que personne ne peut le dessiner. La cause est l'ingestion");
-  console.log("  de cent trente lieux en une seule tenue — normalisation,");
-  console.log("  déduplication, classement, marqueurs. La découper est un");
-  console.log("  chantier à part, pas une passe de stabilisation.");
+  console.log("  Les deux classements ont été sortis du chemin critique (ils");
+  console.log("  s'exécutent en tranche d'inactivité, annulables). Ce qui reste");
+  console.log("  est la pose des marqueurs et la déduplication — même travail,");
+  console.log("  toujours d'un bloc. Repères : avant cette passe, 3 963 ms de");
+  console.log("  blocage et 4 703 ms avant la première proposition.");
 }
 
 /* Le nombre de requêtes au démarrage : ce n'est pas un objectif en soi, mais

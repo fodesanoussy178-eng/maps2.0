@@ -253,3 +253,63 @@ normalisation, déduplication, classement, pose des marqueurs. La découper en
 tranches est un chantier à part entière — pas une passe de stabilisation. Le
 banc l'imprime à chaque exécution, avec son chiffre, plutôt que de le taire ou
 de le noyer dans un rouge permanent.
+
+## Découper l'ingestion : ce qui a été fait, et ce qui reste
+
+### Le diagnostic, avant de toucher quoi que ce soit
+
+Un profil dans la page, fonction par fonction, sur le scénario dense :
+
+```
+recommandationsAccueil   13 appels   3907 ms   pire : 443 ms
+rendre (marqueurs)        6 appels   2088 ms   pire : 944 ms
+itemsMaintenant          16 appels   1535 ms   pire : 950 ms
+```
+
+Et le point qui décide de tout : `blocMaintenantAccueil()` se construisait dans
+le **même `innerHTML`** que la liste de recommandations. `Maintenant` attendait
+donc un classement dont il n'a aucun besoin.
+
+### Trois changements, aucun sur les règles métier
+
+1. **Le rendu de l'accueil se fait en deux temps.** Ce qui est bon marché — dont
+   `Maintenant` — est peint tout de suite ; la zone des recommandations garde sa
+   place avec le squelette qui s'y affichait déjà, puis se remplit pendant une
+   tranche d'inactivité. Rien au-dessus ne bouge.
+2. **La sélection de la carte est différée elle aussi.** Le second appel à
+   `recommandationsAccueil` (1169 ms au pire) vivait en plein milieu du rendu.
+   Il s'exécute maintenant en arrière-plan et ne redessine que si le résultat
+   **diffère** — sinon rien ne bouge.
+3. **La disponibilité d'un lieu ne dépend plus du point de référence.** Elle en
+   dépendait par le temps de trajet estimé, donc elle changeait à chaque image
+   *pendant que la carte vole* vers sa destination : la mémoire ne retenait
+   rien et l'analyse des horaires de 130 lieux repartait de zéro. Un temps
+   d'approche nominal de dix minutes dit la même chose — c'est la marge **par
+   type** de `availability.js` qui fait le vrai travail — et le résultat se
+   retient.
+
+`ordonnanceur.js` fournit le mécanisme : `requestIdleCallback` avec repli
+`setTimeout` (Safari ne l'a jamais implémenté), travaux **annulables**, et
+`parLots` qui découpe selon le temps restant dans la tranche plutôt qu'une
+taille fixe.
+
+**Chaque travail différé porte un jeton.** Si la zone change, le jeton est
+périmé et le travail ne s'exécute jamais — plutôt que d'aboutir en écrasant
+l'écran avec le classement d'une ville qu'on a quittée. Le jeton est vérifié
+**avant et après** le calcul : classer 130 lieux prend des centaines de
+millisecondes, et la carte peut bouger pendant ce temps.
+
+### Avant / après, mesuré
+
+| scénario | 1er résultat avant | après | blocage avant | après |
+|---|---|---|---|---|
+| centre dense (120 lieux) | 4703 ms | **2518 ms** | 3963 ms | **1815 ms** |
+| hub · cache froid | 1355 ms | **775 ms** | — | — |
+| zone peu dense | 1626 ms | **1487 ms** | — | — |
+
+### Ce qui reste
+
+**L'objectif d'une seconde de blocage n'est pas tenu** sur zone dense : 1815 ms.
+Les deux classements sont sortis du chemin critique ; ce qui reste est la pose
+des marqueurs et la déduplication, toujours d'un bloc. Le banc l'imprime à
+chaque exécution, avec son chiffre.
