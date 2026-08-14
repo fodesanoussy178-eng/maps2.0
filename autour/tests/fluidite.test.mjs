@@ -452,3 +452,51 @@ test("les encoches sont lues par un seul token", () => {
   assert.match(html, /--safe-t:env\(safe-area-inset-top,0px\)/);
   assert.match(html, /top:calc\(var\(--haut-entete, 64px\) \+ var\(--safe-t, 0px\) \+ 10px\);/);
 });
+
+/* ======================================================================== */
+/*  Densité : les cartes d'événement passent par l'anti-collision           */
+/* ======================================================================== */
+
+test("les cartes d'événement sont vues par le résolveur de collisions", () => {
+  // posées sans être déclarées ici, elles n'étaient jamais masquées ni
+  // basculées : cinq événements dans cent mètres donnaient cinq cartes empilées
+  assert.match(html, /const eti = el && el\.querySelector\("\.poi-eti, \.evc-txt"\);/);
+  assert.match(html, /const rond = el && el\.querySelector\("\.poi-rond, \.evc-rond"\);/);
+  assert.match(html, /\.evc-txt\.masquee\{display:none\}/);
+});
+
+test("les pastilles réservent leur place avant tout placement d'étiquette", () => {
+  const bloc = /entrees\.forEach\(\(\{rond\}\)=>\{[\s\S]*?\}\);/.exec(html);
+  assert.ok(bloc, "les pastilles doivent être enregistrées dans la grille");
+  assert.match(bloc[0], /enregistrer\(\{x:rr\.left-cadre\.left/);
+  // et cet enregistrement précède la boucle de décision
+  assert.ok(html.indexOf("entrees.forEach(({rond})=>{") < html.indexOf("const decisions=[];"));
+});
+
+/* ======================================================================== */
+/*  OpenAgenda : borné, mis en cache, et sans effacement en cas de panne    */
+/* ======================================================================== */
+
+test("chaque requête OpenAgenda est bornée dans le temps", () => {
+  assert.match(html, /const DELAI_OPENAGENDA_MS = 6000;/);
+  assert.match(html, /AbortSignal\.timeout\(DELAI_OPENAGENDA_MS\)/);
+});
+
+test("la concurrence est limitée pour ne pas déclencher de rate limit", () => {
+  assert.match(html, /const CONCURRENCE_OPENAGENDA = 3;/);
+  assert.match(html, /async function parLots\(taches, limite\)\{/);
+  assert.match(html, /\}\), CONCURRENCE_OPENAGENDA\);/);
+});
+
+test("une panne OpenAgenda rend la dernière réponse valide, jamais rien", () => {
+  const bloc = /async function evenementsOpenAgenda\(lat,lng\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc);
+  assert.match(bloc[0], /return enCache \? enCache\.items : null;/,
+    "un échec ne doit pas vider les événements déjà affichés");
+  assert.match(bloc[0], /if\(enCache && Date\.now\(\) - enCache\.le < CACHE_OPENAGENDA_MS\) return enCache\.items;/);
+});
+
+test("une tâche en échec n'arrête pas les autres", () => {
+  const bloc = /async function parLots\(taches, limite\)\{[\s\S]*?\n\}/.exec(html);
+  assert.match(bloc[0], /catch\(e\)\{ resultats\[i\] = \{status:"rejected", reason:e\}; \}/);
+});

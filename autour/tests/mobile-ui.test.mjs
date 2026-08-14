@@ -1901,7 +1901,11 @@ test("le jeu rapide affiche les propositions de la dernière session",()=>{
 
 test("Overpass n'est jamais ce qu'on attend au démarrage",()=>{
   assert.match(html,/const OVERPASS_DELAI_BOOT = 4500;/);
-  assert.match(html,/const OVERPASS_DELAI_DEMANDE = 12000;/);
+  // 6 s et non 12 : au-delà de cinq ou six secondes sans retour, on ne
+  // patiente plus, on se demande si c'est cassé. Couper tôt ne perd que la
+  // requête — ce qui est à l'écran y reste, et la zone reste retentable.
+  assert.match(html,/const OVERPASS_DELAI_DEMANDE = 6000;/);
+  assert.ok(6000 < 4500 * 2, "l'écart avec le démarrage reste raisonnable");
   assert.match(html,/chargerZone\(lat,lng,\{sansCarte:true, osmSeulement:true,/);
   assert.match(html,/reglages:\{rayon:RAYON_BOOT,limite:PLAFOND_BOOT\}\}\);/);
   assert.match(html,/const RAYON_BOOT = 900;/);
