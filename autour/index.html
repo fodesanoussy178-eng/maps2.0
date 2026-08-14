@@ -594,7 +594,9 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
    l'en-tête. `pointer-events` reste actif sur elle seule : le reste de la
    bande laisse passer les gestes vers la carte. */
 #badgeMaintenant{position:fixed;left:50%;transform:translateX(-50%);
-  top:calc(var(--haut-entete, 64px) + env(safe-area-inset-top, 0px) + 10px);
+  /* `--safe-t` existe déjà en tête de feuille : le réutiliser plutôt que de
+     réécrire env(safe-area-inset-top) garde une seule définition à corriger. */
+  top:calc(var(--haut-entete, 64px) + var(--safe-t, 0px) + 10px);
   z-index:420;display:flex;flex-direction:column;align-items:center;gap:1px;
   padding:9px 18px;border:0;border-radius:99px;background:#fff;
   box-shadow:0 6px 20px rgba(20,30,25,.16);cursor:pointer;
@@ -1653,7 +1655,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
-<script src="aide.js?v=2f6a9f60"></script>
+<script src="aide.js?v=572ddfad"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
 <script src="explications.js?v=ea344e6e"></script>
@@ -6119,7 +6121,12 @@ function majBandeauVide(retenus){
   if(!b) return;
   // un seul bandeau à la fois : celui de la géolocalisation passe avant
   const erreurPartielle = etatErreurPartielle();
-  const videReel = retenus === 0 && lieux.length > 0 && !montrerFermes && !rechercheEnCours();
+  /* `etatDonnees` porte la règle : position inconnue, position en cours de
+     détermination et recherche en cours excluent toutes le « vide », et une
+     panne n'est pas un vide. Le bandeau se contente de la lire. */
+  const etat = etatDonnees(retenus);
+  const videReel = etat === ETATS_DONNEES.READY_WITHOUT_RESULTS &&
+    lieux.length > 0 && !montrerFermes;
   // tant qu'on ignore où se trouve la personne, on ne peut pas affirmer qu'il
   // n'y a rien autour d'elle : on ne sait même pas de quel « autour » il s'agit
   // Une source secondaire en panne n'est pas un écran vide. Si la carte montre
@@ -6127,7 +6134,7 @@ function majBandeauVide(retenus){
   // Et quand la feuille est ouverte, elle porte elle-même un état compact : on
   // évite le doublon visible dans la référence de production.
   const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;
-  const montrer = (erreurSansResultat || (videReel && positionConnue()))
+  const montrer = (erreurSansResultat || videReel)
     && !modeNav && $("#bandeauGeo").hidden;
   b.hidden = !montrer;
   if(!montrer) return;
@@ -9242,19 +9249,72 @@ function squeletteHTML(n){
     '</div>';
 }
 
+/* ===================================================================
+   LES CINQ ÉTATS, À UN SEUL ENDROIT
+
+   La décision « qu'est-ce que j'affiche quand il n'y a rien à l'écran ? »
+   était prise à trois endroits — le bandeau flottant, le statut de groupe, le
+   statut de recherche — chacun avec ses propres conditions. Trois lectures du
+   même monde, qui peuvent se contredire : le bandeau disait « rien autour »
+   pendant que la feuille affichait encore des squelettes.
+
+   Une seule fonction répond désormais, et les trois affichages la lisent.
+
+   L'ORDRE DES TESTS EST LA RÈGLE MÉTIER :
+
+     · on ne parle jamais de « rien autour de toi » avant de savoir où est
+       « toi » — l'ignorance de la position passe donc avant tout ;
+     · une recherche en cours n'est pas un résultat vide ;
+     · une PANNE n'est pas un résultat vide non plus. Un timeout, un 500 ou
+       une géolocalisation refusée doivent se dire comme des pannes, jamais
+       comme « il n'y a rien ici » — c'est la même phrase pour l'utilisateur,
+       mais ce n'est pas la même information, et l'une des deux est fausse ;
+     · des résultats déjà là gagnent sur une source secondaire en panne : on
+       montre ce qu'on a, et on signale la mise à jour incomplète ailleurs.
+   =================================================================== */
+const ETATS_DONNEES = Object.freeze({
+  LOCATION_UNKNOWN:      "location_unknown",
+  LOCATION_LOADING:      "location_loading",
+  DATA_LOADING:          "data_loading",
+  READY_WITH_RESULTS:    "ready_with_results",
+  READY_WITHOUT_RESULTS: "ready_without_results",
+  ERROR:                 "error",
+});
+
+function panneTechnique(){
+  return rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
+    rechercheEtat.places === SEARCH_STATES.NETWORK_ERROR ||
+    rechercheEtat.events === SEARCH_STATES.NETWORK_ERROR ||
+    etatErreurPartielle();
+}
+
+function etatDonnees(nombreResultats){
+  const n = Number(nombreResultats) || 0;
+  if(rechercheEtat.location === SEARCH_STATES.REQUESTING_LOCATION)
+    return ETATS_DONNEES.LOCATION_LOADING;
+  if(!positionConnue())
+    return ETATS_DONNEES.LOCATION_UNKNOWN;
+  if(rechercheEnCours())
+    return n ? ETATS_DONNEES.READY_WITH_RESULTS : ETATS_DONNEES.DATA_LOADING;
+  if(n) return ETATS_DONNEES.READY_WITH_RESULTS;
+  if(panneTechnique()) return ETATS_DONNEES.ERROR;
+  return ETATS_DONNEES.READY_WITHOUT_RESULTS;
+}
+
 function statutRechercheHTML(nombreResultats){
   // Quand des résultats issus du cache ou d'une première source sont déjà là,
   // ils restent au premier plan. Trois squelettes au-dessus d'eux donnaient
   // l'impression que la liste n'avait pas chargé alors qu'elle était utilisable.
-  if(rechercheEnCours()) return nombreResultats
-    ? '<div class="fb-statut partiel" role="status"><span>Mise à jour des résultats…</span></div>'
-    : squeletteHTML(3);
-  if(rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED && !positionMoi)
+  const etat = etatDonnees(nombreResultats);
+  // on ne dit jamais « il n'y a rien » avant de savoir où l'on regarde
+  if(etat === ETATS_DONNEES.LOCATION_LOADING) return squeletteHTML(3);
+  if(etat === ETATS_DONNEES.LOCATION_UNKNOWN)
     return '<div class="fb-statut">Active ta position ou choisis un endroit sur la carte.</div>';
-  const sourceIndisponible = rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
-    rechercheEtat.places === SEARCH_STATES.OVERPASS_UNAVAILABLE ||
-    rechercheEtat.places === SEARCH_STATES.NETWORK_ERROR ||
-    rechercheEtat.events === SEARCH_STATES.NETWORK_ERROR || etatErreurPartielle();
+  if(etat === ETATS_DONNEES.DATA_LOADING) return squeletteHTML(3);
+  if(rechercheEnCours() && nombreResultats)
+    return '<div class="fb-statut partiel" role="status"><span>Mise à jour des résultats…</span></div>';
+  const sourceIndisponible = panneTechnique();
   if(nombreResultats && sourceIndisponible)
     return '<div class="fb-statut partiel"><span>Résultats disponibles · mise à jour incomplète</span>'+
       '<button data-etat-action="retry">Actualiser</button></div>';
@@ -9464,9 +9524,14 @@ function lancerBesoinAide(phrase){
     besoinsAide = trouves.slice(0,3).map(x=>x.id);
     sousAide = besoinsAide[0];
   }else{
-    // rien de reconnu : on ne devine pas, on montre les structures générales
-    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
-    toast("Je n’ai pas bien compris. Voici les structures qui orientent.");
+    /* Rien de reconnu, et ce n'est pas une réparation non plus.
+       On affichait alors les structures générales avec un toast « je n'ai pas
+       bien compris » : Autour laissait croire qu'il pouvait orienter sur
+       n'importe quoi, et proposait un CCAS pour une question qui n'a rien de
+       social. Il vaut mieux dire ce qu'on sait faire — c'est plus court, plus
+       honnête, et ça évite un déplacement inutile. */
+    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    redirectionExplorer = {horsPerimetre:true};
   }
   chargerAideSiBesoin();
   majFeuille2(); reinitialiserScrollFeuille(); rendre();
@@ -9568,6 +9633,22 @@ function ecranBesoinsAide(){
    demande pas dans quelle catégorie classer sa demande. */
 function ecranRedirectionExplorer(){
   const r = redirectionExplorer || {};
+
+  /* Hors périmètre : on ne devine pas, et on ne renvoie pas vers une liste de
+     structures sociales choisies au hasard. On nomme ce qu'Aide sait faire —
+     la liste vient du modèle (AIDE.PERIMETRE), jamais recopiée ici — et on
+     laisse deux portes ouvertes : reformuler, ou aller chercher dans Explorer. */
+  if(r.horsPerimetre){
+    const domaines = (AIDE && AIDE.PERIMETRE) || [];
+    return '<section class="ab-ailleurs" data-testid="aide-hors-perimetre">'+
+      '<p class="aba-titre">Je ne sais pas orienter cette demande.</p>'+
+      '<p class="aba-sous">Aide oriente vers&nbsp;: '+
+        esc(domaines.join(", "))+'.</p>'+
+      '<button class="aba-cta" data-aide-reformuler="1">Reformuler ma demande</button>'+
+      '<button class="aba-rester" data-aide-general="1">Voir les structures qui orientent</button>'+
+      '</section>';
+  }
+
   return '<section class="ab-ailleurs" data-testid="aide-redirection">'+
     '<p class="aba-titre">Ça ressemble plutôt à '+esc(r.libelle || "une recherche de commerce")+'.</p>'+
     '<p class="aba-sous">Ce n’est pas ce qu’Aide sait faire, mais Explorer, oui.</p>'+
@@ -9944,8 +10025,12 @@ function statutGroupeHTML(){
   /* Tant que la recherche tourne, on montre ce qui arrive — pas un état.
      Dire « choisis un point de départ » ou « rien autour » pendant qu'une API
      répond encore, c'est décrire un vide qu'on n'a pas constaté. */
-  if(rechercheEnCours()) return squeletteHTML(3);
-  if(!positionConnue())
+  const etatGroupe = etatDonnees(0);
+  // squelettes discrets tant qu'on cherche : jamais un écran vide, jamais un
+  // gros changement de mise en page quand les données finissent par arriver
+  if(etatGroupe === ETATS_DONNEES.LOCATION_LOADING ||
+     etatGroupe === ETATS_DONNEES.DATA_LOADING) return squeletteHTML(3);
+  if(etatGroupe === ETATS_DONNEES.LOCATION_UNKNOWN)
     return '<p class="fb-statut">Choisis un point de départ pour voir ce qui '+
            'se passe autour.</p>';
   /* « Maintenant » vide n'est pas une impasse. La règle temporelle refuse d'y
@@ -10223,6 +10308,18 @@ function brancherFeuille2(){
       if(champ) champ.value = requete;
       ouvrirResultats(requete);
     }
+  });
+  // reformuler : on revient à la question, champ vide
+  corps.querySelectorAll("[data-aide-reformuler]").forEach(b=>b.onclick=()=>{
+    redirectionExplorer = null;
+    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    majFeuille2(); reinitialiserScrollFeuille();
+  });
+  // « montre-moi quand même les structures » : le choix reste à la personne
+  corps.querySelectorAll("[data-aide-general]").forEach(b=>b.onclick=()=>{
+    redirectionExplorer = null;
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
+    majFeuille2();
   });
   // « non, j'ai bien besoin d'aide » : on s'est trompé, on revient à la question
   corps.querySelectorAll("[data-aide-rester]").forEach(b=>b.onclick=()=>{
