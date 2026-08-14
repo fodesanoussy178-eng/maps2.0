@@ -474,6 +474,45 @@ input{font-family:inherit;font-size:16px}
 .aba-rester{width:100%;min-height:44px;margin-top:8px;padding:10px 16px;
   border:1px solid var(--bord);border-radius:12px;background:#fff;
   font-size:13.5px;font-weight:600;color:var(--ink2)}
+/* Les lectures possibles d'une phrase mal comprise. Trois au plus, empilées
+   comme les autres boutons de cet écran : rien de nouveau à apprendre, et
+   surtout aucune couleur qui porterait un sens à elle seule. */
+.aba-lectures{display:flex;flex-direction:column;gap:8px;margin:0 0 16px}
+.aba-lecture{width:100%;min-height:48px;padding:12px 14px;text-align:left;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:14.5px;font-weight:650;color:var(--ink)}
+.aba-lecture span{margin-right:8px;font-size:16px}
+
+/* ---- Compte et profil ---------------------------------------------------
+   Le même vocabulaire visuel que le reste des panneaux : un titre, une phrase,
+   des champs pleine largeur, un bouton sombre. Rien de nouveau à apprendre —
+   ces écrans arrivent dans un moment où l'on veut finir quelque chose, pas
+   découvrir une interface. */
+.cpt{padding:6px 0 4px}
+.cpt-titre{margin:0 0 6px;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.cpt-sous{margin:0 0 16px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.cpt-lab{display:block;margin:14px 0 6px;font-size:12.5px;font-weight:700;color:var(--ink2)}
+.cpt-lab i{font-style:normal;font-weight:500;opacity:.75}
+.cpt-champ{width:100%;min-height:48px;padding:12px 14px;font-size:16px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;color:var(--ink)}
+.cpt-valeur{margin:0;padding:12px 14px;font-size:14.5px;
+  border:1px solid var(--bord);border-radius:12px;background:var(--fond2,#F6F5F2);color:var(--ink2)}
+.cpt-cta{width:100%;min-height:52px;margin-top:14px;padding:14px 16px;border:0;
+  border-radius:12px;background:var(--ink);color:#fff;font-size:15px;font-weight:700}
+.cpt-lien{width:100%;min-height:44px;margin-top:8px;padding:10px 16px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:13.5px;font-weight:600;color:var(--ink2)}
+.cpt-sortie{margin-top:18px}
+.cpt-envoye{margin:0 0 4px;font-size:14px;line-height:1.5}
+.cpt-err{margin:0 0 12px;padding:10px 12px;border-radius:10px;
+  background:#FBEEEC;font-size:13.5px;line-height:1.45;color:#8C3B2E}
+.cpt-note{margin:16px 0 0;font-size:12px;line-height:1.45;color:#939D96}
+.cpt-liste{margin:0 0 16px;padding:0 0 0 2px;list-style:none;
+  font-size:14px;line-height:1.9;color:var(--ink)}
+.cpt-actions{display:flex;flex-direction:column;gap:8px;margin:18px 0 4px}
+.cpt-bascule{display:flex;align-items:center;gap:10px;margin-top:18px;
+  font-size:14px;line-height:1.4;color:var(--ink)}
+.cpt-bascule input{width:20px;height:20px;flex:0 0 auto}
 
 .as-tete{padding:2px 0 10px}
 .as-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em}
@@ -1689,7 +1728,9 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
-<script src="aide.js?v=572ddfad"></script>
+<script src="intentions.js?v=39e671d2"></script>
+<script src="comptes.js?v=b70981c9"></script>
+<script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
 <script src="explications.js?v=ea344e6e"></script>
@@ -2011,11 +2052,14 @@ async function basculerFavori(l){
   if(etait) favorisIds.delete(cle); else favorisIds.add(cle);
   majCoeurs();
 
-  // l'identité anonyme n'est créée qu'ici, au moment où elle sert
-  if(!(await assurerSessionAnonyme())){
+  /* Le compte est demandé ICI, au moment où il apporte quelque chose : garder
+     ce favori ailleurs que sur cet appareil. On rend d'abord le cœur à son
+     état d'avant — il ne doit pas rester allumé derrière un écran de
+     connexion — puis on met le geste en attente : il sera rejoué tel quel. */
+  if(!estConnecte()){
     if(etait) favorisIds.add(cle); else favorisIds.delete(cle);
     majCoeurs();
-    toast("Favoris indisponibles hors connexion");
+    await exigerCompte("favori", {cle:cle});
     return;
   }
   const ok = etait ? await Store.retirerFavori(l) : await Store.ajouterFavori(l);
@@ -2449,21 +2493,21 @@ const CATS = {
   concert:  {label:"Concerts",    emoji:"🎵", eph:false},
   marche:   {label:"Marchés",     emoji:"🧺", eph:false},
   friperie: {label:"Friperies",   emoji:"👕", eph:false},
-  commerce: {label:"Commerces",   emoji:"🛍", eph:false},
+  commerce: {label:"Commerces",   emoji:"🛍️", eph:false},
 
   alimentaire:{label:"Aide alimentaire", emoji:"🥫", eph:false},
   asso:       {label:"Associations",     emoji:"🤝", eph:false},
   hebergement:{label:"Hébergement",      emoji:"🏠", eph:false},
-  sante:      {label:"Santé",            emoji:"🏥", eph:false},
-  emploi:     {label:"Emploi & droits",  emoji:"📋", eph:false},
+  sante:      {label:"Santé",            emoji:"🩺", eph:false},
+  emploi:     {label:"Emploi & droits",  emoji:"💼", eph:false},
 
   biblio:   {label:"Bibliothèques", emoji:"📚", eph:false},
   coworking:{label:"Espaces de travail", emoji:"💻", eph:false},
-  musee:    {label:"Musées",        emoji:"🏛", eph:false},
+  musee:    {label:"Musées",        emoji:"🖼️", eph:false},
   parc:     {label:"Parcs",         emoji:"🌳", eph:false},
   terrain:  {label:"Terrains",      emoji:"🏀", eph:false},
   ecole:    {label:"Écoles",        emoji:"🎓", eph:false},
-  mairie:   {label:"Services",      emoji:"🏛", eph:false},
+  mairie:   {label:"Services",      emoji:"🏛️", eph:false},
   velo:     {label:"Stations vélo", emoji:"🚲", eph:false},
   metro:    {label:"Métro",         emoji:"🚇", eph:false},
   // « Bus & tram » mélangeait deux réseaux distincts : chercher un tram
@@ -3054,8 +3098,25 @@ async function connecter(){
       PERF.requete("supabase_session");
       const { data:{ session:sessionBrute }, error } = await sb.auth.getSession();
       if(error) throw error;
-      const session = await reparerSession(sessionBrute);
-      moiId = session && session.user ? session.user.id : null;
+      appliquerSession(await reparerSession(sessionBrute));
+
+      /* Une connexion peut arriver sans qu'on l'ait demandée depuis cet
+         écran : le lien reçu par e-mail rouvre la page, et c'est Auth qui
+         signale l'événement. On écoute donc plutôt que de sonder — et c'est
+         ici, en un seul endroit, que l'action mise en attente reprend. */
+      sb.auth.onAuthStateChange((evenement, s)=>{
+        const avant = etatCompte;
+        appliquerSession(s);
+        if(etatCompte === "connecte" && avant !== "connecte"){
+          chargerProfil().then(()=>{
+            chargerFavoris(); rafraichirCanaux(); majNavBas();
+            reprendreActionEnAttente();
+          });
+        }
+        if(evenement === "SIGNED_OUT") majNavBas();
+      });
+
+      if(estConnecte()) chargerProfil();
       return sb;
     }catch(e){
       console.error("Identité anonyme indisponible :", e.message || e);
@@ -3068,41 +3129,172 @@ async function connecter(){
   return resultat;
 }
 
-let pSessionAnonyme = null;
-async function assurerSessionAnonyme(){
-  if(!(await connecter())) return null;
-  if(moiId) return sb;
-  if(pSessionAnonyme) return pSessionAnonyme;
-  pSessionAnonyme = (async()=>{
-    try{
-      const { data, error } = await sb.auth.signInAnonymously();
-      if(error) throw error;
-      moiId = data && data.session && data.session.user ? data.session.user.id : null;
-      return moiId ? sb : null;
-    }catch(e){
-      console.error("Identité anonyme indisponible :", e.message || e);
-      return null;
-    }finally{
-      pSessionAnonyme = null;
-    }
-  })();
-  return pSessionAnonyme;
+/* LA SESSION ANONYME A DISPARU, ET C'EST LE FOND DE CETTE PASSE.
+
+   Autour signait automatiquement chaque visiteur en anonyme. Ça donnait un
+   `auth.uid()` sans rien demander — pratique — mais cet uid vivait dans le
+   stockage d'un navigateur : vider son cache, et ses propres publications
+   devenaient celles d'un inconnu, que plus personne ne pouvait modifier.
+
+   La base refuse désormais toute écriture à une session anonyme. En fabriquer
+   une ne servirait donc qu'à créer un compte fantôme de plus. Les écritures
+   passent par `exigerCompte`, les lectures ne demandent toujours rien.
+
+   Les sessions anonymes déjà existantes ne sont pas perdues : rattacher une
+   adresse à l'une d'elles conserve son uid, donc ses publications. */
+
+/* ==================================================================== */
+/*  Le compte : demandé au moment où il sert, jamais à l'ouverture       */
+/* ==================================================================== */
+/* Ce que ce bloc pilote, `comptes.js` le décide : quelles actions exigent un
+   compte, avec quels mots on le demande, et comment reprendre ce qui était
+   commencé. Ce que ce bloc GARANTIT, en revanche, est nul — la garantie est
+   en base (`created_by = auth.uid()` et les policies RLS). Contourner ce
+   JavaScript ne donne pas un accès : ça donne un refus du serveur. */
+const COMPTES = window.AutourComptes || null;
+
+let session = null;          // la session Supabase, telle que Auth la rend
+let monProfil = null;        // { display_name, notifications } — jamais l'e-mail
+let etatCompte = COMPTES ? COMPTES.VISITEUR : "visiteur";
+
+function estConnecte(){ return etatCompte === "connecte"; }
+
+/* Une seule fonction met l'état à jour, et une seule met l'écran à jour après
+   elle. Deux endroits qui recalculent « suis-je connecté ? » finissent
+   toujours par ne plus être d'accord. */
+function appliquerSession(s){
+  session = s || null;
+  moiId = session && session.user ? session.user.id : null;
+  etatCompte = COMPTES ? COMPTES.etatDe(session) : (moiId ? "anonyme" : "visiteur");
+  return etatCompte;
 }
 
-/* Demandé une seule fois au moment de la première publication. Le pseudo est
-   local et purement présentatif ; perdre cette valeur ne donne ni ne retire la
-   propriété, qui reste attachée à auth.uid() côté base. */
+function monEmail(){
+  return (session && session.user && session.user.email) || "";
+}
+
+/* Le pseudo public. Il ne participe JAMAIS à l'autorisation : le perdre ne
+   retire aucune propriété, l'usurper n'en donne aucune. */
+async function chargerProfil(){
+  if(!sb || !moiId) { monProfil = null; return null; }
+  try{
+    const { data, error } = await sb.from("profiles")
+      .select("display_name,notifications").eq("id", moiId).maybeSingle();
+    if(error) throw error;
+    monProfil = data || null;
+    if(monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
+    return monProfil;
+  }catch(e){
+    console.error("Profil indisponible :", e.message || e);
+    return null;
+  }
+}
+
+async function enregistrerProfilCompte(champs){
+  if(!sb || !moiId) return false;
+  const { error } = await sb.from("profiles").update(champs).eq("id", moiId);
+  if(error){ console.error("Profil non enregistré :", error.message); return false; }
+  monProfil = Object.assign({}, monProfil, champs);
+  if(Object.prototype.hasOwnProperty.call(champs, "display_name")){
+    monPseudo = champs.display_name || "";
+    try{ localStorage.setItem(CLE_PSEUDO_CREATEUR, monPseudo); }catch(e){}
+  }
+  return true;
+}
+
+/* LE PORTILLON.
+
+   `exigerCompte` ne montre un écran que si l'action en demande un ET que la
+   personne n'en a pas. Sinon elle exécute, tout de suite : une confirmation
+   inutile est une friction de plus sur un geste déjà décidé.
+
+   `reprise` est rejouée après la connexion — c'est elle qui évite de renvoyer
+   quelqu'un à l'accueil avec son formulaire à refaire. */
+const REPRISES = new Map();
+
+function enregistrerReprise(action, fn){ REPRISES.set(action, fn); }
+
+async function exigerCompte(action, charge){
+  if(!COMPTES || !COMPTES.exigeCompte(action)) return true;
+  await connecter();
+  if(estConnecte()) return true;
+  COMPTES.mettreEnAttente(action, charge || null);
+  ouvrirEcranCompte(action);
+  return false;
+}
+
+/* Reprendre après la connexion. Le lien reçu par e-mail fait QUITTER la page :
+   au retour, cette fonction retrouve l'intention dans `sessionStorage` et la
+   rejoue. Le code à six chiffres, lui, ne quitte pas la page — même chemin,
+   même reprise, et rien à réapprendre. */
+async function reprendreActionEnAttente(){
+  if(!COMPTES) return;
+  const attente = COMPTES.reprendreAttente();
+  if(!attente) return;
+  const reprise = REPRISES.get(attente.action);
+  if(!reprise) return;
+  try{ await reprise(attente.charge); }
+  catch(e){ console.error("Reprise impossible :", e); }
+}
+
+/* Envoi du lien (et du code). Deux chemins, et le choix décide de tout :
+   rattacher l'adresse à une session anonyme CONSERVE l'uid, donc les
+   publications et les favoris déjà posés. Ouvrir une session neuve en
+   créerait un autre, et l'ancien deviendrait inaccessible. */
+async function envoyerLienCompte(email){
+  if(!(await connecter())) return { ok:false, message:"Connexion impossible pour le moment." };
+  const adresse = COMPTES.normaliserEmail(email);
+  if(!COMPTES.emailValide(adresse)) return { ok:false, message:"Cette adresse ne semble pas complète." };
+  const plan = COMPTES.manoeuvre(etatCompte);
+  try{
+    const { error } = plan.methode === "lier"
+      ? await sb.auth.updateUser({ email:adresse })
+      : await sb.auth.signInWithOtp({ email:adresse,
+          options:{ emailRedirectTo: location.origin + location.pathname, shouldCreateUser:true } });
+    if(error) throw error;
+    return { ok:true, typeOtp:plan.typeOtp };
+  }catch(e){
+    return { ok:false, message: COMPTES.messageErreur(e) };
+  }
+}
+
+async function verifierCodeCompte(email, code, typeOtp){
+  if(!sb) return { ok:false, message:"Connexion impossible pour le moment." };
+  const adresse = COMPTES.normaliserEmail(email);
+  if(!COMPTES.codeValide(code)) return { ok:false, message:"Le code fait six chiffres." };
+  try{
+    const { data, error } = await sb.auth.verifyOtp({
+      email:adresse, token:String(code).trim(), type:typeOtp || "email" });
+    if(error) throw error;
+    appliquerSession(data && data.session);
+    return { ok:estConnecte(), message: estConnecte() ? "" : "Adresse non confirmée." };
+  }catch(e){
+    return { ok:false, message: COMPTES.messageErreur(e) };
+  }
+}
+
+async function seDeconnecter(){
+  if(!sb) return;
+  try{ await sb.auth.signOut(); }catch(e){}
+  appliquerSession(null);
+  monProfil = null;
+  /* Les favoris affichés viennent du compte : les laisser à l'écran après une
+     déconnexion ferait croire qu'ils sont encore là. */
+  favorisIds.clear();
+  favorisEnMemoire.clear();
+  canauxAMoi = [];
+  if(COMPTES) COMPTES.oublierAttente();
+  majCoeurs(); majNavBas();
+  toast("Déconnecté");
+}
+
+/* Le pseudo est facultatif : publier ne doit pas dépendre de son existence.
+   Avant, un `prompt()` bloquant le réclamait à la première publication et
+   annuler ce prompt annulait la publication. */
 async function assurerIdentitePublication(){
   if(!(await connecter())) return null;
-  let pseudo = monPseudo;
-  if(!pseudo){
-    pseudo = String(prompt("Ton prénom ou pseudo ?") || "").trim().slice(0,50);
-    if(!pseudo) return null;
-  }
-  if(!moiId && !(await assurerSessionAnonyme())) return null;
-  monPseudo = pseudo;
-  try{ localStorage.setItem(CLE_PSEUDO_CREATEUR, pseudo); }catch(e){}
-  return { id:moiId, name:pseudo };
+  if(!estConnecte()) return null;
+  return { id:moiId, name: monPseudo || (monProfil && monProfil.display_name) || null };
 }
 
 function estPublicationAMoi(l){
@@ -3320,7 +3512,7 @@ const Store = {
   },
 
   async ajouterFavori(l){
-    if(!(await assurerSessionAnonyme())) return false;
+    if(!sb || !estConnecte()) return false;
     const ligne = {
       membre: moiId,
       publication_id: l.dbId || null,
@@ -3339,7 +3531,7 @@ const Store = {
   },
 
   async retirerFavori(l){
-    if(!(await assurerSessionAnonyme())) return false;
+    if(!sb || !estConnecte()) return false;
     const requete = sb.from("favoris").delete().eq("membre", moiId);
     const { error } = l.dbId
       ? await requete.eq("publication_id", l.dbId)
@@ -3402,7 +3594,7 @@ const Store = {
   },
 
   async rejoindre(channelId, role){
-    if(!channelId || !(await assurerSessionAnonyme())) return false;
+    if(!channelId || !sb || !estConnecte()) return false;
     const { error } = await sb.from("event_participants")
       .insert({channel_id:channelId, membre:moiId, role:role || "participant"});
     // déjà inscrit : ce n'est pas une erreur pour l'utilisateur
@@ -7753,9 +7945,17 @@ function marquerPublication(id, etat){
 
 async function publier(){
   const b=brouillon;
-  /* La première publication est le seul moment où l'on demande un nom. La
-     session anonyme naît juste après ; si l'un ou l'autre échoue, rien n'est
-     affiché comme publié et le brouillon reste ouvert. */
+  /* LE COMPTE EST DEMANDÉ ICI, ET SEULEMENT ICI.
+
+     Pas à l'ouverture d'Autour, pas à l'ouverture du formulaire : au moment
+     d'appuyer sur Publier, quand la demande a enfin une raison qu'on peut
+     écrire — « pour pouvoir modifier ou supprimer cet événement plus tard ».
+
+     Le brouillon n'est pas perdu pendant ce détour : il reste en mémoire, et
+     `REPRISES` rappelle `publier()` dès que la session existe. Renvoyer
+     quelqu'un à l'accueil avec un formulaire à refaire est le meilleur moyen
+     de lui faire abandonner. */
+  if(!(await exigerCompte("publier"))) return;
   const identite = await assurerIdentitePublication();
   if(!identite){ toast("Publication annulée"); return; }
   const debut = new Date(b.date+"T"+(b.heure||"00:00")+":00");
@@ -8233,7 +8433,7 @@ function ouvrirResultats(q){
     });
     if(trouves.length){
       pileEcrans = [];
-      pousserEcran(()=>afficherListe("🍽", "« "+q+" »",
+      pousserEcran(()=>afficherListe("🍽️", "« "+q+" »",
         classerLieux(trouves, false), false, ()=>ouvrirResultats(q)));
       return;
     }
@@ -9780,7 +9980,14 @@ function lancerBesoinAide(phrase){
        social. Il vaut mieux dire ce qu'on sait faire — c'est plus court, plus
        honnête, et ça évite un déplacement inutile. */
     besoinsAide = []; sousAide = null; intentionsSanteAide = [];
-    redirectionExplorer = {horsPerimetre:true};
+    /* Mais on ne renvoie pas la personne à un mur. Le routeur d'intentions
+       rend au plus trois lectures possibles de sa phrase — jamais six, un
+       menu long est une façon polie de lui rendre le problème. On les
+       propose, avec leur icône ET leur mot : rien ne dépend du dessin seul. */
+    const ROUTEUR = window.AutourIntentions;
+    const lectures = ROUTEUR ? (ROUTEUR.router(phrase).suggestions || []) : [];
+    redirectionExplorer = {horsPerimetre:true, propositions:lectures.slice(0,3),
+                           requete:phrase};
   }
   chargerAideSiBesoin();
   majFeuille2(); reinitialiserScrollFeuille(); rendre();
@@ -9889,8 +10096,20 @@ function ecranRedirectionExplorer(){
      laisse deux portes ouvertes : reformuler, ou aller chercher dans Explorer. */
   if(r.horsPerimetre){
     const domaines = (AIDE && AIDE.PERIMETRE) || [];
+    /* Les lectures possibles avant la liste des domaines : on demande d'abord
+       « c'était plutôt ça ? », on n'explique qu'ensuite ce qu'Aide sait faire.
+       Chaque proposition porte son icône ET son mot — jamais l'un sans
+       l'autre, sinon le sens dépend de la reconnaissance d'un dessin. */
+    const props = (r.propositions || []).slice(0,3);
+    const choix = props.length
+      ? '<div class="aba-lectures">'+props.map(p=>
+          '<button class="aba-lecture" data-aide-lecture="'+esc(p.id)+'">'+
+            '<span aria-hidden="true">'+esc(p.icone)+'</span> '+esc(p.label)+
+          '</button>').join("")+'</div>'
+      : "";
     return '<section class="ab-ailleurs" data-testid="aide-hors-perimetre">'+
-      '<p class="aba-titre">Je ne sais pas orienter cette demande.</p>'+
+      '<p class="aba-titre">Je ne suis pas sûr d’avoir compris.</p>'+
+      (props.length ? '<p class="aba-sous">C’était plutôt&nbsp;:</p>'+choix : "")+
       '<p class="aba-sous">Aide oriente vers&nbsp;: '+
         esc(domaines.join(", "))+'.</p>'+
       '<button class="aba-cta" data-aide-reformuler="1">Reformuler ma demande</button>'+
@@ -10539,8 +10758,7 @@ function brancherFeuille2(){
   /* La bascule vers Explorer, recherche déjà écrite. Un seul geste : on ne
      dépose pas la personne devant un champ vide en lui laissant retaper ce
      qu'elle vient d'écrire. */
-  corps.querySelectorAll("[data-vers-explorer]").forEach(b=>b.onclick=()=>{
-    const requete = (redirectionExplorer || {}).requete || "";
+  function basculerVersExplorer(requete){
     redirectionExplorer = null;
     if(modeAide) basculerAide();
     // pas de fermeture suivie d'une réouverture : voir la note de l'onglet
@@ -10557,6 +10775,25 @@ function brancherFeuille2(){
       if(champ) champ.value = requete;
       ouvrirResultats(requete);
     }
+  }
+  corps.querySelectorAll("[data-vers-explorer]").forEach(b=>b.onclick=()=>{
+    basculerVersExplorer((redirectionExplorer || {}).requete || "");
+  });
+  /* Une lecture proposée est choisie : un geste, et on est dans le bon écran.
+     « Un lieu près de moi » repasse par Explorer avec la phrase déjà écrite ;
+     tout le reste est un besoin d'Aide qu'on ouvre directement. */
+  corps.querySelectorAll("[data-aide-lecture]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.aideLecture;
+    if(id === "lieu"){
+      basculerVersExplorer((redirectionExplorer || {}).requete || "");
+      return;
+    }
+    redirectionExplorer = null;
+    besoinsAide = (AIDE && AIDE.BESOIN_DE(id)) ? [id] : [];
+    sousAide = besoinsAide[0] || "autre";
+    intentionsSanteAide = [];
+    chargerAideSiBesoin();
+    majFeuille2(); reinitialiserScrollFeuille();
   });
   // reformuler : on revient à la question, champ vide
   corps.querySelectorAll("[data-aide-reformuler]").forEach(b=>b.onclick=()=>{
@@ -11069,7 +11306,7 @@ function appliquerPhrase(phrase){
     const classes = classerLieux(manger, false);
     const trouves = [...classes.filter(correspond), ...classes.filter(l=>!correspond(l))];
     pileEcrans = [];
-    pousserEcran(()=>afficherListe("🍽", "« "+phrase+" »",
+    pousserEcran(()=>afficherListe("🍽️", "« "+phrase+" »",
       trouves, false, ()=>appliquerPhrase(phrase)));
     toast("Compris : "+a.dit.join(" · "));
     return;
@@ -11590,7 +11827,7 @@ function suggerer(q){
   for(const [mot,cible] of INDEX_MOTS){
     if(sug.length >= 6) break;
     if(!mot.startsWith(t) && !mot.includes(t)) continue;
-    const cat = cible.cat, emo = cat ? (CATS[cat]||{}).emoji : "🍽";
+    const cat = cible.cat, emo = cat ? (CATS[cat]||{}).emoji : "🍽️";
     const lab = cat ? (CATS[cat]||{}).label : mot;
     if(vus.has(lab)) continue;
     vus.add(lab);
@@ -12018,10 +12255,248 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
     if(!modeAide) basculerAide(); else { sousAide = null; besoinsAide = []; intentionsSanteAide = []; }
     ouvrirFeuille2("aide"); return;
   }
-  if(id === "creer"){ retourFormulaire=false; ouvrirCreation(); return; }
-  if(id === "favoris"){ ouvrirFavoris(); return; }
-  if(id === "profil"){ ouvrirCanaux(); return; }
+  /* Créer et Favoris demandent un compte — mais SEULEMENT ici, au moment du
+     geste. L'onglet reste visible et cliquable pour tout le monde : le cacher
+     reviendrait à ne pas dire qu'Autour se publie. */
+  if(id === "creer"){
+    retourFormulaire=false;
+    exigerCompte("publier").then(ok=>{ if(ok) ouvrirCreation(); });
+    return;
+  }
+  if(id === "favoris"){
+    exigerCompte("favori").then(ok=>{ if(ok) ouvrirFavoris(); });
+    return;
+  }
+  if(id === "profil"){ ouvrirProfil(); return; }
 });
+
+/* Ce qui reprend après une connexion. Chaque entrée est le geste exact qui a
+   déclenché la demande de compte, rejoué à l'identique : on ne dépose personne
+   sur l'accueil avec « c'est bon, recommencez ». */
+enregistrerReprise("publier", ()=>{
+  /* Le brouillon est encore en mémoire : on relance la publication elle-même.
+     S'il a été abandonné entre-temps, on rouvre au moins le formulaire plutôt
+     que de publier un brouillon vide. */
+  if(brouillon && brouillon.titre) return publier();
+  ouvrirCreation();
+});
+
+enregistrerReprise("favori", async(charge)=>{
+  const cle = charge && charge.cle;
+  if(!cle) return ouvrirFavoris();
+  const lieu = lieux.find(x=>cleFavori(x) === cle) || favorisEnMemoire.get(cle);
+  if(lieu) return basculerFavori(lieu);
+  return ouvrirFavoris();
+});
+
+enregistrerReprise("mes-publications", ()=>ouvrirMesPublications());
+enregistrerReprise("notifications", ()=>ouvrirProfil());
+enregistrerReprise("compte", ()=>ouvrirProfil());
+enregistrerReprise("modifier", (charge)=>{
+  const l = charge && charge.dbId && lieux.find(x=>x.dbId === charge.dbId);
+  if(l){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); }
+});
+enregistrerReprise("supprimer", (charge)=>{
+  const l = charge && charge.dbId && lieux.find(x=>x.dbId === charge.dbId);
+  if(l){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); }
+});
+
+/* ==================================================================== */
+/*  L'écran de compte : une adresse, et on reprend où on en était        */
+/* ==================================================================== */
+/* Il n'apparaît jamais tout seul. Il est toujours la réponse à un geste qu'on
+   vient de faire — publier, mettre en favori — et son titre le dit avec les
+   mots de CE geste-là. « Connectez-vous pour continuer » n'explique rien :
+   c'est une porte, pas une raison. */
+let compteEnCours = { action:"compte", email:"", typeOtp:"email", envoye:false };
+
+function ouvrirEcranCompte(action){
+  compteEnCours = { action:action || "compte", email:compteEnCours.email || "",
+                    typeOtp:"email", envoye:false };
+  rendreEcranCompte();
+}
+
+function rendreEcranCompte(erreur){
+  const inv = COMPTES ? COMPTES.invitation(compteEnCours.action) : {titre:"Ton compte", texte:"", bouton:"Continuer"};
+  const e = compteEnCours;
+  const message = erreur ? '<p class="cpt-err" role="alert">'+esc(erreur)+'</p>' : "";
+
+  const etape = e.envoye
+    ? '<p class="cpt-envoye">Lien envoyé à <strong>'+esc(e.email)+'</strong>.<br>'+
+        'Ouvre-le depuis ce téléphone — tu reviendras exactement ici.</p>'+
+      '<label class="cpt-lab" for="cptCode">Ou tape le code reçu</label>'+
+      '<input class="cpt-champ" id="cptCode" type="text" inputmode="numeric" '+
+        'autocomplete="one-time-code" maxlength="6" placeholder="123456">'+
+      '<button class="cpt-cta" id="cptValider">Valider</button>'+
+      '<button class="cpt-lien" id="cptAutre">Changer d’adresse</button>'
+    : '<label class="cpt-lab" for="cptEmail">Adresse e-mail</label>'+
+      '<input class="cpt-champ" id="cptEmail" type="email" inputmode="email" '+
+        'autocomplete="email" placeholder="toi@exemple.fr" value="'+esc(e.email)+'">'+
+      '<button class="cpt-cta" id="cptEnvoyer">'+esc(inv.bouton)+'</button>';
+
+  ouvrirFeuille(
+    '<section class="cpt" data-testid="ecran-compte" data-action="'+esc(e.action)+'">'+
+      '<h2 class="cpt-titre">'+esc(inv.titre)+'</h2>'+
+      '<p class="cpt-sous">'+esc(inv.texte)+'</p>'+
+      message+etape+
+      '<p class="cpt-note">Pas de mot de passe, pas de nom à donner. '+
+        'Ton adresse reste privée : elle n’apparaît nulle part sur Autour.</p>'+
+    '</section>', {ariaLabel:"Compte Autour"});
+
+  const champ = $("#cptEmail");
+  if(champ) champ.oninput = ()=>{ compteEnCours.email = champ.value; };
+
+  const envoyer = $("#cptEnvoyer");
+  if(envoyer) envoyer.onclick = async()=>{
+    envoyer.disabled = true;
+    envoyer.textContent = "Envoi…";
+    const r = await envoyerLienCompte(compteEnCours.email);
+    if(!r.ok){ rendreEcranCompte(r.message); return; }
+    compteEnCours.envoye = true;
+    compteEnCours.typeOtp = r.typeOtp;
+    rendreEcranCompte();
+  };
+
+  const valider = $("#cptValider");
+  if(valider) valider.onclick = async()=>{
+    const code = ($("#cptCode") || {}).value || "";
+    valider.disabled = true;
+    const r = await verifierCodeCompte(compteEnCours.email, code, compteEnCours.typeOtp);
+    if(!r.ok){ rendreEcranCompte(r.message); return; }
+    fermerFeuille();
+    await chargerProfil();
+    await chargerFavoris();
+    rafraichirCanaux();
+    /* La reprise est branchée sur `onAuthStateChange` : elle a donc déjà lieu
+       pour le lien reçu par e-mail comme pour le code tapé ici. On ne la
+       rejoue pas une seconde fois — ce serait publier deux fois. */
+  };
+
+  const autre = $("#cptAutre");
+  if(autre) autre.onclick = ()=>{ compteEnCours.envoye = false; rendreEcranCompte(); };
+}
+
+/* ==================================================================== */
+/*  Profil                                                               */
+/* ==================================================================== */
+/* Sans compte, cet écran ne dit pas « connectez-vous » : il montre ce qu'un
+   compte apporterait. C'est la même règle que partout ailleurs — la valeur
+   d'abord, la demande ensuite. */
+async function ouvrirProfil(){
+  if(!estConnecte()){
+    ouvrirFeuille(
+      '<section class="cpt" data-testid="profil-visiteur">'+
+        '<h2 class="cpt-titre">Ton compte</h2>'+
+        '<p class="cpt-sous">Tu peux explorer, chercher et demander de l’aide '+
+          'sans compte. Un compte sert à garder ce qui t’appartient&nbsp;:</p>'+
+        '<ul class="cpt-liste">'+
+          '<li>📍 publier un événement, et le modifier ensuite</li>'+
+          '<li>♡ retrouver tes favoris sur n’importe quel téléphone</li>'+
+          '<li>🔔 être prévenu des annonces des événements que tu suis</li>'+
+        '</ul>'+
+        '<button class="cpt-cta" id="profilConnexion">Continuer avec mon e-mail</button>'+
+      '</section>', {ariaLabel:"Profil"});
+    const b = $("#profilConnexion");
+    if(b) b.onclick = ()=>ouvrirEcranCompte("compte");
+    return;
+  }
+
+  if(!monProfil) await chargerProfil();
+  const pseudo = (monProfil && monProfil.display_name) || "";
+  const notifs = !monProfil || monProfil.notifications !== false;
+
+  ouvrirFeuille(
+    '<section class="cpt" data-testid="profil">'+
+      '<h2 class="cpt-titre">Profil</h2>'+
+
+      '<label class="cpt-lab" for="profPseudo">Pseudo <i>facultatif, public</i></label>'+
+      '<input class="cpt-champ" id="profPseudo" type="text" maxlength="30" '+
+        'placeholder="Comme tu veux qu’on t’appelle" value="'+esc(pseudo)+'">'+
+      '<button class="cpt-lien" id="profPseudoOk">Enregistrer le pseudo</button>'+
+
+      /* L'adresse s'affiche ici, sur son propre écran, et nulle part ailleurs :
+         ni sur une publication, ni dans un canal, ni dans une liste. */
+      '<p class="cpt-lab">Adresse e-mail <i>privée</i></p>'+
+      '<p class="cpt-valeur" data-testid="profil-email">'+esc(monEmail())+'</p>'+
+
+      '<div class="cpt-actions">'+
+        '<button class="ac-item" data-profil="publications">'+
+          '<span class="ac-emoji">📍</span><span class="ac-txt">'+
+          '<span class="ac-nom">Mes publications</span></span></button>'+
+        '<button class="ac-item" data-profil="favoris">'+
+          '<span class="ac-emoji">♡</span><span class="ac-txt">'+
+          '<span class="ac-nom">Mes favoris</span></span></button>'+
+        '<button class="ac-item" data-profil="evenements">'+
+          '<span class="ac-emoji">📣</span><span class="ac-txt">'+
+          '<span class="ac-nom">Mes événements</span></span></button>'+
+      '</div>'+
+
+      '<label class="cpt-bascule">'+
+        '<input type="checkbox" id="profNotifs"'+(notifs?" checked":"")+'>'+
+        '<span>Notifications&nbsp;— être prévenu des annonces</span>'+
+      '</label>'+
+
+      '<button class="cpt-lien cpt-sortie" id="profDeconnexion">Se déconnecter</button>'+
+    '</section>', {ariaLabel:"Profil"});
+
+  const ok = $("#profPseudoOk");
+  if(ok) ok.onclick = async()=>{
+    const v = String(($("#profPseudo")||{}).value || "").trim().slice(0,30);
+    const enregistre = await enregistrerProfilCompte({display_name: v || null});
+    toast(enregistre ? "Pseudo enregistré" : "Pseudo non enregistré");
+    if(enregistre) reconstruireLieux();
+  };
+
+  const bascule = $("#profNotifs");
+  if(bascule) bascule.onchange = async()=>{
+    const ok2 = await enregistrerProfilCompte({notifications: !!bascule.checked});
+    if(!ok2){ bascule.checked = !bascule.checked; toast("Préférence non enregistrée"); }
+  };
+
+  $("#feuille").querySelectorAll("[data-profil]").forEach(b=>b.onclick=()=>{
+    const quoi = b.dataset.profil;
+    if(quoi === "favoris") return ouvrirFavoris();
+    if(quoi === "evenements") return ouvrirCanaux();
+    return ouvrirMesPublications();
+  });
+
+  const sortie = $("#profDeconnexion");
+  if(sortie) sortie.onclick = async()=>{ await seDeconnecter(); ouvrirProfil(); };
+}
+
+/* Mes publications : la clause de propriété est écrite en base (`created_by =
+   auth.uid()`), pas ici. Le client demande « les miennes » et le serveur
+   décide ce que ça veut dire — c'est la seule façon que ça reste vrai. */
+async function ouvrirMesPublications(){
+  if(!(await exigerCompte("mes-publications"))) return;
+  let lignes = [];
+  if(sb){
+    const { data, error } = await sb.rpc("mes_publications");
+    if(error) console.error("Mes publications :", error.message);
+    lignes = data || [];
+  }
+  const corps = lignes.length
+    ? lignes.map(p=>{
+        const c = CATS[p.cat] || {emoji:"📍"};
+        return '<button class="ac-item" data-mienne="'+esc(p.id)+'">'+
+          '<span class="ac-emoji">'+c.emoji+'</span>'+
+          '<span class="ac-txt"><span class="ac-nom">'+esc(p.titre || "Sans titre")+
+            (p.status === "cancelled" ? ' <i class="ferme">annulé</i>' : '')+'</span>'+
+          '<span class="ac-sous">'+esc(p.adresse || "")+'</span></span></button>';
+      }).join("")
+    : '<p class="liste-vide">Tu n’as rien publié pour l’instant.</p>';
+
+  ouvrirFeuille(
+    '<div class="liste-tete"><h2>📍 Mes publications</h2>'+
+    '<span class="liste-compte">'+lignes.length+'</span></div>'+corps,
+    {ariaLabel:"Mes publications"});
+
+  $("#feuille").querySelectorAll("[data-mienne]").forEach(b=>b.onclick=()=>{
+    const l = lieux.find(x=>x.dbId === b.dataset.mienne);
+    if(l){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); }
+    else toast("Cet événement n\u2019est plus chargé sur la carte");
+  });
+}
 
 /* Ce que j'ai enregistré. L'instantané stocké permet d'afficher un favori même
    si son lieu n'est pas chargé dans la zone courante. */
