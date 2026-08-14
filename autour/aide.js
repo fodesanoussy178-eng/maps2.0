@@ -29,7 +29,7 @@
   /* ---- Les besoins, dans les mots de tout le monde ------------------------ */
   const BESOINS = Object.freeze([
     {
-      id: "manger", emoji: "🍲", label: "Manger",
+      id: "manger", emoji: "🍽️", label: "Manger",
       mots: ["manger", "faim", "plus assez pour manger", "rien a manger",
              "alimentaire", "nourriture", "repas", "frigo vide", "courses",
              "de quoi manger", "colis", "distribution", "soupe", "cantine",
@@ -154,7 +154,7 @@
       pourquoi: "Tu cherches des vêtements.",
     },
     {
-      id: "parler", emoji: "🧠", label: "Parler à quelqu’un",
+      id: "parler", emoji: "💬", label: "Parler à quelqu’un",
       mots: ["parler", "parler a quelqu un", "ecoute", "seul", "solitude",
              "isole", "isolement", "mal dans ma tete", "deprime", "depression",
              "anxiete", "angoisse", "ca va pas", "moral", "psy", "psychologue",
@@ -180,7 +180,7 @@
       pourquoi: "Tu cherches de l’aide pour ta famille.",
     },
     {
-      id: "securite", emoji: "🛡", label: "Sécurité",
+      id: "securite", emoji: "🛡️", label: "Sécurité",
       mots: ["violence", "violences", "frappe", "menace", "menacee", "peur",
              "harcelement", "harcele", "danger", "agression", "agressee",
              "agresse",
@@ -538,11 +538,15 @@
 /* Ce vers quoi Aide sait réellement orienter. Écrit ici plutôt que dans
    l'interface : c'est une propriété du modèle, et l'écran qui l'affiche doit
    la lire, pas la recopier — deux listes finissent toujours par différer. */
+  /* Écrit dans les mots de tout le monde, et dans ceux de la grille juste
+     au-dessus. « Emploi et insertion », « urgence sociale », « accompagnement
+     des jeunes » sont les mots des institutions, pas ceux de quelqu'un qui
+     cherche du travail ou un endroit où dormir : cette liste s'affiche à
+     l'écran, elle doit se lire sans traduction. */
   const PERIMETRE = Object.freeze([
-    "logement", "alimentation", "démarches administratives",
-    "santé et accès aux soins", "emploi et insertion", "se déplacer",
-    "violences et urgence sociale", "isolement", "accompagnement des jeunes",
-    "structures locales",
+    "manger", "se loger", "travail et argent", "papiers et démarches",
+    "santé", "études et jeunes", "parler à quelqu’un", "famille",
+    "sécurité et violences", "se déplacer", "hygiène", "vêtements",
   ]);
 
   /* ===================================================================
@@ -665,6 +669,33 @@
 
     // une urgence ferme la question tout de suite
     if (estUrgent(phrase)) return { domaine: "aide", raison: "urgence" };
+
+    /* LE ROUTEUR D'INTENTIONS A LE DERNIER MOT QUAND IL DIT « EXPLORER ».
+
+       Ce champ ne connaissait que les mots d'Aide, et il les reconnaissait
+       partout : « je cherche une pharmacie » contient « pharmacie », donc
+       c'était un besoin de santé, donc on restait dans Aide. « Un bon kebab
+       près de moi » ne ressemblait à rien de connu, donc on restait dans Aide
+       aussi, par défaut. Dans les deux cas la personne cherchait un lieu.
+
+       `intentions.js` lit la phrase entière au lieu de ses mots. On ne lui
+       délègue que le basculement vers Explorer, et seulement quand il est sûr
+       de lui : dire « aide » reste le défaut, et tout le reste du champ —
+       besoins, poids, pertinence — ne change pas. */
+    const routeur = root.AutourIntentions;
+    if (routeur) {
+      const r = routeur.router(phrase);
+      if (routeur.mondeDe(r) === "explorer" && r.confidence >= routeur.SEUIL_CONFIANCE) {
+        return {
+          domaine: "explorer",
+          raison: r.intent === "mobility_problem" ? "reparation"
+            : r.intent === "local_service" ? "service" : "lieu",
+          objet: r.category || null,
+          requete: r.requete || phrase,
+          libelle: r.libelle || null,
+        };
+      }
+    }
 
     // une panne : il faut ET un objet nommé ET un signe de panne
     const objet = trouverDans(t, OBJETS_REPARABLES);

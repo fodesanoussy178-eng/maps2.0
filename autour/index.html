@@ -474,6 +474,14 @@ input{font-family:inherit;font-size:16px}
 .aba-rester{width:100%;min-height:44px;margin-top:8px;padding:10px 16px;
   border:1px solid var(--bord);border-radius:12px;background:#fff;
   font-size:13.5px;font-weight:600;color:var(--ink2)}
+/* Les lectures possibles d'une phrase mal comprise. Trois au plus, empilées
+   comme les autres boutons de cet écran : rien de nouveau à apprendre, et
+   surtout aucune couleur qui porterait un sens à elle seule. */
+.aba-lectures{display:flex;flex-direction:column;gap:8px;margin:0 0 16px}
+.aba-lecture{width:100%;min-height:48px;padding:12px 14px;text-align:left;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:14.5px;font-weight:650;color:var(--ink)}
+.aba-lecture span{margin-right:8px;font-size:16px}
 
 .as-tete{padding:2px 0 10px}
 .as-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em}
@@ -1689,7 +1697,8 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="availability.js?v=fefb49c1"></script>
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
-<script src="aide.js?v=572ddfad"></script>
+<script src="intentions.js?v=39e671d2"></script>
+<script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
 <script src="explications.js?v=ea344e6e"></script>
@@ -2449,21 +2458,21 @@ const CATS = {
   concert:  {label:"Concerts",    emoji:"🎵", eph:false},
   marche:   {label:"Marchés",     emoji:"🧺", eph:false},
   friperie: {label:"Friperies",   emoji:"👕", eph:false},
-  commerce: {label:"Commerces",   emoji:"🛍", eph:false},
+  commerce: {label:"Commerces",   emoji:"🛍️", eph:false},
 
   alimentaire:{label:"Aide alimentaire", emoji:"🥫", eph:false},
   asso:       {label:"Associations",     emoji:"🤝", eph:false},
   hebergement:{label:"Hébergement",      emoji:"🏠", eph:false},
-  sante:      {label:"Santé",            emoji:"🏥", eph:false},
-  emploi:     {label:"Emploi & droits",  emoji:"📋", eph:false},
+  sante:      {label:"Santé",            emoji:"🩺", eph:false},
+  emploi:     {label:"Emploi & droits",  emoji:"💼", eph:false},
 
   biblio:   {label:"Bibliothèques", emoji:"📚", eph:false},
   coworking:{label:"Espaces de travail", emoji:"💻", eph:false},
-  musee:    {label:"Musées",        emoji:"🏛", eph:false},
+  musee:    {label:"Musées",        emoji:"🖼️", eph:false},
   parc:     {label:"Parcs",         emoji:"🌳", eph:false},
   terrain:  {label:"Terrains",      emoji:"🏀", eph:false},
   ecole:    {label:"Écoles",        emoji:"🎓", eph:false},
-  mairie:   {label:"Services",      emoji:"🏛", eph:false},
+  mairie:   {label:"Services",      emoji:"🏛️", eph:false},
   velo:     {label:"Stations vélo", emoji:"🚲", eph:false},
   metro:    {label:"Métro",         emoji:"🚇", eph:false},
   // « Bus & tram » mélangeait deux réseaux distincts : chercher un tram
@@ -8233,7 +8242,7 @@ function ouvrirResultats(q){
     });
     if(trouves.length){
       pileEcrans = [];
-      pousserEcran(()=>afficherListe("🍽", "« "+q+" »",
+      pousserEcran(()=>afficherListe("🍽️", "« "+q+" »",
         classerLieux(trouves, false), false, ()=>ouvrirResultats(q)));
       return;
     }
@@ -9780,7 +9789,14 @@ function lancerBesoinAide(phrase){
        social. Il vaut mieux dire ce qu'on sait faire — c'est plus court, plus
        honnête, et ça évite un déplacement inutile. */
     besoinsAide = []; sousAide = null; intentionsSanteAide = [];
-    redirectionExplorer = {horsPerimetre:true};
+    /* Mais on ne renvoie pas la personne à un mur. Le routeur d'intentions
+       rend au plus trois lectures possibles de sa phrase — jamais six, un
+       menu long est une façon polie de lui rendre le problème. On les
+       propose, avec leur icône ET leur mot : rien ne dépend du dessin seul. */
+    const ROUTEUR = window.AutourIntentions;
+    const lectures = ROUTEUR ? (ROUTEUR.router(phrase).suggestions || []) : [];
+    redirectionExplorer = {horsPerimetre:true, propositions:lectures.slice(0,3),
+                           requete:phrase};
   }
   chargerAideSiBesoin();
   majFeuille2(); reinitialiserScrollFeuille(); rendre();
@@ -9889,8 +9905,20 @@ function ecranRedirectionExplorer(){
      laisse deux portes ouvertes : reformuler, ou aller chercher dans Explorer. */
   if(r.horsPerimetre){
     const domaines = (AIDE && AIDE.PERIMETRE) || [];
+    /* Les lectures possibles avant la liste des domaines : on demande d'abord
+       « c'était plutôt ça ? », on n'explique qu'ensuite ce qu'Aide sait faire.
+       Chaque proposition porte son icône ET son mot — jamais l'un sans
+       l'autre, sinon le sens dépend de la reconnaissance d'un dessin. */
+    const props = (r.propositions || []).slice(0,3);
+    const choix = props.length
+      ? '<div class="aba-lectures">'+props.map(p=>
+          '<button class="aba-lecture" data-aide-lecture="'+esc(p.id)+'">'+
+            '<span aria-hidden="true">'+esc(p.icone)+'</span> '+esc(p.label)+
+          '</button>').join("")+'</div>'
+      : "";
     return '<section class="ab-ailleurs" data-testid="aide-hors-perimetre">'+
-      '<p class="aba-titre">Je ne sais pas orienter cette demande.</p>'+
+      '<p class="aba-titre">Je ne suis pas sûr d’avoir compris.</p>'+
+      (props.length ? '<p class="aba-sous">C’était plutôt&nbsp;:</p>'+choix : "")+
       '<p class="aba-sous">Aide oriente vers&nbsp;: '+
         esc(domaines.join(", "))+'.</p>'+
       '<button class="aba-cta" data-aide-reformuler="1">Reformuler ma demande</button>'+
@@ -10539,8 +10567,7 @@ function brancherFeuille2(){
   /* La bascule vers Explorer, recherche déjà écrite. Un seul geste : on ne
      dépose pas la personne devant un champ vide en lui laissant retaper ce
      qu'elle vient d'écrire. */
-  corps.querySelectorAll("[data-vers-explorer]").forEach(b=>b.onclick=()=>{
-    const requete = (redirectionExplorer || {}).requete || "";
+  function basculerVersExplorer(requete){
     redirectionExplorer = null;
     if(modeAide) basculerAide();
     // pas de fermeture suivie d'une réouverture : voir la note de l'onglet
@@ -10557,6 +10584,25 @@ function brancherFeuille2(){
       if(champ) champ.value = requete;
       ouvrirResultats(requete);
     }
+  }
+  corps.querySelectorAll("[data-vers-explorer]").forEach(b=>b.onclick=()=>{
+    basculerVersExplorer((redirectionExplorer || {}).requete || "");
+  });
+  /* Une lecture proposée est choisie : un geste, et on est dans le bon écran.
+     « Un lieu près de moi » repasse par Explorer avec la phrase déjà écrite ;
+     tout le reste est un besoin d'Aide qu'on ouvre directement. */
+  corps.querySelectorAll("[data-aide-lecture]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.aideLecture;
+    if(id === "lieu"){
+      basculerVersExplorer((redirectionExplorer || {}).requete || "");
+      return;
+    }
+    redirectionExplorer = null;
+    besoinsAide = (AIDE && AIDE.BESOIN_DE(id)) ? [id] : [];
+    sousAide = besoinsAide[0] || "autre";
+    intentionsSanteAide = [];
+    chargerAideSiBesoin();
+    majFeuille2(); reinitialiserScrollFeuille();
   });
   // reformuler : on revient à la question, champ vide
   corps.querySelectorAll("[data-aide-reformuler]").forEach(b=>b.onclick=()=>{
@@ -11069,7 +11115,7 @@ function appliquerPhrase(phrase){
     const classes = classerLieux(manger, false);
     const trouves = [...classes.filter(correspond), ...classes.filter(l=>!correspond(l))];
     pileEcrans = [];
-    pousserEcran(()=>afficherListe("🍽", "« "+phrase+" »",
+    pousserEcran(()=>afficherListe("🍽️", "« "+phrase+" »",
       trouves, false, ()=>appliquerPhrase(phrase)));
     toast("Compris : "+a.dit.join(" · "));
     return;
@@ -11590,7 +11636,7 @@ function suggerer(q){
   for(const [mot,cible] of INDEX_MOTS){
     if(sug.length >= 6) break;
     if(!mot.startsWith(t) && !mot.includes(t)) continue;
-    const cat = cible.cat, emo = cat ? (CATS[cat]||{}).emoji : "🍽";
+    const cat = cible.cat, emo = cat ? (CATS[cat]||{}).emoji : "🍽️";
     const lab = cat ? (CATS[cat]||{}).label : mot;
     if(vus.has(lab)) continue;
     vus.add(lab);

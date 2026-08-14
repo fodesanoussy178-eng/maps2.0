@@ -100,8 +100,13 @@ test("une phrase hors Aide ouvre la porte d'Explorer au lieu des structures", ()
 });
 
 test("la bascule vers Explorer arrive avec la recherche déjà écrite", () => {
-  const bloc = /corps\.querySelectorAll\("\[data-vers-explorer\]"\)[\s\S]*?\}\);/.exec(html);
+  /* Le corps de la bascule est une fonction nommée depuis qu'une lecture
+     proposée (« un lieu près de moi ») peut la déclencher elle aussi : deux
+     chemins vers Explorer, un seul code. */
+  const bloc = /function basculerVersExplorer\(requete\)\{[\s\S]*?\n  \}/.exec(html);
   assert.ok(bloc, "le gestionnaire de bascule doit exister");
+  assert.match(html, /corps\.querySelectorAll\("\[data-vers-explorer\]"\)/,
+    "le bouton de redirection doit appeler la bascule");
   assert.match(bloc[0], /ouvrirResultats\(requete\)/,
     "on ne dépose pas la personne devant un champ vide");
   assert.match(bloc[0], /champ\.value = requete/);
@@ -429,12 +434,22 @@ test("le périmètre d'Aide est déclaré dans le modèle, pas dans l'écran", (
 });
 
 test("hors périmètre, Autour le dit au lieu de proposer des structures au hasard", () => {
-  assert.match(html, /redirectionExplorer = \{horsPerimetre:true\};/);
-  assert.match(html, /Je ne sais pas orienter cette demande\./);
+  assert.match(html, /redirectionExplorer = \{horsPerimetre:true, propositions:/);
+  assert.match(html, /Je ne suis pas sûr d’avoir compris\./);
   assert.match(html, /data-testid="aide-hors-perimetre"/);
   // deux portes restent ouvertes, aucune n'est imposée
   assert.match(html, /data-aide-reformuler/);
   assert.match(html, /data-aide-general/);
+});
+
+test("une phrase mal comprise reçoit au plus trois lectures, jamais un menu", () => {
+  // les lectures viennent du routeur, pas d'une liste recopiée dans la page
+  assert.match(html, /ROUTEUR\.router\(phrase\)\.suggestions/);
+  assert.match(html, /lectures\.slice\(0,3\)/, "trois au plus, jamais six");
+  assert.match(html, /\(r\.propositions \|\| \[\]\)\.slice\(0,3\)/);
+  // icône ET mot : aucune proposition ne repose sur le seul dessin
+  assert.match(html, /esc\(p\.icone\)[\s\S]{0,40}esc\(p\.label\)/);
+  assert.match(html, /data-aide-lecture/);
 });
 
 /* ======================================================================== */

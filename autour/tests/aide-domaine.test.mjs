@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import "../comprendre.js";
+import "../intentions.js";
 import "../aide.js";
 
 const AIDE = globalThis.AutourAide;
