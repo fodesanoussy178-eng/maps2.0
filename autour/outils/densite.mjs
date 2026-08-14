@@ -177,11 +177,24 @@ const mesurer = () => {
     b.r.left < -2 || b.r.top < -2 || b.r.right > vue.w + 2 || b.r.bottom > vue.h + 2).length;
 
   // sélectionnable : le point au centre de la boîte appartient bien au marqueur
+  /* Un marqueur situé SOUS la feuille du bas n'est pas « non sélectionnable » :
+     il est légitimement recouvert par un panneau que l'utilisateur peut
+     réduire. Les compter faisait remonter cinq faux défauts par scénario, à
+     l'identique — c'est ce qui a trahi l'artefact. On ne teste donc que les
+     marqueurs réellement dans la zone cartographique libre. */
+  const panneaux = ["feuilleBesoins", "ficheCompacte", "navBas"]
+    .map((id) => document.getElementById(id))
+    .filter((e) => e && !e.hidden)
+    .map((e) => e.getBoundingClientRect());
+  const sousUnPanneau = (x, y) => panneaux.some((p) =>
+    x >= p.left && x <= p.right && y >= p.top && y <= p.bottom);
+
   let inselectionnables = 0;
   for (const b of boites) {
     const cx = Math.round((b.r.left + b.r.right) / 2);
     const cy = Math.round((b.r.top + b.r.bottom) / 2);
     if (cx < 0 || cy < 0 || cx > vue.w || cy > vue.h) continue;   // hors écran, compté ailleurs
+    if (sousUnPanneau(cx, cy)) continue;
     const el = document.elementFromPoint(cx, cy);
     if (!el || !el.closest(".leaflet-marker-icon")) inselectionnables++;
   }
@@ -190,6 +203,8 @@ const mesurer = () => {
     marqueurs: boites.length,
     evenements: boites.filter((b) => b.evenement).length,
     grappes: boites.filter((b) => b.grappe).length,
+    piles: document.querySelectorAll(".mk-pile").length,
+    compteurs: [...document.querySelectorAll(".evc-plus")].map((e) => e.textContent),
     illisibles, horsEcran, inselectionnables,
     // priorité visuelle : les événements doivent être au-dessus des commerces
     zEvenementMin: Math.min(...[...document.querySelectorAll(".leaflet-marker-icon")]
@@ -262,7 +277,9 @@ for (const l of lignes) {
   if (pb.length) echecs++;
   console.log(`${pb.length ? "ÉCHEC " : "  ok  "} ${l.nom}`);
   console.log(`         ${z.marqueurs} marqueurs (${z.evenements} événements, ${z.grappes} grappes)` +
-    ` · ${Math.round(l.msParImage)} ms/image · dézoom : ${l.dezoome.marqueurs} marqueurs`);
+    ` · ${Math.round(l.msParImage)} ms/image` +
+    (z.piles ? ` · ${z.piles} pile(s) ${z.compteurs.join(",")}` : "") +
+    ` · dézoom : ${l.dezoome.marqueurs} marqueurs`);
   if (pb.length) console.log("         → " + pb.join(" · "));
 }
 console.log(`\n${lignes.length - echecs}/${lignes.length} scénarios sans défaut`);
