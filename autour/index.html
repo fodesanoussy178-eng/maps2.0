@@ -1729,7 +1729,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
 <script src="intentions.js?v=39e671d2"></script>
-<script src="comptes.js?v=b70981c9"></script>
+<script src="comptes.js?v=9f5e8a5d"></script>
 <script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
@@ -3246,14 +3246,45 @@ async function envoyerLienCompte(email){
   const adresse = COMPTES.normaliserEmail(email);
   if(!COMPTES.emailValide(adresse)) return { ok:false, message:"Cette adresse ne semble pas complète." };
   const plan = COMPTES.manoeuvre(etatCompte);
+
+  /* Ouvrir une session neuve : c'est le cas du visiteur qui n'a jamais rien
+     posé. Rien à conserver, donc rien à rattacher. */
+  const ouvrir = async()=>{
+    const { error } = await sb.auth.signInWithOtp({ email:adresse,
+      options:{ emailRedirectTo: location.origin + location.pathname, shouldCreateUser:true } });
+    if(error) throw error;
+    return { ok:true, typeOtp:"email" };
+  };
+
+  if(plan.methode !== "lier") {
+    try{ return await ouvrir(); }
+    catch(e){ return { ok:false, message: COMPTES.messageErreur(e) }; }
+  }
+
+  /* Rattacher l'adresse à la session anonyme en cours : c'est ce qui conserve
+     l'uid, donc les publications et les favoris déjà posés.
+
+     MAIS ÇA PEUT ÉCHOUER, ET IL FAUT LE PRÉVOIR. Si l'adresse appartient déjà
+     à un autre compte, le rattachement est refusé — deux comptes ne peuvent
+     pas porter la même adresse, et la base le garantit par un index unique.
+     Sans repli, la personne resterait bloquée : elle taperait l'adresse de son
+     propre compte et n'arriverait jamais à s'y connecter.
+
+     On bascule donc sur une ouverture de session normale. Elle retrouve son
+     vrai compte — avec ce qu'il contient — et la session anonyme du moment est
+     abandonnée. C'est le bon arbitrage : ce qu'elle a déjà publié sous son
+     compte vaut plus qu'une session de navigateur. */
   try{
-    const { error } = plan.methode === "lier"
-      ? await sb.auth.updateUser({ email:adresse })
-      : await sb.auth.signInWithOtp({ email:adresse,
-          options:{ emailRedirectTo: location.origin + location.pathname, shouldCreateUser:true } });
+    const { error } = await sb.auth.updateUser({ email:adresse });
     if(error) throw error;
     return { ok:true, typeOtp:plan.typeOtp };
   }catch(e){
+    if(COMPTES.adresseDejaPrise(e)){
+      try{
+        const r = await ouvrir();
+        return Object.assign(r, { bascule:"adresse-deja-prise" });
+      }catch(e2){ return { ok:false, message: COMPTES.messageErreur(e2) }; }
+    }
     return { ok:false, message: COMPTES.messageErreur(e) };
   }
 }

@@ -228,7 +228,11 @@ test("l'application rejoue chaque action mise en attente", () => {
 test("une session anonyme se voit rattacher l'adresse, pas remplacer", () => {
   assert.deepEqual(C.manoeuvre(C.ANONYME), { methode: "lier", typeOtp: "email_change" });
   assert.deepEqual(C.manoeuvre(C.VISITEUR), { methode: "ouvrir", typeOtp: "email" });
-  assert.match(html, /plan\.methode === "lier"[\s\S]{0,120}updateUser\(\{ email:adresse \}\)/);
+  /* Le rattachement est le chemin par DÉFAUT quand une session anonyme
+     existe : on n'ouvre une session neuve que si l'on n'a rien à conserver,
+     ou si le rattachement a été refusé. */
+  assert.match(html, /if\(plan\.methode !== "lier"\)[\s\S]{0,160}return await ouvrir\(\)/);
+  assert.match(html, /updateUser\(\{ email:adresse \}\)/);
   assert.match(html, /signInWithOtp\(\{ email:adresse/);
 });
 
@@ -343,4 +347,133 @@ test("le module de comptes est chargé avant le code qui s'en sert", () => {
   assert.ok(iComptes > 0, "comptes.js doit être chargé par la page");
   assert.ok(iComptes < html.indexOf("const COMPTES = window.AutourComptes"),
     "le module doit précéder sa première lecture");
+});
+
+/* ==========================================================================
+   9. L'ADRESSE DÉJÀ PRISE — LE CAS QUI BLOQUAIT TOUT
+
+   Une session anonyme qui tente de rattacher une adresse appartenant déjà à
+   quelqu'un d'autre se voit refuser le rattachement : deux comptes ne peuvent
+   pas porter la même adresse, et l'index unique d'`auth.users` le garantit.
+
+   Sans repli, la personne taperait l'adresse de SON PROPRE compte et
+   n'arriverait jamais à s'y connecter — le rattachement échouait, et rien
+   d'autre n'était tenté.
+   ======================================================================== */
+
+test("un refus « adresse déjà prise » est reconnu, quelle que soit sa forme", () => {
+  // GoTrue le dit différemment selon sa version et son réglage anti-énumération
+  assert.equal(C.adresseDejaPrise({ code: "email_exists" }), true);
+  assert.equal(C.adresseDejaPrise({ code: "user_already_exists" }), true);
+  assert.equal(C.adresseDejaPrise(
+    { message: "A user with this email address has already been registered" }), true);
+  assert.equal(C.adresseDejaPrise({ message: "Email address already in use" }), true);
+  // et rien d'autre ne doit déclencher la bascule
+  for (const autre of [{ message: "Token has expired or is invalid" },
+                       { message: "For security purposes, you can only request this after 23 seconds" },
+                       { code: "over_email_send_rate_limit" }, {}, null]) {
+    assert.equal(C.adresseDejaPrise(autre), false, JSON.stringify(autre));
+  }
+});
+
+test("Autour bascule vers une ouverture de session au lieu de laisser bloqué", () => {
+  const envoi = html.slice(html.indexOf("async function envoyerLienCompte"),
+                           html.indexOf("async function verifierCodeCompte"));
+  assert.match(envoi, /adresseDejaPrise\(e\)/,
+    "le refus doit être reconnu, pas affiché tel quel");
+  assert.match(envoi, /bascule:"adresse-deja-prise"/);
+  // et la bascule appelle bien l'autre chemin
+  assert.match(envoi, /const ouvrir = async\(\)=>\{[\s\S]{0,300}signInWithOtp/);
+});
+
+/* ==========================================================================
+   10. LA MIGRATION DES ANCIENS COMPTES ANONYMES
+
+   195 sessions anonymes existent en production, dont une avec une
+   publication. Un uid regénéré la rendrait orpheline pour toujours : les
+   policies refusent précisément qu'on réclame une ligne dont on n'est pas le
+   propriétaire.
+   ======================================================================== */
+const migrationAnonyme = lire("supabase/tests/migration_anonyme.sql");
+
+test("le rattachement conserve l'uid, et c'est écrit comme tel", () => {
+  // « lier » pour une session anonyme, « ouvrir » sinon : le choix décide de tout
+  assert.deepEqual(C.manoeuvre(C.ANONYME), { methode: "lier", typeOtp: "email_change" });
+  assert.match(html, /plan\.methode !== "lier"/);
+  assert.match(html, /updateUser\(\{ email:adresse \}\)/);
+});
+
+test("la conservation de l'uid est démontrée en base, pas supposée", () => {
+  for (const cas of ["décor · un anonyme n''a aucune identité",
+                     "conversion · même auth.uid() avant et après",
+                     "conversion · la publication d''avant est conservée",
+                     "conversion · le favori d''avant est conservé",
+                     "conversion · le profil suit le même uid",
+                     "après conversion · il modifie de nouveau SA publication",
+                     "adresse déjà utilisée · deux comptes la partagent"]) {
+    assert.ok(migrationAnonyme.includes(cas), "cas manquant : " + cas);
+  }
+  // la conversion est un UPDATE de la ligne existante, jamais un INSERT
+  assert.match(migrationAnonyme, /update auth\.users\s+set email = email_change/);
+  assert.doesNotMatch(migrationAnonyme,
+    /insert into auth\.users[\s\S]{0,400}email_change/,
+    "la conversion ne doit jamais créer une seconde ligne");
+});
+
+test("un banc réel existe pour ce que le bouchon ne peut pas prouver", () => {
+  const reel = lire("outils/auth-reel.mjs");
+  // les neuf cas demandés
+  for (const cas of ["nouvel utilisateur", "rattachement", "MÊME UID",
+                     "déconnexion puis reconnexion", "un autre navigateur",
+                     "adresse déjà utilisée", "code incorrect",
+                     "code déjà utilisé", "la publication d'un autre",
+                     "ce qu'un visiteur peut lire"]) {
+    assert.ok(reel.includes(cas), "le banc réel doit couvrir : " + cas);
+  }
+  // il interroge la configuration réelle du service, il ne la suppose pas
+  assert.match(reel, /auth\/v1\/settings/);
+  assert.match(reel, /external_anonymous_users_enabled/);
+  assert.match(reel, /mailer_autoconfirm/);
+  // et il dit franchement qu'il n'a pas tourné dans le bac à sable
+  assert.match(reel, /ne peut pas y tourner/);
+});
+
+/* ==========================================================================
+   11. AUCUN COMPTE FANTÔME
+
+   Explorer et Aide doivent tenir avec le seul rôle public. Une session
+   anonyme créée « au cas où » fabrique un utilisateur Supabase par visiteur —
+   195 en production, dont 194 n'ont jamais rien posé.
+   ======================================================================== */
+
+test("aucun chemin du code n'ouvre de session sans qu'on l'ait demandé", () => {
+  assert.doesNotMatch(html, /signInAnonymously/);
+  // les seules ouvertures de session sont dans la fonction d'envoi, appelée
+  // depuis l'écran de compte, lui-même ouvert par `exigerCompte`
+  const appels = [...html.matchAll(/sb\.auth\.(signInWithOtp|updateUser|verifyOtp)/g)];
+  assert.equal(appels.length, 3, "trois appels attendus : " + appels.map((m) => m[1]).join(", "));
+  const envoi = html.slice(html.indexOf("async function envoyerLienCompte"),
+                           html.indexOf("async function seDeconnecter"));
+  for (const m of ["signInWithOtp", "updateUser", "verifyOtp"]) {
+    assert.ok(envoi.includes(m), m + " doit vivre dans le bloc de connexion");
+  }
+});
+
+test("le démarrage ne touche jamais à l'authentification", () => {
+  const debut = html.indexOf("async function connecter");
+  const fin = html.indexOf("/* ==================================================================== */\n/*  Le compte", debut);
+  const connecter = html.slice(debut, fin > 0 ? fin : debut + 2500);
+  assert.doesNotMatch(connecter, /signIn|updateUser|verifyOtp/,
+    "se connecter à Supabase n'est pas se connecter à un compte");
+  // getSession lit ce qui existe déjà, elle ne crée rien
+  assert.match(connecter, /sb\.auth\.getSession\(\)/);
+});
+
+test("la redirection du lien est explicite, jamais laissée au hasard", () => {
+  /* Sans `emailRedirectTo`, GoTrue renvoie sur la Site URL du projet — donc
+     potentiellement sur une ancienne URL de déploiement, et l'action mise en
+     attente est perdue. */
+  assert.match(html, /emailRedirectTo: location\.origin \+ location\.pathname/);
+  const occurrences = (html.match(/emailRedirectTo/g) || []).length;
+  assert.equal(occurrences, 1, "une seule redirection, pour n'en oublier aucune");
 });

@@ -68,30 +68,104 @@ minutes.
 La reprise est branchée sur `onAuthStateChange`, donc valable pour le lien
 comme pour le code tapé sur place.
 
-## Deux réglages qui ne sont pas dans le SQL
+## Ce qui ne vit pas dans le SQL
 
-Ces deux-là se règlent dans le tableau de bord Supabase (`Authentication`), pas
-par migration :
+Six réglages dont dépend la connexion par e-mail vivent dans la configuration
+du service d'authentification, pas dans la base. Aucune migration ne les
+décrit, aucun test SQL ne les atteint. `outils/audit-auth.mjs` les lit et dit
+lesquels corriger :
 
-1. **Le code à six chiffres.** Le champ « code » de l'écran de compte n'est
-   utilisable que si les gabarits d'e-mail (*Magic Link* et *Confirm signup* /
-   *Change Email Address*) contiennent `{{ .Token }}`. Sans lui, seul le lien
-   fonctionne — l'écran reste correct, mais le champ code refusera tout.
+```sh
+export SUPABASE_ACCESS_TOKEN="sbp_…"    # Account › Access Tokens
+node outils/audit-auth.mjs
+```
 
-2. **Les connexions anonymes.** Autour n'en crée plus. L'option
-   *Enable anonymous sign-ins* peut être désactivée ; les 195 sessions anonymes
-   déjà existantes gardent leur uid et retrouveront leurs publications le jour
-   où elles rattachent une adresse.
+### 1 · Manual Linking — ce qu'il gouverne vraiment
+
+Il gouverne `linkIdentity()` / `unlinkIdentity()` : rattacher une identité
+**supplémentaire** (Google, GitHub…) à un compte déjà ouvert.
+
+Autour n'appelle ni l'une ni l'autre. La conversion d'une session anonyme passe
+par `updateUser({ email })`, un autre point d'entrée. Ce réglage ne devrait donc
+rien changer ici — mais c'est `outils/auth-reel.mjs` qui tranche, en appelant
+vraiment le service. **Si le cas « rattacher une adresse à une session anonyme »
+échoue avec « Manual linking is disabled », c'est là qu'il faut agir** :
+
+> Authentication › Sign In / Providers › Auth Providers › **Allow manual linking**
+
+### 2 · Le code à six chiffres
+
+Le champ « code » n'est utilisable que si les gabarits contiennent
+`{{ .Token }}`. Les gabarits **par défaut ne contiennent que le lien** : sans
+modification, le champ est affiché et refuse tout.
+
+> Authentication › Emails › **Magic Link** et **Change Email Address**
+
+Gardez `{{ .ConfirmationURL }}` : le lien reste le chemin principal.
+
+### 3 · Site URL et Redirect URLs
+
+Autour envoie `location.origin + location.pathname` comme redirection. Si cette
+origine n'est pas dans la liste, GoTrue renvoie **silencieusement** sur la Site
+URL — le lien marche, mais atterrit ailleurs et l'action mise en attente est
+perdue. C'est un défaut qu'on ne voit qu'en production.
+
+> Authentication › URL Configuration
+> · **Site URL** : `https://autour.eu`
+> · **Redirect URLs** : `https://autour.eu/**`, plus les URLs de
+>   prévisualisation réellement utilisées — et rien d'autre.
+
+### 4 · SMTP de production
+
+Sans SMTP personnalisé, Supabase utilise son service de démonstration :
+quelques courriers par heure, et **uniquement vers les adresses des membres du
+projet**. Un vrai utilisateur ne recevrait jamais rien, et ne verrait aucune
+erreur — juste un e-mail qui n'arrive pas.
+
+> Authentication › Emails › **SMTP Settings**
+
+Il faut fournir : hôte, port (587 en général), utilisateur, mot de passe,
+adresse d'expéditeur sur le domaine (`bonjour@autour.eu`) et nom d'expéditeur.
+Le domaine doit avoir ses enregistrements SPF, DKIM et DMARC, sinon le courrier
+part en indésirable.
+
+### 5 · Confirmation automatique
+
+`mailer_autoconfirm` confirme les adresses **sans envoyer de courrier**. En
+développement c'est commode ; en production, n'importe qui ouvrirait un compte
+avec l'adresse de quelqu'un d'autre. Doit rester désactivé.
+
+### 6 · Connexions anonymes
+
+Autour n'en crée plus — `outils/comptes.mjs` compte les appels
+d'authentification et vérifie qu'un visiteur reste à zéro. Mais **ne les coupez
+pas avant** d'avoir vu passer « MÊME UID » dans `auth-reel.mjs` : c'est le seul
+chemin qui rende aux 195 anciennes sessions leurs publications.
 
 ## Les bancs d'essai
 
 ```sh
-node --test tests/comptes.test.mjs        # la règle, les mots, l'attente
-AUTOUR_RACINE=autour node outils/comptes.mjs   # les 11 parcours, vrai navigateur
-psql -f supabase/tests/rls_comptes.sql    # la propriété, en base
+node --test tests/comptes.test.mjs             # la règle, les mots, l'attente
+AUTOUR_RACINE=autour node outils/comptes.mjs   # les parcours, vrai navigateur
+psql -f supabase/tests/rls_comptes.sql         # la propriété, en base
+psql -f supabase/tests/migration_anonyme.sql   # la conversion ne perd rien
+node outils/audit-auth.mjs                     # la configuration réelle
+node outils/auth-reel.mjs                      # le VRAI service (hors bac à sable)
 ```
 
-Le banc de navigateur bouchonne `auth` — un lien magique arrive par courrier,
-on ne peut pas l'attendre ici. Il prouve le **produit** : ce qui est demandé,
-quand, et ce qu'on retrouve après. Il ne prouve pas la sécurité, et ne le
-prétend pas : c'est le rôle du script SQL.
+Chacun prouve une chose, et une seule :
+
+| Banc | Prouve | Ne prouve pas |
+|---|---|---|
+| `comptes.test.mjs` | la règle et les mots | rien du réseau |
+| `outils/comptes.mjs` | le produit : ce qui est demandé, quand, ce qu'on retrouve | la sécurité, ni le service |
+| `rls_comptes.sql` | la propriété, contre un client hostile | le comportement de GoTrue |
+| `migration_anonyme.sql` | l'invariant de données : la conversion est un UPDATE | que GoTrue fasse cet UPDATE |
+| `audit-auth.mjs` | la configuration réelle du projet | que le courrier arrive |
+| `auth-reel.mjs` | **le service lui-même**, bout en bout | — |
+
+`outils/comptes.mjs` bouchonne `auth` : un lien magique arrive par courrier, un
+banc automatisé ne peut ni l'attendre ni le lire. C'est pour ça que
+`auth-reel.mjs` existe séparément — et qu'il **doit** tourner depuis une machine
+qui atteint Supabase. Le bac à sable de développement refuse les connexions
+sortantes vers `*.supabase.co` : ce script n'y a jamais tourné.

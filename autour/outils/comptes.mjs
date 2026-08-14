@@ -88,14 +88,28 @@ const FAUX_SDK = `
   let session = null;
   let attenteEmail = null;            // adresse en cours de vérification
   const abonnes = [];
+  /* Compte TOUT ce qui ferait naître un utilisateur côté Supabase. Un visiteur
+     qui explore et demande de l'aide doit laisser ce compteur à zéro : c'est la
+     seule preuve directe qu'aucun compte fantôme n'est créé. */
+  const appels = { signInAnonymously:0, signInWithOtp:0, updateUser:0, verifyOtp:0, signOut:0 };
 
   window.__auth = {
     // ce que le banc regarde
     etat: () => session ? { uid: session.user.id, email: session.user.email || null,
                             anonyme: !!session.user.is_anonymous } : null,
+    appels: () => Object.assign({}, appels),
     publications: () => publications.map(p => ({...p})),
     favoris: () => favoris.map(f => ({...f})),
     // et ce qu'il pilote
+    /* Ce qu'un ancien compte anonyme a laissé derrière lui, du temps où c'était
+       permis. Posé directement dans les tables, sans passer par les règles :
+       c'est de l'HISTORIQUE, pas une écriture qu'on voudrait autoriser. */
+    poserHistorique(uid){
+      publications.push({ id:"pub-histo", titre:"Publication d'avant", cat:"event",
+        lat:50.63, lng:3.06, creator_id:uid, created_by:uid, status:"active" });
+      favoris.push({ id:1, membre:uid, lieu_ref:"osm:histo", titre:"Favori d'avant",
+        lat:50.63, lng:3.06 });
+    },
     seConnecterCommme(email){
       let uid = comptes.get(email);
       if(!uid){ uid = "uid-" + (comptes.size + 1); comptes.set(email, uid); }
@@ -218,14 +232,54 @@ const FAUX_SDK = `
           getSession: ()=> reponse({ session }),
           refreshSession: (s)=> reponse({ session:s }),
           onAuthStateChange(f){ abonnes.push(f); return { data:{ subscription:{ unsubscribe(){} } } }; },
-          signInWithOtp({ email }){ attenteEmail = email; return reponse({}); },
-          updateUser({ email }){ attenteEmail = email; return reponse({}); },
-          verifyOtp({ email, token }){
+          signInAnonymously(){
+            appels.signInAnonymously++;
+            const uid = "anon-" + Date.now();
+            session = { access_token:"t", user:{ id:uid, email:null, is_anonymous:true } };
+            abonnes.forEach(f => f("SIGNED_IN", session));
+            return reponse({ session, user:session.user });
+          },
+          signInWithOtp({ email }){ appels.signInWithOtp++; attenteEmail = email; return reponse({}); },
+          updateUser({ email }){
+            appels.updateUser++;
+            /* Le vrai service refuse une adresse déjà prise. On reproduit ce
+               refus pour vérifier qu'Autour bascule bien vers une ouverture de
+               session normale au lieu de laisser la personne bloquée. */
+            if(comptes.has(email))
+              return reponse(null, { code:"email_exists",
+                message:"A user with this email address has already been registered" });
+            attenteEmail = email; return reponse({});
+          },
+          verifyOtp({ email, token, type }){
+            appels.verifyOtp++;
             if(token !== "123456") return reponse(null, { message:"Token has expired or is invalid" });
-            window.__auth.seConnecterCommme(email || attenteEmail);
+            const adresse = email || attenteEmail;
+
+            /* LE POINT QUE CE BANC EXISTE POUR VÉRIFIER.
+
+               « email_change » convertit la session EN COURS : GoTrue met à
+               jour la ligne auth.users existante, il n'en crée pas une autre.
+               L'uid ne bouge donc pas, et tout ce qui pend à cet uid —
+               publications, favoris, profil — reste attaché à la personne.
+
+               Une première version de ce bouchon appelait toujours
+               seConnecterCommme, qui frappe un uid neuf. Le banc a signalé
+               un uid différent avant et après : le défaut était ici, pas dans
+               Autour. Mais un bouchon infidèle sur CE point précis rendrait le
+               banc entier inutile — c'est la seule chose qu'il doit prouver. */
+            if(type === "email_change" && session){
+              comptes.set(adresse, session.user.id);
+              session = { access_token:"t",
+                          user:{ id:session.user.id, email:adresse, is_anonymous:false } };
+              abonnes.forEach(f => f("SIGNED_IN", session));
+              return reponse({ session, user:session.user });
+            }
+
+            window.__auth.seConnecterCommme(adresse);
             return reponse({ session });
           },
-          signOut(){ session = null; abonnes.forEach(f => f("SIGNED_OUT", null)); return reponse({}); },
+          signOut(){ appels.signOut++; session = null;
+            abonnes.forEach(f => f("SIGNED_OUT", null)); return reponse({}); },
         },
       };
     },
@@ -361,6 +415,144 @@ const navigateur = await chromium.launch({ executablePath: CHROME });
   ok("visiteur → Aide · la demande aboutit sans compte", aide.compte === false, aide.texte);
   ok("visiteur → Aide · une urgence n'est jamais derrière un compte",
      !/e-mail|connecte/i.test(aide.texte), aide.texte);
+
+  /* CE QUE DEMANDE LE POINT 4 : un visiteur qui explore et demande de l'aide
+     ne doit faire naître AUCUN utilisateur Supabase. Le compteur du faux SDK
+     le dit directement, plutôt que de le déduire de l'absence de session. */
+  const appels = await page.evaluate(() => window.__auth.appels());
+  ok("visiteur · aucun appel d'authentification n'a eu lieu",
+     appels.signInAnonymously === 0 && appels.signInWithOtp === 0 &&
+     appels.updateUser === 0 && appels.verifyOtp === 0, JSON.stringify(appels));
+  ok("visiteur · Explorer et Aide tiennent avec le seul rôle public",
+     appels.signInAnonymously === 0,
+     "signInAnonymously appelé " + appels.signInAnonymously + " fois");
+
+  await ctx.close();
+}
+
+/* ---- 1 bis. Le rattachement d'une session anonyme existante -------------- */
+/* Les 195 comptes anonymes de production sont dans cet état-là. Autour n'en
+   crée plus, mais il doit savoir en RÉCUPÉRER un : c'est le seul chemin qui
+   rende à ces gens leurs publications. Le scénario force donc une session
+   anonyme, puis rattache une adresse, et regarde l'uid. */
+{
+  const { ctx, page } = await nouvelOnglet(navigateur, "rattachement");
+
+  const uidAvant = await page.evaluate(async () => {
+    const { data } = await sb.auth.signInAnonymously();
+    appliquerSession(data.session);
+    return data.session.user.id;
+  });
+  ok("ancien anonyme · la session existe", !!uidAvant, String(uidAvant));
+  ok("ancien anonyme · Autour la reconnaît comme « pas un compte »",
+     (await page.evaluate(() => etatCompte)) === "anonyme",
+     await page.evaluate(() => etatCompte));
+
+  // il avait publié et mis en favori du temps où c'était permis
+  await page.evaluate((uid) => {
+    window.__auth.poserHistorique(uid);
+  }, uidAvant);
+
+  /* Le chemin choisi décide de tout : « lier » conserve l'uid, « ouvrir » en
+     créerait un autre et l'ancien deviendrait inaccessible. */
+  const plan = await page.evaluate(() => AutourComptes.manoeuvre(etatCompte));
+  ok("ancien anonyme · Autour choisit de RATTACHER, pas d'ouvrir une session neuve",
+     plan.methode === "lier" && plan.typeOtp === "email_change", JSON.stringify(plan));
+
+  await page.evaluate(() => ouvrirEcranCompte("publier"));
+  await page.waitForTimeout(300);
+  await seConnecter(page, "ancien@example.invalid");
+
+  const apres = await page.evaluate(() => ({
+    etat: window.__auth.etat(),
+    appels: window.__auth.appels(),
+  }));
+  ok("ancien anonyme · MÊME UID après le rattachement",
+     apres.etat && apres.etat.uid === uidAvant,
+     "avant " + uidAvant + " · après " + (apres.etat && apres.etat.uid));
+  ok("ancien anonyme · le compte porte maintenant l'adresse",
+     apres.etat && apres.etat.email === "ancien@example.invalid");
+  ok("ancien anonyme · il n'est plus anonyme", apres.etat && apres.etat.anonyme === false);
+  ok("ancien anonyme · c'est bien updateUser qui a été appelé, pas signInWithOtp",
+     apres.appels.updateUser === 1 && apres.appels.signInWithOtp === 0,
+     JSON.stringify(apres.appels));
+
+  const garde = await page.evaluate(async (uid) => ({
+    publications: window.__auth.publications().filter(p => p.created_by === uid).length,
+    favoris: window.__auth.favoris().filter(f => f.membre === uid).length,
+    miennes: ((await sb.rpc("mes_publications")).data || []).length,
+  }), uidAvant);
+  ok("ancien anonyme · ses publications sont conservées", garde.publications === 1,
+     garde.publications + " publication(s)");
+  ok("ancien anonyme · ses favoris sont conservés", garde.favoris === 1,
+     garde.favoris + " favori(s)");
+  ok("ancien anonyme · « mes publications » les lui rend", garde.miennes === 1);
+
+  await ctx.close();
+}
+
+/* ---- 1 ter. L'adresse appartient déjà à quelqu'un d'autre ---------------- */
+/* Sans repli, la personne taperait l'adresse de son PROPRE compte et
+   n'arriverait jamais à s'y connecter : le rattachement est refusé, et rien
+   d'autre n'était tenté. */
+{
+  const { ctx, page } = await nouvelOnglet(navigateur, "adresse-prise");
+
+  // un compte existe déjà avec cette adresse
+  await page.evaluate(() => window.__auth.seConnecterCommme("occupee@example.invalid"));
+  await page.waitForTimeout(300);
+  const uidLegitime = await page.evaluate(() => window.__auth.etat().uid);
+  await page.evaluate(() => seDeconnecter());
+  await page.waitForTimeout(300);
+
+  // quelqu'un arrive avec une session anonyme et tape cette même adresse
+  await page.evaluate(async () => {
+    const { data } = await sb.auth.signInAnonymously();
+    appliquerSession(data.session);
+  });
+  await page.waitForTimeout(200);
+
+  const envoi = await page.evaluate(() => envoyerLienCompte("occupee@example.invalid"));
+  ok("adresse déjà prise · Autour ne reste pas bloqué", envoi.ok === true,
+     JSON.stringify(envoi));
+  ok("adresse déjà prise · il bascule sur une ouverture de session normale",
+     envoi.bascule === "adresse-deja-prise" && envoi.typeOtp === "email",
+     JSON.stringify(envoi));
+
+  await page.evaluate(() => {
+    compteEnCours = { action:"compte", email:"occupee@example.invalid",
+                      typeOtp:"email", envoye:true };
+    rendreEcranCompte();
+  });
+  await page.waitForTimeout(200);
+  await page.evaluate(() => {
+    document.getElementById("cptCode").value = "123456";
+    document.getElementById("cptValider").click();
+  });
+  await page.waitForTimeout(600);
+  ok("adresse déjà prise · elle retrouve SON compte, celui qui porte l'adresse",
+     (await page.evaluate(() => window.__auth.etat().uid)) === uidLegitime,
+     "attendu " + uidLegitime);
+
+  await ctx.close();
+}
+
+/* ---- 1 quater. Un code incorrect ---------------------------------------- */
+{
+  const { ctx, page } = await nouvelOnglet(navigateur, "code-faux");
+
+  const r = await page.evaluate(() => verifierCodeCompte("qui@example.invalid", "000000", "email"));
+  ok("code incorrect · refusé", r.ok === false, JSON.stringify(r));
+  ok("code incorrect · le message est lisible, pas celui du service",
+     /n’est plus valable|plus valable/i.test(r.message || ""), r.message);
+  ok("code incorrect · aucune session n'est ouverte",
+     (await page.evaluate(() => window.__auth.etat())) === null);
+
+  const court = await page.evaluate(() => verifierCodeCompte("qui@example.invalid", "12", "email"));
+  ok("code trop court · refusé avant même d'appeler le service", court.ok === false,
+     court.message);
+  ok("code trop court · on dit ce qu'on attend",
+     /six chiffres/i.test(court.message || ""), court.message);
 
   await ctx.close();
 }
