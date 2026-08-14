@@ -1769,7 +1769,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="donnees.js?v=c3559619"></script>
 <script src="intentions.js?v=39e671d2"></script>
 <script src="comptes.js?v=9f5e8a5d"></script>
-<script src="maintenant.js?v=3fa189fb"></script>
+<script src="maintenant.js?v=1b39647d"></script>
 <script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
@@ -2197,6 +2197,7 @@ const PERF = {
       document.documentElement.dataset.autourPerf = JSON.stringify({
         temps:this.temps, reseau:this.reseau, rendus:this.rendus,
         erreurs:this.erreurs, demarrageTermine:this.demarrageTermine,
+        cache:this.cache,
       });
     }catch(e){}
   },
@@ -2215,6 +2216,35 @@ const PERF = {
     this.reseau.total += 1;
     this.reseau.parSource[nom] = (this.reseau.parSource[nom] || 0) + 1;
     if(!this.demarrageTermine) this.reseau.demarrage += 1;
+    this.exposer();
+    /* Rendu : de quoi mesurer la DURÉE de cette requête-là. Un compteur dit
+       combien de requêtes sont parties ; il ne dit pas laquelle a coûté deux
+       secondes. Sans ça, « Autour est lent » reste une impression. */
+    const depart = (typeof performance !== "undefined" ? performance.now() : Date.now());
+    return ()=>this.fini(nom, depart);
+  },
+  /* Une source qui dépasse la seconde est nommée. C'est la seule façon de
+     répondre à « qu'est-ce qui est lent ? » par autre chose qu'une hypothèse. */
+  SEUIL_LENT_MS: 1000,
+  fini(source, depart){
+    const ms = Math.round((typeof performance !== "undefined"
+      ? performance.now() : Date.now()) - depart);
+    const c = this.cache;
+    c.durees[source] = Math.max(c.durees[source] || 0, ms);
+    if(ms >= this.SEUIL_LENT_MS && c.lentes.indexOf(source) < 0) c.lentes.push(source);
+    this.exposer();
+    return ms;
+  },
+  /* Le cache : combien de fois on a évité le réseau. Un « hit » n'est pas une
+     statistique de confort — c'est la différence entre un écran utile en
+     trois cents millisecondes et un écran vide pendant deux secondes. */
+  cache: {hits:0, miss:0, parSource:Object.create(null),
+          durees:Object.create(null), lentes:[]},
+  touche(source, trouve){
+    const nom = String(source || "autre");
+    this.cache[trouve ? "hits" : "miss"] += 1;
+    const p = this.cache.parSource[nom] || (this.cache.parSource[nom] = {hits:0, miss:0});
+    p[trouve ? "hits" : "miss"] += 1;
     this.exposer();
   },
   finDemarrage(){ this.demarrageTermine = true; this.exposer(); },
@@ -4784,6 +4814,8 @@ function categorieEnMemoire(cat){ return lieuxDeCategorie(cat).length > 0; }
 
 function fusionner(nouveaux, flux, opts){
   if(!nouveaux || !nouveaux.length) return;
+  // les lieux changent : la mémoire de disponibilité ne vaut plus rien
+  oublierItemsMaintenant();
   const o = opts || {};
   const type = flux || "permanent";
   const source = nouveaux[0] && nouveaux[0].source || type;
@@ -5004,8 +5036,13 @@ const RAPIDE_VOISINAGE = 25;
 async function lieuxDeZone(lat,lng){
   if(zonesDisponibles === false) return null;
   try{
-    PERF.requete("zone_statique");
+    const fini = PERF.requete("zone_statique");
     const r = await fetch("zones/"+cleZoneStatique(lat,lng)+".json");
+    if(fini) fini();
+    /* Une tuile trouvée est un démarrage sans réseau lointain : c'est le hub
+       qui a fait son travail. Une tuile absente n'est pas une panne — elle dit
+       qu'on est hors des zones précalculées, et c'est une information. */
+    PERF.touche("zone_statique", r.ok);
     if(!r.ok){ if(r.status === 404) zonesDisponibles = false; return null; }
     const j = await r.json();
     if(!j || !Array.isArray(j.lieux) || !j.lieux.length) return null;
@@ -5019,22 +5056,27 @@ async function lieuxDeZone(lat,lng){
 }
 
 function lireJeuRapide(lat,lng){
+  /* Chaque sortie de cette fonction est un « miss » : c'est le cache local, la
+     source la plus rapide qui existe, et savoir combien de fois on la manque
+     dit tout de la vitesse ressentie à la deuxième ouverture. */
+  const manque = (raison)=>{ PERF.touche("jeu_rapide", false); return null; };
   try{
     const o = JSON.parse(localStorage.getItem(CLE_RAPIDE) || "null");
-    if(!o || !o.lieux || !o.lieux.length) return null;
+    if(!o || !o.lieux || !o.lieux.length) return manque("vide");
     const lieuxSansGoogle = o.lieux.filter(l=>!estContenuGoogle(l));
     if(lieuxSansGoogle.length !== o.lieux.length){
       o.lieux = lieuxSansGoogle;
       o.choisis = (o.choisis || []).filter(id=>lieuxSansGoogle.some(l=>l.id===id));
       try{ localStorage.setItem(CLE_RAPIDE,JSON.stringify(o)); }catch(e){}
     }
-    if(!o.lieux.length) return null;
-    if(Date.now() - o.t > RAPIDE_HEURES*3600*1000) return null;
+    if(!o.lieux.length) return manque("vide");
+    if(Date.now() - o.t > RAPIDE_HEURES*3600*1000) return manque("perime");
     // le jeu décrit une zone : à l'autre bout de la France il ne décrit rien
     if(lat != null && o.zone &&
-       distanceM(lat,lng,o.zone[0],o.zone[1]) > RAPIDE_RAYON_M) return null;
+       distanceM(lat,lng,o.zone[0],o.zone[1]) > RAPIDE_RAYON_M) return manque("ailleurs");
+    PERF.touche("jeu_rapide", true);
     return o;
-  }catch(e){ return null; }
+  }catch(e){ return manque("illisible"); }
 }
 
 /* Le cache des zones n'était jamais purgé : une entrée par tuile de ~110 m,
@@ -10520,6 +10562,25 @@ function evenementsMaintenant(){
     TEMPS.estMaintenant(statutTemps(l, t).statut));
 }
 
+/* Ce que la ligne dit du TEMPS dépend de ce qu'elle est. Écrire « jusqu'à
+   20:00 » sous un cinéma dont la séance commence à 20:00 dirait exactement le
+   contraire de la vérité. */
+function tempsMaintenant(l){
+  const M = window.AutourMaintenant;
+  if(M && l.nature === M.NATURES.SEANCE && l.debutLe){
+    const dans = Math.round((l.debutLe - Date.now()) / 60000);
+    return dans > 0 ? "commence dans "+dans+" min" : "commence maintenant";
+  }
+  if(M && (l.nature === M.NATURES.OUVERT || l.nature === M.NATURES.ACTIVITE)){
+    /* Pour un lieu, c'est `availability.js` qui écrit l'heure — le même texte
+       que partout ailleurs dans Autour, pas une seconde formulation. */
+    const d = dispoDe(l);
+    if(d && d.closesAtTime) return "ouvert jusqu’à "+d.closesAtTime;
+    return "ouvert";
+  }
+  return l.finLe ? "jusqu’à "+heureLocale(l.finLe, l) : "";
+}
+
 function ligneMaintenant(l){
   const c = CATS[l.cat] || CATS.event;
   /* Regarder Paris depuis Lille affichait « 220 km » sous chaque concert : une
@@ -10527,8 +10588,7 @@ function ligneMaintenant(l){
      lorsqu'on est dans la zone regardée ; sinon le lieu se suffit. */
   const dist = jeSuisDansLaZoneRegardee()
     ? formatDist(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng)) : "";
-  const fin = l.finLe ? heureLocale(l.finLe, l) : "";
-  const bas = [dist, fin ? "jusqu’à "+fin : ""].filter(Boolean).join(" · ");
+  const bas = [dist, tempsMaintenant(l)].filter(Boolean).join(" · ");
   const lieu = l.adresse || l.cp || "";
   return '<button class="mn-l" data-mn="'+esc(l.id)+'">'+
     '<span class="mn-rond" style="background:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
@@ -10544,16 +10604,48 @@ const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
 /* Ce que `maintenant.js` a besoin de savoir d'un lieu, et rien de plus. Le
    statut vient du moteur temporel, qui le tient du backend : on ne le
    recalcule pas ici, on le transmet. */
-function versItemMaintenant(l, t){
+/* Le temps qu'il faut pour y être. Sert à demander à `availability.js` si le
+   lieu sera ENCORE ouvert à l'arrivée — pas seulement s'il l'est maintenant.
+   Une estimation grossière suffit : c'est la marge par type de lieu qui fait
+   le vrai travail (arriver au musée trois minutes avant la fermeture n'est pas
+   une visite). */
+const VITESSE_APPROCHE_M_MIN = 80;          // ~5 km/h, à pied
+function arriveeEstimee(l, t, distance){
+  const d = Number.isFinite(distance) ? distance : null;
+  if(d === null) return null;
+  return t + Math.round(d / VITESSE_APPROCHE_M_MIN) * 60000;
+}
+
+function versItemMaintenant(l, t, ref){
   /* Le verdict temporel est TRANSMIS, jamais recopié sous forme de chaîne :
      c'est `temporel.js` qui connaît le vocabulaire du backend, et lui seul. */
   const statut = statutTemps(l, t).statut;
+  const evenement = estTemporaire(l);
+
+  /* Pour un LIEU, c'est `availability.js` qui fait autorité — et lui seul.
+     Il distingue quatre états là où un booléen n'en distingue que deux :
+     « ouvert », « fermé », « fermé définitivement » et « horaires inconnus ».
+     Confondre le dernier avec le premier envoie quelqu'un devant une porte
+     close ; le confondre avec le deuxième vide le bloc pour rien. */
+  let ouvert = null, ouvertALArrivee = null;
+  if(!evenement){
+    const d = ref && Number.isFinite(l.lat)
+      ? distanceM(ref[0], ref[1], l.lat, l.lng) : null;
+    const dispo = dispoDe(l, arriveeEstimee(l, t, d), t);
+    if(dispo){
+      ouvert = dispo.status === "open" ? true
+             : dispo.status === "unknown" ? null : false;
+      ouvertALArrivee = dispo.isOpenAtArrival;
+    }
+  }
+
   return {
-    id:l.id, estEvenement:estTemporaire(l), annule:!!l.annule,
+    id:l.id, estEvenement:evenement, annule:!!l.annule,
     enCours: TEMPS.estMaintenant(statut),
     dateIncertaine: statut === "unknown",
     debutLe:l.debutLe, finLe:l.finLe, lat:l.lat, lng:l.lng,
     ferme:estFerme(l),
+    categorie:l.cat, ouvert, ouvertALArrivee,
   };
 }
 
@@ -10639,21 +10731,54 @@ function contexteMaintenant(){
 }
 
 /* La sélection elle-même : au plus trois, jamais complétée artificiellement. */
+/* CE QUE COÛTE CETTE FONCTION, ET POURQUOI ELLE SE SOUVIENT.
+
+   `dispoDe` analyse une chaîne `opening_hours` — un petit langage à part
+   entière — pour CHAQUE lieu. Sur un centre-ville dense, cent vingt lieux.
+   `selectionMaintenant` et `totalMaintenant` l'appelaient chacune de leur
+   côté, à chaque rendu : deux cent quarante analyses par image, et le banc a
+   mesuré près de six secondes avant la première proposition.
+
+   Une minute de mémoire suffit à tout régler. Un horaire d'ouverture ne change
+   pas d'une image à l'autre ; il ne change même pas d'une minute à l'autre. La
+   clé porte donc la minute, le nombre de lieux et le point de référence — les
+   trois seules choses dont le résultat dépend. */
+let itemsMemo = {cle:null, items:null};
+function itemsMaintenant(ctx){
+  const ref = ctx.position;
+  const cle = Math.floor(ctx.maintenant / 60000) + "|" + lieux.length + "|" +
+    (ref ? ref[0].toFixed(3) + "," + ref[1].toFixed(3) : "?");
+  if(itemsMemo.cle === cle) return itemsMemo.items;
+  const items = lieux.map(l=>versItemMaintenant(l, ctx.maintenant, ref));
+  itemsMemo = {cle, items};
+  return items;
+}
+
+/* Le nombre de lieux ne change pas toujours quand leur CONTENU change — une
+   fusion peut remplacer un lieu par une meilleure version sans en changer le
+   compte. On oublie donc explicitement à chaque fusion, plutôt que d'espérer
+   que la clé le remarque. */
+function oublierItemsMaintenant(){ itemsMemo = {cle:null, items:null}; }
+
 function selectionMaintenant(){
   const M = window.AutourMaintenant;
   if(!M) return [];
   const ctx = contexteMaintenant();
-  const items = lieux.map(l=>versItemMaintenant(l, ctx.maintenant));
-  const retenus = M.selection(items, ctx);
+  const retenus = M.selection(itemsMaintenant(ctx), ctx);
   const parId = new Map(lieux.map(l=>[l.id, l]));
-  return retenus.map(i=>parId.get(i.id)).filter(Boolean);
+  /* La nature (`event_now`, `open_now`…) voyage avec le lieu : c'est elle qui
+     dira à l'affichage s'il faut écrire « jusqu'à 23 h » ou « séance à 20 h ». */
+  return retenus.map(i=>{
+    const l = parId.get(i.id);
+    return l ? Object.assign({}, l, {nature:i.nature}) : null;
+  }).filter(Boolean);
 }
 
 function totalMaintenant(){
   const M = window.AutourMaintenant;
   if(!M) return 0;
   const ctx = contexteMaintenant();
-  return M.total(lieux.map(l=>versItemMaintenant(l, ctx.maintenant)), ctx);
+  return M.total(itemsMaintenant(ctx), ctx);
 }
 
 /* ==================================================================== */
@@ -10682,6 +10807,16 @@ function blocMaintenantAccueil(){
   const combien = totalMaintenant();
   const ctx = contexteMaintenant();
   const etat = M.etat(Object.assign({resultats:liste.length}, ctx));
+
+  /* CE QU'ON MESURE, ET POURQUOI CES DEUX INSTANTS-LÀ.
+
+     « Autour est lent » ne se corrige pas : ça ne désigne rien. Les deux
+     instants qui comptent pour quelqu'un qui ouvre l'application sont le
+     PREMIER contenu utile — la première chose faisable qu'il voit — et le
+     moment où le bloc est complet. Entre les deux, l'écran est déjà utile :
+     c'est exactement ce qu'on veut, et c'est ce qu'il faut pouvoir prouver. */
+  if(liste.length >= 1) PERF.jalon("maintenant_premier");
+  if(liste.length >= MAINTENANT_APERCU) PERF.jalon("maintenant_complet");
   const mots = M.textes(etat, ctx);
 
   const tete = '<p class="mn-tete"><em aria-hidden="true">⚡</em><b>Maintenant</b>'+

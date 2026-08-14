@@ -1,0 +1,71 @@
+{
+  "commentaire": [
+    "Les hubs de DONNÉES d'Autour. Ce sont des endroits où beaucoup de gens",
+    "ouvrent l'application pour la première fois, sans rien en cache : une",
+    "gare, un centre-ville dense. On y précalcule les lieux relativement",
+    "permanents — restaurants, cafés, cinémas, musées, bibliothèques, services",
+    "— pour que l'ouverture n'attende aucune API.",
+    "",
+    "UN HUB N'EST PAS UNE POSITION. Quelqu'un à quatre kilomètres de",
+    "Lille-Flandres n'est pas à Lille-Flandres : on ne le téléporte jamais. Le",
+    "hub sert à savoir QUEL FICHIER de zone est déjà prêt, pas où se trouve la",
+    "personne. La géolocalisation réelle, ou la zone volontairement regardée,",
+    "reste la seule référence.",
+    "",
+    "Les événements ne sont PAS ici : ils sont datés, ils périment, ils vivent",
+    "dans la couche canonique et se synchronisent séparément. Un fichier de",
+    "zone qui contiendrait des événements servirait des concerts terminés.",
+    "",
+    "Génération des tuiles : node outils/zones.mjs --liste outils/hubs.json"
+  ],
+  "hubs": [
+    {
+      "nom": "Lille-Flandres · Lille-Europe",
+      "lat": 50.6371,
+      "lng": 3.0713,
+      "tuiles": ["50.6,3.0", "50.6,3.1"]
+    },
+    {
+      "nom": "Paris Nord · Est",
+      "lat": 48.8801,
+      "lng": 2.3558,
+      "tuiles": ["48.9,2.3"]
+    },
+    {
+      "nom": "Paris Saint-Lazare · Montparnasse",
+      "lat": 48.8586,
+      "lng": 2.3232,
+      "tuiles": ["48.9,2.3", "48.8,2.3"]
+    },
+    {
+      "nom": "Paris Lyon · Austerlitz · Bercy",
+      "lat": 48.8433,
+      "lng": 2.3702,
+      "tuiles": ["48.8,2.3", "48.8,2.4"]
+    },
+    {
+      "nom": "Lyon Part-Dieu",
+      "lat": 45.7605,
+      "lng": 4.8595,
+      "tuiles": ["45.8,4.9"]
+    },
+    {
+      "nom": "Marseille Saint-Charles",
+      "lat": 43.3025,
+      "lng": 5.3806,
+      "tuiles": ["43.3,5.4"]
+    },
+    {
+      "nom": "Bordeaux Saint-Jean",
+      "lat": 44.8259,
+      "lng": -0.5563,
+      "tuiles": ["44.8,-0.6"]
+    },
+    {
+      "nom": "Toulouse-Matabiau",
+      "lat": 43.6111,
+      "lng": 1.4536,
+      "tuiles": ["43.6,1.5"]
+    }
+  ]
+}

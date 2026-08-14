@@ -296,8 +296,19 @@ console.log("\n──── 1. ouverture, réseau normal ────");
     ok("« " + interdit + " » n'entre pas dans Maintenant",
        !titres.some((t) => t.includes(interdit)), titres.join(" | "));
   }
-  ok("ne sont listés que des événements réellement en cours",
-     titres.every((t) => t.includes("En cours")), titres.join(" | "));
+  /* « Maintenant » n'est plus un filtre d'événements : un lieu ouvert est une
+     réponse valable à « qu'est-ce que je peux faire ». Ce qui doit rester
+     vrai, c'est l'ORDRE — un événement en cours passe devant un restaurant
+     ouvert, parce qu'il est rare et périssable. */
+  ok("un événement en cours reste en tête",
+     titres.length > 0 && titres[0].includes("En cours"), titres.join(" | "));
+  const natures = await page.evaluate(() =>
+    selectionMaintenant().map((l) => l.nature));
+  ok("chaque proposition porte sa nature",
+     natures.length > 0 && natures.every((n) => n), natures.join(", "));
+  ok("les natures sont celles du contrat",
+     natures.every((n) => ["event_now", "session_soon", "activity_now", "open_now"]
+       .includes(n)), natures.join(", "));
 
   await ctx.close();
 }
@@ -323,7 +334,7 @@ console.log("\n──── 2. aucune donnée ────");
   const texte = await page.evaluate(() =>
     (document.querySelector('[data-testid="maintenant-liste"]') || {}).textContent || "");
   ok("le mot est celui de quelqu'un, pas d'un journal technique",
-     /Rien en cours près de toi/.test(texte), texte.slice(0, 120));
+     /Rien d’ouvert ni en cours/.test(texte), texte.slice(0, 120));
   ok("Explorer reste accessible", await page.evaluate(() =>
      !!document.querySelector('#navBas [data-nb="explorer"]')));
 
@@ -348,7 +359,7 @@ console.log("\n──── 3. géolocalisation refusée ────");
   const texte = await page.evaluate(() =>
     (document.querySelector('[data-testid="maintenant-liste"]') || {}).textContent || "");
   ok("on ne dit JAMAIS « rien autour de toi » sans savoir où est « toi »",
-     !/Rien en cours près de toi/.test(texte), texte.slice(0, 140));
+     !/Rien d’ouvert ni en cours/.test(texte), texte.slice(0, 140));
   ok("on dit qu'on ignore la position", /ne sait pas où tu es/.test(texte),
      texte.slice(0, 140));
   ok("et une sortie est proposée", await page.evaluate(() =>

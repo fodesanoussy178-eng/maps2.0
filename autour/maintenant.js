@@ -51,6 +51,79 @@
     ERROR:   "error",
   });
 
+  /* ===================================================================
+     1 bis. CE QUE « MAINTENANT » VEUT DIRE
+
+     Il ne veut plus dire « événements en cours ». Il veut dire : QU'EST-CE QUE
+     JE PEUX FAIRE, LÀ, DANS LA ZONE QUE JE REGARDE ?
+
+     Un quartier n'a pas un concert à toute heure. S'en tenir aux événements
+     laissait le bloc vide l'essentiel du temps — alors qu'à cette même heure
+     il y a un restaurant ouvert à deux rues, un cinéma dont la séance commence
+     dans vingt minutes, un musée encore ouvert assez longtemps pour y aller.
+     Ce sont des réponses à la question posée ; les taire n'était pas de la
+     rigueur, c'était un écran vide.
+
+     Quatre natures, dans cet ordre de priorité. L'ordre n'est pas décoratif :
+     un événement en cours est rare et périssable, un restaurant ouvert ne
+     l'est pas.
+
+       event_now     un événement a commencé et n'est pas fini
+       session_soon  une séance, un départ, un début imminent — on a le temps
+                     d'y arriver
+       activity_now  un lieu d'activité ouvert : cinéma, musée, piscine, parc,
+                     bibliothèque
+       open_now      un lieu ouvert où l'on peut aller tout de suite
+
+     CE QUI N'ENTRE JAMAIS, ET LA RÈGLE NE BOUGE PAS D'UN POUCE :
+     un événement futur ne sert JAMAIS à remplir. Un concert demain n'est pas
+     « maintenant », même s'il ne reste qu'une ligne vide. Un restaurant fermé
+     non plus. Un cinéma sans séance atteignable non plus.
+     =================================================================== */
+  const NATURES = Object.freeze({
+    EVENEMENT: "event_now",
+    SEANCE:    "session_soon",
+    ACTIVITE:  "activity_now",
+    OUVERT:    "open_now",
+  });
+
+  /* L'ordre de priorité, écrit une fois. */
+  const RANG = Object.freeze({
+    [NATURES.EVENEMENT]: 0,
+    [NATURES.SEANCE]:    1,
+    [NATURES.ACTIVITE]:  2,
+    [NATURES.OUVERT]:    3,
+  });
+
+  /* Une séance qui commence dans deux heures n'est pas « maintenant » ; une
+     qui commence dans trois minutes n'est pas atteignable. La fenêtre dit les
+     deux bornes, et elle est volontairement courte. */
+  const SEANCE_MIN_MS = 5 * 60000;
+  const SEANCE_MAX_MS = 75 * 60000;
+
+  /* Les familles servent à la DIVERSITÉ, pas au classement. Trois fast-foods
+     répondent trois fois à la même question ; un événement, un cinéma et un
+     restaurant répondent à trois questions différentes. */
+  const FAMILLES = Object.freeze({
+    event: "sortir", concert: "sortir", spectacle: "sortir", popup: "sortir",
+    rencontre: "sortir", studio: "sortir",
+    cinema: "ecran",
+    musee: "culture", biblio: "culture", mairie: "culture",
+    resto: "manger", fastfood: "manger", food: "manger", marche: "manger",
+    cafe: "boire", bar: "boire",
+    sport: "bouger", terrain: "bouger", parc: "bouger", piscine: "bouger",
+    velo: "bouger",
+    collecte: "aide", alimentaire: "aide", asso: "aide", hebergement: "aide",
+  });
+
+  const familleDe = (item) => (item && item.famille) ||
+    FAMILLES[(item && item.categorie) || ""] || "autre";
+
+  /* Les catégories qui valent « activité » plutôt que simple « ouvert ». Un
+     musée ouvert est une sortie ; une supérette ouverte est une commodité. */
+  const ACTIVITES = Object.freeze(["cinema", "musee", "biblio", "parc", "terrain",
+    "piscine", "sport", "spectacle", "concert", "coworking"]);
+
   /* Trois emplacements, réservés dès le premier rendu et jamais davantage.
      Trois est le nombre qu'on lit d'un coup d'œil sans choisir. */
   const PLACES = 3;
@@ -77,6 +150,11 @@
     FERME:            "ferme",
     TROP_LOIN:        "trop_loin",
     POSITION_INCONNUE: "position_inconnue",
+    PAS_OUVERT:       "pas_ouvert",
+    HORAIRE_INCONNU:  "horaire_inconnu",
+    FERME_TROP_TOT:   "ferme_trop_tot",
+    SEANCE_TROP_LOIN: "seance_trop_loin",
+    SEANCE_TROP_PROCHE: "seance_trop_proche",
     RETENU:           "retenu",
   });
 
@@ -142,15 +220,10 @@
     /* Sans position valide, « autour de toi » n'a pas de sens : on ne peut ni
        classer ni promettre une distance. Ce n'est pas un vide, c'est une
        question sans réponse — et l'état l'appellera par son nom. */
-    const pos = ctx.position;
-    if (!Array.isArray(pos) || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1]))
-      return refus(RAISONS.POSITION_INCONNUE);
-    if (!Number.isFinite(item.lat) || !Number.isFinite(item.lng))
-      return refus(RAISONS.TROP_LOIN);
-
-    const d = distanceM(pos[0], pos[1], item.lat, item.lng);
-    const rayon = Number(ctx.rayonMax) > 0 ? Number(ctx.rayonMax) : RAYON_MAX_M;
-    if (d > rayon) return refus(RAISONS.TROP_LOIN);
+    const d = distanceDe(item, ctx);
+    if (d === null) return refus(RAISONS.POSITION_INCONNUE);
+    if (!Number.isFinite(d)) return refus(RAISONS.TROP_LOIN);
+    if (d > rayonDe(ctx)) return refus(RAISONS.TROP_LOIN);
 
     return { retenu: true, raison: RAISONS.RETENU, distance: d };
   }
@@ -167,32 +240,172 @@
   }
 
   /* ===================================================================
+     2 bis. LA DISPONIBILITÉ IMMÉDIATE
+
+     `fiable` répond pour les ÉVÉNEMENTS. `disponible` répond pour tout le
+     reste : est-ce que je peux y aller, là, tout de suite ?
+
+     C'est ici que se joue la différence entre un moteur d'événements et un
+     moteur de disponibilité. Le premier laissait le bloc vide l'essentiel du
+     temps ; le second répond à la question qu'on pose vraiment.
+     =================================================================== */
+  function disponible(item, contexte) {
+    const ctx = contexte || {};
+    const t = Number(ctx.maintenant) || Date.now();
+
+    /* Un événement passe d'abord par la règle des événements, qui n'a pas
+       bougé d'un pouce : commencé, non terminé, daté des deux côtés. */
+    if (item && item.estEvenement) {
+      const v = fiable(item, ctx);
+      if (v.retenu) return retenu(NATURES.EVENEMENT, v.distance);
+
+      /* UNE SEULE EXCEPTION, ET CE N'EST PAS DU REMPLISSAGE : la séance qui
+         commence dans quelques minutes. « Le film est dans vingt minutes » est
+         une réponse à « qu'est-ce que je peux faire maintenant » — pas « le
+         concert est demain ». La fenêtre est courte des deux côtés : trop tôt
+         et on n'y sera pas, trop tard et ce n'est plus maintenant.
+
+         SEULS DEUX REFUS OUVRENT CE CHEMIN, et ce sont les deux refus de
+         TIMING. `fiable` répond `pas_en_cours` avant même de regarder les
+         bornes — le verdict du moteur temporel passe en premier, c'est voulu —
+         si bien qu'une première version, qui n'acceptait que `pas_commence`,
+         ne trouvait jamais aucune séance. Une annulation, une date incertaine
+         ou une fin manquante, elles, ne deviennent JAMAIS une séance : ce
+         serait exactement le remplissage qu'on refuse. */
+      if (v.raison !== RAISONS.PAS_COMMENCE && v.raison !== RAISONS.PAS_EN_COURS)
+        return refusNature(v.raison);
+      const debut = horodatage(item.debutLe);
+      if (debut === null) return refusNature(RAISONS.DATE_INCERTAINE);
+      if (horodatage(item.finLe) === null) return refusNature(RAISONS.SANS_FIN);
+      const dans = debut - t;
+      // déjà commencé mais pas « en cours » selon le moteur : c'est fini
+      if (dans <= 0) return refusNature(RAISONS.DEJA_FINI);
+      if (dans > SEANCE_MAX_MS) return refusNature(RAISONS.SEANCE_TROP_LOIN);
+      if (dans < SEANCE_MIN_MS) return refusNature(RAISONS.SEANCE_TROP_PROCHE);
+      const d = distanceDe(item, ctx);
+      if (d === null) return refusNature(RAISONS.POSITION_INCONNUE);
+      if (d > rayonDe(ctx)) return refusNature(RAISONS.TROP_LOIN);
+      return retenu(NATURES.SEANCE, d);
+    }
+
+    /* Un LIEU. Trois conditions, et pas une de moins.
+
+       `ouvert` vaut `true`, `false` ou `null`. Le `null` est le cas le plus
+       fréquent — la plupart des lieux OpenStreetMap n'ont aucun horaire — et
+       c'est précisément celui qu'il ne faut pas confondre avec « ouvert » :
+       envoyer quelqu'un devant une porte close parce qu'on ne savait pas est
+       exactement ce qu'on veut éviter. Dans « Maintenant », l'inconnu ne
+       passe pas. */
+    if (item.ouvert !== true) {
+      return refusNature(item.ouvert === false ? RAISONS.PAS_OUVERT
+                                               : RAISONS.HORAIRE_INCONNU);
+    }
+    /* Ouvert, mais pour combien de temps ? `availability.js` connaît les
+       marges par type — arriver au musée trois minutes avant la fermeture
+       n'est pas une visite. Quand il dit non, on l'écoute. */
+    if (item.ouvertALArrivee === false) return refusNature(RAISONS.FERME_TROP_TOT);
+
+    const d = distanceDe(item, ctx);
+    if (d === null) return refusNature(RAISONS.POSITION_INCONNUE);
+    if (d > rayonDe(ctx)) return refusNature(RAISONS.TROP_LOIN);
+
+    const activite = ACTIVITES.indexOf(item.categorie) >= 0;
+    return retenu(activite ? NATURES.ACTIVITE : NATURES.OUVERT, d);
+  }
+
+  const retenu = (nature, distance) =>
+    ({ retenu: true, nature, raison: RAISONS.RETENU, distance });
+  const refusNature = (raison) =>
+    ({ retenu: false, nature: null, raison, distance: null });
+
+  function rayonDe(ctx) {
+    return Number(ctx.rayonMax) > 0 ? Number(ctx.rayonMax) : RAYON_MAX_M;
+  }
+
+  function distanceDe(item, ctx) {
+    /* UNE POSITION DE REPLI N'EST PAS UNE POSITION.
+
+       Quand la géolocalisation est refusée, Autour pose quand même la carte
+       quelque part — une ville déduite d'une adresse IP, un point par défaut.
+       `pointDeReference()` rend donc des coordonnées parfaitement valides, et
+       les lieux ouverts alentour passaient tous : le bloc affichait trois
+       restaurants « autour de toi » à quelqu'un dont personne ne savait où il
+       était. Tant que le point n'est pas CONNU — mesuré, ou choisi — rien
+       n'est autour de qui que ce soit. */
+    if (ctx.positionConnue === false) return null;
+    const pos = ctx.position;
+    if (!Array.isArray(pos) || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return null;
+    if (!Number.isFinite(item.lat) || !Number.isFinite(item.lng)) return Infinity;
+    return distanceM(pos[0], pos[1], item.lat, item.lng);
+  }
+
+  /* ===================================================================
      3. LA SÉLECTION
 
-     Le plus proche d'abord : « maintenant » se lit avec les pieds. À distance
-     égale, celui qui finit le plus tôt passe devant — c'est celui qu'on
-     risque de manquer.
+     Trois règles, dans cet ordre :
 
-     On ne complète JAMAIS jusqu'à trois. S'il n'y a qu'un événement fiable,
-     le bloc en montre un.
+       1. la NATURE d'abord — un événement en cours est rare et périssable, un
+          restaurant ouvert ne l'est pas ;
+       2. la DIVERSITÉ ensuite — trois fast-foods répondent trois fois à la
+          même question. Un événement, un cinéma et un restaurant répondent à
+          trois questions différentes, et c'est ce qu'on veut voir ;
+       3. la DISTANCE enfin — « maintenant » se lit avec les pieds.
+
+     On ne complète JAMAIS avec quelque chose qui n'est pas disponible. S'il
+     n'y a qu'une proposition, le bloc en montre une.
      =================================================================== */
+  function candidats(items, contexte) {
+    const ctx = contexte || {};
+    const out = [];
+    for (const item of (items || [])) {
+      const v = disponible(item, ctx);
+      if (v.retenu) {
+        out.push({ item, nature: v.nature, distance: v.distance,
+                   famille: familleDe(item), rang: RANG[v.nature] });
+      }
+    }
+    /* Le tri de base : nature, puis distance. À nature ET distance égales, le
+       plus urgent — celui qui ferme ou finit le plus tôt. */
+    out.sort((a, b) => (a.rang - b.rang) || (a.distance - b.distance) ||
+      ((horodatage(a.item.finLe) || Infinity) - (horodatage(b.item.finLe) || Infinity)));
+    return out;
+  }
+
   function selection(items, contexte) {
     const ctx = contexte || {};
-    const retenus = [];
-    for (const item of (items || [])) {
-      const verdict = fiable(item, ctx);
-      if (verdict.retenu) retenus.push({ item, distance: verdict.distance });
-    }
-    retenus.sort((a, b) => (a.distance - b.distance) ||
-      (horodatage(a.item.finLe) - horodatage(b.item.finLe)));
     const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
-    return retenus.slice(0, combien).map((r) => r.item);
+    const pool = candidats(items, ctx);
+
+    /* LA DIVERSITÉ SE PREND EN DEUX PASSES, ET C'EST VOULU.
+
+       Un tri « une famille sur deux » mélangerait les priorités : il ferait
+       passer un café ouvert devant un concert en cours pour cause de variété.
+       On prend donc d'abord le MEILLEUR de chaque famille, dans l'ordre de
+       priorité ; si les places ne sont pas toutes prises, on complète avec le
+       reste du classement. Le premier résultat est toujours le meilleur au
+       sens strict — la variété ne coûte jamais la tête de liste. */
+    const choisis = [];
+    const famillesPrises = new Set();
+    for (const c of pool) {
+      if (choisis.length >= combien) break;
+      if (famillesPrises.has(c.famille)) continue;
+      famillesPrises.add(c.famille);
+      choisis.push(c);
+    }
+    for (const c of pool) {
+      if (choisis.length >= combien) break;
+      if (choisis.indexOf(c) >= 0) continue;
+      choisis.push(c);
+    }
+    /* On rend l'ordre de priorité, pas l'ordre de cueillette. */
+    choisis.sort((a, b) => (a.rang - b.rang) || (a.distance - b.distance));
+    return choisis.map((c) => Object.assign({}, c.item, { nature: c.nature }));
   }
 
   /* Combien il y en a en tout — le bloc n'en montre que trois, mais il doit
      pouvoir dire qu'il y en a davantage sans mentir sur le nombre. */
   function total(items, contexte) {
-    return (items || []).filter((i) => fiable(i, contexte).retenu).length;
+    return candidats(items, contexte).length;
   }
 
   /* ===================================================================
@@ -243,8 +456,12 @@
     [ETATS.LOADING]: { titre: "Maintenant", ligne: "" },
     [ETATS.EMPTY]: {
       titre: "Maintenant",
-      ligne: "Rien en cours près de toi à cette heure-ci.",
-      sortie: "Voir ce qui ouvre autour",
+      /* Le mot a changé avec le sens du bloc. Tant qu'il ne montrait que des
+         événements, « rien en cours » était juste. Maintenant qu'il montre
+         aussi les lieux ouverts, un bloc vide veut dire que même les portes
+         sont closes — et c'est ce qu'il faut écrire. */
+      ligne: "Rien d’ouvert ni en cours dans cette zone à cette heure-ci.",
+      sortie: "Voir plus loin",
     },
     [ETATS.ERROR]: {
       titre: "Maintenant",
@@ -272,6 +489,8 @@
 
   root.AutourMaintenant = Object.freeze({
     ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES,
-    fiable, selection, total, etat, textes, distanceM,
+    NATURES, RANG, FAMILLES, ACTIVITES, SEANCE_MIN_MS, SEANCE_MAX_MS,
+    fiable, disponible, candidats, selection, total, etat, textes,
+    distanceM, familleDe,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
