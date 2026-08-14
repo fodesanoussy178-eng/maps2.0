@@ -302,3 +302,70 @@ test("chaque état vide propose une sortie, jamais une impasse", () => {
   assert.match(sortie, /chargerAutourDuPoint/, "panne → réessayer");
   assert.match(sortie, /majFeuille2\(\)/, "vide → Explorer reste accessible");
 });
+
+/* ==========================================================================
+   6. « AUTOUR » DE QUOI ?
+
+   LE DÉFAUT SIGNALÉ : taper le nom d'une autre ville chargeait bien ses
+   événements en cours — la carte s'y rendait, les données arrivaient — puis
+   le bloc affichait « rien en cours près de toi » au-dessus d'une carte
+   pleine d'événements en cours.
+
+   La cause : Autour connaît trois points — là où vous ÊTES, la ville que vous
+   avez DEMANDÉE, et ce que la carte MONTRE — et chaque partie du code en
+   choisissait un. Le chargement suivait la carte (juste), le classement et le
+   filtre de distance suivaient la position (faux ailleurs). Les premiers
+   mal-classaient ; le dernier EXCLUAIT, à 220 km.
+   ======================================================================== */
+
+test("le point de référence est celui qu'on regarde, pas celui où l'on est", () => {
+  assert.match(html, /function pointDeReference\(\)\{/);
+  // le filtre, le classement et les distances lisent tous le même point
+  const ctxFn = html.slice(html.indexOf("function contexteMaintenant()"),
+                           html.indexOf("function selectionMaintenant"));
+  assert.match(ctxFn, /const ref = pointDeReference\(\);/);
+  assert.match(html, /const \[lat,lng\] = pointDeReference\(\) \|\| positionMoi;/,
+    "classerLieux doit partir du point regardé");
+});
+
+test("une ville choisie vaut une position connue", () => {
+  /* Choisir une ville, c'est dire soi-même où l'on regarde. Sans ça, le bloc
+     annonçait « Autour ne sait pas où tu es » alors qu'on venait justement de
+     le lui dire. */
+  const ctxFn = html.slice(html.indexOf("function contexteMaintenant()"),
+                           html.indexOf("function selectionMaintenant"));
+  assert.match(ctxFn, /positionConnue: positionConnue\(\) \|\| !!rechercheGeo/);
+  assert.match(ctxFn, /positionRefusee:[\s\S]{0,80}&& !rechercheGeo/);
+});
+
+test("« autour » va aussi loin que ce qu'on voit", () => {
+  /* Un rayon fixe se trompe d'une deuxième façon : `allerVers` décale
+     volontairement le centre de la carte pour que le point visé ne soit pas
+     caché par la feuille du bas. Au zoom 13 ce décalage vaut sept kilomètres,
+     et des événements parfaitement visibles tombaient hors du rayon. */
+  assert.match(html, /function rayonRegarde\(\)\{/);
+  assert.match(html, /Math\.max\(socle, demiDiagonale\)/);
+  assert.match(html, /rayonMax: rayonRegarde\(\)/);
+  // le module accepte bien un rayon fourni par l'appelant
+  const loin = { id: "x", estEvenement: true, annule: false, enCours: true,
+                 dateIncertaine: false, debutLe: T - h(1), finLe: T + h(1),
+                 lat: 50.75, lng: 3.0573, ferme: false };
+  const base = { maintenant: T, position: ICI, positionConnue: true };
+  assert.equal(M.fiable(loin, base).retenu, false, "hors du rayon par défaut");
+  assert.equal(M.fiable(loin, Object.assign({ rayonMax: 20000 }, base)).retenu, true);
+});
+
+test("on n'affiche pas une distance depuis un endroit où l'on n'est pas", () => {
+  // « 220 km » sous chaque concert est une mesure exacte et inutile
+  assert.match(html, /function jeSuisDansLaZoneRegardee\(\)\{/);
+  assert.match(html, /const dist = jeSuisDansLaZoneRegardee\(\)/);
+});
+
+test("la feuille se rafraîchit quand la carte change de ville", () => {
+  /* La sélection dépend du point regardé : déplacer la carte change sa
+     réponse. Mais seule l'arrivée de NOUVELLES données déclenchait un rendu —
+     zone déjà en cache, rien n'arrivait, rien ne se redessinait. */
+  const suivi = html.slice(html.indexOf('map.on("moveend zoomend"'),
+                           html.indexOf('map.on("click"'));
+  assert.match(suivi, /planifierRendu\(\{accueil:true, feuille:true\}\)/);
+});

@@ -91,6 +91,42 @@ Classement : **le plus proche d'abord** — « maintenant » se lit avec les pie
 À distance égale, celui qui finit le plus tôt passe devant : c'est celui qu'on
 risque de manquer.
 
+## « Autour » de quoi ?
+
+Autour connaît **trois** points : là où vous **êtes** (`positionMoi`), la ville
+que vous avez **demandée** (`rechercheGeo`), et ce que la carte **montre**
+(`map.getCenter()`). Chaque partie du code en choisissait un :
+
+| | référence | conséquence ailleurs |
+|---|---|---|
+| chargement des données | centre de la carte | juste |
+| classement des lieux | `positionMoi` | tout à 220 km, ordre arbitraire |
+| distances affichées | `positionMoi` | « 220 km » sous chaque ligne |
+| **filtre de `Maintenant`** | `positionMoi` | **tout exclu** |
+
+Les trois premiers mal-classaient. Le quatrième **excluait** : taper « Paris »
+depuis Lille chargeait bien les concerts parisiens en cours, puis les refusait
+tous à 220 km — et le bloc annonçait « rien en cours près de toi » au-dessus
+d'une carte pleine d'événements en cours.
+
+Il n'y a plus qu'une réponse : `pointDeReference()`, **le point qu'on
+regarde**. Chez soi, la carte est centrée sur soi et les deux coïncident.
+
+Deux corollaires :
+
+- **Le rayon suit ce qu'on voit.** `allerVers` décale volontairement le centre
+  pour que le point visé ne soit pas caché par la feuille du bas ; au zoom 13
+  ce décalage vaut 7 km, et un rayon fixe de 3 km rejetait des événements
+  parfaitement visibles. `rayonRegarde()` prend la demi-diagonale de la vue,
+  avec 3 km comme plancher.
+- **La feuille suit la carte.** Seule l'arrivée de *nouvelles* données
+  déclenchait un rendu. Zone déjà en cache → rien n'arrivait, rien ne se
+  redessinait, et le bloc gardait son ancienne réponse.
+
+Une ville choisie vaut une position connue : sans ça, le bloc répondait
+« Autour ne sait pas où tu es » à quelqu'un qui venait justement de le lui
+dire.
+
 ## Les bancs d'essai
 
 ```sh
@@ -107,7 +143,10 @@ arriver, et compare. Un seul pixel de décalage est un échec. Il couvre :
 - changement de position ;
 - téléphone et ordinateur ;
 - **dix ouvertures d'affilée**, parce qu'un défaut de course ne se voit pas au
-  premier essai.
+  premier essai ;
+- **une autre ville**, par le vrai chemin (`rechercheGeographique`) plutôt
+  qu'un `allerVers` approximatif — c'est le scénario que tous les autres
+  manquaient, puisqu'ils regardent tous l'endroit où ils se trouvent.
 
 Les pièges sont servis à chaque scénario et ne doivent jamais entrer :
 « Demain », « Terminé », « Date inconnue », « Annulé », « Sans fin »,

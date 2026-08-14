@@ -70,14 +70,15 @@ function lieux(combien) {
 
 /* Les cas temporels, écrits explicitement : c'est le cœur de la fiabilité.
    Seul `enCours` a le droit d'entrer dans « Maintenant ». */
-function evenements(combienEnCours) {
+function evenements(combienEnCours, ou) {
   const t = Date.now();
+  const OU = ou || CENTRE;
   const base = (i, extra) => Object.assign({
     id: "e" + String(i).padStart(8, "0") + "-0000-4000-8000-000000000000",
     publication_id: null, title: "Événement " + i, description: "",
     category: "concert", timezone: "Europe/Paris", date_confidence: "exact",
     place_name: "Salle", address: "1 rue", city: "Ville", insee_code: null,
-    lat: CENTRE.lat + 0.001 + i * 0.0002, lng: CENTRE.lng + 0.001,
+    lat: OU.lat + 0.001 + i * 0.0002, lng: OU.lng + 0.001,
     primary_source: "datatourisme", source_url: null, image_url: null,
     cancelled: false, last_source_update: null,
     last_synced_at: new Date().toISOString(),
@@ -107,7 +108,7 @@ function evenements(combienEnCours) {
   liste.push(base(94, { title: "Sans fin", temporal_status: "now",
     start_at: new Date(t - 3600e3).toISOString(), end_at: null }));
   liste.push(base(95, { title: "Très loin", temporal_status: "now",
-    lat: AILLEURS.lat, lng: AILLEURS.lng,
+    lat: OU.lat + 3, lng: OU.lng + 3,
     start_at: new Date(t - 3600e3).toISOString(),
     end_at: new Date(t + 3600e3).toISOString() }));
   return liste;
@@ -162,11 +163,24 @@ async function nouvelOnglet(navigateur, opts = {}) {
     if (opts.lent) await new Promise((r) => setTimeout(r, opts.lent));
 
     if (/\/api\/lieux|overpass/.test(url)) return json({ elements: lieux(opts.lieux ?? 12) });
-    if (/rpc\/evenements_proches/.test(url)) return json(evenements(opts.enCours ?? 5));
+    if (/rpc\/evenements_proches/.test(url))
+      return json(evenements(opts.enCours ?? 5, opts.evenementsA));
     if (/rpc\/publications_proches/.test(url)) return json([]);
     if (/\/api\/commune/.test(url)) return json({ nom: "Ville d'essai" });
     if (/rpc\//.test(url) || /supabase/.test(url)) return json([]);
-    if (/nominatim|openagenda|routing|osrm/.test(url)) return json([]);
+    /* Le géocodeur : c'est LUI qui déclenche le vrai chemin « autre ville »
+       (`rechercheGeographique`), avec son emprise et son `rechercheGeo`. Le
+       bouchonner permet de rejouer le geste exact plutôt qu'une approximation
+       à coups d'`allerVers`. */
+    if (/nominatim/.test(url)) {
+      if (!opts.geocode) return json([]);
+      const v = opts.geocode;
+      return json([{ lat: String(v.lat), lon: String(v.lng), importance: 0.9,
+        display_name: v.nom || "Ailleurs",
+        boundingbox: [String(v.lat - 0.09), String(v.lat + 0.09),
+                      String(v.lng - 0.13), String(v.lng + 0.13)] }]);
+    }
+    if (/openagenda|routing|osrm/.test(url)) return json([]);
     return json({});
   });
 
@@ -416,6 +430,85 @@ console.log("\n──── 6. changement de position ────");
   ok("le bloc reste dans un état propre",
      apresBloc && ["ready", "loading", "empty", "error"].includes(apresBloc.etat),
      apresBloc && apresBloc.etat);
+
+  await ctx.close();
+}
+
+/* ======================================================================== */
+/*  6 bis. UNE AUTRE VILLE                                                  */
+/*                                                                          */
+/*  LE DÉFAUT SIGNALÉ, ET LA RAISON POUR LAQUELLE AUCUN BANC NE LE VOYAIT.  */
+/*                                                                          */
+/*  Tous les scénarios ci-dessus regardent l'endroit où ils se trouvent : la */
+/*  carte est centrée sur la position, et « depuis moi » se confond avec     */
+/*  « depuis ce que je regarde ». Le jour où les deux divergent — taper le   */
+/*  nom d'une autre ville — le filtre de distance refusait TOUT à 220 km,    */
+/*  et le bloc annonçait « rien en cours près de toi » au-dessus d'une carte */
+/*  pleine d'événements en cours.                                           */
+/* ======================================================================== */
+console.log("\n──── 6 bis. je suis ici, je regarde ailleurs ────");
+{
+  const { ctx, page } = await nouvelOnglet(navigateur,
+    { etiquette: "autre-ville", evenementsA: AILLEURS, enCours: 5,
+      geocode: Object.assign({ nom: "Ailleurs" }, AILLEURS) });
+  await page.waitForFunction(() => typeof rechercheGeographique === "function",
+    null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(2500);
+
+  // LE GESTE RÉEL : taper le nom d'une ville dans la recherche
+  await page.evaluate(() => rechercheGeographique("Ailleurs"));
+  /* `allerVers` anime malgré `duration:0` — le vol dure environ deux secondes
+     et demie, `moveend` ne part qu'à la fin, et le rafraîchissement de la
+     feuille attend encore 350 ms derrière son antirebond. Attendre trois
+     secondes faisait la course avec ce dernier délai : le banc voyait « empty »
+     une fois sur deux alors que le correctif était bon. */
+  await page.waitForFunction(() => {
+    const e = document.querySelector('[data-testid="maintenant-liste"]');
+    return e && e.dataset.mnEtat !== "loading";
+  }, null, { timeout: 12000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  const etat = await page.evaluate(() => ({
+    charges: lieux.filter((l) => estTemporaire(l)).length,
+    selection: selectionMaintenant().length,
+    raisons: [...new Set(lieux.filter((l) => estTemporaire(l))
+      .map((l) => AutourMaintenant.fiable(versItemMaintenant(l, Date.now()),
+        contexteMaintenant()).raison))],
+    loinDeMoi: Math.round(distanceM(positionMoi[0], positionMoi[1],
+      centreCarte()[0], centreCarte()[1]) / 1000),
+  }));
+
+  ok("autre ville · les événements y sont bien chargés", etat.charges >= 5,
+     etat.charges + " événement(s)");
+  ok("autre ville · on regarde vraiment ailleurs", etat.loinDeMoi > 100,
+     etat.loinDeMoi + " km de ma position");
+  /* « trop_loin » doit rester présent : c'est le piège « Très loin », posé à
+     trois cents kilomètres exprès. Ce qu'on vérifie, c'est qu'il en reste des
+     RETENUS — avant le correctif, la liste des raisons ne contenait que
+     « trop_loin » pour les cinq événements en cours. */
+  ok("autre ville · LES ÉVÉNEMENTS EN COURS NE SONT PLUS REFUSÉS À DISTANCE",
+     etat.raisons.includes("retenu"), etat.raisons.join(", "));
+  ok("autre ville · la sélection les montre", etat.selection >= 1,
+     etat.selection + " retenu(s)");
+
+  const bloc = await etatBloc(page);
+  ok("autre ville · le bloc est « ready », pas « empty »",
+     bloc && bloc.etat === "ready", bloc && bloc.etat);
+  ok("autre ville · trois au plus", bloc && bloc.lignes <= 3, bloc && String(bloc.lignes));
+
+  /* Regarder Paris depuis Lille affichait « 220 km » sous chaque concert : une
+     mesure exacte et parfaitement inutile. */
+  const distances = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="maintenant-liste"] [data-mn] u')]
+      .map((e) => e.textContent));
+  ok("autre ville · aucune distance absurde n'est affichée",
+     !distances.some((d) => /\d{3,} km/.test(d)), distances.join(" | "));
+
+  // et les pièges restent des pièges, même à l'autre bout du pays
+  const titres = (bloc && bloc.titres) || [];
+  ok("autre ville · les événements de demain n'entrent toujours pas",
+     !titres.some((t) => /Demain|Terminé|Annulé|Date inconnue|Sans fin/.test(t)),
+     titres.join(" | "));
 
   await ctx.close();
 }

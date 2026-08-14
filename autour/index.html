@@ -5658,6 +5658,15 @@ function installerCarte(){
       chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
       chargerDonneesTemporaires(c.lat, c.lng);
       if(catsActives) chargerPourCats([...catsActives]);
+      /* LA FEUILLE SUIT LA CARTE, MÊME QUAND AUCUNE DONNÉE N'ARRIVE.
+
+         « Maintenant » et le classement se calculent depuis le point regardé.
+         Déplacer la carte sur une autre ville change donc leur réponse — mais
+         seul l'arrivée de nouvelles données déclenchait un rendu de la
+         feuille. Quand la zone était déjà en cache, rien n'arrivait, rien ne
+         se redessinait, et le bloc continuait d'afficher « rien en cours près
+         de toi » au-dessus d'une carte pleine d'événements en cours. */
+      planifierRendu({accueil:true, feuille:true});
     }, 350);
   });
   // toucher la carte referme la feuille : la carte reprend tout l'écran
@@ -8369,7 +8378,12 @@ function evenementsDe(lieu){
 let triListe = "auto";
 
 function classerLieux(liste, sansPalmares){
-  const [lat,lng] = positionMoi;
+  /* Depuis le point REGARDÉ, pas depuis soi. Classer les lieux d'une autre
+     ville par leur distance à sa propre position les met tous à 220 km les uns
+     des autres à un mètre près : l'ordre devient arbitraire, et ce qui compte
+     dans cette ville-là n'arrive jamais en tête. Chez soi les deux points
+     coïncident, et rien ne change. */
+  const [lat,lng] = pointDeReference() || positionMoi;
   const dedans = liste.map(l=>{
     const d = distanceM(lat,lng,l.lat,l.lng);
     const evs = estTemporaire(l) ? [] : evenementsDe(l);
@@ -10508,7 +10522,10 @@ function evenementsMaintenant(){
 
 function ligneMaintenant(l){
   const c = CATS[l.cat] || CATS.event;
-  const dist = positionPrecise()
+  /* Regarder Paris depuis Lille affichait « 220 km » sous chaque concert : une
+     mesure exacte et parfaitement inutile. On ne montre une distance que
+     lorsqu'on est dans la zone regardée ; sinon le lieu se suffit. */
+  const dist = jeSuisDansLaZoneRegardee()
     ? formatDist(distanceM(positionMoi[0],positionMoi[1],l.lat,l.lng)) : "";
   const fin = l.finLe ? heureLocale(l.finLe, l) : "";
   const bas = [dist, fin ? "jusqu’à "+fin : ""].filter(Boolean).join(" · ");
@@ -10540,16 +10557,82 @@ function versItemMaintenant(l, t){
   };
 }
 
+/* ==================================================================== */
+/*  « AUTOUR » DE QUOI ?                                                 */
+/* ==================================================================== */
+/* IL Y AVAIT TROIS RÉPONSES, ET C'EST CE QUI A CASSÉ.
+
+   Autour connaît trois points : là où vous ÊTES (`positionMoi`), la ville que
+   vous avez DEMANDÉE (`rechercheGeo`), et ce que la carte MONTRE
+   (`map.getCenter()`). Chaque partie du code en choisissait un :
+
+     · le chargement des données   → le centre de la carte  (juste)
+     · le classement des lieux     → positionMoi            (faux ailleurs)
+     · les distances affichées     → positionMoi            (faux ailleurs)
+     · le filtre de « Maintenant » → positionMoi            (FAUX, et fatal)
+
+   Les trois premiers se contentaient de mal classer. Le quatrième EXCLUAIT :
+   taper « Paris » depuis Lille chargeait bien les concerts parisiens en cours,
+   puis les refusait tous à 220 km — et le bloc affichait « rien en cours près
+   de toi » au-dessus d'une carte pleine d'événements en cours.
+
+   Il n'y a donc plus qu'une réponse : le point qu'on REGARDE. Chez soi, la
+   carte est centrée sur soi et les deux coïncident ; ailleurs, c'est la ville
+   qu'on regarde qui commande. */
+function pointDeReference(){
+  const c = centreCarte();
+  return (Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]))
+    ? c : positionMoi;
+}
+
+/* Suis-je À l'endroit que je regarde ? Au-delà, « à 300 m » ne veut plus rien
+   dire : ces 300 mètres partent d'un point où je ne suis pas. On cesse alors
+   d'afficher une distance plutôt que d'en afficher une fausse. */
+const SEUIL_MEME_ZONE_M = 30000;
+function jeSuisDansLaZoneRegardee(){
+  if(!positionPrecise() || !positionMoi) return false;
+  const r = pointDeReference();
+  if(!Array.isArray(r)) return false;
+  return distanceM(positionMoi[0], positionMoi[1], r[0], r[1]) <= SEUIL_MEME_ZONE_M;
+}
+
 /* Le contexte de la sélection, lu une seule fois par rendu. Deux endroits qui
    décident séparément « est-ce qu'on cherche encore ? » finissent toujours par
    ne plus être d'accord, et c'est l'écran qui clignote. */
+/* JUSQU'OÙ « AUTOUR » VA-T-IL ?
+
+   Un rayon fixe de trois kilomètres a une deuxième façon de se tromper, plus
+   discrète que la première : `allerVers` décale volontairement le centre de la
+   carte pour que le point visé ne soit pas caché par la feuille du bas. Sur
+   une ville affichée au zoom 13, ce décalage vaut sept kilomètres — et les
+   événements parfaitement visibles à l'écran tombaient hors du rayon.
+
+   « Autour » suit donc ce qu'on VOIT. Ce qui tient dans la carte affichée est
+   autour ; trois kilomètres restent le plancher, pour qu'un zoom serré ne
+   réduise pas la sélection au pâté de maisons. */
+function rayonRegarde(){
+  const socle = (window.AutourMaintenant || {}).RAYON_MAX_M || 3000;
+  if(!map || !map.getBounds) return socle;
+  try{
+    const b = map.getBounds(), c = b.getCenter();
+    const demiDiagonale = distanceM(c.lat, c.lng, b.getNorth(), b.getEast());
+    return Math.max(socle, demiDiagonale);
+  }catch(e){ return socle; }
+}
+
 function contexteMaintenant(){
+  const ref = pointDeReference();
   return {
+    rayonMax: rayonRegarde(),
     maintenant: Date.now(),
-    position: positionPrecise() ? positionMoi : null,
-    positionConnue: positionConnue(),
-    positionEnCours: rechercheEtat.location === SEARCH_STATES.REQUESTING_LOCATION,
-    positionRefusee: rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED,
+    position: Array.isArray(ref) && Number.isFinite(ref[0]) ? ref : null,
+    /* Choisir une ville, c'est dire soi-même où l'on regarde : on sait donc
+       parfaitement de quoi on parle, même sans la moindre mesure GPS. */
+    positionConnue: positionConnue() || !!rechercheGeo,
+    positionEnCours: rechercheEtat.location === SEARCH_STATES.REQUESTING_LOCATION
+      && !rechercheGeo,
+    positionRefusee: rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED
+      && !rechercheGeo,
     chargement: rechercheEnCours(),
     panne: panneTechnique(),
   };
