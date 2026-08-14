@@ -183,6 +183,24 @@
      23 seconds ». On traduit, et on ne montre jamais l'original — il peut
      contenir l'adresse, et il dit parfois si un compte existe.
      =================================================================== */
+  /* « Cette adresse appartient déjà à quelqu'un » n'est PAS une erreur à
+     montrer : c'est un aiguillage. Quand une session anonyme essaie de
+     rattacher une adresse déjà prise, le rattachement est refusé — et sans
+     repli, la personne taperait l'adresse de son propre compte sans jamais
+     réussir à s'y connecter. On reconnaît donc ce cas précis pour basculer
+     vers une ouverture de session normale.
+
+     GoTrue le dit de plusieurs façons selon sa version et son réglage
+     anti-énumération. On regarde le code d'erreur ET le texte : se fier au
+     seul texte casserait à la première traduction. */
+  function adresseDejaPrise(erreur) {
+    const e = erreur || {};
+    const code = String(e.code || e.error_code || "");
+    if (/email_exists|user_already_exists|email_taken/i.test(code)) return true;
+    const brut = String(e.message || e.msg || erreur || "");
+    return /already (been )?(registered|in use|exists)|address already/i.test(brut);
+  }
+
   function messageErreur(erreur) {
     const brut = String((erreur && (erreur.message || erreur.msg)) || erreur || "");
     if (/rate|too many|after \d+ second/i.test(brut)) {
@@ -288,7 +306,7 @@
     VISITEUR, ANONYME, CONNECTE,
     CLE_ATTENTE, DELAI_ATTENTE_MS,
     exigeCompte, invitation, etatDe, peut, nomAffiche,
-    normaliserEmail, emailValide, codeValide, messageErreur,
+    normaliserEmail, emailValide, codeValide, messageErreur, adresseDejaPrise,
     mettreEnAttente, attenteEnCours, reprendreAttente, oublierAttente,
     manoeuvre,
   });

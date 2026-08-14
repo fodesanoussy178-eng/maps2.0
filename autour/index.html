@@ -640,13 +640,52 @@ body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 /* ---- « ⚡ Maintenant (3) » : la liste de ce qui se passe -------------------
    Compacte, sans photo, sans badge : trois lignes par entrée et une flèche.
    Rien à décoder — un titre, un lieu, et jusqu'à quand. */
+/* LA PLACE EST RÉSERVÉE, ET C'EST TOUT L'INTÉRÊT.
+
+   CE QUI CASSAIT : le bloc n'existait pas tant qu'il n'avait rien à montrer.
+   Il apparaissait une seconde après l'ouverture et poussait les boutons du
+   dessous sous le doigt de quelqu'un qui appuyait déjà.
+
+   POURQUOI LA RÉSERVATION PORTE SUR LE CORPS, PAS SUR LA CARTE.
+
+   Une première version posait `min-height` sur `.mn` en additionnant une
+   hauteur d'en-tête SUPPOSÉE et trois lignes. L'en-tête réel faisait deux
+   pixels de moins, les lignes réelles douze de plus, et le banc a mesuré
+   quatre pixels de saut. On ne devine plus rien : l'en-tête garde sa hauteur
+   naturelle, et c'est le CORPS qui réserve exactement trois lignes — des
+   lignes dont la hauteur est FIXÉE, pas déduite de leur contenu. */
+:root{--mn-ligne:68px;--mn-pied:46px}
 .mn{margin:2px 0 14px;padding:4px 0 2px;border:1px solid var(--bord);
-  border-radius:16px;background:#fff;overflow:hidden}
+  border-radius:16px;background:#fff;overflow:hidden;
+  display:flex;flex-direction:column}
+/* Trois lignes ET le pied, quoi qu'il arrive : c'est ici que la place est
+   réservée. Le pied compte, parce que « Voir tout » n'apparaît que lorsqu'il y
+   a plus de trois résultats — sans lui dans la réserve, son arrivée décalait
+   tout de 46 pixels, ce que le banc a mesuré. */
+.mn-corps{min-height:calc(3 * var(--mn-ligne) + var(--mn-pied));
+  display:flex;flex-direction:column}
+/* Trois barres grises, à la place exacte des trois lignes à venir. Pas de
+   texte : un message qui apparaît puis disparaît demande à être lu pour rien. */
+.mn-attente{flex:1;display:flex;flex-direction:column;justify-content:flex-start}
+.mn-attente i{height:var(--mn-ligne);border-top:1px solid var(--bord);
+  background:linear-gradient(90deg,#F4F3F0 25%,#EDECE8 37%,#F4F3F0 63%);
+  background-size:400% 100%;animation:mn-onde 1.4s ease-in-out infinite}
+.mn-attente i:first-child{border-top:0}
+@keyframes mn-onde{0%{background-position:100% 50%}100%{background-position:0 50%}}
+@media (prefers-reduced-motion:reduce){.mn-attente i{animation:none}}
+/* Vide et erreur occupent la même hauteur que trois lignes : on ne récupère
+   pas la place, sinon le retour des résultats la reprendrait d'un coup. */
+.mn-rien{flex:1;display:flex;flex-direction:column;align-items:flex-start;
+  justify-content:center;gap:10px;padding:14px;border-top:1px solid var(--bord)}
+.mn-rien p{margin:0;font-size:13.5px;line-height:1.45;color:var(--ink2)}
+.mn-sortie{min-height:40px;padding:9px 14px;border:1px solid var(--bord);
+  border-radius:11px;background:#fff;font-size:13.5px;font-weight:650;color:var(--ink)}
 .mn-tete{display:flex;align-items:center;gap:6px;margin:0;padding:10px 14px 8px;
   font-size:15px;font-weight:750;letter-spacing:-.01em;color:var(--ink)}
 .mn-tete em{font-style:normal}
 .mn-tete span{font-weight:650;color:var(--ink2)}
-.mn-l{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;
+.mn-l{display:flex;align-items:center;gap:11px;width:100%;
+  height:var(--mn-ligne);flex:0 0 var(--mn-ligne);overflow:hidden;
   padding:9px 14px;border:0;border-top:1px solid var(--bord);background:#fff;
   text-align:left;cursor:pointer}
 .mn-l:first-of-type{border-top:0}
@@ -1729,7 +1768,8 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="comprendre.js?v=674ea341"></script>
 <script src="donnees.js?v=c3559619"></script>
 <script src="intentions.js?v=39e671d2"></script>
-<script src="comptes.js?v=b70981c9"></script>
+<script src="comptes.js?v=9f5e8a5d"></script>
+<script src="maintenant.js?v=3fa189fb"></script>
 <script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
 <script src="temporel.js?v=babdb878"></script>
@@ -3246,14 +3286,45 @@ async function envoyerLienCompte(email){
   const adresse = COMPTES.normaliserEmail(email);
   if(!COMPTES.emailValide(adresse)) return { ok:false, message:"Cette adresse ne semble pas complète." };
   const plan = COMPTES.manoeuvre(etatCompte);
+
+  /* Ouvrir une session neuve : c'est le cas du visiteur qui n'a jamais rien
+     posé. Rien à conserver, donc rien à rattacher. */
+  const ouvrir = async()=>{
+    const { error } = await sb.auth.signInWithOtp({ email:adresse,
+      options:{ emailRedirectTo: location.origin + location.pathname, shouldCreateUser:true } });
+    if(error) throw error;
+    return { ok:true, typeOtp:"email" };
+  };
+
+  if(plan.methode !== "lier") {
+    try{ return await ouvrir(); }
+    catch(e){ return { ok:false, message: COMPTES.messageErreur(e) }; }
+  }
+
+  /* Rattacher l'adresse à la session anonyme en cours : c'est ce qui conserve
+     l'uid, donc les publications et les favoris déjà posés.
+
+     MAIS ÇA PEUT ÉCHOUER, ET IL FAUT LE PRÉVOIR. Si l'adresse appartient déjà
+     à un autre compte, le rattachement est refusé — deux comptes ne peuvent
+     pas porter la même adresse, et la base le garantit par un index unique.
+     Sans repli, la personne resterait bloquée : elle taperait l'adresse de son
+     propre compte et n'arriverait jamais à s'y connecter.
+
+     On bascule donc sur une ouverture de session normale. Elle retrouve son
+     vrai compte — avec ce qu'il contient — et la session anonyme du moment est
+     abandonnée. C'est le bon arbitrage : ce qu'elle a déjà publié sous son
+     compte vaut plus qu'une session de navigateur. */
   try{
-    const { error } = plan.methode === "lier"
-      ? await sb.auth.updateUser({ email:adresse })
-      : await sb.auth.signInWithOtp({ email:adresse,
-          options:{ emailRedirectTo: location.origin + location.pathname, shouldCreateUser:true } });
+    const { error } = await sb.auth.updateUser({ email:adresse });
     if(error) throw error;
     return { ok:true, typeOtp:plan.typeOtp };
   }catch(e){
+    if(COMPTES.adresseDejaPrise(e)){
+      try{
+        const r = await ouvrir();
+        return Object.assign(r, { bascule:"adresse-deja-prise" });
+      }catch(e2){ return { ok:false, message: COMPTES.messageErreur(e2) }; }
+    }
     return { ok:false, message: COMPTES.messageErreur(e) };
   }
 }
@@ -10451,20 +10522,112 @@ function ligneMaintenant(l){
     '<span class="mn-fl" aria-hidden="true">›</span></button>';
 }
 
-const MAINTENANT_APERCU = 3;
+const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
+
+/* Ce que `maintenant.js` a besoin de savoir d'un lieu, et rien de plus. Le
+   statut vient du moteur temporel, qui le tient du backend : on ne le
+   recalcule pas ici, on le transmet. */
+function versItemMaintenant(l, t){
+  /* Le verdict temporel est TRANSMIS, jamais recopié sous forme de chaîne :
+     c'est `temporel.js` qui connaît le vocabulaire du backend, et lui seul. */
+  const statut = statutTemps(l, t).statut;
+  return {
+    id:l.id, estEvenement:estTemporaire(l), annule:!!l.annule,
+    enCours: TEMPS.estMaintenant(statut),
+    dateIncertaine: statut === "unknown",
+    debutLe:l.debutLe, finLe:l.finLe, lat:l.lat, lng:l.lng,
+    ferme:estFerme(l),
+  };
+}
+
+/* Le contexte de la sélection, lu une seule fois par rendu. Deux endroits qui
+   décident séparément « est-ce qu'on cherche encore ? » finissent toujours par
+   ne plus être d'accord, et c'est l'écran qui clignote. */
+function contexteMaintenant(){
+  return {
+    maintenant: Date.now(),
+    position: positionPrecise() ? positionMoi : null,
+    positionConnue: positionConnue(),
+    positionEnCours: rechercheEtat.location === SEARCH_STATES.REQUESTING_LOCATION,
+    positionRefusee: rechercheEtat.location === SEARCH_STATES.LOCATION_DENIED,
+    chargement: rechercheEnCours(),
+    panne: panneTechnique(),
+  };
+}
+
+/* La sélection elle-même : au plus trois, jamais complétée artificiellement. */
+function selectionMaintenant(){
+  const M = window.AutourMaintenant;
+  if(!M) return [];
+  const ctx = contexteMaintenant();
+  const items = lieux.map(l=>versItemMaintenant(l, ctx.maintenant));
+  const retenus = M.selection(items, ctx);
+  const parId = new Map(lieux.map(l=>[l.id, l]));
+  return retenus.map(i=>parId.get(i.id)).filter(Boolean);
+}
+
+function totalMaintenant(){
+  const M = window.AutourMaintenant;
+  if(!M) return 0;
+  const ctx = contexteMaintenant();
+  return M.total(lieux.map(l=>versItemMaintenant(l, ctx.maintenant)), ctx);
+}
+
+/* ==================================================================== */
+/*  Le bloc « Maintenant » — LA PLACE EST RÉSERVÉE, TOUJOURS            */
+/* ==================================================================== */
+/* CE QUI CASSAIT.
+
+   Cette fonction rendait une chaîne vide tant qu'il n'y avait rien à montrer.
+   La géolocalisation prend une seconde, les événements une autre : pendant ce
+   temps la section n'existait pas, et les boutons du dessous occupaient sa
+   place. Quand les données arrivaient, le bloc s'insérait et poussait tout
+   vers le bas — sous le doigt de quelqu'un qui était en train d'appuyer.
+
+   La section est désormais rendue DANS LES QUATRE ÉTATS, avec la même hauteur
+   réservée (`--mn-hauteur`, trois lignes plus l'en-tête). Ce qui change à
+   l'intérieur, c'est le contenu ; jamais l'encombrement.
+
+   Et pendant la collecte, on montre un état léger et neutre — pas un message,
+   pas une explication : rien qui demande à être lu et qui disparaîtra. */
 function blocMaintenantAccueil(){
   if(creneau !== "maintenant" || modeAide) return "";
-  const liste = evenementsMaintenant();
-  if(!liste.length) return "";
-  const apercu = liste.slice(0, MAINTENANT_APERCU);
-  return '<section class="mn" data-testid="maintenant-liste">'+
-    '<p class="mn-tete"><em aria-hidden="true">⚡</em><b>Maintenant</b>'+
-      '<span>('+liste.length+')</span></p>'+
-    apercu.map(ligneMaintenant).join("")+
-    (liste.length > apercu.length
-      ? '<button class="mn-tout" data-mn-tout="1">Voir tout ('+liste.length+')</button>'
-      : '')+
-    '</section>';
+  const M = window.AutourMaintenant;
+  if(!M) return "";
+
+  const liste = selectionMaintenant();
+  const combien = totalMaintenant();
+  const ctx = contexteMaintenant();
+  const etat = M.etat(Object.assign({resultats:liste.length}, ctx));
+  const mots = M.textes(etat, ctx);
+
+  const tete = '<p class="mn-tete"><em aria-hidden="true">⚡</em><b>Maintenant</b>'+
+    (etat === M.ETATS.READY && combien ? '<span>('+combien+')</span>' : '')+'</p>';
+
+  let corps;
+  if(etat === M.ETATS.READY){
+    corps = liste.map(ligneMaintenant).join("")+
+      (combien > liste.length
+        ? '<button class="mn-tout" data-mn-tout="1">Voir tout ('+combien+')</button>'
+        : '');
+  }else if(etat === M.ETATS.LOADING){
+    /* Trois barres grises, sans texte. Elles occupent exactement la place des
+       trois lignes à venir : quand les vraies arrivent, rien ne bouge. */
+    corps = '<div class="mn-attente" aria-hidden="true">'+
+      '<i></i><i></i><i></i></div>';
+  }else{
+    corps = '<div class="mn-rien" role="status">'+
+      '<p>'+esc(mots.ligne)+'</p>'+
+      (mots.sortie
+        ? '<button class="mn-sortie" data-mn-sortie="'+esc(etat)+'">'+
+            esc(mots.sortie)+'</button>'
+        : '')+
+      '</div>';
+  }
+
+  return '<section class="mn" data-testid="maintenant-liste" '+
+    'data-mn-etat="'+esc(etat)+'" aria-busy="'+(etat === M.ETATS.LOADING)+'">'+
+    tete+'<div class="mn-corps">'+corps+'</div></section>';
 }
 
 function ongletsTemps(){
@@ -10833,6 +10996,31 @@ function brancherFeuille2(){
     pousserEcran(()=>afficherListe("⚡", "Maintenant",
       classerLieux(evenementsMaintenant(), false), false,
       ()=>{ pileEcrans = []; majFeuille2(); }));
+  });
+
+  /* La sortie d'un bloc vide ou en erreur. Elle ne laisse jamais dans une
+     impasse : vide → ce qui ouvre autour ; position inconnue → choisir un
+     point de départ ; panne → réessayer. Chacune passe par un chemin qui
+     existe déjà, plutôt que d'en inventer un quatrième. */
+  corps.querySelectorAll("[data-mn-sortie]").forEach(b=>b.onclick=()=>{
+    const M = window.AutourMaintenant;
+    const ctx = contexteMaintenant();
+    if(ctx.positionRefusee || !ctx.positionConnue){ ouvrirRecherche(); return; }
+    if(b.dataset.mnSortie === (M && M.ETATS.ERROR)){
+      // le même chemin de relance que partout ailleurs, pas un second
+      const centre = pointCarte();
+      rechercheEtat.overpass = SEARCH_STATES.IDLE;
+      definirEtatRecherche("places", SEARCH_STATES.LOADING_PLACES);
+      chargerAutourDuPoint(centre.lat, centre.lng, {force:true});
+      majFeuille2();
+      return;
+    }
+    // « vide » : Explorer reste accessible, et c'est là qu'on l'envoie
+    if(creneau !== "maintenant"){ majFeuille2(); return; }
+    montrerFermes = false;
+    filtreActif = "tout";
+    if(catsActives) catsActives.clear();
+    majFeuille2(); reinitialiserScrollFeuille();
   });
 
   /* Le pont depuis « Maintenant » vide vers « À venir ». Il passe par le même
