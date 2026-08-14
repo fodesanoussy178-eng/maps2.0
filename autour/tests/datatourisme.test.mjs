@@ -121,8 +121,14 @@ test("DATAtourisme complète OSM sans bloquer ni modifier l'interface", () => {
   assert.match(index, /avecDelai\(lieuxDatatourisme\(lat,lng,signal\),4000,\[\],signal\)/);
   assert.match(index, /AutourProviders\.datatourisme/);
   assert.match(provider, /AutourProviders\.normaliser/);
+  /* Le classement est le même ; il ne s'exécute simplement plus au milieu du
+     rendu. Le profil l'avait mesuré à 1 169 ms pour le pire, et « Maintenant »
+     attendait derrière alors qu'il n'en dépend pas. */
   assert.match(index, /let reco = recommandationsAccueil\(7\)/);
   assert.match(index, /const ACCUEIL_MAX = 7/);
   assert.match(index, /const pourToi = recommandationsAccueil\(ACCUEIL_MAX\)/);
-  assert.match(index, /choisis\.push\(\.\.\.pourToi\.slice\(0,ACCUEIL_MAX\)\)/);
+  assert.match(index, /selectionAccueil = ids;/);
+  // et il est annulable : changer de zone ne doit pas imposer les marqueurs
+  // d'une ville qu'on vient de quitter
+  assert.match(index, /if\(jetonCarte !== generationAccueil\) return;/);
 });

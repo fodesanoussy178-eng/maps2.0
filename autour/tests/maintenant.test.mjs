@@ -279,7 +279,7 @@ test("le bouton sert à rouvrir ou actualiser, pas à obtenir la première fois"
 
 test("l'application délègue la sélection au module, sans la refaire", () => {
   assert.match(html, /function selectionMaintenant\(\)\{/);
-  assert.match(html, /M\.selection\(items, ctx\)/);
+  assert.match(html, /M\.selection\(itemsMaintenant\(ctx\), ctx\)/);
   assert.match(html, /M\.total\(/);
   assert.match(html, /M\.etat\(Object\.assign\(\{resultats:liste\.length\}, ctx\)\)/);
   // un seul contexte par rendu : deux calculs séparés finissent par diverger
@@ -368,4 +368,197 @@ test("la feuille se rafraîchit quand la carte change de ville", () => {
   const suivi = html.slice(html.indexOf('map.on("moveend zoomend"'),
                            html.indexOf('map.on("click"'));
   assert.match(suivi, /planifierRendu\(\{accueil:true, feuille:true\}\)/);
+});
+
+/* ==========================================================================
+   7. UN MOTEUR DE DISPONIBILITÉ, PLUS UN FILTRE D'ÉVÉNEMENTS
+
+   « Maintenant » ne veut plus dire « événements en cours ». Il veut dire :
+   qu'est-ce que je peux faire, là, dans la zone que je regarde ? Un quartier
+   n'a pas un concert à toute heure — s'en tenir aux événements laissait le
+   bloc vide l'essentiel du temps, alors qu'il y a un restaurant ouvert à deux
+   rues et un cinéma dont la séance commence dans vingt minutes.
+   ======================================================================== */
+
+const lieu = (extra) => Object.assign({
+  id: "l1", estEvenement: false, annule: false,
+  lat: ICI[0] + 300 / 111320, lng: ICI[1],
+  ouvert: true, ouvertALArrivee: true, categorie: "resto",
+}, extra || {});
+
+test("les quatre natures sont exactement celles du contrat", () => {
+  assert.deepEqual(Object.values(M.NATURES).sort(),
+    ["activity_now", "event_now", "open_now", "session_soon"]);
+});
+
+test("un événement en cours reste la première des natures", () => {
+  const v = M.disponible(bon(), ctx());
+  assert.equal(v.retenu, true);
+  assert.equal(v.nature, M.NATURES.EVENEMENT);
+});
+
+test("un lieu ouvert est une réponse valable", () => {
+  const v = M.disponible(lieu(), ctx());
+  assert.equal(v.retenu, true, v.raison);
+  assert.equal(v.nature, M.NATURES.OUVERT);
+});
+
+test("un lieu d'activité ouvert vaut mieux qu'une simple commodité", () => {
+  // un musée ouvert est une sortie ; une supérette ouverte est une commodité
+  for (const cat of ["cinema", "musee", "biblio", "parc", "piscine"]) {
+    assert.equal(M.disponible(lieu({ categorie: cat }), ctx()).nature,
+      M.NATURES.ACTIVITE, cat);
+  }
+  assert.equal(M.disponible(lieu({ categorie: "commerce" }), ctx()).nature,
+    M.NATURES.OUVERT);
+});
+
+test("un lieu FERMÉ n'entre jamais, même s'il reste une place libre", () => {
+  const v = M.disponible(lieu({ ouvert: false }), ctx());
+  assert.equal(v.retenu, false);
+  assert.equal(v.raison, M.RAISONS.PAS_OUVERT);
+});
+
+test("un horaire INCONNU ne passe pas non plus", () => {
+  /* C'est le cas le plus fréquent, et le plus dangereux à confondre avec
+     « ouvert » : envoyer quelqu'un devant une porte close parce qu'on ne
+     savait pas. Dans « Maintenant », l'inconnu ne passe pas — ailleurs dans
+     Autour, il reste affiché avec « horaires non renseignés ». */
+  for (const inconnu of [null, undefined]) {
+    const v = M.disponible(lieu({ ouvert: inconnu }), ctx());
+    assert.equal(v.retenu, false, String(inconnu));
+    assert.equal(v.raison, M.RAISONS.HORAIRE_INCONNU);
+  }
+});
+
+test("un lieu qui ferme avant qu'on arrive n'entre pas", () => {
+  // arriver au musée trois minutes avant la fermeture n'est pas une visite
+  const v = M.disponible(lieu({ categorie: "musee", ouvertALArrivee: false }), ctx());
+  assert.equal(v.retenu, false);
+  assert.equal(v.raison, M.RAISONS.FERME_TROP_TOT);
+});
+
+/* ---- La séance imminente : la seule exception, et elle est bornée ------- */
+
+test("une séance qui commence bientôt est une réponse à « maintenant »", () => {
+  const seance = bon({ debutLe: T + 20 * 60000, finLe: T + 140 * 60000,
+                       enCours: false, categorie: "cinema" });
+  const v = M.disponible(seance, ctx());
+  assert.equal(v.retenu, true, v.raison);
+  assert.equal(v.nature, M.NATURES.SEANCE);
+});
+
+test("mais la fenêtre est étroite des DEUX côtés", () => {
+  // trop loin : ce n'est plus « maintenant »
+  const tard = bon({ debutLe: T + 3 * h(1), finLe: T + 5 * h(1), enCours: false });
+  assert.equal(M.disponible(tard, ctx()).raison, M.RAISONS.SEANCE_TROP_LOIN);
+  // trop proche : on n'y sera pas
+  const juste = bon({ debutLe: T + 60000, finLe: T + h(2), enCours: false });
+  assert.equal(M.disponible(juste, ctx()).raison, M.RAISONS.SEANCE_TROP_PROCHE);
+});
+
+test("UN ÉVÉNEMENT DE DEMAIN NE REMPLIT JAMAIS UNE LIGNE VIDE", () => {
+  /* La règle qui ne bouge pas d'un pouce. Un concert demain n'est pas
+     « maintenant », même s'il ne reste que des places libres. */
+  const demain = bon({ debutLe: T + 26 * h(1), finLe: T + 28 * h(1), enCours: false });
+  const v = M.disponible(demain, ctx());
+  assert.equal(v.retenu, false);
+  assert.equal(v.raison, M.RAISONS.SEANCE_TROP_LOIN);
+  // et la sélection ne le rattrape pas non plus
+  assert.deepEqual(M.selection([demain], ctx()), []);
+});
+
+test("un événement passé ou annulé ne devient jamais une séance", () => {
+  assert.equal(M.disponible(bon({ debutLe: T - h(5), finLe: T - h(2), enCours: false }),
+    ctx()).raison, M.RAISONS.DEJA_FINI);
+  assert.equal(M.disponible(bon({ annule: true }), ctx()).raison, M.RAISONS.ANNULE);
+  assert.equal(M.disponible(bon({ dateIncertaine: true }), ctx()).raison,
+    M.RAISONS.DATE_INCERTAINE);
+});
+
+/* ---- La priorité et la diversité --------------------------------------- */
+
+test("l'ordre de priorité est respecté", () => {
+  const liste = [
+    lieu({ id: "resto", categorie: "resto" }),
+    lieu({ id: "cine", categorie: "cinema" }),
+    bon({ id: "concert" }),
+  ];
+  assert.deepEqual(M.selection(liste, ctx()).map((x) => x.id),
+    ["concert", "cine", "resto"]);
+});
+
+test("la diversité évite trois fois la même réponse", () => {
+  /* Trois fast-foods répondent trois fois à la même question. Un événement,
+     un cinéma et un restaurant répondent à trois questions différentes. */
+  const liste = [
+    lieu({ id: "burger1", categorie: "fastfood", lat: ICI[0] + 0.001 }),
+    lieu({ id: "burger2", categorie: "fastfood", lat: ICI[0] + 0.0011 }),
+    lieu({ id: "burger3", categorie: "resto", lat: ICI[0] + 0.0012 }),
+    lieu({ id: "cafe", categorie: "cafe", lat: ICI[0] + 0.004 }),
+    lieu({ id: "cine", categorie: "cinema", lat: ICI[0] + 0.005 }),
+  ];
+  const choisis = M.selection(liste, ctx()).map((x) => x.id);
+  assert.equal(choisis.length, 3);
+  const familles = new Set(choisis.map((id) =>
+    M.familleDe(liste.find((l) => l.id === id))));
+  assert.equal(familles.size, 3, "trois familles distinctes : " + choisis.join(", "));
+});
+
+test("la variété ne coûte jamais la tête de liste", () => {
+  /* Un tri « une famille sur deux » ferait passer un café ouvert devant un
+     concert en cours pour cause de variété. Le premier reste le meilleur au
+     sens strict. */
+  const liste = [
+    lieu({ id: "cafe", categorie: "cafe", lat: ICI[0] + 0.0001 }),
+    bon({ id: "concert", lat: ICI[0] + 0.02 }),
+  ];
+  assert.equal(M.selection(liste, ctx())[0].id, "concert");
+});
+
+test("faute de variété, on complète quand même — mais avec du disponible", () => {
+  const trois = [
+    lieu({ id: "a", categorie: "resto", lat: ICI[0] + 0.001 }),
+    lieu({ id: "b", categorie: "resto", lat: ICI[0] + 0.002 }),
+    lieu({ id: "c", categorie: "resto", lat: ICI[0] + 0.003 }),
+  ];
+  assert.equal(M.selection(trois, ctx()).length, 3);
+  // mais jamais avec du fermé
+  const fermes = trois.map((l) => Object.assign({}, l, { ouvert: false }));
+  assert.deepEqual(M.selection(fermes, ctx()), []);
+});
+
+test("chaque proposition retenue porte sa nature", () => {
+  const liste = [bon({ id: "e" }), lieu({ id: "l", categorie: "cafe" })];
+  const choisis = M.selection(liste, ctx());
+  assert.deepEqual(choisis.map((x) => x.nature),
+    [M.NATURES.EVENEMENT, M.NATURES.OUVERT]);
+});
+
+test("sans position CONNUE, rien n'est autour de personne", () => {
+  /* Quand la géolocalisation est refusée, Autour pose quand même la carte
+     quelque part — une ville déduite d'une adresse IP. Les coordonnées sont
+     valides, et les lieux ouverts alentour passaient tous : trois restaurants
+     « autour de toi » pour quelqu'un dont personne ne savait où il était. */
+  const aucune = ctx({ positionConnue: false });
+  assert.equal(M.disponible(lieu(), aucune).raison, M.RAISONS.POSITION_INCONNUE);
+  assert.equal(M.disponible(bon(), aucune).raison, M.RAISONS.POSITION_INCONNUE);
+  assert.deepEqual(M.selection([lieu(), bon()], aucune), []);
+});
+
+test("l'application transmet l'ouverture depuis availability.js, pas d'ailleurs", () => {
+  const versItem = html.slice(html.indexOf("function versItemMaintenant"),
+                              html.indexOf("function contexteMaintenant"));
+  assert.match(versItem, /dispoDe\(l, arriveeEstimee/);
+  assert.match(versItem, /dispo\.status === "open" \? true/);
+  assert.match(versItem, /dispo\.status === "unknown" \? null : false/);
+  assert.match(versItem, /ouvertALArrivee = dispo\.isOpenAtArrival/);
+});
+
+test("la ligne dit le bon temps selon la nature", () => {
+  // « jusqu'à 20:00 » sous un cinéma dont la séance commence à 20:00 dirait
+  // exactement le contraire de la vérité
+  assert.match(html, /function tempsMaintenant\(l\)\{/);
+  assert.match(html, /commence dans "\+dans\+" min"/);
+  assert.match(html, /"ouvert jusqu’à "\+d\.closesAtTime/);
 });

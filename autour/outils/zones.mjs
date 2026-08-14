@@ -20,6 +20,7 @@
    Usage :
      node outils/zones.mjs                      # les villes de villes.json
      node outils/zones.mjs 50.7176,3.1611       # la tuile qui contient ce point
+     node outils/zones.mjs --liste outils/hubs.json   # les gares et centres denses
      node outils/zones.mjs --liste mes-villes.json
 
    Ce script a besoin d'un accès réseau à Overpass. Il n'invente rien : si une
@@ -374,9 +375,20 @@ if (process.argv[1] !== fileURLToPath(import.meta.url)) {
 const args = process.argv.slice(2);
 let cibles = [];
 
+/* Une liste peut être un simple tableau, ou un objet qui porte ses cibles sous
+   `hubs` — c'est la forme de `hubs.json`, qui explique en tête ce qu'un hub
+   est et n'est pas. Accepter les deux évite d'avoir à choisir entre un fichier
+   lisible et un fichier utilisable. */
+function ciblesDe(brut) {
+  if (Array.isArray(brut)) return brut;
+  if (brut && Array.isArray(brut.hubs)) return brut.hubs;
+  if (brut && Array.isArray(brut.villes)) return brut.villes;
+  throw new Error("liste illisible : un tableau, ou un objet avec `hubs`");
+}
+
 const iListe = args.indexOf("--liste");
 if (iListe >= 0 && args[iListe + 1]) {
-  cibles = JSON.parse(readFileSync(args[iListe + 1], "utf8"));
+  cibles = ciblesDe(JSON.parse(readFileSync(args[iListe + 1], "utf8")));
 } else if (args[0] && /^-?\d/.test(args[0])) {
   const [lat, lng] = args[0].split(",").map(Number);
   cibles = [{ lat, lng, nom: args[0] }];
@@ -386,7 +398,7 @@ if (iListe >= 0 && args[iListe + 1]) {
     console.error("Aucune liste de villes. Donne une coordonnée, ou crée outils/villes.json.");
     process.exit(1);
   }
-  cibles = JSON.parse(readFileSync(parDefaut, "utf8"));
+  cibles = ciblesDe(JSON.parse(readFileSync(parDefaut, "utf8")));
 }
 
 /* Plusieurs villes tombent dans la même tuile — Roubaix et Tourcoing, par

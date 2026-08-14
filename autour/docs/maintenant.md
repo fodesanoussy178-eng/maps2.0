@@ -159,3 +159,157 @@ l'environnement de développement (le miroir Playwright est refusé par le
 proxy) : **Safari n'a pas été testé automatiquement**. Les propriétés
 employées ici — `min-height` en `calc()`, flexbox, variables CSS — sont
 supportées par Safari depuis longtemps, mais ce n'est pas une vérification.
+
+## Ce que « Maintenant » veut dire, depuis cette passe
+
+Plus « les événements en cours », mais : **qu'est-ce que je peux faire, là,
+dans la zone que je regarde ?**
+
+Un quartier n'a pas un concert à toute heure. S'en tenir aux événements
+laissait le bloc vide l'essentiel du temps — alors qu'à cette même heure il y a
+un restaurant ouvert à deux rues et un cinéma dont la séance commence dans
+vingt minutes. Ce sont des réponses à la question posée ; les taire n'était pas
+de la rigueur, c'était un écran vide.
+
+### Quatre natures, dans cet ordre
+
+| nature | ce que c'est |
+|---|---|
+| `event_now` | un événement a commencé et n'est pas fini |
+| `session_soon` | une séance commence dans 5 à 75 min — on a le temps d'y arriver |
+| `activity_now` | un lieu d'activité ouvert : cinéma, musée, piscine, parc, bibliothèque |
+| `open_now` | un lieu ouvert où l'on peut aller tout de suite |
+
+L'ordre n'est pas décoratif : un événement en cours est rare et périssable, un
+restaurant ouvert ne l'est pas.
+
+### Ce qui n'entre jamais
+
+- **un événement futur ne sert jamais à remplir.** Un concert demain n'est pas
+  « maintenant », même s'il ne reste que des lignes vides ;
+- un lieu **fermé** ;
+- un lieu dont on **ignore les horaires** — c'est le cas le plus fréquent et le
+  plus dangereux à confondre avec « ouvert » ;
+- un lieu qui **ferme avant qu'on arrive** (`availability.js` connaît les marges
+  par type : arriver au musée trois minutes avant la fermeture n'est pas une
+  visite) ;
+- une séance **trop lointaine** ou **trop imminente** pour être attrapée.
+
+### La diversité, en deux passes
+
+Trois fast-foods répondent trois fois à la même question. On prend d'abord le
+**meilleur de chaque famille**, dans l'ordre de priorité ; s'il reste des
+places, on complète avec le reste du classement.
+
+Un tri « une famille sur deux » ferait passer un café ouvert devant un concert
+en cours pour cause de variété. **La variété ne coûte jamais la tête de liste.**
+
+## Hubs et vitesse
+
+`outils/hubs.json` déclare huit hubs de **données** — Lille-Flandres/Europe,
+quatre pôles parisiens, Lyon Part-Dieu, Marseille Saint-Charles, Bordeaux
+Saint-Jean, Toulouse-Matabiau — et les tuiles `zones/*.json` qui les couvrent.
+
+> **Un hub n'est pas une position.** Quelqu'un à quatre kilomètres de
+> Lille-Flandres n'est pas à Lille-Flandres : on ne le téléporte jamais. Le hub
+> dit quel fichier est déjà prêt, pas où se trouve la personne.
+
+Les événements ne sont pas dans les tuiles : ils périment. Ils vivent dans la
+couche canonique et se synchronisent séparément.
+
+Cinq des neuf tuiles existent déjà (Lille, Paris). Les quatre autres —
+`45.8,4.9`, `43.3,5.4`, `44.8,-0.6`, `43.6,1.5` — se génèrent avec :
+
+```sh
+node outils/zones.mjs --liste outils/hubs.json
+```
+
+Ce script a besoin d'Overpass, que le bac à sable de développement refuse :
+**ces quatre tuiles ne sont pas générées ici.**
+
+### Le banc de vitesse
+
+```sh
+AUTOUR_RACINE=autour node outils/vitesse.mjs
+```
+
+Il mesure, par scénario : temps jusqu'à la localisation, jusqu'au **premier**
+résultat, jusqu'aux trois, nombre de requêtes, hits/miss de cache, sources
+au-delà d'une seconde, et **le pire blocage du fil principal**.
+
+Scénarios : hub à froid, hub à chaud, hub en réseau lent, hors hub en réseau
+lent, centre-ville dense, zone peu dense.
+
+### Ce qui reste lent, et ce n'est pas une impression
+
+Sur un centre-ville dense (120 lieux), le fil principal reste bloqué **plusieurs
+secondes d'affilée**. Pendant ce temps l'écran ne réagit à rien — et
+« Maintenant » ne peut pas s'afficher, **non parce qu'il attend une donnée**
+(les lieux sont arrivés à 583 ms, les événements à 2,8 s) **mais parce que
+personne ne peut le dessiner**.
+
+La cause est l'ingestion de cent trente lieux en une seule tenue :
+normalisation, déduplication, classement, pose des marqueurs. La découper en
+tranches est un chantier à part entière — pas une passe de stabilisation. Le
+banc l'imprime à chaque exécution, avec son chiffre, plutôt que de le taire ou
+de le noyer dans un rouge permanent.
+
+## Découper l'ingestion : ce qui a été fait, et ce qui reste
+
+### Le diagnostic, avant de toucher quoi que ce soit
+
+Un profil dans la page, fonction par fonction, sur le scénario dense :
+
+```
+recommandationsAccueil   13 appels   3907 ms   pire : 443 ms
+rendre (marqueurs)        6 appels   2088 ms   pire : 944 ms
+itemsMaintenant          16 appels   1535 ms   pire : 950 ms
+```
+
+Et le point qui décide de tout : `blocMaintenantAccueil()` se construisait dans
+le **même `innerHTML`** que la liste de recommandations. `Maintenant` attendait
+donc un classement dont il n'a aucun besoin.
+
+### Trois changements, aucun sur les règles métier
+
+1. **Le rendu de l'accueil se fait en deux temps.** Ce qui est bon marché — dont
+   `Maintenant` — est peint tout de suite ; la zone des recommandations garde sa
+   place avec le squelette qui s'y affichait déjà, puis se remplit pendant une
+   tranche d'inactivité. Rien au-dessus ne bouge.
+2. **La sélection de la carte est différée elle aussi.** Le second appel à
+   `recommandationsAccueil` (1169 ms au pire) vivait en plein milieu du rendu.
+   Il s'exécute maintenant en arrière-plan et ne redessine que si le résultat
+   **diffère** — sinon rien ne bouge.
+3. **La disponibilité d'un lieu ne dépend plus du point de référence.** Elle en
+   dépendait par le temps de trajet estimé, donc elle changeait à chaque image
+   *pendant que la carte vole* vers sa destination : la mémoire ne retenait
+   rien et l'analyse des horaires de 130 lieux repartait de zéro. Un temps
+   d'approche nominal de dix minutes dit la même chose — c'est la marge **par
+   type** de `availability.js` qui fait le vrai travail — et le résultat se
+   retient.
+
+`ordonnanceur.js` fournit le mécanisme : `requestIdleCallback` avec repli
+`setTimeout` (Safari ne l'a jamais implémenté), travaux **annulables**, et
+`parLots` qui découpe selon le temps restant dans la tranche plutôt qu'une
+taille fixe.
+
+**Chaque travail différé porte un jeton.** Si la zone change, le jeton est
+périmé et le travail ne s'exécute jamais — plutôt que d'aboutir en écrasant
+l'écran avec le classement d'une ville qu'on a quittée. Le jeton est vérifié
+**avant et après** le calcul : classer 130 lieux prend des centaines de
+millisecondes, et la carte peut bouger pendant ce temps.
+
+### Avant / après, mesuré
+
+| scénario | 1er résultat avant | après | blocage avant | après |
+|---|---|---|---|---|
+| centre dense (120 lieux) | 4703 ms | **2518 ms** | 3963 ms | **1815 ms** |
+| hub · cache froid | 1355 ms | **775 ms** | — | — |
+| zone peu dense | 1626 ms | **1487 ms** | — | — |
+
+### Ce qui reste
+
+**L'objectif d'une seconde de blocage n'est pas tenu** sur zone dense : 1815 ms.
+Les deux classements sont sortis du chemin critique ; ce qui reste est la pose
+des marqueurs et la déduplication, toujours d'un bloc. Le banc l'imprime à
+chaque exécution, avec son chiffre.

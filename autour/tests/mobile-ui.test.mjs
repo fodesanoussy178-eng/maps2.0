@@ -1905,8 +1905,11 @@ test("le jeu rapide affiche les propositions de la dernière session",()=>{
   assert.match(html,/function memoriserJeuRapide\(choisis, reserve\)\{/);
   assert.match(html,/function lireJeuRapide\(lat,lng\)\{/);
   // il n'est lu que s'il décrit vraiment l'endroit où l'on est
-  assert.match(html,/distanceM\(lat,lng,o\.zone\[0\],o\.zone\[1\]\) > RAPIDE_RAYON_M\) return null;/);
-  assert.match(html,/if\(Date\.now\(\) - o\.t > RAPIDE_HEURES\*3600\*1000\) return null;/);
+  assert.match(html,/distanceM\(lat,lng,o\.zone\[0\],o\.zone\[1\]\) > RAPIDE_RAYON_M\) return manque\("ailleurs"\);/);
+  assert.match(html,/if\(Date\.now\(\) - o\.t > RAPIDE_HEURES\*3600\*1000\) return manque\("perime"\);/);
+  // chaque sortie est comptée : c'est le cache le plus rapide qui existe, et
+  // savoir combien de fois on le manque dit tout de la deuxième ouverture
+  assert.match(html,/PERF\.touche\("jeu_rapide", true\)/);
   // et il est posé sans déclencher de reclassement avant la première image
   assert.match(html,/fusionner\(rapide\.lieux, "permanent", \{silencieux:true\}\);/);
   // l'écriture ne se fait pas sur le fil critique
