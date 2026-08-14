@@ -170,6 +170,12 @@ input{font-family:inherit;font-size:16px}
   overflow:hidden;text-overflow:ellipsis}
 .poi-eti span.ouvre{color:#1B7F3B}
 .loin .poi-eti,.poi-eti.masquee{display:none}
+/* Même règle pour la carte d'événement : le texte s'efface, la pastille
+   reste — donc le marqueur reste touchable et repérable, il perd seulement
+   son libellé. Le fond de carte redevient lisible sans rien supprimer. */
+.evc-txt.masquee{display:none}
+.evc:has(.evc-txt.masquee){padding:6px;max-width:none}
+.evc-txt.a-gauche{order:-1}
 /* Basculée à gauche quand elle sortirait de l'écran à droite : la pastille ne
    bouge pas, seule l'étiquette change de côté. */
 .poi-eti.a-gauche{order:-1;margin-left:0;margin-right:-8px;
@@ -3546,7 +3552,7 @@ async function overpassRelaye(q, msMax, signal){
   if(relaisLieux === false) return {ok:false, elements:[], raison:"relais_absent"};
   try{
     const stop = new AbortController();
-    const t = setTimeout(()=>stop.abort(), msMax || 12000);
+    const t = setTimeout(()=>stop.abort(), msMax || OVERPASS_DELAI_DEMANDE);
     if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
     PERF.requete("overpass");
     const r = await fetch("/api/lieux?q="+encodeURIComponent(q), {signal:stop.signal});
@@ -3656,7 +3662,17 @@ const CATS_DEPART = new Set(["resto","fastfood","cafe","marche","bar","cinema",
    Sur demande explicite : vingt-cinq, parce que la personne attend un
    résultat précis et qu'un écran vide serait une réponse fausse. */
 const OVERPASS_DELAI_BOOT = 4500;
-const OVERPASS_DELAI_DEMANDE = 12000;
+/* 6 s, pas 12. Douze secondes se défendaient sur le papier — « quand la
+   personne a demandé quelque chose de précis, mieux vaut attendre que revenir
+   les mains vides » — mais le raisonnement supposait qu'attendre ne coûte
+   rien. Il coûte la seule chose qu'on ne peut pas rendre : la confiance qu'il
+   se passe quelque chose. Au-delà de cinq ou six secondes sans retour, on ne
+   patiente plus, on se demande si c'est cassé.
+   Et l'arbitrage n'est plus « attendre ou rien » : ce qui est déjà à l'écran
+   y reste pendant l'actualisation, la zone n'est pas marquée comme vue en cas
+   d'échec, et le prochain déplacement de carte relance la requête. Couper à
+   6 s ne perd donc que la requête, jamais les résultats. */
+const OVERPASS_DELAI_DEMANDE = 6000;
 /* Ce qu'on demande à l'ouverture : le quartier immédiat, et de quoi remplir
    cinq recommandations avec de la marge. Le reste vient au premier geste. */
 const RAYON_BOOT = 900;
@@ -3794,7 +3810,71 @@ function catOpenAgenda(evt){
   return "event";
 }
 
+/* ---- OpenAgenda : trois sauts, aucun filet ------------------------------
+
+   Ce qui n'allait PAS, et ce qui allait bien. Les huit lectures d'agenda
+   étaient déjà parallèles — ce n'était pas un 1+N séquentiel. Les vrais
+   défauts étaient ailleurs, et ils sont tous du même genre : rien ne borne
+   l'attente, et rien ne survit à un échec.
+
+     · trois sauts en série avant le premier événement : nom de commune, puis
+       liste d'agendas, puis les événements. Trois latences empilées ;
+     · AUCUN délai maximum. Les autres fournisseurs coupent à quelques
+       secondes ; ici, une requête qui pend faisait attendre `allSettled`
+       indéfiniment, et le créneau restait en chargement ;
+     · aucun cache : revenir sur une zone déjà vue relançait les dix requêtes ;
+     · aucun repli. Un échec rendait `null`, et les événements déjà affichés
+       disparaissaient — un vide provoqué par une panne, exactement ce qu'on
+       s'interdit ailleurs.
+
+   Corrigé sans changer ce que la fonction rend : un délai par requête, trois
+   requêtes simultanées au plus (huit d'un coup sur le même hôte invitent le
+   rate limit), un cache de zone, et la dernière réponse valide conservée. */
+const DELAI_OPENAGENDA_MS = 6000;
+const CONCURRENCE_OPENAGENDA = 3;
+const CACHE_OPENAGENDA_MS = 10 * 60 * 1000;
+const cacheOpenAgenda = new Map();
+
+function cleOpenAgenda(lat,lng){ return lat.toFixed(2)+","+lng.toFixed(2); }
+
+async function fetchOpenAgenda(url){
+  const arret = AbortSignal.timeout ? AbortSignal.timeout(DELAI_OPENAGENDA_MS) : undefined;
+  return fetch(url, {signal:arret});
+}
+
+/* Exécute au plus `limite` tâches à la fois. Une tâche qui échoue n'arrête
+   pas les autres : c'est le contrat de `allSettled`, conservé ici. */
+async function parLots(taches, limite){
+  const resultats = new Array(taches.length);
+  let curseur = 0;
+  const ouvriers = Array.from({length:Math.min(limite, taches.length)}, async ()=>{
+    while(curseur < taches.length){
+      const i = curseur++;
+      try{ resultats[i] = {status:"fulfilled", value:await taches[i]()}; }
+      catch(e){ resultats[i] = {status:"rejected", reason:e}; }
+    }
+  });
+  await Promise.all(ouvriers);
+  return resultats;
+}
+
 async function evenementsOpenAgenda(lat,lng){
+  const cle = cleOpenAgenda(lat,lng);
+  const enCache = cacheOpenAgenda.get(cle);
+  // stale-while-revalidate : ce qu'on a déjà vu repart tout de suite
+  if(enCache && Date.now() - enCache.le < CACHE_OPENAGENDA_MS) return enCache.items;
+  const frais = await evenementsOpenAgendaReseau(lat,lng);
+  if(Array.isArray(frais)){
+    cacheOpenAgenda.set(cle, {items:frais, le:Date.now()});
+    return frais;
+  }
+  /* Échec : on rend la dernière réponse valide plutôt que rien. Des données
+     d'il y a un quart d'heure valent mieux qu'un écran qui se vide, et le
+     créneau ne saute pas. */
+  return enCache ? enCache.items : null;
+}
+
+async function evenementsOpenAgendaReseau(lat,lng){
   if(!CLE_OPENAGENDA) return null;
   try{
     // La lecture transverse /v2/events est expérimentale et n'est pas ouverte
@@ -3805,20 +3885,20 @@ async function evenementsOpenAgenda(lat,lng){
       key:CLE_OPENAGENDA, search:ville, size:"8", official:"1"
     });
     PERF.requete("openagenda");
-    const rAgendas = await fetch("https://api.openagenda.com/v2/agendas?"+rechercheAgendas.toString());
+    const rAgendas = await fetchOpenAgenda("https://api.openagenda.com/v2/agendas?"+rechercheAgendas.toString());
     if(!rAgendas.ok){ console.error("OpenAgenda agendas : réponse HTTP", rAgendas.status); return null; }
     const agendas = ((await rAgendas.json()).agendas||[]).slice(0,8);
-    const segments = await Promise.allSettled(agendas.map(async agenda=>{
+    const segments = await parLots(agendas.map(agenda=>async ()=>{
       const params = new URLSearchParams({
         key:CLE_OPENAGENDA, size:"30", detailed:"1"
       });
       params.append("relative[]","current");
       params.append("relative[]","upcoming");
       PERF.requete("openagenda");
-      const r = await fetch("https://api.openagenda.com/v2/agendas/"+agenda.uid+"/events?"+params.toString());
+      const r = await fetchOpenAgenda("https://api.openagenda.com/v2/agendas/"+agenda.uid+"/events?"+params.toString());
       if(!r.ok) throw new Error("agenda "+agenda.uid+" : HTTP "+r.status);
       return (await r.json()).events || [];
-    }));
+    }), CONCURRENCE_OPENAGENDA);
     const uniques = new Map();
     segments.forEach(segment=>{
       if(segment.status !== "fulfilled") return;
@@ -4246,8 +4326,16 @@ function resoudreCollisions(){
     .sort((a,b)=>priorite(a)-priorite(b))
     .map(([,m])=>{
       const el = m.getElement && m.getElement();
-      const eti = el && el.querySelector(".poi-eti");
-      const rond = el && el.querySelector(".poi-rond");
+      /* LES CARTES D'ÉVÉNEMENT ÉTAIENT INVISIBLES À CE MOTEUR.
+         Il ne connaissait que `.poi-eti` / `.poi-rond`. Les cartes blanches
+         posées pour « Maintenant » n'entraient donc dans aucun test : jamais
+         masquées, jamais basculées, jamais bornées à l'écran. Cinq événements
+         dans cent mètres produisaient cinq cartes empilées et illisibles, et
+         certaines débordaient de la fenêtre. Mesuré : 5 illisibles sur 5.
+         Elles suivent la même mécanique — un texte qui peut s'effacer, une
+         pastille qui reste toujours touchable. */
+      const eti = el && el.querySelector(".poi-eti, .evc-txt");
+      const rond = el && el.querySelector(".poi-rond, .evc-rond");
       return eti && rond ? {eti,rond} : null;
     }).filter(Boolean);
 
@@ -4255,6 +4343,18 @@ function resoudreCollisions(){
   // basculement à gauche forçait un recalcul de layout par étiquette.
   entrees.forEach(({eti})=>eti.classList.remove("masquee","a-gauche"));
   if(conteneur) void conteneur.offsetWidth;
+
+  /* LES PASTILLES OCCUPENT L'ÉCRAN, ELLES AUSSI.
+     Seules les étiquettes étaient enregistrées dans la grille : une étiquette
+     pouvait donc se poser exactement sur la pastille d'un autre marqueur, qui
+     devenait à la fois illisible et intouchable. On réserve la place des
+     pastilles AVANT de placer le moindre texte — un marqueur doit rester
+     désignable même quand son nom disparaît. */
+  entrees.forEach(({rond})=>{
+    const rr = rond.getBoundingClientRect();
+    if(rr.width > 0 && rr.height > 0)
+      enregistrer({x:rr.left-cadre.left, y:rr.top-cadre.top, w:rr.width, h:rr.height});
+  });
 
   const decisions=[];
   entrees.forEach(({eti,rond})=>{
