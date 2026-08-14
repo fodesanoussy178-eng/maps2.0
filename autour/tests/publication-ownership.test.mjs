@@ -32,15 +32,24 @@ test("la propriété est un uid Supabase et le pseudo reste seulement présentat
   assert.doesNotMatch(html, /p\.auteur|l\.auteur/);
 });
 
-test("la première publication ne demande que le pseudo puis crée la session anonyme", () => {
+test("publier exige un compte, et rien de plus qu'une adresse", () => {
   const debut = html.indexOf("async function assurerIdentitePublication");
   const fin = html.indexOf("function estPublicationAMoi", debut);
   const identite = html.slice(debut, fin);
-  assert.match(identite, /prompt\("Ton prénom ou pseudo \?"\)/);
-  assert.match(identite, /assurerSessionAnonyme\(\)/);
-  assert.ok(identite.indexOf("prompt(") < identite.indexOf("assurerSessionAnonyme()"));
-  assert.match(html, /sb\.auth\.signInAnonymously\(\)/);
-  assert.match(html, /localStorage\.setItem\(CLE_PSEUDO_CREATEUR, pseudo\)/);
+  /* Le `prompt()` bloquant est parti : il réclamait un pseudo AVANT de
+     publier, et l'annuler annulait la publication. Le pseudo est facultatif,
+     c'est le compte qui ne l'est pas. */
+  assert.doesNotMatch(identite, /prompt\(/);
+  assert.match(identite, /if\(!estConnecte\(\)\) return null/);
+  assert.match(html, /if\(!\(await exigerCompte\("publier"\)\)\) return;/);
+  // et on ne demande QUE l'adresse : ni nom, ni âge, ni téléphone, ni adresse
+  const ecran = html.slice(html.indexOf("function rendreEcranCompte"),
+                           html.indexOf("function ouvrirProfil"));
+  assert.match(ecran, /type="email"/);
+  for (const interdit of ["type=\"tel\"", "Prénom", "Nom de famille", "Date de naissance",
+                          "Code postal", "Adresse postale"]) {
+    assert.ok(!ecran.includes(interdit), interdit + " ne doit pas être demandé");
+  }
   assert.match(html, /localStorage\.getItem\(CLE_PSEUDO_CREATEUR\)/);
 });
 

@@ -204,8 +204,12 @@ test("un seul contrôle ramène à sa position",()=>{
 });
 
 test("« Créer » reste atteignable en un tap depuis l'écran principal",()=>{
-  assert.match(html,/if\(id === "creer"\)\{ retourFormulaire=false; ouvrirCreation\(\); return; \}/);
+  // l'onglet n'est ni caché ni grisé pour un visiteur : le masquer reviendrait
+  // à ne pas dire qu'Autour se publie. Le compte est demandé APRÈS le tap.
+  assert.match(html,/if\(id === "creer"\)\{/);
+  assert.match(html,/exigerCompte\("publier"\)\.then\(ok=>\{ if\(ok\) ouvrirCreation\(\); \}\)/);
   assert.match(html,/function ouvrirCreation/);
+  assert.doesNotMatch(html,/data-nb="creer"[^>]*aria-disabled/);
 });
 
 test("le bottom sheet propose au lieu de poser une question",()=>{
@@ -253,7 +257,9 @@ test("la navigation basse suit le produit",()=>{
   assert.doesNotMatch(html,/data-nb="messages"/);
   // Favoris n'est plus un onglet mort : il liste ce qui est enregistré
   assert.doesNotMatch(html,/data-nb="favoris" aria-disabled/);
-  assert.match(html,/if\(id === "favoris"\)\{ ouvrirFavoris\(\); return; \}/);
+  assert.match(html,/exigerCompte\("favori"\)\.then\(ok=>\{ if\(ok\) ouvrirFavoris\(\); \}\)/);
+  // Profil est un vrai écran de compte, plus un raccourci vers les canaux
+  assert.match(html,/if\(id === "profil"\)\{ ouvrirProfil\(\); return; \}/);
 });
 
 test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>{
@@ -669,12 +675,20 @@ test("le cœur bascule immédiatement et se remet en place si la base refuse",()
   assert.match(html,/Impossible d’enregistrer ce favori/);
 });
 
-test("l'identité anonyme n'est créée qu'au premier geste qui en a besoin",()=>{
-  assert.match(html,/l'identité anonyme n'est créée qu'ici, au moment où elle sert/);
-  assert.match(html,/if\(!\(await assurerSessionAnonyme\(\)\)\)\{/);
-  // une simple lecture initialise le client, elle ne crée pas  un utilisateur
-  const connecter = html.slice(html.indexOf("async function connecter"), html.indexOf("let pSessionAnonyme"));
-  assert.doesNotMatch(connecter,/signInAnonymously/);
+test("aucune identité anonyme n'est plus créée",()=>{
+  /* Une session anonyme donnait un auth.uid() sans rien demander, mais elle
+     vivait dans le stockage d'un navigateur : la vider rendait ses propres
+     publications inaccessibles à leur auteur. La base refuse désormais toute
+     écriture à une session anonyme — en fabriquer une ne créerait qu'un
+     compte fantôme. */
+  assert.doesNotMatch(html,/signInAnonymously/);
+  assert.doesNotMatch(html,/assurerSessionAnonyme/);
+  // et le geste qui en avait besoin demande maintenant un compte, sur place
+  assert.match(html,/await exigerCompte\("favori", \{cle:cle\}\)/);
+  // la lecture, elle, ne demande toujours rien
+  const connecter = html.slice(html.indexOf("async function connecter"),
+                               html.indexOf("function estConnecte"));
+  assert.doesNotMatch(connecter,/signIn/);
 });
 
 test("un tap sur un marqueur ouvre la fiche compacte, pas le panneau complet",()=>{
