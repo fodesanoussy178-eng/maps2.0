@@ -500,3 +500,53 @@ test("une tâche en échec n'arrête pas les autres", () => {
   const bloc = /async function parLots\(taches, limite\)\{[\s\S]*?\n\}/.exec(html);
   assert.match(bloc[0], /catch\(e\)\{ resultats\[i\] = \{status:"rejected", reason:e\}; \}/);
 });
+
+/* ======================================================================== */
+/*  Événements posés au même endroit : une pile, pas une carte à grappes    */
+/* ======================================================================== */
+
+test("l'empilement ne touche QUE les événements", () => {
+  const bloc = /function empilerEvenements\(items\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc, "empilerEvenements doit exister");
+  assert.match(bloc[0], /if\(!l \|\| !estTemporaire\(l\)\)\{ sortie\.push\(item\); return; \}/,
+    "les lieux permanents et les grappes existantes doivent passer intacts");
+});
+
+test("le regroupement général n'a pas été étendu au zoom 16", () => {
+  // `grouper` garde sa porte : au zoom 16 et au-delà, chacun son marqueur
+  assert.match(html, /if\(map\.getZoom\(\) >= 16\) return liste\.map\(l=>\(\{seul:l\}\)\);/);
+  // et l'empilement est une passe SÉPARÉE, posée sur la sortie de grouper
+  assert.match(html, /empilerEvenements\(grouper\(choisis\)\)\.forEach\(item=>\{/);
+});
+
+test("le seuil est en pixels d'écran, pas en mètres", () => {
+  assert.match(html, /const SEUIL_EMPILEMENT_PX = 24;/);
+  const bloc = /function empilerEvenements\(items\)\{[\s\S]*?\n\}/.exec(html);
+  assert.match(bloc[0], /map\.latLngToLayerPoint\(\[l\.lat, l\.lng\]\)/,
+    "« indissociable au zoom actuel » ne se mesure qu'à l'écran");
+});
+
+test("une pile rend un seul marqueur, avec son compteur", () => {
+  assert.match(html, /const id = "pile:"\+tete\.id\+"x"\+g\.length;/);
+  assert.match(html, /'<i class="evc-plus">\+'\+\(g\.length-1\)\+'<\/i>'/);
+  // le compteur est posé en absolu : il n'élargit pas le marqueur
+  assert.match(html, /\.evc-plus\{position:absolute;/);
+});
+
+test("l'ordre de la liste suit la règle demandée", () => {
+  const bloc = /function ordonnerPile\(membres\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc, "ordonnerPile doit exister");
+  // 1. en cours · 2. début le plus proche · 3. pertinence
+  assert.match(bloc[0], /const enCours = TEMPS\.estMaintenant\(etat\.statut\) \? 0 : 1;/);
+  assert.match(bloc[0], /Math\.abs\(etat\.debut - t\)/);
+  assert.match(bloc[0], /rang\.has\(l\.id\) \? rang\.get\(l\.id\) : 9999/);
+  assert.match(bloc[0], /\(ka\[0\]-kb\[0\]\) \|\| \(ka\[1\]-kb\[1\]\) \|\| \(ka\[2\]-kb\[2\]\)/);
+});
+
+test("la liste réutilise la fiche compacte, sans nouveau panneau", () => {
+  const bloc = /function ouvrirPileCompacte\(g\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc);
+  assert.match(bloc[0], /\$\("#ficheCompacte"\)/,
+    "un panneau de plus serait un panneau de plus à connaître");
+  assert.match(bloc[0], /pousserEcran\(\(\)=>ouvrirDetail\(l\.id\)\)/);
+});
