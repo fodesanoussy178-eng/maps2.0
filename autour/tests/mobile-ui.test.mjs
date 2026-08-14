@@ -464,7 +464,12 @@ test("le classement se réfère à la zone regardée quand on est parti ailleurs
   // « loin de chez toi » n'est pas un défaut d'un lieu quand on regarde
   // volontairement une autre ville : tout Paris est loin de Tourcoing, et la
   // pénalité de distance écartait l'intégralité des résultats demandés
-  assert.match(html,/moi: \(rechercheGeo \? \[rechercheGeo\.lat, rechercheGeo\.lng\] : positionMoi\) \|\| \[0,0\],/);
+  /* Cette référence porte désormais un nom : la ZONE ACTIVE. C'est la même
+     règle, dite une fois pour toute l'application au lieu d'être redécidée à
+     chaque endroit — c'est ce dernier point qui laissait des lieux de Tourcoing
+     dans la carte de Lille. */
+  assert.match(html,/moi: centreZoneActive\(\) \|\| \[0,0\],/);
+  assert.match(html,/function centreZoneActive\(\)\{/);
   assert.match(html,/positionReelle: positionMoi \|\| \[0,0\],/);
   assert.match(html,/const \[lat,lng\] = ctx\.moi;/);
 });
@@ -1061,14 +1066,19 @@ test("un seul point de référence après un déplacement : celui de la carte",(
   // le géocodeur donne aussi un « point de la commune » qui n'est pas le
   // centre de l'emprise — 2,9 km d'écart à Bordeaux. Charger autour de l'un et
   // classer depuis l'autre mettait tous les lieux hors du rayon de recherche.
-  assert.match(html,/const c = map\.getCenter\(\);/);
-  assert.match(html,/const centre = c \? \[c\.lat, c\.lng\] : \[zone\.lat, zone\.lng\];/);
+  /* Ce point se lisait sur la carte, APRÈS le cadrage. Mais le cadrage est
+     ANIMÉ : au moment où on interroge la carte, elle n'a pas bougé et rend
+     encore le centre de la ville qu'on quitte. Mesuré au banc des contextes
+     (`outils/contextes.mjs`) : la zone « Lille » naissait avec la latitude de
+     Tourcoing. On prend donc le centre de l'emprise — là où la carte VA se
+     poser — ce qui garde l'invariant de Bordeaux, un seul point pour charger
+     et pour classer, sans dépendre d'une animation en cours. */
+  assert.match(html,/const centre = e \? \[\(e\[0\]\[0\] \+ e\[1\]\[0\]\) \/ 2, \(e\[0\]\[1\] \+ e\[1\]\[1\]\) \/ 2\]/);
+  assert.match(html,/\(c \? \[c\.lat, c\.lng\] : \[zone\.lat, zone\.lng\]\);/);
   assert.match(html,/rechercheGeo = \{nom:q, lat:centre\[0\], lng:centre\[1\], emprise:zone\.emprise \|\| null\};/);
   assert.match(html,/chargerZone\(centre\[0\], centre\[1\], \{reglages: reglagesZone\(rechercheGeo\)\}\);/);
-  // et il est fixé APRÈS le cadrage, sinon il décrit l'ancienne vue
-  assert.ok(html.indexOf("map.fitBounds(zone.emprise") <
-            html.indexOf("rechercheGeo = {nom:q, lat:centre[0]"),
-    "le point de référence se lit après le cadrage");
+  // le même point sert à la zone active : une seule référence, pas deux
+  assert.match(html,/definirZoneActive\(CTX \? CTX\.zoneRecherche\(q, centre, zone\.emprise \|\| null\) : null\);/);
 });
 
 test("les recommandations gardent leur épingle malgré le regroupement",()=>{
