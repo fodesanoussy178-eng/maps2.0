@@ -271,8 +271,14 @@ test("la pastille disparaît à zéro au lieu d'afficher « Maintenant · 0 »",
   const bloc = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc, "majBadgeMaintenant doit exister");
   assert.match(bloc[0], /badge\.hidden = n === 0;/);
-  assert.match(bloc[0], /compterMaintenant\(\)/,
-    "le nombre affiché doit être celui du moteur temporel");
+  /* Le nombre est celui du BLOC, pas un second comptage. La pastille comptait
+     avec le moteur temporel (les seuls événements) pendant que le bloc comptait
+     avec le moteur de disponibilité (événements, séances, activités, lieux
+     ouverts) : elle annonçait « 0 » — donc restait cachée — au-dessus d'un bloc
+     qui proposait trois choses. */
+  assert.match(bloc[0], /const n = \(modeNav \|\| modePose \|\| modeAide\) \? 0 : totalMaintenant\(\);/);
+  // et jamais plus que ce que le bloc montre réellement
+  assert.match(bloc[0], /Math\.min\(n, MAINTENANT_APERCU\)/);
 });
 
 test("la pastille suit les données même sans carte", () => {
