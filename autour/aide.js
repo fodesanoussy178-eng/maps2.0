@@ -67,6 +67,29 @@
                 /maison de l['’\s]?emploi/i, /\bepide\b/i, /garantie jeunes/i],
       pourquoi: "Tu cherches du travail ou une formation.",
     },
+    /* La mobilité manquait, et c'est un vrai trou : ne pas pouvoir se
+       déplacer bloque tout le reste — un rendez-vous à la mission locale, un
+       entretien, une distribution à l'autre bout de la ville. Les guichets
+       existent (aide au permis, tarification solidaire, garages associatifs),
+       mais personne ne les cherche sous le mot « mobilité ». */
+    {
+      /* `horsGrille`, comme hygiène et vêtements : le besoin entre dans le
+         modèle et se reconnaît dans une phrase, mais l'écran garde ses dix
+         cases. Ajouter une onzième case relève d'une décision de design, pas
+         d'une correction de périmètre — et le design est gelé. */
+      id: "mobilite", emoji: "🚌", label: "Se déplacer", horsGrille: true,
+      mots: ["me deplacer", "deplacement", "transport", "transports", "bus",
+             "metro", "tram", "train", "ticket", "abonnement", "titre de transport",
+             "pas de voiture", "sans voiture", "je peux pas y aller",
+             "permis", "code de la route", "auto ecole", "aide au permis",
+             "velo solidaire", "mobilite", "trajet", "aller au travail",
+             "pas les moyens de me deplacer"],
+      cats: ["mairie", "asso", "emploi"],
+      reseaux: [/\bccas\b/i, /mission locale/i, /plateforme (?:de )?mobilit[ée]/i,
+                /auto[- ]?[ée]cole sociale/i, /garage solidaire|garage associatif/i,
+                /\bwimoov\b/i],
+      pourquoi: "Tu cherches une solution pour te déplacer.",
+    },
     {
       id: "papiers", emoji: "📄", label: "Papiers / démarches",
       mots: ["papiers", "demarche", "demarches", "administratif", "administrative",
@@ -512,6 +535,16 @@
 
   const estUrgent = (phrase) => URGENCE.test(String(phrase || ""));
 
+/* Ce vers quoi Aide sait réellement orienter. Écrit ici plutôt que dans
+   l'interface : c'est une propriété du modèle, et l'écran qui l'affiche doit
+   la lire, pas la recopier — deux listes finissent toujours par différer. */
+  const PERIMETRE = Object.freeze([
+    "logement", "alimentation", "démarches administratives",
+    "santé et accès aux soins", "emploi et insertion", "se déplacer",
+    "violences et urgence sociale", "isolement", "accompagnement des jeunes",
+    "structures locales",
+  ]);
+
   /* ===================================================================
      « Mon vélo est cassé » n'est pas une demande d'aide sociale
 
@@ -685,7 +718,7 @@
     SOUS_INTENTIONS_SANTE, besoinsDepuisPhrase, intentionsSanteDepuisPhrase,
     ageDepuisPhrase, pertinence, pertinenceSante, pourquoi,
     conditionDe, convient, estSolution, estSolutionSante, accesAdapteSante,
-    rendezVousDe, estUrgent,
+    rendezVousDe, estUrgent, PERIMETRE,
     OBJETS_REPARABLES, SERVICES_EXPLORER, domaineDeLaPhrase,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

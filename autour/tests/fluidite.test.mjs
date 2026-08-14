@@ -171,7 +171,10 @@ test("le pont vers « À venir » passe par le même chemin qu'un onglet", () =>
 });
 
 test("rien ne parle de « rien autour de toi » sans position connue", () => {
-  assert.match(html, /if\(!positionConnue\(\)\)\s*\n?\s*return '<p class="fb-statut">Choisis un point de départ/);
+  // la garantie passe désormais par etatDonnees() : « rien » ne peut pas être
+  // conclu tant que l'état n'est pas READY_WITHOUT_RESULTS
+  assert.match(html, /if\(etatGroupe === ETATS_DONNEES\.LOCATION_UNKNOWN\)\s*\n?\s*return '<p class="fb-statut">Choisis un point de départ/);
+  assert.match(html, /if\(!positionConnue\(\)\)\s*\n?\s*return ETATS_DONNEES\.LOCATION_UNKNOWN;/);
 });
 
 /* ======================================================================== */
@@ -355,4 +358,97 @@ test("un événement en cours n'est jamais affiché deux fois dans la feuille", 
   assert.match(html, /reco = reco\.filter\(l=>!dejaListes\.has\(l\.id\)\);/);
   assert.match(html, /const titre = enCours\.length \? "Autour de toi"/,
     "deux sections nommées « maintenant » diraient la même chose deux fois");
+});
+
+/* ======================================================================== */
+/*  Les cinq états, à un seul endroit                                       */
+/* ======================================================================== */
+
+test("les cinq états demandés existent, nommés", () => {
+  for (const e of ["location_unknown", "location_loading", "data_loading",
+                   "ready_with_results", "ready_without_results"]) {
+    assert.match(html, new RegExp('"' + e + '"'), e + " doit être un état nommé");
+  }
+  assert.match(html, /ERROR:\s+"error"/,
+    "une panne est un sixième état : ce n'est jamais un résultat vide");
+});
+
+test("l'ordre des tests est la règle métier", () => {
+  const bloc = /function etatDonnees\(nombreResultats\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc, "etatDonnees doit exister");
+  const ou = (e) => bloc[0].indexOf(e);
+  // on ne parle jamais de « rien » avant de savoir où l'on regarde
+  assert.ok(ou("LOCATION_LOADING") < ou("DATA_LOADING"));
+  assert.ok(ou("LOCATION_UNKNOWN") < ou("DATA_LOADING"));
+  assert.ok(ou("LOCATION_UNKNOWN") < ou("READY_WITHOUT_RESULTS"));
+  // un chargement n'est pas un vide, et une panne non plus
+  assert.ok(ou("DATA_LOADING") < ou("READY_WITHOUT_RESULTS"));
+  assert.ok(ou("ERROR") < ou("READY_WITHOUT_RESULTS"));
+  // le vide est la toute dernière conclusion possible
+  assert.equal(ou("READY_WITHOUT_RESULTS"),
+    Math.max(...["LOCATION_LOADING","LOCATION_UNKNOWN","DATA_LOADING",
+                 "READY_WITH_RESULTS","ERROR","READY_WITHOUT_RESULTS"].map(ou)));
+});
+
+test("une panne ne peut jamais être lue comme zéro résultat", () => {
+  const bloc = /function etatDonnees\(nombreResultats\)\{[\s\S]*?\n\}/.exec(html);
+  assert.match(bloc[0], /if\(panneTechnique\(\)\) return ETATS_DONNEES\.ERROR;/);
+  const iErreur = bloc[0].indexOf("ERROR");
+  const iVide = bloc[0].indexOf("READY_WITHOUT_RESULTS");
+  assert.ok(iErreur < iVide, "la panne se conclut AVANT le vide");
+});
+
+test("les trois affichages lisent la même fonction, aucun ne recopie la règle", () => {
+  // le bandeau flottant, le statut de groupe et le statut de recherche
+  assert.match(html, /const etat = etatDonnees\(retenus\);/);
+  assert.match(html, /const etatGroupe = etatDonnees\(0\);/);
+  assert.match(html, /const etat = etatDonnees\(nombreResultats\);/);
+});
+
+test("une recherche en cours avec des résultats déjà là ne repasse pas en chargement", () => {
+  const bloc = /function etatDonnees\(nombreResultats\)\{[\s\S]*?\n\}/.exec(html);
+  assert.match(bloc[0],
+    /if\(rechercheEnCours\(\)\)\s*\n?\s*return n \? ETATS_DONNEES\.READY_WITH_RESULTS : ETATS_DONNEES\.DATA_LOADING;/,
+    "sinon la liste se vide puis se remplit — le saut de mise en page qu'on veut supprimer");
+});
+
+/* ======================================================================== */
+/*  Aide : périmètre explicite                                              */
+/* ======================================================================== */
+
+test("« se déplacer » est un besoin reconnu, sans onzième case à l'écran", () => {
+  const aide = readFileSync(new URL("../aide.js", import.meta.url), "utf8");
+  assert.match(aide, /id: "mobilite", emoji: "🚌", label: "Se déplacer", horsGrille: true,/);
+});
+
+test("le périmètre d'Aide est déclaré dans le modèle, pas dans l'écran", () => {
+  const aide = readFileSync(new URL("../aide.js", import.meta.url), "utf8");
+  assert.match(aide, /const PERIMETRE = Object\.freeze\(\[/);
+  assert.match(html, /const domaines = \(AIDE && AIDE\.PERIMETRE\) \|\| \[\];/,
+    "deux listes finiraient par différer");
+});
+
+test("hors périmètre, Autour le dit au lieu de proposer des structures au hasard", () => {
+  assert.match(html, /redirectionExplorer = \{horsPerimetre:true\};/);
+  assert.match(html, /Je ne sais pas orienter cette demande\./);
+  assert.match(html, /data-testid="aide-hors-perimetre"/);
+  // deux portes restent ouvertes, aucune n'est imposée
+  assert.match(html, /data-aide-reformuler/);
+  assert.match(html, /data-aide-general/);
+});
+
+/* ======================================================================== */
+/*  Safari mobile                                                           */
+/* ======================================================================== */
+
+test("la hauteur suit la fenêtre réellement visible sur iOS", () => {
+  assert.match(html, /html,body\{height:100%;height:100dvh;overscroll-behavior:none\}/);
+  // aucun 100vh actif : sur Safari iOS il inclut la barre d'URL
+  const regles = html.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(regles, /:\s*100vh/);
+});
+
+test("les encoches sont lues par un seul token", () => {
+  assert.match(html, /--safe-t:env\(safe-area-inset-top,0px\)/);
+  assert.match(html, /top:calc\(var\(--haut-entete, 64px\) \+ var\(--safe-t, 0px\) \+ 10px\);/);
 });

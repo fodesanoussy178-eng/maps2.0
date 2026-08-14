@@ -175,8 +175,15 @@ const etatUI = () => ({
   // combien de panneaux principaux sont ouverts EN MÊME TEMPS
   panneaux: ["feuille", "feuilleBesoins", "ficheCompacte", "rechercheOverlay"]
     .filter((id) => { const e = document.getElementById(id); return e && !e.hidden; }),
-  carte: !!(window.__map && document.getElementById("map") &&
-            document.getElementById("map").classList.contains("leaflet-container")),
+  /* La preuve que la carte vit est dans le DOM, pas dans notre crochet.
+     `window.__map` vient d'un `L.Map.addInitHook` posé depuis le harnais : sur
+     un démarrage rapide, `L.map()` s'exécute AVANT que le crochet ne soit
+     enregistré, et __map reste vide alors que la carte est parfaitement là —
+     conteneur Leaflet, tuiles, marqueurs. Trois « échecs » de ce banc venaient
+     de là, et ils accusaient l'application à tort. */
+  carte: !!(document.getElementById("map") &&
+            document.getElementById("map").classList.contains("leaflet-container") &&
+            document.querySelectorAll(".leaflet-tile").length > 0),
   marqueurs: document.querySelectorAll(".leaflet-marker-icon").length,
   navActif: [...document.querySelectorAll("#navBas .nb.actif")].map((b) => b.dataset.nb),
   scrollBody: document.body.scrollTop,

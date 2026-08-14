@@ -230,11 +230,11 @@ test("l'urgence est une gravité, pas un besoin de plus", () => {
 });
 
 test("les dix besoins sont écrits sans vocabulaire administratif", () => {
-  // dix cases à l'écran ; le modèle en garde douze — hygiène et vêtements
-  // restent reconnus dans une phrase et atteignables par « Autre aide »
+  // dix cases à l'écran ; le modèle en garde plus — hygiène, vêtements et
+  // mobilité restent reconnus dans une phrase sans occuper de case
   assert.equal(A.BESOINS_GRILLE.length, 10);
   assert.deepEqual(A.BESOINS.filter((b) => b.horsGrille).map((b) => b.id),
-    ["hygiene", "vetements"]);
+    ["mobilite", "hygiene", "vetements"]);
   const autre = A.BESOIN_DE("autre");
   assert.ok(autre.cats.includes("toilettes") && autre.cats.includes("friperie"),
     "« Autre aide » couvre ce qui n'a plus de case");

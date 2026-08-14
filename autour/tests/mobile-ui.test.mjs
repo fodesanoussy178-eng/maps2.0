@@ -419,7 +419,7 @@ test("une fiche Google n'est jamais greffée au seul prétexte qu'elle est proch
 });
 
 test("une source partielle ne masque pas des résultats déjà utilisables",()=>{
-  assert.match(html,/if\(rechercheEnCours\(\)\) return nombreResultats/);
+  assert.match(html,/if\(rechercheEnCours\(\) && nombreResultats\)/);
   assert.match(html,/Résultats disponibles · mise à jour incomplète/);
   assert.match(html,/return entete\+liste\+statut;/);
   assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
@@ -1386,7 +1386,10 @@ test("sans position connue, l'application ne prétend pas savoir où on est",()=
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
   // et surtout : plus jamais « rien autour de toi » quand on ignore où est « toi »
   assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
-  assert.match(html,/const montrer = \(erreurSansResultat \|\| \(videReel && positionConnue\(\)\)\)/);
+  // `positionConnue()` n'est plus testé ici : il est entré dans etatDonnees(),
+  // qui refuse de conclure au vide sans position — même garantie, un seul endroit
+  assert.match(html,/const montrer = \(erreurSansResultat \|\| videReel\)/);
+  assert.match(html,/const videReel = etat === ETATS_DONNEES\.READY_WITHOUT_RESULTS &&/);
   // déclaré avant son premier usage
   assert.ok(html.indexOf("let originePosition = null;") < html.indexOf("positionConnue()"),
     "originePosition doit précéder son premier usage");
@@ -1724,14 +1727,15 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
   assert.match(html,/On cherche ce qui vaut le détour autour de toi…/);
   // le squelette passe AVANT tout message de vide, mais seulement quand aucune
   // réponse issue du cache ou d'une première source n'est déjà utilisable
-  assert.match(html,/if\(rechercheEnCours\(\)\) return nombreResultats/);
+  assert.match(html,/if\(etat === ETATS_DONNEES\.DATA_LOADING\) return squeletteHTML\(3\);/);
   const statut = html.indexOf("function statutRechercheHTML(");
-  const enCours = html.indexOf("if(rechercheEnCours()) return nombreResultats", statut);
+  const enCours = html.indexOf("ETATS_DONNEES.DATA_LOADING) return squeletteHTML(3)", statut);
   const rien = html.indexOf("Rien d’ouvert à proximité", statut);
   assert.ok(enCours > 0 && rien > 0 && enCours < rien,
     "le chargement se dit avant le vide");
-  // le groupe temporel aussi : on ne parle pas de vide pendant qu'on charge
-  assert.match(html,/if\(rechercheEnCours\(\)\) return squeletteHTML\(3\);\s*\n\s*if\(!positionConnue\(\)\)/);
+  // le groupe temporel aussi : on ne parle pas de vide pendant qu'on charge,
+  // et l'ignorance de la position passe avant l'ignorance des données
+  assert.match(html,/if\(etatGroupe === ETATS_DONNEES\.LOCATION_LOADING \|\|\s*\n\s*etatGroupe === ETATS_DONNEES\.DATA_LOADING\) return squeletteHTML\(3\);/);
   // et l'accueil s'ouvre sans attendre Overpass
   assert.match(html,/L'accueil s'ouvre TOUT DE SUITE\./);
 });
