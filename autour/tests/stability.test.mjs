@@ -3,8 +3,9 @@ import test from "node:test";
 import {readFile} from "node:fs/promises";
 
 import lieuxHandler from "../api/lieux.js";
+import { sourceApplication } from "./source.mjs";
 
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const html = await sourceApplication(import.meta.url);
 const apiLieux = await readFile(new URL("../api/lieux.js", import.meta.url), "utf8");
 
 const debutCoordinateur = html.indexOf("async function coordonnerSourcesVersionnees");

@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sourceApplicationSync } from "./source.mjs";
 
 /* Node n'a pas `requestIdleCallback`, et c'est exactement la situation de
    Safari — la plateforme sur laquelle on ne peut pas se permettre de bloquer.
    On teste donc le repli tel quel, sans le simuler. */
 await import("../ordonnanceur.js");
 const O = globalThis.AutourOrdonnanceur;
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const html = sourceApplicationSync(import.meta.url);
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
