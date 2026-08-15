@@ -2014,7 +2014,10 @@ test("ce qu'on vient de publier reste à l'écran",()=>{
   // il passe le filtre « maintenant », le classement et la liste
   assert.match(html,/if\(epingles\.length && epingles\.includes\(l\.id\)\) return true;/);
   assert.match(html,/if\(publicationsEpinglees\.has\(l\.id\)\) return true;/);
-  assert.match(html,/return avecEpingles\(classement\)\.slice\(0, limite \|\| 12\);/);
+  /* « Voir tout » appelle sans limite finie pour montrer réellement tout ;
+     l'épinglage passe avant le découpage dans les deux cas. */
+  assert.match(html,/const tout = avecEpingles\(classement\);/);
+  assert.match(html,/return Number\.isFinite\(limite\) \? tout\.slice\(0, limite \|\| 12\) : tout;/);
   // et l'épingle suit l'identifiant que la base attribue
   assert.match(html,/publicationsEpinglees\.delete\(l\.id\);\s*\n\s*epinglerPublication\(enligne\.id\);/);
   // déclarés avant leur premier usage
