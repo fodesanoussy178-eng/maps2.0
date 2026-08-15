@@ -17,7 +17,12 @@ export const config = { runtime: "edge" };
 
 const DELAI_MS = 8000;
 
+/* `Number(null)` vaut zéro, et `Number("")` aussi : sans le premier test, une
+   coordonnée absente devenait le point (0, 0) et Nominatim était interrogé
+   pour le golfe de Guinée. Une valeur manquante se refuse, elle ne
+   s'interprète pas. */
 function nombre(v, max) {
+  if (v == null || String(v).trim() === "") return null;
   const n = Number(v);
   return Number.isFinite(n) && Math.abs(n) <= max ? n : null;
 }

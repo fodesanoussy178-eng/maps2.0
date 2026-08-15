@@ -2541,6 +2541,67 @@ async function vraisLieux(lat,lng,bornes,opts){
    qu'elle en prend. Les musées, parcs et monuments continuent d'arriver
    normalement — ils répondent à « qu'est-ce qu'il y a autour de moi ? », pas à
    « qu'est-ce qui se passe maintenant ? ». */
+/* ---- Découvertes ancrées (Gemini + recherche Google) ---------------------
+
+   La dernière source, et la plus tardive de toutes. Elle répond à une question
+   qu'aucun catalogue géographique ne sait traiter : « qu'est-ce qui se passe
+   ici cette semaine ? ». Un modèle ancré sur la recherche va lire les pages
+   municipales et les agendas locaux ; la route `/api/decouvertes` vérifie que
+   chaque proposition cite bien une source et jette le reste.
+
+   TROIS PROPRIÉTÉS QUI LA RENDENT INOFFENSIVE :
+
+   · elle part APRÈS tout le reste et n'est jamais attendue — l'écran est déjà
+     complet quand elle répond, et son silence ne se remarque pas ;
+   · ses items n'ont pas de position. On ne pose donc RIEN sur la carte à
+     partir d'elle seule : seules les découvertes qu'on arrive à rapprocher
+     d'un lieu déjà connu — par leur nom normalisé, avec les mêmes outils que
+     la déduplication — reçoivent des coordonnées et deviennent visibles ;
+   · elle passe par `fusionner`, donc par la déduplication : une découverte qui
+     décrit un événement déjà connu d'une autre source ne crée pas un doublon.
+
+   Si la clé n'est pas configurée, la route répond une liste vide en succès et
+   il ne se passe simplement rien. */
+let relaisDecouvertes = null;
+async function decouvertesAncrees(lat,lng,signal){
+  if(relaisDecouvertes === false) return [];
+  const fournisseur = window.AutourProviders && AutourProviders.decouvertes;
+  if(!fournisseur) return [];
+  try{
+    PERF.requete("decouvertes");
+    const reponse = await fournisseur.autour(lat,lng,{
+      signal, angle:angleDecouvertes(), ville:communeUtile(),
+    });
+    // source absente (aucune clé) : on cesse d'appeler pour cette session
+    if(!reponse.actif){ relaisDecouvertes = false; return []; }
+    relaisDecouvertes = true;
+    if(!reponse.items.length) return [];
+    const {ancrees} = fournisseur.repartir(reponse.items, lieux);
+    /* Seules celles qu'on sait situer entrent dans `lieux`. Les autres sont
+       vraies mais non plaçables : les afficher sur une carte supposerait de
+       leur inventer un point, ce qu'on ne fait jamais. */
+    return ancrees.map(d=>normaliserItem(d, "gemini"));
+  }catch(e){ return []; }
+}
+
+/* L'angle suit le créneau regardé : « Maintenant » cherche ce qui a lieu, les
+   autres cherchent ce qui vient. Aucun texte de l'utilisateur ne part au
+   modèle — la route n'accepte qu'un mot d'une liste fermée. */
+function angleDecouvertes(){
+  if(modeAide) return "decouvrir";
+  if(catsActives && [...catsActives].some(c=>["resto","fastfood","cafe","bar"].includes(c)))
+    return "manger";
+  return creneau === "maintenant" ? "sortir" : "sortir";
+}
+
+/* Le nom de commune, uniquement s'il est réellement su. Une ville devinée
+   enverrait le modèle chercher au mauvais endroit. */
+function communeUtile(){
+  if(zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom)
+    return zoneActive.nom;
+  return villeDetectee && commune && commune !== "ton quartier" ? commune : "";
+}
+
 let relaisDatatourisme = null;
 async function lieuxDatatourisme(lat,lng,signal){
   if(relaisDatatourisme === false) return [];
@@ -3729,6 +3790,16 @@ function chargerZone(lat, lng, opts){
       sourceExploitable = true;
       fusionner(r,"datatourisme");
       PERF.jalon("datatourisme_done");
+    })
+  );
+  /* Les découvertes ancrées, en dernier et sans jamais retenir personne. Elles
+     ne comptent pas comme « source exploitable » : l'écran ne doit pas
+     dépendre d'elles pour décider s'il a quelque chose à montrer. */
+  if(!o.cats && !o.osmSeulement) travaux.push(
+    decouvertesAncrees(lat,lng,signal).then(r=>{
+      if(!generationCourante(generation) || !r || !r.length) return;
+      fusionner(r,"external");
+      PERF.jalon("decouvertes_done");
     })
   );
   /* Places complète les candidats courants seulement lorsque la carte Google
