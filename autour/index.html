@@ -403,6 +403,15 @@ input{font-family:inherit;font-size:16px}
 .rc-tete{display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:2px 0 12px}
 .rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+/* La pastille de contexte : violette et discrète, parce qu'elle rappelle une
+   action faite — une recherche — sans se disputer le regard avec le nom de la
+   ville. Elle pousse « Voir tout » à droite, chacun à sa place. */
+.rc-contexte{flex:0 1 auto;min-width:0;padding:5px 11px;border-radius:99px;
+  background:rgba(124,58,237,.10);color:var(--violet);
+  font-size:12.5px;font-weight:700;line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-tete strong{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-tete .rc-tout{margin-left:auto;flex-shrink:0}
 
 /* ---- Aide : partir du problème -------------------------------------------
    Une identité reconnaissable, mais pas une seconde application : mêmes
@@ -13019,7 +13028,15 @@ function remplirResultatsZone(nom, intention){
     chipsHTML()+
     besoinsRapidesHTML()+
     ongletsTemps()+
+    /* DIRE QU'ON REGARDE AILLEURS, ET PAS SEULEMENT OÙ.
+
+       Le titre affichait « Lille ». Mais « Lille » tout seul se lit aussi bien
+       comme « tu es à Lille » que comme « tu regardes Lille » — et depuis
+       Tourcoing c'est la seconde lecture qui est vraie. La référence pose une
+       pastille « Recherche : Lille » à côté du titre : deux mots qui disent
+       que ce panneau répond à une question posée, pas à une position. */
     '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
+      (rechercheGeo ? '<span class="rc-contexte">Recherche&nbsp;: '+esc(nom)+'</span>' : '')+
       '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
     (forts.length
       ? '<div class="rc-piste" data-testid="primary-results">'+
