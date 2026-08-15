@@ -2387,3 +2387,12 @@ test("le retour est écrit au bout de la liste, et il dit vers où", () => {
   // et il ne s'affiche que s'il y a un ailleurs à quitter
   assert.match(html, /if\(!rechercheGeo \|\| !positionMoi \|\| !positionConnue\(\)\) return "";/);
 });
+
+test("une ville cherchée dit qu'elle est cherchée, pas qu'on y est", () => {
+  /* « Lille » tout seul se lit aussi bien « tu es à Lille » que « tu regardes
+     Lille » — et depuis Tourcoing c'est la seconde lecture qui est vraie. */
+  assert.match(html, /\(rechercheGeo \? '<span class="rc-contexte">Recherche&nbsp;: '\+esc\(nom\)\+'<\/span>' : ''\)\+/);
+  assert.match(html, /\.rc-contexte\{[\s\S]{0,180}color:var\(--violet\)/);
+  // et « Voir tout » garde sa place à droite, quoi qu'il arrive au titre
+  assert.match(html, /\.rc-tete \.rc-tout\{margin-left:auto;flex-shrink:0\}/);
+});
