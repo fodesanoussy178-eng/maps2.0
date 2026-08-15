@@ -24,8 +24,24 @@
        code vaut pour les six zones ouvertes comme pour la suivante ;
      · elle n'abandonne pas une zone parce qu'un POI est mal formé.
 
-   Déploiement : écrit avec la clé de service, donc l'appel exige un secret
-   partagé. Voir autour/docs/evenements-canoniques.md.
+   QUI A LE DROIT D'APPELER, ET AVEC QUOI ON ÉCRIT
+
+   Ce sont deux questions distinctes, et les confondre était le défaut de la
+   version précédente.
+
+   POUR APPELER : un secret partagé, `x-sync-secret`, vérifié ici avant toute
+   autre chose. La fonction est déployée sans vérification de JWT — elle porte
+   sa propre authentification, et c'est la seule qu'elle reconnaît. GitHub n'a
+   donc AUCUNE clé Supabase à détenir : ni service_role, ni clé secrète, ni
+   rien qui donnerait accès à la base. S'il perd son secret, il perd le droit
+   de déclencher une synchronisation, et rien d'autre.
+
+   POUR ÉCRIRE : la clé secrète que la plateforme injecte elle-même dans
+   l'environnement de la fonction, via `SUPABASE_SECRET_KEYS`. Elle n'est ni
+   dans le dépôt, ni dans GitHub, ni dans le navigateur — elle n'existe que
+   dans le processus qui s'en sert.
+
+   Voir autour/docs/evenements-canoniques.md.
 --------------------------------------------------------------------------- */
 
 import {normaliserLot, cleDedup} from "./normalisation.mjs";
@@ -33,8 +49,57 @@ import {normaliserLot, cleDedup} from "./normalisation.mjs";
 const CATALOGUE = Deno.env.get("DATATOURISME_BASE_URL") ?? "https://api.datatourisme.fr/v1/catalog";
 const CLE_DATATOURISME = Deno.env.get("DATATOURISME_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SYNC_SECRET = Deno.env.get("EVENT_SYNC_SECRET") ?? "";
+
+/* LA CLÉ D'ÉCRITURE, AU FORMAT MODERNE.
+
+   Les clés `anon` et `service_role` dérivaient du secret JWT du projet : on ne
+   pouvait en révoquer une sans les invalider toutes. Les clés nommées
+   (`sb_publishable_…`, `sb_secret_…`) se créent, se nomment et se révoquent
+   une par une.
+
+   La plateforme les expose sous forme de DICTIONNAIRE JSON — plusieurs clés
+   peuvent coexister, chacune sous son nom, ce qui est précisément ce qui rend
+   une rotation possible sans interruption. D'où l'analyse ici, et non un
+   simple `Deno.env.get`.
+
+   `SUPABASE_SECRET_KEY` au singulier est le repli du développement local :
+   la CLI ne provisionne qu'une clé et ne construit pas le dictionnaire.
+
+   Elle est lue PARESSEUSEMENT, et c'est délibéré : une lecture au chargement
+   du module ferait échouer la fonction entière si la configuration manquait —
+   y compris la porte d'authentification, qui n'a pourtant pas besoin d'elle.
+   Un appel non autorisé recevrait alors un 500 opaque au lieu d'un 401, et une
+   erreur de configuration serait indiscernable d'une panne. */
+let cleMemorisee: string | null = null;
+
+function cleSecrete(): string {
+  if (cleMemorisee) return cleMemorisee;
+  cleMemorisee = lireCleSecrete();
+  return cleMemorisee;
+}
+
+function lireCleSecrete(): string {
+  const dictionnaire = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (dictionnaire) {
+    try {
+      const clés = JSON.parse(dictionnaire) as Record<string, string>;
+      const nommée = Deno.env.get("SUPABASE_SECRET_KEY_NAME") ?? "default";
+      if (clés[nommée]) return clés[nommée];
+      // un dictionnaire présent mais sans la clé attendue est une erreur de
+      // configuration qu'il vaut mieux nommer que contourner en silence
+      const disponibles = Object.keys(clés).join(", ") || "aucune";
+      throw new Error(`clé secrète « ${nommée} » absente (disponibles : ${disponibles})`);
+    } catch (erreur) {
+      if (erreur instanceof SyntaxError) throw new Error("SUPABASE_SECRET_KEYS illisible");
+      throw erreur;
+    }
+  }
+  const unique = Deno.env.get("SUPABASE_SECRET_KEY");
+  if (unique) return unique;
+  throw new Error("aucune clé secrète : SUPABASE_SECRET_KEYS attendue");
+}
+
 
 const DELAI_MS = 20_000;
 const TENTATIVES = 3;
@@ -44,11 +109,12 @@ const PAGES_MAX = 10;          // plafond dur : une zone ne monopolise pas la co
 type Json = Record<string, unknown>;
 
 function rest(chemin: string, init: RequestInit = {}): Promise<Response> {
+  const cle = cleSecrete();
   return fetch(`${SUPABASE_URL}/rest/v1/${chemin}`, {
     ...init,
     headers: {
-      apikey: SERVICE_KEY,
-      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: cle,
+      Authorization: `Bearer ${cle}`,
       "Content-Type": "application/json",
       ...(init.headers ?? {}),
     },
@@ -267,14 +333,51 @@ async function fermerCourse(id: number | null, patch: Json) {
   });
 }
 
+/* Comparer deux secrets avec `!==` s'arrête au premier caractère différent :
+   la durée de la réponse renseigne alors, très faiblement mais réellement, sur
+   la longueur du préfixe correct. C'est la porte d'entrée d'un service qui
+   écrit en base — elle se compare en temps constant.
+
+   Le hachage préalable rend la comparaison indépendante de la LONGUEUR des
+   deux chaînes, ce qu'une boucle sur les octets bruts ne garantit pas. */
+async function memeSecret(fourni: string, attendu: string): Promise<boolean> {
+  if (!attendu) return false;
+  const encodeur = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encodeur.encode(fourni)),
+    crypto.subtle.digest("SHA-256", encodeur.encode(attendu)),
+  ]);
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let ecart = 0;
+  for (let i = 0; i < x.length; i += 1) ecart |= x[i] ^ y[i];
+  return ecart === 0;
+}
+
 Deno.serve(async (requete: Request) => {
+  /* LA PORTE, ET RIEN AVANT ELLE.
+
+     Aucune lecture de zone, aucune requête au catalogue, aucune ligne de
+     journal : un appel non autorisé ne doit rien coûter et ne rien apprendre.
+     La réponse est la même — 401, sans détail — que le secret soit absent,
+     faux, ou que la fonction n'en ait pas reçu du tout. */
   const fourni = requete.headers.get("x-sync-secret") ?? "";
-  if (!SYNC_SECRET || fourni !== SYNC_SECRET) {
+  if (!await memeSecret(fourni, SYNC_SECRET)) {
     return new Response(JSON.stringify({error: "non autorisé"}),
       {status: 401, headers: {"Content-Type": "application/json"}});
   }
   if (!CLE_DATATOURISME) {
     return new Response(JSON.stringify({error: "DATATOURISME_API_KEY absente"}),
+      {status: 503, headers: {"Content-Type": "application/json"}});
+  }
+  /* La clé d'écriture est réclamée ICI, une fois l'appelant reconnu et avant
+     d'ouvrir quoi que ce soit. `ouvrirCourse` écrit déjà en base : sans cette
+     vérification, une configuration incomplète produirait un rejet non traité
+     et un 500 muet, là où on peut dire exactement ce qui manque. */
+  try {
+    cleSecrete();
+  } catch (erreur) {
+    const message = erreur instanceof Error ? erreur.message : String(erreur);
+    return new Response(JSON.stringify({error: `configuration : ${message}`}),
       {status: 503, headers: {"Content-Type": "application/json"}});
   }
 

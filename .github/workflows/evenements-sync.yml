@@ -19,8 +19,16 @@
 #
 # Secrets attendus dans le dépôt :
 #   SUPABASE_FUNCTIONS_URL  https://<ref>.supabase.co/functions/v1
-#   SUPABASE_SERVICE_ROLE_KEY
 #   EVENT_SYNC_SECRET       le même que la variable d'environnement de la fonction
+#
+# ET RIEN D'AUTRE. GitHub ne détient AUCUNE clé Supabase — ni `service_role`,
+# ni clé secrète. Il détient le droit de DÉCLENCHER une synchronisation, pas
+# celui d'écrire en base : c'est la fonction qui écrit, avec la clé que la
+# plateforme lui injecte et qui ne sort jamais de son processus.
+#
+# La différence n'est pas théorique. Un secret de dépôt qui fuit donnait
+# auparavant un accès complet à la base, RLS contourné ; il ne donne plus que
+# la possibilité de demander un import que la planification fait déjà.
 # =============================================================================
 
 name: Événements Autour
@@ -61,7 +69,6 @@ jobs:
       - name: Synchroniser la zone ${{ matrix.zone }}
         env:
           BASE: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
-          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SYNC_SECRET: ${{ secrets.EVENT_SYNC_SECRET }}
           ZONE: ${{ github.event.inputs.zone || matrix.zone }}
         run: |
@@ -75,7 +82,6 @@ jobs:
           # sortie non nul. Sans lui, une erreur 502 passait pour un succès.
           reponse=$(curl --silent --show-error --fail-with-body \
             --max-time 600 \
-            --header "Authorization: Bearer ${SERVICE_KEY}" \
             --header "x-sync-secret: ${SYNC_SECRET}" \
             --request POST \
             "${BASE}/sync-datatourisme?area=${ZONE}") || {
