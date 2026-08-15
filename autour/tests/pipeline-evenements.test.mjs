@@ -114,12 +114,44 @@ test("la réponse d'un refus ne dit rien de plus que « non »", () => {
 /*  La matrice et la planification restent ce qu'elles étaient            */
 /* ====================================================================== */
 
+const ZONES = ["lille", "paris", "lyon", "marseille", "bordeaux", "toulouse"];
+
 test("les six zones et leur planification sont conservées", () => {
-  const matrice = /zone: \[([^\]]+)\]/.exec(workflow)[1];
-  assert.deepEqual(matrice.split(",").map((z) => z.trim()),
-    ["lille", "paris", "lyon", "marseille", "bordeaux", "toulouse"]);
+  const defaut = /\|\| '(\[[^']+\])'/.exec(workflow);
+  assert.ok(defaut, "la liste complète doit rester lisible dans la matrice");
+  assert.deepEqual(JSON.parse(defaut[1]), ZONES);
   assert.match(workflow, /- cron: "10 4,10,16,22 \* \* \*"/);
   assert.match(workflow, /fail-fast: false/, "une zone qui échoue n'emporte pas les autres");
+});
+
+test("un code de zone saisi réduit la matrice au lieu de la remplir six fois", () => {
+  /* Le défaut vécu : la matrice était figée à six entrées et la saisie était
+     injectée dans chacune. Demander « lille » lançait six tâches qui
+     synchronisaient toutes Lille — six imports identiques, six lignes de
+     journal, six fois la charge sur le catalogue. */
+  assert.match(workflow,
+    /zone: \$\{\{ fromJSON\(inputs\.zone && format\('\["\{0\}"\]', inputs\.zone\) \|\| '\[/,
+    "la matrice elle-même doit dépendre de la saisie");
+  // et la zone traitée vient de la matrice seule : plus de repli qui ferait doublon
+  assert.match(workflow, /ZONE: \$\{\{ matrix\.zone \}\}/);
+  assert.doesNotMatch(workflow, /github\.event\.inputs\.zone \|\| matrix\.zone/);
+});
+
+test("les trois cas de déclenchement donnent le bon nombre de tâches", () => {
+  /* On évalue l'expression comme le fait GitHub : `inputs` est absent d'une
+     exécution planifiée, une saisie vide est fausse, une saisie remplie est
+     vraie. Trois lectures, trois résultats attendus. */
+  const expression = /zone: \$\{\{ (.+) \}\}/.exec(workflow)[1];
+  const evaluer = (inputs) => {
+    const fromJSON = JSON.parse;
+    const format = (motif, valeur) => motif.replace("{0}", valeur);
+    // « && / || » de GitHub rendent une valeur, comme en JavaScript
+    return eval(expression.replace(/inputs\.zone/g,
+      inputs && inputs.zone !== undefined ? JSON.stringify(inputs.zone) : "undefined"));
+  };
+  assert.deepEqual(evaluer({ zone: "lille" }), ["lille"], "saisie → une seule zone");
+  assert.deepEqual(evaluer({ zone: "" }), ZONES, "saisie vide → toutes");
+  assert.deepEqual(evaluer(null), ZONES, "exécution planifiée → toutes");
 });
 
 test("aucune ville n'est nommée dans la fonction", () => {

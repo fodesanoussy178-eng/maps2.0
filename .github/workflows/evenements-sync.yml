@@ -63,14 +63,25 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        zone: [lille, paris, lyon, marseille, bordeaux, toulouse]
+        # LA MATRICE EST LA LISTE DES ZONES À TRAITER, PAS UNE CONSTANTE.
+        #
+        # Elle était figée à six entrées, et le code de zone saisi à la main
+        # était injecté DANS CHACUNE : demander « lille » lançait six tâches
+        # qui synchronisaient toutes Lille — six fois le même import, six
+        # lignes dans le journal, et six fois la charge sur le catalogue.
+        #
+        # C'est donc la matrice elle-même qui doit changer. Un code saisi la
+        # réduit à cette seule zone ; sans saisie — et c'est le cas de toute
+        # exécution planifiée, où le contexte `inputs` n'existe même pas —
+        # elle reste la liste complète.
+        zone: ${{ fromJSON(inputs.zone && format('["{0}"]', inputs.zone) || '["lille","paris","lyon","marseille","bordeaux","toulouse"]') }}
 
     steps:
       - name: Synchroniser la zone ${{ matrix.zone }}
         env:
           BASE: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
           SYNC_SECRET: ${{ secrets.EVENT_SYNC_SECRET }}
-          ZONE: ${{ github.event.inputs.zone || matrix.zone }}
+          ZONE: ${{ matrix.zone }}
         run: |
           set -euo pipefail
           if [ -z "${BASE:-}" ] || [ -z "${SYNC_SECRET:-}" ]; then
