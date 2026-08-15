@@ -1493,14 +1493,68 @@ const CLE_PSEUDO_CREATEUR = "autour:creator_name";
 let sb = null, sbLecture = null, moiId = null, monPseudo = "";
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
-/* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
-   chemin critique du premier affichage. */
+/* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
+
+   Il était servi par un CDN tiers. Un bloqueur de publicités — `jsdelivr`
+   figure sur des listes de filtrage courantes —, un réseau d'entreprise ou
+   une panne de ce CDN suffisaient alors à rendre TOUT le service de comptes
+   inaccessible : ni publication, ni connexion, ni favoris. Une dépendance
+   extérieure décidait qu'une fonction entière de l'application n'existait
+   plus, et un miroir n'y changeait rien : un filtre qui bloque un CDN par
+   motif les bloque tous.
+
+   Le fichier est donc dans le dépôt, servi par notre propre origine. Ce n'est
+   pas un repli : c'est la seule source. Si elle tombe, la page elle-même n'est
+   pas là, et la question ne se pose plus.
+
+   La version est dans le NOM DU FICHIER, ce qui le rend immuable par
+   construction : `vercel.json` archive tout `.js` pour un an, et changer de
+   version change l'URL. Aucun tampon d'empreinte n'est donc nécessaire ici —
+   contrairement aux modules, ce fichier ne change jamais sans que son nom
+   change aussi.
+
+   Provenance, pour qu'elle soit vérifiable :
+     @supabase/supabase-js@2.108.2 · dist/umd/supabase.js
+     récupéré par `npm pack` (qui vérifie l'intégrité auprès du registre)
+     sha256 c123f7e874934778b7d89fee7dce8de26c858a2c3a92fd7a3f870394a6a2f91f
+
+   200 ko bruts, 51 ko compressés — qui ne servent qu'aux comptes et aux
+   publications. D'où le chargement paresseux : ce poids ne doit jamais peser
+   sur le premier affichage, et il n'y pèse pas.
+
+   UN ÉCHEC DE CHARGEMENT N'EST PAS UN VERDICT.
+
+   Ce chargeur mémorisait sa promesse, y compris quand elle s'était résolue à
+   « non ». Le premier échec — pendant le démarrage, où il est sans gravité —
+   condamnait toute la session : les essais suivants répondaient « non » en
+   zéro milliseconde, sans qu'aucune requête ne parte. Servir le fichier
+   nous-mêmes rend ce cas rare, il ne le rend pas impossible : un réseau qui
+   coupe au mauvais moment produit le même effet. L'échec n'est donc toujours
+   pas mémorisé, et chaque essai repart d'une balise neuve — une balise dont
+   `onerror` a tiré est morte.
+
+   La patience dépend de qui demande. Au démarrage, quatre secondes : le SDK
+   n'est pas sur le chemin critique et l'écran ne doit pas l'attendre. Quand
+   c'est la personne qui a demandé quelque chose, on attend bien plus —
+   revenir les mains vides lui coûte plus cher que d'attendre. */
+const SUPABASE_SDK = Object.freeze(["/vendeur/supabase-2.108.2.js"]);
+const SUPABASE_ATTENTE_DEMARRAGE = 4000;
+const SUPABASE_ATTENTE_DEMANDE = 12000;
+
+/* Ce que voit quelqu'un dont le réseau bloque le service de comptes. La phrase
+   d'avant — « Connexion impossible pour le moment. » — décrivait un état sans
+   jamais dire quoi en faire, et l'essai suivant renvoyait exactement la même
+   chose. Celle-ci nomme la cause la plus fréquente et laisse une porte : le
+   bouton, lui, retente désormais pour de bon. */
+const MESSAGE_SERVICE_INJOIGNABLE =
+  "Le service de connexion est injoignable. Un bloqueur de publicités ou le " +
+  "réseau peut en être la cause. Réessaie, ou passe par un autre réseau.";
+
 let pSupabase = null;
 let pConnexion = null;
-function chargerSupabase(){
-  if(window.supabase) return Promise.resolve(true);
-  if(pSupabase) return pSupabase;
-  pSupabase = new Promise(ok=>{
+
+function chargerScriptSupabase(src, attente){
+  return new Promise(ok=>{
     const el = document.createElement("script");
     let fini = false;
     const terminer = (disponible)=>{
@@ -1511,17 +1565,46 @@ function chargerSupabase(){
     };
     // Version épinglée : une mise à jour du CDN ne doit pas changer le contrat
     // Auth au milieu d'une session Autour.
-    el.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js";
-    el.onload = ()=>terminer(true);
-    el.onerror = ()=>{ journal.warn("Supabase indisponible."); terminer(false); };
-    const gardeFou = setTimeout(()=>{
-      journal.warn("Supabase trop lent : démarrage poursuivi sans lui.");
-      terminer(false);
-    }, 4000);
+    el.src = src;
+    el.onload = ()=>terminer(!!window.supabase);
+    el.onerror = ()=>terminer(false);
+    const gardeFou = setTimeout(()=>terminer(!!window.supabase), attente);
     PERF.requete("supabase_sdk");
     document.head.appendChild(el);
   });
-  return pSupabase;
+}
+
+function chargerSupabase(options){
+  if(window.supabase) return Promise.resolve(true);
+  // une tentative déjà en vol est partagée : deux appels simultanés ne doivent
+  // pas injecter deux fois le SDK
+  if(pSupabase) return pSupabase;
+  const o = options || {};
+  /* UNE ÉCHÉANCE, PAS UN DÉLAI PAR TENTATIVE. Deux miroirs à douze secondes
+     chacun feraient vingt-quatre secondes de bouton « Envoi… », ce qui est
+     pire que l'échec qu'on répare. Le budget est global : une origine bloquée
+     échoue en quelques millisecondes et laisse presque tout le temps à la
+     suivante ; une origine lente le consomme, et c'est juste — si le réseau
+     traîne, le miroir traînera autant. */
+  const echeance = Date.now() +
+    (o.demande ? SUPABASE_ATTENTE_DEMANDE : SUPABASE_ATTENTE_DEMARRAGE);
+  pSupabase = (async()=>{
+    for(const src of SUPABASE_SDK){
+      const reste = echeance - Date.now();
+      if(reste < 250) break;
+      if(await chargerScriptSupabase(src, reste)) return true;
+      // `new URL(src)` lèverait sur un chemin relatif : on journalise le chemin
+      journal.warn("Supabase indisponible : "+src);
+    }
+    return false;
+  })();
+  const promesse = pSupabase;
+  promesse.then(disponible=>{
+    /* On n'oublie que l'échec. Le succès reste mémorisé — mais de toute façon
+       `window.supabase` répond alors avant même d'arriver ici. */
+    if(!disponible && pSupabase === promesse) pSupabase = null;
+  });
+  return promesse;
 }
 
 function lireClaimsJwt(jeton){
@@ -1558,11 +1641,13 @@ async function reparerSession(session){
   }
 }
 
-async function connecter(){
+/* `demande` distingue les deux appelants : le démarrage, qui ne doit rien
+   attendre, et un geste explicite, qui mérite qu'on insiste. */
+async function connecter(options){
   if(sb) return sb;
   if(pConnexion) return pConnexion;
   pConnexion = (async()=>{
-    if(!(await chargerSupabase())) return null;
+    if(!(await chargerSupabase(options))) return null;
     try{
       /* Les lectures publiques ne doivent jamais hériter d'un ancien JWT de
          session. C'est lui qui faisait échouer `publications_proches` avec
@@ -1719,7 +1804,11 @@ async function reprendreActionEnAttente(){
    publications et les favoris déjà posés. Ouvrir une session neuve en
    créerait un autre, et l'ancien deviendrait inaccessible. */
 async function envoyerLienCompte(email){
-  if(!(await connecter())) return { ok:false, message:"Connexion impossible pour le moment." };
+  /* `demande:true` : c'est un geste explicite, on prend le temps qu'il faut.
+     Et si le service reste injoignable, on dit CE QUI se passe et QUOI faire —
+     « Connexion impossible pour le moment. » laissait appuyer indéfiniment sur
+     un bouton qui répondait la même chose en zéro milliseconde. */
+  if(!(await connecter({demande:true}))) return { ok:false, message:MESSAGE_SERVICE_INJOIGNABLE };
   const adresse = COMPTES.normaliserEmail(email);
   if(!COMPTES.emailValide(adresse)) return { ok:false, message:"Cette adresse ne semble pas complète." };
   const plan = COMPTES.manoeuvre(etatCompte);
@@ -1767,7 +1856,8 @@ async function envoyerLienCompte(email){
 }
 
 async function verifierCodeCompte(email, code, typeOtp){
-  if(!sb) return { ok:false, message:"Connexion impossible pour le moment." };
+  if(!sb && !(await connecter({demande:true})))
+    return { ok:false, message:MESSAGE_SERVICE_INJOIGNABLE };
   const adresse = COMPTES.normaliserEmail(email);
   if(!COMPTES.codeValide(code)) return { ok:false, message:"Le code fait six chiffres." };
   try{
