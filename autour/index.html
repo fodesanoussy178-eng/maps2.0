@@ -910,6 +910,15 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 /* Le retour au bout de la liste. Volontairement sobre : c'est une sortie, pas
    une proposition — il ne prend donc ni le violet de l'interaction principale
    ni le rouge d'Aide. */
+/* Les suites : des gestes, pas des résultats. Sobres — ce ne sont pas des
+   propositions, ce sont des portes. */
+.suites{margin-top:16px;padding-top:14px;border-top:1px solid var(--bord)}
+.suite-note{margin:0 0 10px;font-size:13px;line-height:1.4;color:var(--ink2)}
+.suites-gestes{display:flex;flex-wrap:wrap;gap:8px}
+.suite{padding:10px 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13.5px;font-weight:650;color:var(--ink)}
+.suite:active{background:var(--paper)}
+
 .rc-retour{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;
   padding:13px 14px;border:1px solid var(--bord);border-radius:16px;background:#fff;
   text-align:left;box-shadow:0 1px 4px rgba(20,30,25,.06)}
@@ -1872,6 +1881,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="comptes.js?v=9f5e8a5d"></script>
 <script src="maintenant.js?v=1b39647d"></script>
 <script src="ordonnanceur.js?v=c8368526"></script>
+<script src="plafonds.js?v=fac04c2e"></script>
 <script src="contexte.js?v=54aec3b1"></script>
 <script src="aide.js?v=843955bb"></script>
 <script src="signaux.js?v=319acaa9"></script>
@@ -2000,6 +2010,7 @@ const positionApprochee = ()=>positionConnue() && !positionPrecise();
    Tourcoing qui revient après le passage à Lille porte l'ancienne portée et
    est jetée, quelle que soit la source qui l'a produite. */
 const CTX = window.AutourContexte || null;
+const PLAF = window.AutourPlafonds || null;
 let zoneActive = null;
 let porteeCourante = 0;
 const porteeValide = (p)=> p === porteeCourante;
@@ -8788,7 +8799,30 @@ function ouvrirListe(cat){
 
 /* Une seule mise en page pour les listes d'une catégorie et les résultats de
    recherche. `sansPalmares` masque le tri et les notes (lieux d'aide). */
-function afficherListe(emoji, titre, l, sansPalmares, redessiner){
+/* AU BOUT DE LA LISTE, UNE INTENTION — PAS CINQUANTE RÉSULTATS DE PLUS.
+
+   Ni pagination infinie ni « Charger plus » : les deux transforment une
+   sélection en catalogue, et personne ne choisit dans un catalogue. Quand la
+   sélection s'arrête, ce qui manque n'est pas du volume, c'est une autre
+   question — un autre moment, une autre catégorie, un autre endroit. */
+function suitesUtiles(connus, montres){
+  const gestes = [];
+  if(creneau === "maintenant"){
+    gestes.push(['<button class="suite" data-suite="soir">Ce soir</button>']);
+    gestes.push(['<button class="suite" data-suite="weekend">Ce week-end</button>']);
+  }
+  gestes.push(['<button class="suite" data-suite="categorie">Changer de catégorie</button>']);
+  gestes.push(['<button class="suite" data-suite="zone">Explorer cette zone</button>']);
+  /* On ne dit combien on en connaît QUE lorsque la sélection s'arrête avant :
+     « 8 sur 8 » n'apprend rien, « 10 sur 42 » explique la coupe. */
+  const note = connus > montres
+    ? '<p class="suite-note">Autour en connaît '+connus+' ici. En voici les '+
+      montres+' meilleures — la suite passe par une autre envie.</p>' : '';
+  return '<div class="suites">'+note+
+    '<div class="suites-gestes">'+gestes.map(g=>g[0]).join("")+'</div></div>';
+}
+
+function afficherListe(emoji, titre, l, sansPalmares, redessiner, connus){
   const avecNotes = l.some(x=>x.note);
   const avecPrix  = l.some(x=>x.prixN != null);
   const critere = sansPalmares
@@ -8839,8 +8873,23 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner){
     '<span class="liste-compte">'+l.length+' autour</span></div>'+
     barreTri+
     '<p class="liste-tri">'+critere+'</p>'+
-    (l.length ? lignes : '<p class="liste-vide">Rien de ce type dans le coin.<br>Tu peux en poser un avec le bouton +.</p>')
+    (l.length ? lignes : '<p class="liste-vide">Rien de ce type dans le coin.<br>Tu peux en poser un avec le bouton +.</p>')+
+    (l.length ? suitesUtiles(Number.isFinite(connus) ? connus : l.length, l.length) : "")
   );
+
+  $("#feuille").querySelectorAll("[data-suite]").forEach(b=>b.onclick=()=>{
+    const quoi = b.dataset.suite;
+    if(quoi === "soir" || quoi === "weekend"){
+      creneau = quoi === "soir" ? "soir" : "weekend";
+      filtreMaintenant = false;
+      fermerFeuille(); pileEcrans = [];
+      ouvrirFeuille2("racine"); majFeuille2(); rendre(); majFiltres();
+      return;
+    }
+    // les deux autres ramènent à l'écran où l'on choisit : catégories et carte
+    fermerFeuille(); pileEcrans = [];
+    if(quoi === "zone") fermerFeuille2(); else ouvrirFeuille2("racine");
+  });
 
   $("#feuille").querySelectorAll("[data-tri]").forEach(b=>b.onclick=()=>{
     triListe = b.dataset.tri;
@@ -11615,11 +11664,18 @@ function brancherFeuille2(){
     /* « TOUT » VEUT DIRE TOUT. Le plafond de soixante était invisible : sur un
        centre dense on ne voyait pas ce qu'on ne voyait pas. La liste est
        longue, elle défile — c'est exactement ce que le bouton promet. */
-    const tout = recommandationsAccueil(Infinity, {tout:true});
+    /* LE PLAFOND EST UN MAXIMUM, PAS UN OBJECTIF. On demande la liste
+       complète — c'est elle qui donne le compteur honnête — puis on coupe.
+       Rien n'est complété : sept excellentes valent mieux que dix. */
+    const connus = recommandationsAccueil(Infinity, {tout:true});
+    const tout = PLAF
+      ? PLAF.appliquer(connus, creneau === "maintenant"
+          ? PLAF.limiteMaintenant() : PLAF.limiteExplorer(connus.length))
+      : connus;
     pileEcrans = [];
     pousserEcran(()=>afficherListe("✨",
       creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label,
-      tout, false, ()=>b.click()));
+      tout, false, ()=>b.click(), connus.length));
   });
 
   corps.querySelectorAll("[data-chip]").forEach(b=>b.onclick=()=>retirerChip(b.dataset.chip));
