@@ -1168,6 +1168,17 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   border-color:rgba(20,30,25,.10);background:rgba(44,58,51,.045);color:var(--ink2)}
 .fb-statut.partiel span{flex:1;min-width:0}
 .fb-statut.partiel button{flex-shrink:0;margin-top:0;background:#fff}
+/* « Autour cherche… » : une ligne, pas un panneau. Ni cadre, ni fond, ni
+   bouton — rien qui ressemble à une chose sur laquelle il faudrait agir ou
+   attendre. Le point qui respire suffit à dire que ça travaille. */
+.fb-statut.cherche{display:flex;align-items:center;gap:8px;margin:8px 0 2px;
+  padding:2px 2px;border:0;background:none;font-size:12.5px;color:var(--ink2);opacity:.82}
+.cherche-pastille{width:7px;height:7px;flex-shrink:0;border-radius:50%;
+  background:var(--ink2);animation:cherche-respire 1.6s ease-in-out infinite}
+@keyframes cherche-respire{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:.9;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){
+  .cherche-pastille{animation:none;opacity:.55}
+}
 .fb-statut button{min-height:44px;margin-top:8px;padding:8px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;color:var(--ink);font-weight:700}
 .fb-plus{display:block;margin:8px 0 4px;padding:9px 0;border-top:1px solid var(--bord);
@@ -1888,7 +1899,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="temporel.js?v=babdb878"></script>
 <script src="explications.js?v=ea344e6e"></script>
 <script src="events.js?v=2a03415f"></script>
-<script src="core.js?v=4c5d133a"></script>
+<script src="core.js?v=d5c0332a"></script>
 <script src="providers/normaliser.js?v=b35171d0"></script>
 <script src="providers/googlePlaces.js?v=70338a03"></script>
 <script src="providers/datatourisme.js?v=6f242f4e"></script>
@@ -2025,6 +2036,9 @@ function definirZoneActive(zone){
      rien : elles ont été calculées pour l'autre ville. */
   oublierItemsMaintenant();
   recoCache = null;
+  // le report d'affichage du §7 ne franchit pas une frontière de zone : garder
+  // les cartes d'une ville qu'on vient de quitter serait afficher du faux
+  dernierRecoRendu = null;
   selectionAccueil = null;
   return porteeCourante;
 }
@@ -4255,6 +4269,34 @@ const OVERPASS_DELAI_DEMANDE = 6000;
 const RAYON_BOOT = 900;
 const PLAFOND_BOOT = 90;
 
+/* LE VRAI NOM D'ABORD, LE LIBELLÉ DE CATÉGORIE EN DERNIER RECOURS.
+
+   Une carte intitulée « Parcs » n'apprend rien : c'est le nom du filtre, pas
+   celui du lieu. Or la source porte très souvent le nom réel ailleurs que dans
+   `name` — sous sa forme officielle, sous l'enseigne, sous le nom du bâtiment,
+   ou en français quand l'objet est multilingue.
+
+   On épuise donc ces relevés AVANT de retomber sur la catégorie. Aucun n'est
+   inventé : chacun est écrit tel quel dans la donnée d'origine, et chacun est
+   un nom que les gens emploient pour désigner l'endroit. `operator` en est
+   volontairement absent — « Ville de … » exploite un parc, ce n'est pas son
+   nom, et l'afficher comme tel serait inventer.
+
+   Ce qui n'a réellement aucun nom exploitable garde le libellé de catégorie et
+   le drapeau `sansNom` — c'est ce drapeau qui autorise ensuite la
+   déduplication à regrouper ce qui, à l'écran, est indistinguable. */
+const CLES_NOM_OSM = ["name", "name:fr", "official_name", "official_name:fr",
+  "alt_name", "short_name", "loc_name", "brand", "addr:housename"];
+
+function nomReelOsm(tags){
+  const t = tags || {};
+  for(const cle of CLES_NOM_OSM){
+    const valeur = t[cle];
+    if(typeof valeur === "string" && valeur.trim().length >= 2) return valeur.trim();
+  }
+  return "";
+}
+
 async function vraisLieux(lat,lng,bornes,opts){
   const o = opts || {};
   // Une sous-requête par CLÉ (avec regex sur les valeurs) au lieu d'une par
@@ -4306,22 +4348,23 @@ async function vraisLieux(lat,lng,bornes,opts){
     if(!p.lat||!p.lon) return null;
     const regle = REQUETES.find(([k,v])=>t[k]===v);
     if(!regle) return null;
-    const cat = affinerCategorie(regle[2], t.name, t);
+    const nom = nomReelOsm(t);
+    const cat = affinerCategorie(regle[2], nom, t);
     const brut = {
       id:"osm"+e.type+e.id, cat,
-      titre: t.name || CATS[cat].label,
+      titre: nom || CATS[cat].label,
       description:t.description || t.note || "", tags:t,
       type:t.amenity || t.leisure || t.tourism || t.office || "",
-      sansNom: !t.name,                      // « un résultat sans nom exploitable »
-      adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || (t.name||CATS[cat].label),
+      sansNom: !nom,                         // « un résultat sans nom exploitable »
+      adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || nom,
       cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
       quand: t.opening_hours || "Voir sur place",
       cuisine: t.cuisine || "",              // turkish, african, pizza…
       tel: t.phone || t["contact:phone"] || "",
       url: t.website || t["contact:website"] || "",
       pmr: t.wheelchair === "yes" ? true : (t.wheelchair === "no" ? false : undefined),
-      service: preciserService(t.name),      // Mission locale ≠ France Travail
-      solidaire: estSolidaire(t.name, regle[1]==="charity" || /^(social_facility|social_centre)$/.test(regle[1])
+      service: preciserService(nom),         // Mission locale ≠ France Travail
+      solidaire: estSolidaire(nom, regle[1]==="charity" || /^(social_facility|social_centre)$/.test(regle[1])
                               || regle[0] === "social_facility"),
       // L'absence de `fee` ne signifie rien. Seul `fee=no` autorise Autour à
       // écrire « Gratuit » ; `fee=yes` atteste au contraire que c'est payant.
@@ -5961,6 +6004,21 @@ function installerCarte(){
 
   document.body.classList.toggle("loin", map.getZoom() < 15);
   let minuteurRendu;
+  /* CE QUE « LA VUE A CHANGÉ » VEUT DIRE.
+
+     Pas « le centre a bougé d'un pixel ». Un doigt qui repose la carte trente
+     mètres plus loin regarde exactement la même chose : reclasser, recomposer
+     les marqueurs et redemander la zone pour ça, c'est dépenser une demi-
+     seconde de fil principal pour un écran identique.
+
+     L'empreinte de vue est donc le centre arrondi à environ cent mètres et le
+     niveau de zoom. Tant qu'elle ne change pas, rien ne repart — ni le rendu,
+     ni le réseau. Dès qu'elle change, tout repart normalement. */
+  let empreinteVue = null;
+  const empreinteDeLaVue = ()=>{
+    const c = map.getCenter();
+    return c.lat.toFixed(3)+","+c.lng.toFixed(3)+"@"+map.getZoom();
+  };
   map.on("moveend zoomend", ()=>{
     const fournisseurGoogleActif = window.AutourMapProviders && AutourMapProviders.googleMaps;
     if(fournisseurGoogleActif) fournisseurGoogleActif.synchroniserDepuisLeaflet(map);
@@ -5972,6 +6030,9 @@ function installerCarte(){
     // secondes déclenchait une dizaine de requêtes pour un seul quartier
     clearTimeout(minuteurRendu);
     minuteurRendu = setTimeout(()=>{
+      const vue = empreinteDeLaVue();
+      if(vue === empreinteVue) return;   // même vue : rien à refaire
+      empreinteVue = vue;
       rendre();                          // les grappes suivent le zoom
       const c = map.getCenter();
       chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
@@ -10269,6 +10330,29 @@ function etatDonnees(nombreResultats){
   return ETATS_DONNEES.READY_WITHOUT_RESULTS;
 }
 
+/* ==================================================================== */
+/*  « Autour cherche » : l'indicateur qui ne bloque rien                */
+/* ==================================================================== */
+/* Il dit une seule chose : le travail continue en arrière-plan. Il est donc
+   petit, calme, posé SOUS les résultats déjà lisibles, et il ne prend jamais
+   la place de quoi que ce soit — la carte, la liste et les gestes restent
+   entièrement utilisables pendant qu'il tourne. Aucun voile, aucun écran
+   plein, aucune ligne qui saute.
+
+   Et il disparaît tout seul. Pas quand le réseau a fini — ça peut ne jamais
+   arriver si une source traîne —, mais dès qu'il y a de quoi choisir. Au-delà
+   de ce seuil, continuer à afficher « je cherche » ne renseigne plus
+   personne : ça inquiète au-dessus d'une liste déjà bonne. */
+const ASSEZ_DE_RESULTATS = 4;
+
+function indicateurRechercheHTML(nombreResultats){
+  if(Number(nombreResultats) >= ASSEZ_DE_RESULTATS) return "";
+  return '<div class="fb-statut cherche" role="status" aria-live="polite" '+
+    'data-testid="indicateur-recherche">'+
+    '<i class="cherche-pastille" aria-hidden="true"></i>'+
+    '<span>Autour cherche autour de toi…</span></div>';
+}
+
 function statutRechercheHTML(nombreResultats){
   // Quand des résultats issus du cache ou d'une première source sont déjà là,
   // ils restent au premier plan. Trois squelettes au-dessus d'eux donnaient
@@ -10279,8 +10363,7 @@ function statutRechercheHTML(nombreResultats){
   if(etat === ETATS_DONNEES.LOCATION_UNKNOWN)
     return '<div class="fb-statut">Active ta position ou choisis un endroit sur la carte.</div>';
   if(etat === ETATS_DONNEES.DATA_LOADING) return squeletteHTML(3);
-  if(rechercheEnCours() && nombreResultats)
-    return '<div class="fb-statut partiel" role="status"><span>Mise à jour des résultats…</span></div>';
+  if(rechercheEnCours() && nombreResultats) return indicateurRechercheHTML(nombreResultats);
   const sourceIndisponible = panneTechnique();
   if(nombreResultats && sourceIndisponible)
     return '<div class="fb-statut partiel"><span>Résultats disponibles · mise à jour incomplète</span>'+
@@ -10395,6 +10478,36 @@ const CATS_ACCUEIL = ()=>[...new Set(
    tout ». Un bouton qui promet tout et en cache six ne se rattrape pas — on ne
    sait pas ce qu'on n'a pas vu. Les règles de fond (un nom lisible, une
    catégorie demandée, la zone active) restent, elles. */
+/* ==================================================================== */
+/*  Diversité de la sélection                                           */
+/* ==================================================================== */
+/* Autour n'est pas un annuaire. Les premières lignes doivent se lire comme un
+   choix — un parc, un endroit où manger, une activité, quelque chose qui se
+   passe — et non comme la sortie brute d'un catalogue géographique, où quatre
+   parcs voisins occupent les quatre premières places parce qu'ils sont les
+   quatre objets les plus proches.
+
+   MAIS LA VARIÉTÉ N'EST PAS UNE FIN. On ne la demande que là où la sélection
+   est une PROPOSITION : l'accueil, qui ne présuppose rien de ce qu'on cherche.
+   Dès que la personne a dit ce qu'elle veut — une catégorie cochée, une
+   recherche écrite, un besoin d'aide ouvert —, la répétition est la bonne
+   réponse : qui demande « pizzeria » veut des pizzerias, et qui cherche où
+   dormir veut tous les hébergements. */
+function diversiteDemandee(){
+  if(modeAide) return null;
+  if(catsActives && catsActives.size) return null;
+  if(intentionCourante) return null;
+  if(rechercheTexte()) return null;
+  return {fenetre:ACCUEIL_MAX + 3};
+}
+
+/* La recherche libre en cours, s'il y en a une. Elle est lue à plusieurs
+   endroits : autant qu'elle ait un nom. */
+function rechercheTexte(){
+  const champ = $("#rech");
+  return champ && champ.value ? champ.value.trim() : "";
+}
+
 function recommandationsAccueil(limite, options){
   const toutMontrer = !!(options && options.tout);
   /* Le classement partait de `positionMoi`. À Tourcoing, chercher Lille
@@ -10435,6 +10548,7 @@ function recommandationsAccueil(limite, options){
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
+    diversite:diversiteDemandee(),
   });
 
   if(!groupe){
@@ -11048,11 +11162,30 @@ function cleReco(){
           r ? r[0].toFixed(3)+","+r[1].toFixed(3) : "?"].join("|");
 }
 
-/* Ce qu'on peut poser TOUT DE SUITE : le classement déjà calculé s'il vaut
-   encore, sinon le squelette qui s'affichait déjà pendant une recherche. La
-   zone garde ainsi la même place dans les deux cas. */
+/* Ce qu'on peut poser TOUT DE SUITE.
+
+   Trois réponses, dans cet ordre :
+
+     1. le classement déjà calculé, s'il vaut encore pour cet état exact ;
+     2. À DÉFAUT, LE DERNIER CLASSEMENT RENDU POUR CETTE MÊME ZONE. C'est le
+        point du §7 : une source lente qui répond fait changer la clé, et
+        l'ancienne version rendait alors des squelettes — la liste
+        DISPARAISSAIT pour réapparaître une fraction de seconde plus tard,
+        exactement l'impression de gel qu'on cherche à supprimer. Les cartes
+        précédentes sont encore vraies : elles restent en place jusqu'à ce
+        que les nouvelles soient prêtes, et le remplacement est alors
+        silencieux, sans trou ni saut ;
+     3. et seulement si on n'a jamais rien montré ici, le squelette.
+
+   Ce report ne franchit jamais une frontière de zone : `definirZoneActive`
+   efface cette mémoire en même temps que le cache, parce que les cartes d'une
+   ville qu'on vient de quitter seraient, elles, fausses. */
+let dernierRecoRendu = null;      // {portee, html}
+
 function recoDejaCalculee(){
   if(recoCache && recoCache.cle === cleReco()) return recoCache.html;
+  if(dernierRecoRendu && dernierRecoRendu.portee === porteeCourante && dernierRecoRendu.html)
+    return dernierRecoRendu.html;
   return statutGroupeHTML();
 }
 
@@ -11078,16 +11211,26 @@ function poserRecommandations(jeton, titre){
   if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
   if(reco.length) PERF.jalon("cached_pois_visible");
 
+  /* Des cartes, sinon l'indicateur discret par-dessus ce qui est déjà là.
+     Un classement qui ne rend rien PENDANT qu'une source charge n'est pas un
+     vide à annoncer : c'est un travail en cours, et ce qu'on affichait
+     jusque-là reste vrai. On ne remplace donc jamais des cartes existantes
+     par un état — seulement par de meilleures cartes. */
   const html = reco.length
     ? '<div class="rc-piste rc-colonne" data-testid="primary-results">'+
-        reco.map(carteRecommandation).join("")+'</div>'
-    : statutGroupeHTML();
+        reco.map(carteRecommandation).join("")+'</div>'+
+        indicateurRechercheHTML(reco.length)
+    : (dernierRecoRendu && dernierRecoRendu.portee === porteeCourante && dernierRecoRendu.html
+        && rechercheEnCours()
+        ? dernierRecoRendu.html
+        : statutGroupeHTML());
 
   /* Une dernière vérification APRÈS le calcul : classer cent trente lieux
      prend des centaines de millisecondes, et la carte a pu bouger pendant ce
      temps. Poser un résultat périmé est exactement ce qu'on cherche à éviter. */
   if(jeton !== generationAccueil) return;
   recoCache = {cle:cleReco(), html};
+  if(reco.length) dernierRecoRendu = {portee:porteeCourante, html};
   zone.innerHTML = html;
   /* Les gestes de ces cartes n'existaient pas quand la feuille a été branchée :
      on les rebranche sur la zone qu'on vient de remplir, et sur elle seule. */
@@ -11096,6 +11239,9 @@ function poserRecommandations(jeton, titre){
 }
 
 const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
+/* Trois dans le bloc, dix derrière « Voir tout ». Ce n'est pas une limite
+   technique : c'est ce qui distingue une sélection d'un annuaire. */
+const MAINTENANT_TOUT = 10;
 
 /* Ce que `maintenant.js` a besoin de savoir d'un lieu, et rien de plus. Le
    statut vient du moteur temporel, qui le tient du backend : on ne le
@@ -11820,10 +11966,13 @@ function brancherFeuille2(){
     pousserEcran(()=>ouvrirDetail(l.id));
   });
   corps.querySelectorAll("[data-mn-tout]").forEach(b=>b.onclick=()=>{
-    // la liste complète de ce qui a lieu, par le chemin qui existe déjà
+    /* Ce qui a lieu, par le chemin qui existe déjà — et pas plus de dix.
+       « Maintenant » n'est pas un inventaire : trois propositions dans le
+       bloc, dix au maximum derrière « Voir tout ». Au-delà, la promesse
+       change de nature et la qualité se dilue dans le remplissage. */
     pileEcrans = [];
     pousserEcran(()=>afficherListe("⚡", "Maintenant",
-      classerLieux(evenementsMaintenant(), false), false,
+      classerLieux(evenementsMaintenant(), false).slice(0, MAINTENANT_TOUT), false,
       ()=>{ pileEcrans = []; majFeuille2(); }));
   });
 

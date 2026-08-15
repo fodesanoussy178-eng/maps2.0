@@ -309,14 +309,48 @@
     return item.cat === category || (item.categories || []).includes(category);
   }
 
+  /* L'identité Autour reste souveraine. Pour un même commerce, Google est
+     ensuite la source la plus précise (nom, coordonnées, horaires, photo),
+     puis viennent les catalogues et OSM. */
+  const SOURCE_RANK = Object.freeze({autour:4, google_places:3, datatourisme:2, openstreetmap:1});
+
+  /* Des horaires « fiables » sont des horaires qu'on peut lire : une grille
+     publiée, ou au minimum un état ouvert/fermé affirmé. « Voir sur place »
+     est une absence d'horaires qui se donne l'air d'en être. */
+  function fiabiliteHoraires(item) {
+    if (!item) return 0;
+    if (Array.isArray(item.horaires) && item.horaires.length) return 2;
+    const brut = item.openingHours || item.quand;
+    if (brut && String(brut).trim() && !/^voir sur place$/i.test(String(brut).trim())) return 2;
+    if (item.ouvert === true || item.ouvert === false) return 1;
+    return 0;
+  }
+
+  /* LEQUEL DES DEUX REPRÉSENTE LE LIEU ?
+
+     L'ordre est celui du produit, et il ne dépend plus de l'ordre d'arrivée
+     asynchrone des fournisseurs :
+
+       1. un vrai nom — une fiche nommée ne disparaît jamais derrière « Parcs » ;
+       2. les données les plus complètes ;
+       3. la source la plus fiable ;
+       4. des horaires exploitables ;
+       5. la pertinence déjà calculée, en dernier recours.
+
+     Les paliers sont volontairement disjoints : un critère supérieur ne peut
+     pas être renversé par l'accumulation des suivants. */
+  function scoreRepresentant(item) {
+    const pertinence = Number(item && item.rankScore);
+    return (estSansNom(item) ? 0 : 100000)
+      + dataQuality(item) * 100
+      + (SOURCE_RANK[item && item.source] || 0) * 20
+      + fiabiliteHoraires(item) * 5
+      + (Number.isFinite(pertinence) ? Math.min(4, Math.max(0, pertinence) / 100) : 0);
+  }
+
   function mergeDuplicate(left, right) {
     const merged = Object.assign({}, left);
-    /* L'identité Autour reste souveraine. Pour un même commerce, Google est
-       ensuite la source la plus précise (nom, coordonnées, horaires, photo),
-       puis viennent les catalogues et OSM. Le choix ne dépend donc plus de
-       l'ordre d'arrivée asynchrone des fournisseurs. */
-    const priority = {autour:4, google_places:3, datatourisme:2, openstreetmap:1};
-    const preferred = (priority[right.source] || 0) > (priority[left.source] || 0) ? right : left;
+    const preferred = scoreRepresentant(right) > scoreRepresentant(left) ? right : left;
     const fallback = preferred === right ? left : right;
     Object.assign(merged, fallback, preferred);
     // fusionner deux fiches, c'est réunir leurs appartenances en gardant le
@@ -333,6 +367,21 @@
     merged.sources = unique([...(left.sources || [left.source]), ...(right.sources || [right.source])]);
     merged.sourceRefs = Object.assign({}, left.sourceRefs || {}, right.sourceRefs || {});
     merged.source = preferred.source || fallback.source;
+    /* LE VRAI NOM SURVIT TOUJOURS À LA FUSION.
+
+       C'est la règle qui empêche « Parc Clemenceau » de redevenir « Parcs »
+       parce que l'autre relevé, mieux noté sur un autre critère, n'avait pas
+       de nom. Le libellé de catégorie n'est qu'un repli : il ne reprend la
+       main que lorsque plus personne n'a de nom à proposer. */
+    const nomme = !estSansNom(preferred) ? preferred
+      : (!estSansNom(fallback) ? fallback : null);
+    if (nomme) {
+      merged.title = nomme.title || nomme.titre;
+      merged.titre = merged.title;
+      merged.sansNom = false;
+    } else {
+      merged.sansNom = true;
+    }
     merged.description = preferred.description || fallback.description || "";
     merged.url = preferred.url || fallback.url || "";
     merged.image = preferred.image || fallback.image || "";
@@ -401,6 +450,157 @@
     return (1 - distanceEdition(short, compared) / short.length) >= 0.9;
   }
 
+  /* ---- Identité d'un lieu : nom, identifiant, adresse ---------------------
+
+     Dédupliquer, c'est répondre à « ces deux fiches désignent-elles la même
+     chose ? ». Six preuves entrent dans la réponse, de la plus forte à la plus
+     faible : un identifiant externe partagé, un nom normalisé identique, une
+     catégorie commune, une adresse identique, la distance qui les sépare, et
+     — pour ce qui n'a pas de nom du tout — la seule ressemblance de nature à
+     courte distance.
+
+     Une seule est décisive à elle seule : l'identifiant. C'est le fournisseur
+     lui-même qui affirme que c'est le même objet. Toutes les autres se
+     combinent, parce qu'aucune ne suffit : deux « Central » voisins peuvent
+     être un café et un hôtel, deux « Parcs » à cent mètres sont presque
+     toujours deux morceaux du même parc. */
+
+  const NAME_ARTICLES = /\b(le|la|les|l|un|une|des|du|de|d|au|aux|the|a)\b/g;
+
+  /* Les abréviations qu'un relevé écrit d'un côté et développe de l'autre.
+     Ce ne sont pas des synonymes : ce sont deux écritures du même mot. */
+  const NAME_VARIANTS = Object.freeze([
+    [/\bst\b/g, "saint"], [/\bste\b/g, "sainte"], [/\bsts\b/g, "saints"],
+    [/\bmt\b/g, "mont"], [/\bnd\b/g, "notre dame"],
+    [/\bpl\b/g, "place"], [/\bav\b/g, "avenue"], [/\bbd\b/g, "boulevard"],
+    [/\bmr\b/g, "monsieur"], [/\bet\b/g, " "], [/\band\b/g, " "],
+  ]);
+
+  /* Singulier approximatif. Il ne s'agit pas de faire de la grammaire : il
+     s'agit que « Parcs » et « Parc » se comparent. La règle s'applique aux
+     DEUX côtés, donc une règle fausse produit deux formes également fausses —
+     elle ne crée pas de rapprochement qui n'existerait pas. Les mots courts
+     sont épargnés : « bus » n'est pas un pluriel. */
+  function singulierApproche(word) {
+    if (word.length <= 4) return word;
+    if (/[sx]$/.test(word)) return word.slice(0, -1);
+    return word;
+  }
+
+  /* Le nom d'un lieu, ramené à ce qui l'identifie : sans casse, sans accent,
+     sans ponctuation, sans article, sans marque de pluriel. */
+  function normaliserNomLieu(value) {
+    let text = normalizeText(value);
+    if (!text) return "";
+    NAME_VARIANTS.forEach((paire) => { text = text.replace(paire[0], paire[1]); });
+    text = text.replace(NAME_ARTICLES, " ").replace(/\s+/g, " ").trim();
+    return text.split(" ").map(singulierApproche).filter(Boolean).join(" ");
+  }
+
+  /* Une adresse dit la même chose de deux façons selon la source : « 12 rue de
+     la Paix » ou « 12 R. Paix ». On retire ce qui est un rôle de voie et on
+     garde le numéro et le nom propre — c'est là qu'est l'information. */
+  const ADDRESS_ROLES = /\b(rue|r|avenue|av|boulevard|bd|place|pl|chemin|ch|impasse|allee|route|rte|quai|square|cours|voie|passage|residence|batiment|bat|bis|ter)\b/g;
+
+  function normaliserAdresse(value) {
+    const text = normalizeText(value)
+      .replace(ADDRESS_ROLES, " ").replace(NAME_ARTICLES, " ")
+      .replace(/\s+/g, " ").trim();
+    return text.split(" ").map(singulierApproche).filter(Boolean).join(" ");
+  }
+
+  /* Un lieu sans nom exploitable en porte le drapeau, ou n'a tout simplement
+     rien à afficher. Les deux cas se traitent pareil : ce lieu n'a pas
+     d'identité propre, seulement une nature et une position. */
+  function estSansNom(item) {
+    if (!item) return true;
+    if (item.sansNom === true) return true;
+    const titre = String(item.title || item.titre || "").trim();
+    return titre.length < 2;
+  }
+
+  /* L'adresse ne sert de preuve que lorsqu'elle en est une. Une fiche
+     OpenStreetMap sans numéro ni rue retombe sur son propre libellé : tous les
+     parcs anonymes d'une ville partageraient alors « l'adresse » Parcs, et se
+     fondraient les uns dans les autres à travers toute la carte. */
+  function adresseComparable(item) {
+    if (!item) return "";
+    const adresse = normaliserAdresse(item.adresse || item.address || item.addr);
+    if (!adresse) return "";
+    if (adresse === normaliserNomLieu(item.title || item.titre)) return "";
+    // un nom de commune seul n'est pas une adresse : sans numéro, il faut au
+    // moins deux mots pour désigner un point et non un quartier entier
+    if (!/\d/.test(adresse) && adresse.split(" ").length < 2) return "";
+    return adresse;
+  }
+
+  /* Les identifiants que les fournisseurs attachent à leurs fiches. Deux
+     fiches qui en partagent un sont le même objet, point : c'est la source qui
+     le dit, et aucune heuristique de nom ne vaut cette affirmation. */
+  function identifiantsExternes(item) {
+    const refs = new Set();
+    if (!item) return refs;
+    const declares = item.sourceRefs || {};
+    Object.keys(declares).forEach((cle) => {
+      if (declares[cle] != null && declares[cle] !== "") refs.add(cle + ":" + String(declares[cle]));
+    });
+    if (item.idGoogle) refs.add("googlePlaceId:" + item.idGoogle);
+    if (item.idOsm) refs.add("osmId:" + item.idOsm);
+    if (item.idDatatourisme) refs.add("datatourismeId:" + item.idDatatourisme);
+    if (item.dbId != null && item.dbId !== "") refs.add("dbId:" + String(item.dbId));
+    return refs;
+  }
+
+  function memeIdentifiantExterne(a, b) {
+    const gauche = identifiantsExternes(a);
+    if (!gauche.size) return false;
+    const droit = identifiantsExternes(b);
+    if (!droit.size) return false;
+    for (const ref of gauche) if (droit.has(ref)) return true;
+    return false;
+  }
+
+  /* Un parc, un terrain, un marché ne sont pas des points : OpenStreetMap les
+     décrit par plusieurs polygones, parfois à trois cents mètres l'un de
+     l'autre. Les comparer au rayon d'un commerce revient à afficher quatre
+     fois le même parc — c'est exactement ce qu'on veut faire disparaître. */
+  const SPREAD_CATEGORIES = Object.freeze(["parc", "park", "terrain", "sport",
+    "marche", "swimming_pool", "cimetiere", "plage", "foret"]);
+
+  const DEDUP_RADIUS = Object.freeze({
+    nomme: 120,          // deux relevés du même commerce
+    nommeEtendu: 400,    // deux morceaux du même parc
+    typo: 180,           // faute de frappe entre fournisseurs
+    adresse: 60,         // noms différents, même adresse exacte
+    sansNomEtendu: 500,  // les morceaux anonymes d'un même parc
+    sansNom: 90,         // ailleurs, deux objets anonymes voisins
+  });
+
+  function estEtendu(item) {
+    return [item.cat, ...(item.categories || [])]
+      .some((category) => SPREAD_CATEGORIES.includes(category));
+  }
+
+  function estTransportItem(item) {
+    return [item.cat, ...(item.categories || [])]
+      .some((category) => TRANSPORT_CATEGORIES.includes(category));
+  }
+
+  /* Jusqu'où deux objets anonymes de même nature sont-ils le même objet ?
+
+     Pour un objet étendu, loin : un parc décrit par cinq polygones s'étale sur
+     des centaines de mètres, et ses morceaux ne sont pas cinq parcs.
+
+     Partout ailleurs, très près. Deux arrêts anonymes à deux cents mètres sont
+     deux points de montée ; deux toilettes publiques à deux cents mètres sont
+     deux dépannages, et faire disparaître le plus proche serait un vrai
+     préjudice. Le rayon serré ne ramasse alors que ce qui est manifestement un
+     doublon de relevé — un nœud et son bâtiment, la même chose vue deux fois. */
+  function rayonSansNom(a, b) {
+    if (estEtendu(a) || estEtendu(b)) return DEDUP_RADIUS.sansNomEtendu;
+    return DEDUP_RADIUS.sansNom;
+  }
+
   /* Un nom seul ne suffit pas : un « Central » café et un « Central » hôtel
      voisins sont deux destinations. Deux sources ne se fusionnent que si leur
      catégorie interne a un usage en commun, en plus du nom normalisé et de la
@@ -418,36 +618,82 @@
       [...right].some((category) => restauration.has(category));
   }
 
+  /* Deux occurrences d'un même événement ne se confondent que si elles
+     tombent dans la même fenêtre : la même exposition ce soir et demain soir
+     sont deux propositions, pas un doublon. */
+  function memeFenetre(existing, item) {
+    if (!item.isTemporary) return true;
+    if (existing.startsAt == null || item.startsAt == null) return true;
+    return Math.abs(existing.startsAt - item.startsAt) <= 3 * 3600 * 1000;
+  }
+
+  function memeEnregistrement(existing, item, distanceBetween) {
+    if (!!existing.isTemporary !== !!item.isTemporary) return false;
+    /* Un identifiant fournisseur stable est une preuve plus forte qu'une
+       catégorie dérivée. Une fiche en cache peut être « event », puis la
+       version fraîche « concert » après enrichissement des mots-clés : ce
+       sont toujours le même événement, et l'afficher deux fois ferait
+       sauter la liste au moment où le réseau répond. */
+    if (existing.id != null && item.id != null && String(existing.id) === String(item.id)) return true;
+    if (memeIdentifiantExterne(existing, item)) return true;
+    /* Une station et une destination peuvent porter exactement le même
+       nom à la même adresse. Les fusionner donne à la station la photo, la
+       note et la catégorie du café voisin, puis la fait remonter dans Manger.
+       L'homonymie ne franchit donc jamais la frontière transport / lieu où
+       l'on va. */
+    if (estTransportItem(existing) !== estTransportItem(item)) return false;
+    if (!sameCategory(existing, item)) return false;
+
+    const distance = distanceBetween(existing.latitude, existing.longitude,
+      item.latitude, item.longitude);
+    if (!Number.isFinite(distance)) return false;
+
+    /* DEUX OBJETS ANONYMES DE MÊME NATURE, À QUELQUES PAS.
+
+       Rien ne les distingue à l'écran : ils portent le même libellé de
+       catégorie, la même icône, et le lecteur ne peut pas dire lequel est
+       lequel. C'est très exactement la quadruple carte « Parcs ». Le rayon
+       dépend de la nature : un objet étendu se lit sur plusieurs centaines de
+       mètres, un arrêt de transport anonyme reste distinct de son voisin. */
+    const anonymeGauche = estSansNom(existing);
+    const anonymeDroit = estSansNom(item);
+    if (anonymeGauche && anonymeDroit) {
+      if (distance > rayonSansNom(existing, item)) return false;
+      return memeFenetre(existing, item);
+    }
+    /* Un lieu nommé n'est jamais absorbé par un lieu anonyme : on perdrait un
+       vrai nom au profit d'un libellé de catégorie. */
+    if (anonymeGauche !== anonymeDroit) return false;
+
+    const titreGauche = existing.title || existing.titre;
+    const titreDroit = item.title || item.titre;
+    const nomGauche = normaliserNomLieu(titreGauche);
+    const memeNom = !!nomGauche && nomGauche === normaliserNomLieu(titreDroit);
+    const sameName = memeNom || sameTitle(titreGauche, titreDroit);
+    const typoCrossProvider = !sameName && existing.source !== item.source &&
+      titlesNearlySame(titreGauche, titreDroit);
+
+    if (!sameName && !typoCrossProvider) {
+      /* Reste l'adresse. Deux relevés du même établissement peuvent
+         l'orthographier autrement tout en donnant le même numéro dans la même
+         rue ; à quelques dizaines de mètres, c'est une preuve suffisante. */
+      const adresse = adresseComparable(existing);
+      if (!adresse || adresse !== adresseComparable(item)) return false;
+      if (distance > DEDUP_RADIUS.adresse) return false;
+      return memeFenetre(existing, item);
+    }
+
+    const limite = typoCrossProvider ? DEDUP_RADIUS.typo
+      : (estEtendu(existing) || estEtendu(item) ? DEDUP_RADIUS.nommeEtendu : DEDUP_RADIUS.nomme);
+    if (distance > limite) return false;
+    return memeFenetre(existing, item);
+  }
+
   function dedupeItems(items, distanceBetween) {
     const result = [];
     (items || []).forEach((item) => {
-      const found = result.findIndex((existing) => {
-        if (!!existing.isTemporary !== !!item.isTemporary) return false;
-        /* Un identifiant fournisseur stable est une preuve plus forte qu'une
-           catégorie dérivée. Une fiche en cache peut être « event », puis la
-           version fraîche « concert » après enrichissement des mots-clés : ce
-           sont toujours le même événement, et l'afficher deux fois ferait
-           sauter la liste au moment où le réseau répond. */
-        if (existing.id != null && item.id != null && String(existing.id) === String(item.id)) return true;
-        /* Une station et une destination peuvent porter exactement le même
-           nom à la même adresse (« Phalempins »). Les fusionner donne à la
-           station la photo, la note et la catégorie du café voisin, puis la
-           fait remonter dans Manger. L'homonymie ne franchit donc jamais la
-           frontière transport / lieu où l'on va. */
-        const estTransport = (lieu) => [lieu.cat, ...(lieu.categories || [])]
-          .some((category) => TRANSPORT_CATEGORIES.includes(category));
-        if (estTransport(existing) !== estTransport(item)) return false;
-        const sameName = sameTitle(existing.title || existing.titre, item.title || item.titre);
-        const typoCrossProvider = !sameName && existing.source !== item.source &&
-          titlesNearlySame(existing.title || existing.titre, item.title || item.titre);
-        if (!sameName && !typoCrossProvider) return false;
-        if (!sameCategory(existing, item)) return false;
-        const distance = distanceBetween(existing.latitude, existing.longitude, item.latitude, item.longitude);
-        if (!Number.isFinite(distance) || distance > (typoCrossProvider ? 180 : 120)) return false;
-        if (!item.isTemporary) return true;
-        if (existing.startsAt == null || item.startsAt == null) return true;
-        return Math.abs(existing.startsAt - item.startsAt) <= 3 * 3600 * 1000;
-      });
+      const found = result.findIndex((existing) =>
+        memeEnregistrement(existing, item, distanceBetween));
       if (found === -1) result.push(item);
       else result[found] = mergeDuplicate(result[found], item);
     });
@@ -982,7 +1228,40 @@
     return Math.min(1, Math.log10(n + 1) / 3);
   }
 
+  /* LA PROXIMITÉ EST UN PALIER, PAS UNE GRADUATION.
+
+     Comparée à la minute, la distance décidait de tout : elle passe avant la
+     qualité des données et avant le score, et deux lieux ne sont pratiquement
+     jamais à la même minute. Un lieu à 140 m devançait donc mécaniquement
+     toute proposition plus intéressante à 350 m — alors que la différence
+     vécue entre les deux est nulle : c'est le même « à côté ».
+
+     On compare donc des paliers de trajet. À l'intérieur d'un palier, ce sont
+     la pertinence, la qualité et le score qui tranchent ; entre deux paliers,
+     la proximité reprend tous ses droits — vingt minutes de marche ne sont pas
+     deux minutes. La distance exacte reste le dernier départage de la liste,
+     après le score, pour que l'ordre demeure stable et déterministe. */
+  const PALIER_TRAJET_MIN = 5;
+
+  function palierTrajet(item) {
+    const minutes = item.rankBreakdown.etaMinutes;
+    if (Number.isFinite(minutes)) return Math.floor(minutes / PALIER_TRAJET_MIN);
+    const distance = item.rankBreakdown.distance;
+    if (!Number.isFinite(distance)) return null;
+    const estimees = travelMinutes(distance);
+    return estimees == null ? null : Math.floor(estimees / PALIER_TRAJET_MIN);
+  }
+
   function compareEta(a, b) {
+    const left = palierTrajet(a);
+    const right = palierTrajet(b);
+    if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
+    return 0;
+  }
+
+  /* Le départage fin, relégué en toute fin de tri : à pertinence, qualité et
+     score égaux, le plus proche passe devant. */
+  function compareDistanceFine(a, b) {
     const left = a.rankBreakdown.etaMinutes;
     const right = b.rankBreakdown.etaMinutes;
     if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
@@ -1040,6 +1319,123 @@
     if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
     if (Number.isFinite(left) !== Number.isFinite(right)) return Number.isFinite(left) ? -1 : 1;
     return 0;
+  }
+
+  /* ======================================================================
+     DIVERSITÉ
+
+     Une sortie brute d'un catalogue géographique met quatre parcs en tête
+     parce que la ville en compte quatre à trois cents mètres. Ce n'est pas une
+     sélection, c'est un inventaire trié par distance — et ça se lit exactement
+     comme ça.
+
+     CE QUE FAIT CETTE PASSE, ET SURTOUT CE QU'ELLE NE FAIT PAS.
+
+     Elle RÉORDONNE une fenêtre de tête déjà classée. Elle n'ajoute rien,
+     n'invente rien, n'écarte rien : les mêmes résultats sortent, dans un ordre
+     où les premières lignes ne répètent pas la même nature. Un remplaçant
+     n'est promu que si son score reste dans une marge étroite de celui qu'il
+     devance — sans quoi on troquerait une bonne proposition contre une moins
+     bonne au seul motif qu'elle est différente, ce qui est exactement le
+     travers inverse. Quand aucun candidat acceptable n'existe, la répétition
+     est conservée : deux bons parcs valent mieux qu'un parc et un médiocre.
+     ====================================================================== */
+
+  const DIVERSITE = Object.freeze({
+    fenetre: 8,               // les premières lignes, celles qu'on lit vraiment
+    maxParSousCategorie: 2,   // le plafond dur demandé
+    maxParFamille: 2,         // trois façons de manger ne font pas une variété
+    tolerance: .18,           // marge de score pour préférer une autre nature
+    toleranceLarge: .32,      // marge élargie une fois le plafond dur atteint
+  });
+
+  /* Les grandes natures de proposition. La sous-catégorie reste le critère
+     principal — c'est elle qui produit « parc, parc, parc, parc » — mais sans
+     une seconde maille, trois façons de manger d'affilée passeraient pour de
+     la variété. */
+  const FAMILLES_DIVERSITE = Object.freeze({
+    resto:"manger", fastfood:"manger", cafe:"manger", marche:"manger", food:"manger",
+    bar:"sortir", concert:"sortir", spectacle:"sortir", cinema:"sortir",
+    studio:"sortir", popup:"sortir",
+    event:"evenement", rencontre:"evenement", collecte:"evenement",
+    parc:"dehors", park:"dehors", terrain:"dehors", sport:"dehors",
+    swimming_pool:"dehors", velo:"dehors",
+    musee:"culture", biblio:"culture", coworking:"culture",
+  });
+
+  function sousCategorieDe(item) {
+    if (!item) return "autre";
+    if (item.sousCat) return String(item.sousCat);
+    if (item.cat) return String(item.cat);
+    return (item.categories || [])[0] || "autre";
+  }
+
+  function familleDiversite(item) {
+    return FAMILLES_DIVERSITE[sousCategorieDe(item)] || "autre";
+  }
+
+  function scoreDiversite(item) {
+    const score = Number(item && item.rankScore);
+    return Number.isFinite(score) ? score : 0;
+  }
+
+  function diversifierResultats(results, options) {
+    const o = options === true ? {} : (options || {});
+    const liste = (results || []).slice();
+    if (liste.length <= 2) return liste;
+
+    const fenetre = Math.max(1, Number(o.fenetre) || DIVERSITE.fenetre);
+    const max = Math.max(1, Number(o.maxParSousCategorie) || DIVERSITE.maxParSousCategorie);
+    const maxFamille = Math.max(1, Number(o.maxParFamille) || DIVERSITE.maxParFamille);
+    const tolerance = o.tolerance == null ? DIVERSITE.tolerance : Number(o.tolerance);
+    const toleranceLarge = o.toleranceLarge == null
+      ? DIVERSITE.toleranceLarge : Number(o.toleranceLarge);
+    /* Un remplaçant se cherche dans le voisinage immédiat de la fenêtre, pas
+       au fond de la liste : promouvoir le trentième résultat pour varier
+       reviendrait à dégrader la sélection. */
+    const portee = fenetre * 2;
+
+    const restants = liste.slice();
+    const choisis = [];
+    const vues = new Map();
+    const familles = new Map();
+    const compteSous = (item) => vues.get(sousCategorieDe(item)) || 0;
+    const compteFamille = (item) => familles.get(familleDiversite(item)) || 0;
+
+    while (choisis.length < fenetre && restants.length) {
+      const tete = restants[0];
+      let indice = 0;
+      /* Deux mailles, et il suffit que l'une des deux soit tendue : la
+         sous-catégorie — c'est elle qui produit « parc, parc, parc, parc » —
+         et la famille, sans quoi trois façons de manger d'affilée passeraient
+         pour de la variété. */
+      const dejaVu = compteSous(tete);
+      const dejaVuFamille = compteFamille(tete);
+      if (dejaVu >= 1 || dejaVuFamille >= maxFamille) {
+        const reference = scoreDiversite(tete);
+        const marge = (dejaVu >= max || dejaVuFamille >= maxFamille) ? toleranceLarge : tolerance;
+        const plancher = reference - Math.abs(reference) * marge;
+        /* Le premier candidat de qualité comparable qui apporte une nature
+           encore absente — et qui ne surcharge pas une famille déjà nourrie. */
+        let remplacant = restants.findIndex((item, i) => i > 0 && i < portee &&
+          scoreDiversite(item) >= plancher && compteSous(item) === 0 &&
+          compteFamille(item) < maxFamille && compteFamille(item) <= dejaVuFamille);
+        /* Rien d'inédit : on se contente d'une famille différente, toujours à
+           qualité comparable. */
+        if (remplacant < 0) remplacant = restants.findIndex((item, i) => i > 0 && i < portee &&
+          scoreDiversite(item) >= plancher && compteSous(item) < max &&
+          compteFamille(item) < maxFamille &&
+          familleDiversite(item) !== familleDiversite(tete));
+        if (remplacant > 0) indice = remplacant;
+      }
+      const retenu = restants.splice(indice, 1)[0];
+      choisis.push(retenu);
+      const sous = sousCategorieDe(retenu);
+      vues.set(sous, (vues.get(sous) || 0) + 1);
+      const famille = familleDiversite(retenu);
+      familles.set(famille, (familles.get(famille) || 0) + 1);
+    }
+    return choisis.concat(restants);
   }
 
   function rankResults(results, context) {
@@ -1148,7 +1544,7 @@
        a été demandé explicitement. */
     const transportDemande = categories.some((c) => TRANSPORT_CATEGORIES.includes(c));
 
-    return survivants.map(({ item, startsAt, endsAt, temporary, etat }) => {
+    const classes = survivants.map(({ item, startsAt, endsAt, temporary, etat }) => {
       if (!transportDemande && hasAnyCategory(item, TRANSPORT_CATEGORIES)) {
         /* Sauf s'il est vraiment autre chose : une gare qui est aussi un
            monument reste un monument. On compare donc les forces plutôt que
@@ -1428,8 +1824,15 @@
       // desservi directement
       compareEta(a, b) ||
       b.rankBreakdown.quality - a.rankBreakdown.quality ||
-      b.rankScore - a.rankScore
+      b.rankScore - a.rankScore ||
+      // à tout le reste égal, le plus proche : c'est un départage, plus un critère
+      compareDistanceFine(a, b)
     );
+
+    /* La diversité s'applique APRÈS le classement, et seulement quand
+       l'appelant la demande — une recherche explicite (« pizzeria ») veut des
+       pizzerias, pas de la variété. */
+    return ctx.diversite ? diversifierResultats(classes, ctx.diversite) : classes;
   }
 
   root.AutourCore = Object.freeze({
@@ -1445,6 +1848,16 @@
     matchesCategory,
     isDiscoveryCandidate,
     dedupeItems,
+    normaliserNomLieu,
+    normaliserAdresse,
+    estSansNom,
+    identifiantsExternes,
+    memeIdentifiantExterne,
+    diversifierResultats,
+    sousCategorieDe,
+    familleDiversite,
+    DIVERSITE,
+    DEDUP_RADIUS,
     normalizePlaceName,
     placeFamily,
     groupLogicalPlaces,

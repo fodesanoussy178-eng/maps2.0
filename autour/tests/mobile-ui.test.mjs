@@ -932,8 +932,11 @@ test("un social_facility sans sous-tag est classé par son nom",()=>{
   assert.match(html,/const NOM_ALIMENTAIRE = /);
   assert.match(html,/function affinerCategorie\(cat, nom, tags\)\{/);
   assert.match(html,/tags\.amenity === "social_facility" && !tags\.social_facility/);
-  // et le classifieur lui passe bien les tags, sinon la règle ne sert à rien
-  assert.match(html,/affinerCategorie\(regle\[2\], t\.name, t\)/);
+  // et le classifieur lui passe bien le nom ET les tags, sinon la règle ne
+  // sert à rien. Le nom est celui réellement retenu — `name`, mais aussi le
+  // nom officiel ou l'enseigne quand `name` manque
+  assert.match(html,/const nom = nomReelOsm\(t\);/);
+  assert.match(html,/affinerCategorie\(regle\[2\], nom, t\)/);
   // « foyer » doit rester le mot qui mène à l'hébergement
   assert.match(html,/hebergement:\["hebergement","dormir","abri","foyer"/);
 });
@@ -1333,7 +1336,10 @@ test("le classement tranche le temps avant de calculer la pertinence",()=>{
   assert.match(core,/if \(temporary && etat && etat\.statut === temps\.STATUTS\.PASSE\) return;/);
   assert.match(core,/if \(ctx\.nowOnly\) \{/);
   assert.match(core,/const disponible = temps && etat/);
-  assert.ok(core.indexOf("survivants.push(") < core.indexOf("return survivants.map("),
+  // le contrat porte sur l'ORDRE des deux passes, pas sur la façon dont le
+  // résultat de la seconde est relié : le classement passe désormais par une
+  // variable avant la diversification
+  assert.ok(core.indexOf("survivants.push(") < core.indexOf("survivants.map("),
     "le filtre temporel doit précéder le calcul du score");
   // le statut calculé est exposé, il n'est pas recalculé autrement ailleurs
   assert.match(core,/rankTemporal: etat \? etat\.statut : null,/);
