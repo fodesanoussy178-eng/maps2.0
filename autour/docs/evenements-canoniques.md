@@ -147,8 +147,15 @@ géographique.
 ### Déployer la fonction
 
 ```bash
-supabase functions deploy sync-datatourisme --project-ref <ref>
+supabase functions deploy sync-datatourisme --project-ref <ref> --no-verify-jwt
 ```
+
+`--no-verify-jwt` n'est pas un relâchement : la fonction porte sa PROPRE
+authentification, le secret partagé `x-sync-secret`, vérifié avant toute autre
+chose. Laisser la vérification de JWT active obligerait l'appelant à détenir en
+plus une clé Supabase — c'est-à-dire à donner à GitHub un accès à la base pour
+lui permettre de demander un import. Les deux questions sont distinctes : QUI a
+le droit d'appeler, et AVEC QUOI on écrit.
 
 Variables d'environnement de la fonction :
 
@@ -156,7 +163,14 @@ Variables d'environnement de la fonction :
 |---|---|
 | `DATATOURISME_API_KEY` | clé du catalogue — ne quitte jamais le serveur |
 | `EVENT_SYNC_SECRET` | secret partagé exigé à l'appel |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | fournis par la plateforme |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEYS` | fournis par la plateforme, rien à configurer |
+
+`SUPABASE_SECRET_KEYS` est un dictionnaire JSON — `{"default":"sb_secret_…"}` —
+et non une chaîne. C'est ce qui permet de faire coexister plusieurs clés
+nommées et d'en révoquer une sans invalider les autres, là où `service_role`
+dérivait du secret JWT du projet et ne se remplaçait qu'en bloc. La fonction lit
+la clé `default`, ou celle que nomme `SUPABASE_SECRET_KEY_NAME` si on veut en
+désigner une autre.
 
 ### La déclencher
 
@@ -165,7 +179,6 @@ tâche par zone. À la main :
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer $SERVICE_KEY" \
   -H "x-sync-secret: $EVENT_SYNC_SECRET" \
   "https://<ref>.supabase.co/functions/v1/sync-datatourisme?area=lille"
 ```
