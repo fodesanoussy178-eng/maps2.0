@@ -11351,8 +11351,19 @@ function blocMaintenantAccueil(){
   if(liste.length >= MAINTENANT_APERCU) PERF.jalon("maintenant_complet");
   const mots = M.textes(etat, ctx);
 
+  /* LE COMPTEUR DOIT DONNER UNE IMPRESSION DE SÉLECTION, PAS D'ANNUAIRE.
+
+     « Maintenant (189) » au-dessus de trois lignes se lit comme un catalogue
+     dont on ne montrerait qu'un fragment — et il donne envie de chercher les
+     186 autres, qui n'existent pas en tant que propositions. Ce que Autour
+     propose réellement est plafonné à dix ; le compteur ne dépasse donc pas ce
+     qu'on peut effectivement ouvrir. Au-delà, il le dit autrement : « 10+ »
+     annonce l'abondance sans promettre une liste. */
+  const proposables = PLAF ? Math.min(combien, PLAF.limiteMaintenant()) : combien;
+  const affiche = PLAF && combien > PLAF.limiteMaintenant()
+    ? PLAF.limiteMaintenant()+"+" : String(proposables);
   const tete = '<p class="mn-tete"><em aria-hidden="true">⚡</em><b>Maintenant</b>'+
-    (etat === M.ETATS.READY && combien ? '<span>('+combien+')</span>' : '')+'</p>';
+    (etat === M.ETATS.READY && combien ? '<span>('+affiche+')</span>' : '')+'</p>';
 
   let corps;
   if(etat === M.ETATS.READY){
@@ -11388,8 +11399,13 @@ function ongletsTemps(){
       // l'éclair est permanent : c'est un repère, pas une décoration qui
       // apparaît et disparaît sous les yeux
       const libelle = maintenant ? "⚡ "+c.label : c.label;
+      /* Même règle sur l'onglet : on n'affiche pas un total qu'on ne peut pas
+         ouvrir. */
+      const ouvrables = PLAF ? Math.min(enCours, PLAF.limiteMaintenant()) : enCours;
       const compte = maintenant && enCours
-        ? '<span class="ong-compte" aria-hidden="true">'+enCours+'</span>' : '';
+        ? '<span class="ong-compte" aria-hidden="true">'+
+          (PLAF && enCours > PLAF.limiteMaintenant() ? ouvrables+"+" : ouvrables)+
+          '</span>' : '';
       const lu = maintenant && enCours
         ? ' aria-label="'+esc(c.label)+' : '+enCours+' événement'+(enCours>1?'s':'')+' en cours"' : '';
       return '<button class="ong'+(maintenant?' ong-maintenant':'')+
