@@ -4,17 +4,18 @@
    Signalé depuis le terrain : « Connexion impossible pour le moment. » à
    l'écran de publication, et le bouton répond la même chose indéfiniment.
 
-   Ce banc rejoue exactement ça. Le CDN qui sert le SDK Supabase est simulé —
-   d'abord injoignable, puis disponible — pour vérifier les deux propriétés
-   qui manquaient :
+   Ce banc rejoue exactement ça. Le SDK Supabase — désormais servi par notre
+   propre origine — est rendu injoignable, puis disponible, pour vérifier les
+   deux propriétés qui manquaient :
 
      · chaque essai RETENTE réellement (avant : réponse « non » en 0 ms, sans
        qu'aucune requête ne parte) ;
      · le rétablissement du réseau suffit, SANS RECHARGER LA PAGE (avant :
        l'échec était mémorisé pour toute la durée de la session).
 
-   Un bloqueur de publicités, un réseau d'entreprise ou une panne de CDN
-   produisent la même situation.
+   Servir le fichier nous-mêmes rend le cas rare — c'était le but — mais pas
+   impossible : une coupure réseau au mauvais moment produit le même effet.
+   C'est donc toujours ce comportement-là qu'on éprouve, et avec le VRAI SDK.
 
    Usage : node outils/comptes-hors-ligne.mjs
    ========================================================================= */
@@ -45,27 +46,17 @@ const nav = await chromium.launch({executablePath:"/opt/pw-browsers/chromium-119
 const ctx = await nav.newContext(Object.assign({}, devices["Pixel 5"],
   {permissions:["geolocation"], geolocation:{latitude:50.72,longitude:3.16}, locale:"fr-FR"}));
 const page = await ctx.newPage();
-/* Le CDN du SDK est simulé : cet environnement ne l'atteint pas, et on veut
-   pouvoir basculer de « injoignable » à « disponible » sans recharger la page.
-   Le faux SDK expose juste ce que `connecter()` appelle. */
-let cdnDisponible = false;
-const FAUX_SDK = `window.supabase = {
-  createClient: () => ({
-    auth: {
-      getSession: async () => ({ data: { session: null }, error: null }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe(){} } } }),
-      signInWithOtp: async () => ({ data: {}, error: null }),
-      updateUser: async () => ({ data: {}, error: null }),
-      signOut: async () => ({ error: null }),
-    },
-    from: () => ({ select: () => ({ data: [], error: null }) }),
-  }),
-};`;
-await page.route(/jsdelivr|unpkg/, route =>
-  cdnDisponible
-    ? route.fulfill({ status:200, contentType:"application/javascript", body:FAUX_SDK })
-    : route.abort("failed"));
-const logs=[]; page.on("console",m=>logs.push(m.text()));
+/* Le SDK vient maintenant de notre origine. On le coupe pour de bon, puis on
+   le rétablit — sans recharger la page. C'est le vrai fichier qui est chargé :
+   le banc éprouve donc aussi que le SDK vendorisé fonctionne réellement. */
+const logs = [];
+page.on("console", m => logs.push(m.text()));
+let sdkDisponible = false;
+let demandesSdk = 0;
+await page.route(/\/vendeur\/supabase-.*\.js$/, route => {
+  demandesSdk += 1;
+  return sdkDisponible ? route.fallback() : route.abort("failed");
+});
 
 await page.goto("http://127.0.0.1:8777/index.html",{waitUntil:"commit"});
 await page.waitForFunction(()=>window.AutourPerf&&window.AutourPerf.temps.ui_ready,null,{timeout:20000});
@@ -76,19 +67,27 @@ const essai = async (n)=> page.evaluate(async ()=>{
   const r = await envoyerLienCompte("test@exemple.test");
   return { ...r, ms: Math.round(performance.now()-t0) };
 });
-console.log("— CDN bloqué —");
+console.log("— SDK injoignable —");
 console.log("essai 1 :", JSON.stringify(await essai()));
 console.log("essai 2 :", JSON.stringify(await essai()));
 /* Le réseau revient. Sans recharger la page, la tentative suivante doit
    réellement repartir : c'est tout l'objet du correctif. */
-cdnDisponible = true;
+sdkDisponible = true;
 console.log("\n— réseau rétabli, sans rechargement —");
 const r = await essai();
 console.log("essai 3 :", JSON.stringify({ok:r.ok, message:r.message||"(aucun)", ms:r.ms}));
 console.log("\nwindow.supabase présent :", await page.evaluate(()=>!!window.supabase));
+console.log("requêtes SDK parties :", demandesSdk, "(une par essai : la preuve qu'on retente)");
 console.log("journal :", logs.filter(l=>/upabase/i.test(l)).join(" | ") || "(rien)");
 
-const attendu = r.ok;
+/* Le critère porte sur le CHARGEUR, pas sur le backend. Ce banc n'a pas accès
+   au vrai Supabase : une fois le SDK chargé, l'appel Auth échoue forcément sur
+   le réseau, et c'est une réponse différente — donc une preuve. Ce qu'on
+   vérifie est qu'on a franchi le chargeur : le message n'est plus celui du
+   service injoignable, et `window.supabase` existe. */
+const chargeurFranchi = await page.evaluate(()=>!!window.supabase);
+const messageDuChargeur = /service de connexion est injoignable/i.test(r.message || "");
+const attendu = chargeurFranchi && !messageDuChargeur;
 console.log("\n" + (attendu
   ? "✓ le rétablissement du réseau suffit, sans recharger la page"
   : "✗ l'échec reste mémorisé : la seule issue est de recharger"));

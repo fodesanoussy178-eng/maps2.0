@@ -1493,37 +1493,51 @@ const CLE_PSEUDO_CREATEUR = "autour:creator_name";
 let sb = null, sbLecture = null, moiId = null, monPseudo = "";
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
-/* 120 Ko qui ne servent qu'aux publications : inutile de les mettre sur le
-   chemin critique du premier affichage. */
-/* UN ÉCHEC DE CHARGEMENT N'EST PAS UN VERDICT.
+/* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
+
+   Il était servi par un CDN tiers. Un bloqueur de publicités — `jsdelivr`
+   figure sur des listes de filtrage courantes —, un réseau d'entreprise ou
+   une panne de ce CDN suffisaient alors à rendre TOUT le service de comptes
+   inaccessible : ni publication, ni connexion, ni favoris. Une dépendance
+   extérieure décidait qu'une fonction entière de l'application n'existait
+   plus, et un miroir n'y changeait rien : un filtre qui bloque un CDN par
+   motif les bloque tous.
+
+   Le fichier est donc dans le dépôt, servi par notre propre origine. Ce n'est
+   pas un repli : c'est la seule source. Si elle tombe, la page elle-même n'est
+   pas là, et la question ne se pose plus.
+
+   La version est dans le NOM DU FICHIER, ce qui le rend immuable par
+   construction : `vercel.json` archive tout `.js` pour un an, et changer de
+   version change l'URL. Aucun tampon d'empreinte n'est donc nécessaire ici —
+   contrairement aux modules, ce fichier ne change jamais sans que son nom
+   change aussi.
+
+   Provenance, pour qu'elle soit vérifiable :
+     @supabase/supabase-js@2.108.2 · dist/umd/supabase.js
+     récupéré par `npm pack` (qui vérifie l'intégrité auprès du registre)
+     sha256 c123f7e874934778b7d89fee7dce8de26c858a2c3a92fd7a3f870394a6a2f91f
+
+   200 ko bruts, 51 ko compressés — qui ne servent qu'aux comptes et aux
+   publications. D'où le chargement paresseux : ce poids ne doit jamais peser
+   sur le premier affichage, et il n'y pèse pas.
+
+   UN ÉCHEC DE CHARGEMENT N'EST PAS UN VERDICT.
 
    Ce chargeur mémorisait sa promesse, y compris quand elle s'était résolue à
-   « non ». Conséquence mesurée au banc, CDN bloqué : la première tentative
-   échoue pendant le démarrage — c'est normal et sans gravité, le premier
-   affichage n'en dépend pas — puis TOUTE tentative ultérieure répond « non »
-   EN ZÉRO MILLISECONDE, sans même essayer. Quelqu'un qui veut publier reçoit
-   « Connexion impossible pour le moment. », appuie à nouveau, reçoit la même
-   phrase instantanément, et n'a aucun moyen de s'en sortir : la seule issue
-   est de recharger la page, et rien ne le dit.
+   « non ». Le premier échec — pendant le démarrage, où il est sans gravité —
+   condamnait toute la session : les essais suivants répondaient « non » en
+   zéro milliseconde, sans qu'aucune requête ne parte. Servir le fichier
+   nous-mêmes rend ce cas rare, il ne le rend pas impossible : un réseau qui
+   coupe au mauvais moment produit le même effet. L'échec n'est donc toujours
+   pas mémorisé, et chaque essai repart d'une balise neuve — une balise dont
+   `onerror` a tiré est morte.
 
-   Un bloqueur de publicités, un réseau d'entreprise ou une panne de CDN
-   suffisent à déclencher ça. Deux corrections :
-
-   · l'échec n'est plus mémorisé — chaque appel retente réellement, avec une
-     balise neuve, parce qu'une balise dont `onerror` a tiré est morte ;
-   · la patience dépend de qui demande. Au démarrage, quatre secondes : le SDK
-     n'est pas sur le chemin critique et l'écran ne doit pas l'attendre. Quand
-     c'est la personne qui a demandé quelque chose, on attend bien plus —
-     revenir les mains vides lui coûte plus cher que d'attendre.
-
-   Le miroir n'est pas du luxe : c'est le seul point de l'application dont la
-   panne rend une fonction entière inaccessible. Deux origines valent mieux
-   qu'une, et le jour où le SDK sera servi depuis notre propre origine, cette
-   dépendance disparaîtra tout à fait. */
-const SUPABASE_SDK = Object.freeze([
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js",
-  "https://unpkg.com/@supabase/supabase-js@2.108.2/dist/umd/supabase.js",
-]);
+   La patience dépend de qui demande. Au démarrage, quatre secondes : le SDK
+   n'est pas sur le chemin critique et l'écran ne doit pas l'attendre. Quand
+   c'est la personne qui a demandé quelque chose, on attend bien plus —
+   revenir les mains vides lui coûte plus cher que d'attendre. */
+const SUPABASE_SDK = Object.freeze(["/vendeur/supabase-2.108.2.js"]);
 const SUPABASE_ATTENTE_DEMARRAGE = 4000;
 const SUPABASE_ATTENTE_DEMANDE = 12000;
 
@@ -1579,7 +1593,8 @@ function chargerSupabase(options){
       const reste = echeance - Date.now();
       if(reste < 250) break;
       if(await chargerScriptSupabase(src, reste)) return true;
-      journal.warn("Supabase indisponible depuis "+new URL(src).host);
+      // `new URL(src)` lèverait sur un chemin relatif : on journalise le chemin
+      journal.warn("Supabase indisponible : "+src);
     }
     return false;
   })();

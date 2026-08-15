@@ -28,7 +28,7 @@ test("chaque tentative repart d'une balise neuve", () => {
 });
 
 test("une tentative en vol reste partagée entre appels simultanés", () => {
-  // sans ça, deux gestes rapprochés injecteraient deux fois 120 ko de SDK
+  // sans ça, deux gestes rapprochés injecteraient deux fois 200 ko de SDK
   const bloc = /function chargerSupabase\(options\)\{[\s\S]*?\n\}/.exec(app)[0];
   assert.match(bloc, /if\(pSupabase\) return pSupabase;/);
   assert.match(bloc, /if\(window\.supabase\) return Promise\.resolve\(true\);/);
@@ -46,22 +46,59 @@ test("la patience dépend de qui demande", () => {
   assert.match(app, /if\(!sb && !\(await connecter\(\{demande:true\}\)\)\)/);
 });
 
-test("le budget d'attente est global, pas par miroir", () => {
-  // deux miroirs à douze secondes chacun feraient vingt-quatre secondes de
-  // bouton « Envoi… » : pire que l'échec qu'on répare
+test("le budget d'attente est global, quel que soit le nombre de sources", () => {
+  /* Il n'y a plus qu'une origine, mais le budget reste global : le jour où
+     l'on ajouterait une source de secours, deux délais de douze secondes
+     feraient vingt-quatre secondes de bouton « Envoi… » — pire que l'échec
+     qu'on répare. La garde vaut mieux ici que dans une note. */
   assert.match(app, /const echeance = Date\.now\(\) \+/);
   assert.match(app, /const reste = echeance - Date\.now\(\);/);
   assert.match(app, /if\(reste < 250\) break;/);
 });
 
-test("le SDK a un miroir : une origine bloquée ne condamne pas les comptes", () => {
+test("le SDK vient de notre origine, jamais d'un CDN tiers", () => {
+  /* Un bloqueur de publicités, un réseau d'entreprise ou une panne de CDN
+     rendaient TOUT le service de comptes inaccessible. Un miroir n'y changeait
+     rien : un filtre qui bloque un CDN par motif les bloque tous. */
   const bloc = /const SUPABASE_SDK = Object\.freeze\(\[[\s\S]*?\]\);/.exec(app)[0];
-  const origines = (bloc.match(/https:\/\/[^/]+/g) || []);
-  assert.ok(origines.length >= 2, "une seule origine est un point unique de panne");
-  assert.equal(new Set(origines).size, origines.length, "deux fois la même origine ne sert à rien");
-  // même version épinglée partout : le contrat Auth ne doit pas changer selon le miroir
-  const versions = bloc.match(/supabase-js@([\d.]+)/g) || [];
-  assert.equal(new Set(versions).size, 1, "les miroirs doivent servir la même version");
+  assert.doesNotMatch(bloc, /https?:\/\//,
+    "aucune origine extérieure ne doit rester dans le chargeur");
+  assert.match(bloc, /"\/vendeur\/supabase-\d+\.\d+\.\d+\.js"/);
+});
+
+test("plus aucun CDN tiers ne sert de code applicatif", async () => {
+  const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  for (const source of [app, index]) {
+    // les commentaires ont le droit de nommer ce qu'on a quitté ; le code, non
+    const sansCommentaires = source
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .split("\n").map((l) => l.replace(/(^|[^:"'`\\])\/\/.*$/, "$1")).join("\n");
+    assert.doesNotMatch(sansCommentaires, /jsdelivr|unpkg/i);
+  }
+});
+
+test("la version est dans le nom du fichier : immuable par construction", async () => {
+  /* `vercel.json` archive tout `.js` pour un an. Un fichier dont le nom porte
+     sa version ne peut donc pas être servi périmé — changer de version change
+     l'URL — et il n'a pas besoin du tampon d'empreinte des modules. */
+  const chemin = /"(\/vendeur\/supabase-([\d.]+)\.js)"/.exec(app);
+  assert.ok(chemin, "le chemin du SDK doit porter sa version");
+  const fichier = await readFile(new URL(".." + chemin[1], import.meta.url), "utf8");
+  assert.ok(fichier.length > 100000, "le SDK doit être réellement présent");
+  // le paquet publie sa propre version : elle doit correspondre au nom
+  assert.ok(fichier.includes("supabase-js/" + chemin[2]),
+    "le fichier servi doit être la version que son nom annonce");
+});
+
+test("le SDK reste hors du chemin critique du premier affichage", () => {
+  // 200 ko bruts qui ne servent qu'aux comptes : ils ne doivent jamais être
+  // demandés avant que l'écran ne soit vivant
+  assert.doesNotMatch(app, /<script[^>]+vendeur\/supabase/,
+    "le SDK ne doit pas être une balise du document");
+  assert.match(app, /function chargerSupabase\(options\)\{/);
+  // il n'est demandé que par `connecter()`, elle-même appelée à la demande
+  const appels = (app.match(/chargerSupabase\(/g) || []).length;
+  assert.equal(appels, 2, "un seul appelant, plus sa définition");
 });
 
 test("le message dit la cause probable et laisse une porte", () => {
@@ -81,4 +118,19 @@ test("l'écran de compte se redessine après un échec, bouton réarmé", () => 
 test("le démarrage ne réclame toujours pas de compte", () => {
   // le correctif ne doit pas transformer une source facultative en dépendance
   assert.doesNotMatch(app, /demarrer\([\s\S]{0,4000}connecter\(\{demande:true\}\)/);
+});
+
+test("le fichier vendorisé relève de la règle de cache des .js", async () => {
+  /* `vercel.json` archive tout `.js` pour un an, et cette règle précède la
+     règle générale — c'est ce que garde déjà `cache.test.mjs`. Le SDK
+     vendorisé est donc traité exactement comme `core.js` ou `app.js` : rien
+     de particulier à configurer, et c'est précisément l'intérêt. */
+  const vercel = JSON.parse(
+    await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  const regleJs = vercel.headers.find((h) => h.source === "/(.*)\\.js");
+  assert.ok(regleJs, "la règle .js doit exister");
+  const valeur = regleJs.headers.find((h) => h.key === "Cache-Control").value;
+  assert.match(valeur, /immutable/);
+  // le chemin du SDK finit bien par .js, donc il est couvert
+  assert.match(/"(\/vendeur\/supabase-[\d.]+\.js)"/.exec(app)[1], /\.js$/);
 });
