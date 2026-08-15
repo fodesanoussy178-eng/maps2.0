@@ -348,8 +348,14 @@ test("la liste « ⚡ Maintenant (N) » existe, compacte et comptée", () => {
   assert.match(html, /function blocMaintenantAccueil\(\)\{/);
   assert.match(html, /class="mn" data-testid="maintenant-liste"/);
   assert.match(html, /<b>Maintenant<\/b>'\+/);
-  // le compteur dit COMBIEN il y en a en tout, pas combien on en montre
-  assert.match(html, /<span>\('\+combien\+'\)<\/span>/);
+  /* Le compteur disait le total brut. « Maintenant (189) » au-dessus de trois
+     lignes se lit comme un catalogue dont on ne montrerait qu'un fragment, et
+     donne envie de chercher les 186 autres — qui n'existent pas en tant que
+     propositions, puisque la sélection est plafonnée à dix. Il ne dépasse donc
+     plus ce qu'on peut effectivement ouvrir, et dit « 10+ » au-delà :
+     l'abondance, sans promettre une liste. */
+  assert.match(html, /<span>\('\+affiche\+'\)<\/span>/);
+  assert.match(html, /const affiche = PLAF && combien > PLAF\.limiteMaintenant\(\)/);
   assert.match(html, /Voir tout \('\+combien\+'\)/);
 });
 
