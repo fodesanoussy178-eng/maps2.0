@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 
 export const MODULES = ["availability.js", "comprendre.js", "donnees.js", "intentions.js", "comptes.js", "maintenant.js", "ordonnanceur.js", "contexte.js", "plafonds.js", "aide.js", "signaux.js", "temporel.js",
                         "explications.js", "events.js", "core.js", "providers/normaliser.js",
-                        "providers/googlePlaces.js", "providers/datatourisme.js", "providers/osm.js",
+                        "providers/googlePlaces.js", "providers/datatourisme.js", "providers/osm.js", "providers/decouvertes.js",
                         "mapProviders/googleMaps.js", "app.js"];
 
 export async function empreinte(fichier, base) {
