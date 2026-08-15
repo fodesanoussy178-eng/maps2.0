@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
+import { sourceApplication } from "./source.mjs";
 
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const html = await sourceApplication(import.meta.url);
 const events = await readFile(new URL("../events.js", import.meta.url), "utf8");
 const migration = await readFile(
   new URL("../supabase/migrations/20260810193000_propriete_publications.sql", import.meta.url),

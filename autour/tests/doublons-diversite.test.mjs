@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import "../core.js";
+import { sourceApplicationSync } from "./source.mjs";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const html = sourceApplicationSync(import.meta.url);
 
 const {
   dedupeItems, diversifierResultats, normaliserNomLieu, normaliserAdresse,

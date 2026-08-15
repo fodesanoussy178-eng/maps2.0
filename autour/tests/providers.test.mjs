@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { sourceApplication } from "./source.mjs";
 
 const normaliserCode = await readFile(new URL("../providers/normaliser.js", import.meta.url), "utf8");
 const googleCode = await readFile(new URL("../providers/googlePlaces.js", import.meta.url), "utf8");
 const mapCode = await readFile(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const html = await sourceApplication(import.meta.url);
 
 function providers() {
   const window = {};

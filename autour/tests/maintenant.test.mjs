@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import "../maintenant.js";
+import { sourceApplicationSync } from "./source.mjs";
 
 const M = globalThis.AutourMaintenant;
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const html = sourceApplicationSync(import.meta.url);
 
 const T = Date.UTC(2026, 7, 14, 20, 0, 0);          // l'instant de référence
 const ICI = [50.6292, 3.0573];

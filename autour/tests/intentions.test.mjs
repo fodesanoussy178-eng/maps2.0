@@ -336,8 +336,13 @@ test("le vocabulaire reste celui du quotidien", () => {
    même chose sans comprendre pourquoi.
    ======================================================================== */
 import { readFile } from "node:fs/promises";
+import { sourceApplication } from "./source.mjs";
 
-const lire = (f) => readFile(new URL("../" + f, import.meta.url), "utf8");
+/* Voir tests/source.mjs : le corps du programme a quitté `index.html` pour
+   `app.js` sans que le contrat lu ici ne change. */
+const lire = (f) => f === "index.html"
+  ? sourceApplication(import.meta.url)
+  : readFile(new URL("../" + f, import.meta.url), "utf8");
 
 /* La grille d'Aide et la source de vérité doivent coïncider, catégorie par
    catégorie. `mobilite` porte le même identifiant des deux côtés. */

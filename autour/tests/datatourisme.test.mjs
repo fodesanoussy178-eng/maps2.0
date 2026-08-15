@@ -3,8 +3,9 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 import datatourisme, { normaliserDatatourisme } from "../api/datatourisme.js";
+import { sourceApplication } from "./source.mjs";
 
-const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const index = await sourceApplication(import.meta.url);
 const api = await readFile(new URL("../api/datatourisme.js", import.meta.url), "utf8");
 const provider = await readFile(new URL("../providers/datatourisme.js", import.meta.url), "utf8");
 

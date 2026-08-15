@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sourceApplicationSync } from "./source.mjs";
 
 await import("../contexte.js");
 const C = globalThis.AutourContexte;
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const html = sourceApplicationSync(import.meta.url);
 
 /* ==========================================================================
    LE BUG QU'ON RÉPARE, ET COMMENT ON LE REJOUE

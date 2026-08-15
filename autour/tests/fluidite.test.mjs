@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sourceApplicationSync } from "./source.mjs";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const html = sourceApplicationSync(import.meta.url);
 
 /* Ces tests lisent la source. C'est volontaire et c'est la convention du
    dépôt : l'application est une page unique sans point d'entrée importable,
@@ -356,7 +357,11 @@ test("la liste « ⚡ Maintenant (N) » existe, compacte et comptée", () => {
      l'abondance, sans promettre une liste. */
   assert.match(html, /<span>\('\+affiche\+'\)<\/span>/);
   assert.match(html, /const affiche = PLAF && combien > PLAF\.limiteMaintenant\(\)/);
-  assert.match(html, /Voir tout \('\+combien\+'\)/);
+  /* Le bouton suivait la même dérive que le compteur : il annonçait le total
+     alors que la liste dépliée est plafonnée à dix. Il ne promet donc plus
+     que ce qu'il ouvrira réellement. */
+  assert.match(html, /const derriere = Math\.min\(combien, MAINTENANT_TOUT\);/);
+  assert.match(html, /Voir tout \('\+derriere\+'\)/);
 });
 
 test("le bloc réserve sa place dès le premier rendu, dans les quatre états", () => {

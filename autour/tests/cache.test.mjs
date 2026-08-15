@@ -3,8 +3,9 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 import { MODULES, empreintes } from "./empreintes.mjs";
+import { sourceApplication } from "./source.mjs";
 
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const html = await sourceApplication(import.meta.url);
 const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
 
 test("le HTML se revalide, les modules sont immuables", () => {
@@ -67,7 +68,8 @@ test("chaque module est appelé avec l’empreinte de son contenu", async () => 
   // c'est exactement le problème Safari qu'on ne veut pas réintroduire
   const attendues = await empreintes(import.meta.url);
   for (const m of MODULES) {
-    const trouve = new RegExp('<script src="' + m.replace(".", "\\.") + '\\?v=([a-f0-9]{8})"></script>')
+    const trouve = new RegExp('<script src="' + m.replace(".", "\\.") +
+      '\\?v=([a-f0-9]{8})" defer></script>')
       .exec(html);
     assert.ok(trouve, m + " doit être chargé avec une empreinte");
     assert.equal(trouve[1], attendues[m],

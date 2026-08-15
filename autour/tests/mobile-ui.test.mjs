@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
+import { sourceApplication } from "./source.mjs";
 
-const html = await readFile(new URL("../index.html",import.meta.url),"utf8");
+const html = await sourceApplication(import.meta.url);
 /* Le démarrage à froid ne tient pas qu'au client : la ville vient du bord du
    réseau, les lieux d'un relais mis en cache, et le tout premier lancement
    d'un jeu pré-calculé. Ces fichiers font partie du chemin critique. */
@@ -116,15 +117,15 @@ test("le classement ne dépend plus du moteur de transport",()=>{
   assert.doesNotMatch(html,/etaFor:l=>etaConnu\(l, centre\)/);
   assert.doesNotMatch(html,/prechargerEta|etaParLieu|AutourTransit|CLE_TRANSPORT/);
   // le moteur de recommandations reste chargé et conserve son repli stable
-  assert.match(html,/<script src="core\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="core\.js\?v=[a-f0-9]{8}" defer><\/script>/);
 });
 
 test("l'état ouvert/fermé a une seule source de vérité",()=>{
-  assert.match(html,/<script src="availability\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="availability\.js\?v=[a-f0-9]{8}" defer><\/script>/);
   // les écrans passent tous par le même helper, aucun ne relit un horaire
   assert.match(html,/function dispoDe\(l, arrivee, quand\)/);
   // le moteur temporel fait autorité sur le « quand »
-  assert.match(html,/<script src="temporel\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="temporel\.js\?v=[a-f0-9]{8}" defer><\/script>/);
   assert.match(html,/function statutTemps\(l, quand\)\{/);
   assert.match(html,/function badgeDispo\(l\)/);
   assert.doesNotMatch(html,/x\.ouvert === true\)\s+sous\.push/);
@@ -275,7 +276,7 @@ test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>
 /* ---- Coordination d'événement, pas messagerie -------------------------- */
 
 test("prévenir les participants vit sur l'événement, pas dans une boîte",()=>{
-  assert.match(html,/<script src="events\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="events\.js\?v=[a-f0-9]{8}" defer><\/script>/);
   assert.match(html,/function rafraichirCanaux/);
   // aucune boîte de réception générale
   assert.doesNotMatch(html,/data-nb="messages"/);
@@ -1366,7 +1367,7 @@ test("une exposition fermée annonce sa réouverture, pas le début de sa pério
 test("dans l'aide, chaque lieu dit à quoi il sert",()=>{
   // « CCAS », « Mission locale », « Banque alimentaire » : des noms qui ne
   // veulent rien dire tant qu'on n'a pas eu besoin de s'en servir
-  assert.match(html,/<script src="explications\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="explications\.js\?v=[a-f0-9]{8}" defer><\/script>/);
   assert.match(html,/const EXPLIQUE = window\.AutourExplications;/);
   // la fiche détaillée porte le descriptif complet
   assert.match(html,/function blocExplication\(l\)\{/);
@@ -1506,8 +1507,8 @@ test("plus aucun texte sous 11 px, et les cibles font 44 px",()=>{
 /* ---- Comprendre une phrase ---------------------------------------------- */
 
 test("la compréhension des phrases est branchée sur la recherche",()=>{
-  assert.match(html,/<script src="comprendre\.js\?v=[a-f0-9]{8}"><\/script>/);
-  assert.match(html,/<script src="signaux\.js\?v=[a-f0-9]{8}"><\/script>/);
+  assert.match(html,/<script src="comprendre\.js\?v=[a-f0-9]{8}" defer><\/script>/);
+  assert.match(html,/<script src="signaux\.js\?v=[a-f0-9]{8}" defer><\/script>/);
   assert.match(html,/const COMPRENDRE = window\.AutourComprendre;/);
   // `interpreter` délègue au module au lieu de refaire des expressions
   assert.match(html,/const st = COMPRENDRE\.analyser\(phrase, \{/);

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sourceApplicationSync } from "./source.mjs";
 
 /* Node n'a pas de `sessionStorage`, et `comptes.js` doit continuer de marcher
    là où il n'y en a pas — Safari en navigation privée le refuse aussi. On en
@@ -17,7 +18,13 @@ globalThis.sessionStorage = (() => {
 await import("../comptes.js");
 
 const C = globalThis.AutourComptes;
-const lire = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
+/* `index.html` ne porte plus le corps du programme : il vit dans `app.js`,
+   pour que le navigateur puisse l'archiver au lieu de le retélécharger. La
+   question posée ici — « la source contient-elle cette règle ? » — ne dépend
+   pas du fichier où la règle est rangée. */
+const lire = (f) => f === "index.html"
+  ? sourceApplicationSync(import.meta.url)
+  : readFileSync(new URL("../" + f, import.meta.url), "utf8");
 const html = lire("index.html");
 const migration = lire("supabase/migrations/20260814124936_comptes_email.sql");
 const rls = lire("supabase/tests/rls_comptes.sql");
