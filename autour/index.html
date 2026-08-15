@@ -9775,6 +9775,21 @@ function nomExploitable(l){
 
 /* Rayon de travail. « Élargir » le double au lieu d'inventer des résultats. */
 let rayonRecherche = 2500;
+/* LE RAYON DE RECHERCHE N'EST PAS LE PÉRIMÈTRE DE LA ZONE.
+
+   2 500 m autour du centre : c'est ce qui définit « près d'ici » quand on
+   explore son quartier, et c'est juste. Mais quand on regarde une ville
+   déclarée, la zone a une emprise — celle de Lille fait treize kilomètres de
+   large — et le classement écartait silencieusement tout ce qui dépassait le
+   rayon. Mesuré : 46 lieux dans la zone, 40 rendus par « Voir tout ». Six
+   manquaient, dessinés sur la carte mais absents de la liste qui promet tout.
+
+   La zone est le périmètre ; le rayon sert à classer ce qui est proche, pas à
+   décider ce qui existe. */
+function rayonDeLaZone(){
+  if(!CTX || !zoneActive) return rayonRecherche;
+  return Math.max(rayonRecherche, CTX.rayonZone(zoneActive) + CTX.MARGE_M);
+}
 
 /* L'intention structurée de la recherche en cours, telle que `comprendre.js`
    l'a lue. Elle voyage jusqu'au classement (contraintes dures / préférences)
@@ -10324,7 +10339,15 @@ const CATS_ACCUEIL = ()=>[...new Set(
   BESOINS_PRINCIPAUX.filter(b=>!b.aide).flatMap(b=>b.sous ? b.sous.flatMap(x=>x.cats) : []))]
   .filter(c=>!CATS_TRANSPORT.has(c));
 
-function recommandationsAccueil(limite){
+/* `tout` lève les restrictions d'affichage — et elles seules. « Voir tout »
+   promet la liste complète de la zone ; sous l'onglet « Maintenant », le filtre
+   d'utilisabilité en retirait silencieusement tout ce qui n'est pas ouvert à
+   la seconde. Mesuré depuis Lille : 46 lieux dans la zone, 40 sous « Voir
+   tout ». Un bouton qui promet tout et en cache six ne se rattrape pas — on ne
+   sait pas ce qu'on n'a pas vu. Les règles de fond (un nom lisible, une
+   catégorie demandée, la zone active) restent, elles. */
+function recommandationsAccueil(limite, options){
+  const toutMontrer = !!(options && options.tout);
   /* Le classement partait de `positionMoi`. À Tourcoing, chercher Lille
      laissait donc les recommandations être classées depuis Tourcoing : les
      lieux lillois étaient tous « loin », ceux de Tourcoing tous « près », et
@@ -10358,8 +10381,8 @@ function recommandationsAccueil(limite){
     now:Date.now(),
     // le filtre « maintenant » n'a de sens que dans le groupe « maintenant » :
     // ailleurs c'est la section temporelle qui trie
-    nowOnly:groupe && filtreMaintenant && !montrerFermes,
-    radius:rayonRecherche,
+    nowOnly:!toutMontrer && groupe && filtreMaintenant && !montrerFermes,
+    radius:rayonDeLaZone(),
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
@@ -10369,12 +10392,13 @@ function recommandationsAccueil(limite){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
     const retenus = classement.filter(l=>sections.includes(l.rankSection))
       .sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
-    return retenus.slice(0, limite || 12);
+    return Number.isFinite(limite) ? retenus.slice(0, limite || 12) : retenus;
   }
 
   // sert aussi à décider quelles étiquettes survivent aux collisions
   dernierClassement = classement;
-  return avecEpingles(classement).slice(0, limite || 12);
+  const tout = avecEpingles(classement);
+  return Number.isFinite(limite) ? tout.slice(0, limite || 12) : tout;
 }
 
 /* Ce qu'on vient de publier ouvre la liste. Le classement fait bien son
@@ -11588,7 +11612,10 @@ function brancherFeuille2(){
 
   corps.querySelectorAll("[data-rc-tout]").forEach(b=>b.onclick=()=>{
     const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
-    const tout = recommandationsAccueil(60);
+    /* « TOUT » VEUT DIRE TOUT. Le plafond de soixante était invisible : sur un
+       centre dense on ne voyait pas ce qu'on ne voyait pas. La liste est
+       longue, elle défile — c'est exactement ce que le bouton promet. */
+    const tout = recommandationsAccueil(Infinity, {tout:true});
     pileEcrans = [];
     pousserEcran(()=>afficherListe("✨",
       creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label,
@@ -13000,7 +13027,7 @@ function remplirResultatsZone(nom, intention){
     position:centre,
     now:instantCreneau().getTime(),
     nowOnly:filtreMaintenant && !montrerFermes,
-    radius:rayonRecherche,
+    radius:rayonDeLaZone(),
     distanceBetween:distanceM,
     /* Quand l'intention a déjà été traduite en catégories, c'est LE filtre :
        repasser son texte ici en ajoutait un second, qui écartait tout ce dont
