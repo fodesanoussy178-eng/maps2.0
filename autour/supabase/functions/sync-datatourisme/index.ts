@@ -46,7 +46,11 @@
 
 import {normaliserLot, cleDedup} from "./normalisation.mjs";
 
-const CATALOGUE = Deno.env.get("DATATOURISME_BASE_URL") ?? "https://api.datatourisme.fr/v1/catalog";
+/* L'endpoint dédié aux événements plutôt que le catalogue générique filtré :
+   c'est la même sélection, demandée à l'API dans les termes où elle la
+   documente, et sans dépendre d'un paramètre `type` qui n'a jamais été le sien. */
+const CATALOGUE = Deno.env.get("DATATOURISME_BASE_URL")
+  ?? "https://api.datatourisme.fr/v1/entertainmentAndEvent";
 const CLE_DATATOURISME = Deno.env.get("DATATOURISME_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SYNC_SECRET = Deno.env.get("EVENT_SYNC_SECRET") ?? "";
@@ -168,36 +172,91 @@ async function zones(codeDemande: string | null): Promise<Zone[]> {
 /* ---- Interrogation du catalogue -----------------------------------------
    On demande le rectangle de la zone, pas un rayon autour d'un centre : une
    zone est une boîte, et interroger son centre laisserait ses bords vides. */
-async function poisDeLaZone(zone: Zone): Promise<{pois: unknown[]; httpStatus: number}> {
+/* LA REQUÊTE ÉTAIT ÉCRITE DANS UN DIALECTE QUE L'API NE PARLE PAS.
+
+   `geo_bbox` et `page_number` n'existent pas dans la documentation actuelle :
+   ce sont `geo_bounding` et `page`. Un paramètre inconnu n'est pas refusé, il
+   est IGNORÉ — d'où une réponse parfaitement valide, en HTTP 200, contenant
+   les deux mille premiers événements de France entière et non ceux de la
+   zone. La pagination souffrait du même mal : `page_number` étant ignoré, les
+   dix « pages » ramenaient dix fois le même lot.
+
+   C'est la seule explication cohérente avec ce qu'on a mesuré — 2 000 objets
+   vus, 2 000 rejetés, aucune exception : le filtre de zone du normaliseur
+   faisait son travail sur des données qui ne concernaient pas la zone.
+
+   Le rectangle se lit HAUT-GAUCHE puis BAS-DROIT, ce qui n'est pas l'ordre
+   d'un bbox habituel (sud-ouest → nord-est). L'inverser ne provoque aucune
+   erreur non plus : juste un rectangle vide.
+
+   La pagination commence à 1. On suit `meta.next` quand l'API le fournit —
+   c'est elle qui sait où elle en est — et on ne retombe sur l'incrément que
+   lorsqu'elle ne dit rien. */
+function pageDeLaZone(zone: Zone, page: number): string {
+  const params = new URLSearchParams({
+    // haut-gauche → bas-droit, dans cet ordre et pas un autre
+    geo_bounding: `${zone.max_lat},${zone.min_lng},${zone.min_lat},${zone.max_lng}`,
+    page_size: String(PAGE),
+    page: String(page),
+    lang: "fr",
+    fields: [
+      "uuid", "label", "type", "hasDescription", "lastUpdate",
+      "isLocatedAt", "takesPlaceAt",
+    ].join(","),
+  });
+  return `${CATALOGUE}?${params}`;
+}
+
+/* `meta.next` peut être une URL complète, un chemin, ou un simple numéro.
+   On accepte les trois et on refuse le reste plutôt que de deviner. */
+function suivante(charge: unknown, base: string): string | null {
+  const meta = (charge as {meta?: {next?: unknown}})?.meta;
+  const brut = meta?.next;
+  if (brut == null || brut === "" || brut === false) return null;
+  if (typeof brut === "number" && Number.isFinite(brut)) return String(brut);
+  if (typeof brut !== "string") return null;
+  try {
+    // une URL absolue ou relative se résout ; un numéro reste un numéro
+    if (/^https?:\/\//.test(brut) || brut.startsWith("/") || brut.includes("?")) {
+      return new URL(brut, base).toString();
+    }
+  } catch { return null; }
+  return /^\d+$/.test(brut) ? brut : null;
+}
+
+async function poisDeLaZone(zone: Zone): Promise<{
+  pois: unknown[]; httpStatus: number; pages: number; retourne: number;
+}> {
   const pois: unknown[] = [];
   let httpStatus = 200;
+  let pages = 0;
+  let url = pageDeLaZone(zone, 1);
 
-  for (let page = 0; page < PAGES_MAX; page += 1) {
-    const params = new URLSearchParams({
-      geo_bbox: `${zone.min_lat},${zone.min_lng},${zone.max_lat},${zone.max_lng}`,
-      page_size: String(PAGE),
-      page_number: String(page),
-      lang: "fr",
-      // seuls les événements : la couche canonique ne contient pas de châteaux
-      "type": "EntertainmentAndEvent",
-      fields: [
-        "uuid", "label", "type", "hasDescription", "lastUpdate",
-        "isLocatedAt.geo", "isLocatedAt.address", "isLocatedAt.label",
-        "takesPlaceAt",
-      ].join(","),
-    });
-    const reponse = await fetchAvecReprise(`${CATALOGUE}?${params}`);
+  for (let n = 0; n < PAGES_MAX; n += 1) {
+    const reponse = await fetchAvecReprise(url);
     httpStatus = reponse.status;
     if (!reponse.ok) {
       throw Object.assign(new Error(`DATAtourisme HTTP ${reponse.status}`), {httpStatus});
     }
     const charge = await reponse.json();
     const lot = Array.isArray(charge?.objects) ? charge.objects
-      : (Array.isArray(charge?.["@graph"]) ? charge["@graph"] : []);
+      : (Array.isArray(charge?.["@graph"]) ? charge["@graph"]
+        : (Array.isArray(charge?.data) ? charge.data
+          : (Array.isArray(charge) ? charge : [])));
+    pages += 1;
     pois.push(...lot);
+    if (!lot.length) break;
+
+    const prochaine = suivante(charge, url);
+    if (prochaine) {
+      url = /^\d+$/.test(prochaine) ? pageDeLaZone(zone, Number(prochaine)) : prochaine;
+      continue;
+    }
+    // l'API ne dit rien : une page incomplète signe la fin
     if (lot.length < PAGE) break;
+    url = pageDeLaZone(zone, n + 2);
   }
-  return {pois, httpStatus};
+  return {pois, httpStatus, pages, retourne: pois.length};
 }
 
 /* ---- Écriture -----------------------------------------------------------
@@ -291,8 +350,27 @@ async function enregistrer(entree: Json, zone: Zone) {
 }
 
 /* Le cœur : une zone, le même traitement pour toutes. */
+/* DIAGNOSTIC TEMPORAIRE — le journal ne gardait que le TOTAL des rejets.
+
+   « 2 000 vus, 2 000 rejetés » ne dit pas si les objets étaient hors zone,
+   inexploitables, ou s'ils levaient une exception : trois causes très
+   différentes, un seul nombre. On agrège donc les motifs, qui sont déjà
+   calculés par `normaliserLot` et jusqu'ici jetés.
+
+   Ce sont des COMPTEURS PAR MOTIF, rien d'autre : aucun titre, aucune
+   adresse, aucune coordonnée n'entre dans le journal. À retirer une fois le
+   normaliseur ajusté. */
+function motifsDeRejet(detail: unknown): Record<string, number> {
+  const compte: Record<string, number> = {};
+  for (const rejet of Array.isArray(detail) ? detail : []) {
+    const motif = String((rejet as {raison?: unknown})?.raison ?? "inconnu");
+    compte[motif] = (compte[motif] ?? 0) + 1;
+  }
+  return compte;
+}
+
 async function syncArea(zone: Zone) {
-  const {pois, httpStatus} = await poisDeLaZone(zone);
+  const {pois, httpStatus, pages, retourne} = await poisDeLaZone(zone);
   const lot = normaliserLot(pois, zone, {maintenant: Date.now()});
 
   let inseres = 0, majs = 0;
@@ -311,6 +389,8 @@ async function syncArea(zone: Zone) {
   return {
     vus: lot.vus, inseres, majs, fusionnes: lot.fusionnes,
     rejetes: lot.rejets, echecs, httpStatus,
+    pages, retourne, gardes: lot.gardes.length,
+    motifs: motifsDeRejet(lot.detailRejets),
   };
 }
 
@@ -414,6 +494,9 @@ Deno.serve(async (requete: Request) => {
           vus: resultat.vus, inseres: resultat.inseres, majs: resultat.majs,
           fusionnes: resultat.fusionnes, rejetes: resultat.rejetes,
           echecs: resultat.echecs.length,
+          // diagnostic temporaire : d'où viennent les rejets
+          retourne: resultat.retourne, pages: resultat.pages,
+          gardes: resultat.gardes, motifs: resultat.motifs,
         };
         echecs.push(...resultat.echecs.map((e) => `${zone.code}: ${e}`));
       } catch (erreur) {
