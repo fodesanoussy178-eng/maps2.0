@@ -170,3 +170,34 @@ test("la doc décrit le déploiement sans vérification de JWT et la clé modern
   assert.match(doc, /SUPABASE_SECRET_KEYS/);
   assert.doesNotMatch(doc, /-H "Authorization: Bearer \$SERVICE_KEY"/);
 });
+
+/* ====================================================================== */
+/*  Le statut HTTP dit la même chose que le corps                         */
+/* ====================================================================== */
+
+test("un échec total renvoie un statut HTTP non-2xx", () => {
+  /* La réponse partait toujours en 200, y compris quand toutes les zones
+     avaient échoué : `curl --fail-with-body` ne regarde que le code HTTP, et
+     la tâche GitHub passait au vert au-dessus d'un import qui n'avait rien
+     importé. Une panne du catalogue serait restée invisible. */
+  assert.match(fonction,
+    /\{status: status === "error" \? 502 : 200,/,
+    "« error » doit produire un 502, pas un 200");
+});
+
+test("un import partiel reste un succès HTTP", () => {
+  // des données sont arrivées ; échouer parce qu'un POI sur trois cents était
+  // mal formé apprendrait à ignorer le rouge
+  const bloc = /const status = echecs\.length \? \([^)]+\) : "success";/.exec(fonction);
+  assert.ok(bloc, "les trois statuts doivent rester distincts");
+  assert.match(fonction, /total\.inseres \+ total\.majs \? "partial" : "error"/);
+  // seul « error » bascule le code HTTP
+  assert.doesNotMatch(fonction, /status !== "success" \? 502/);
+});
+
+test("le workflow fait échouer la tâche sur un statut non-2xx", () => {
+  // c'est ce que `--fail-with-body` garantit, et la raison pour laquelle le
+  // contrat d'erreur devait passer par le code HTTP
+  assert.match(workflow, /--fail-with-body/);
+  assert.match(workflow, /exit 1/);
+});

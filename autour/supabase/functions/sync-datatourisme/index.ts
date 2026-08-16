@@ -441,8 +441,25 @@ Deno.serve(async (requete: Request) => {
       details: {zones: parZone, zones_traitees: liste.length, echecs: echecs.length},
     });
 
+    /* LE STATUT HTTP DOIT DIRE LA MÊME CHOSE QUE LE CORPS.
+
+       Cette réponse partait toujours en 200, y compris quand toutes les zones
+       avaient échoué. `curl --fail-with-body` ne regarde que le code HTTP :
+       la tâche GitHub passait donc au vert au-dessus d'un import qui n'avait
+       rien importé, et une panne du catalogue serait restée invisible quatre
+       fois par jour.
+
+       « error » veut dire qu'AUCUNE zone n'a rien inséré ni mis à jour — un
+       échec total, qui mérite un 502 : c'est bien une dépendance amont qui
+       n'a pas répondu, pas la requête qui était mauvaise.
+
+       « partial » reste un succès HTTP, délibérément. Des données sont
+       arrivées ; faire échouer la tâche parce qu'un POI sur trois cents était
+       mal formé apprendrait à ignorer le rouge, ce qui coûte plus cher que le
+       défaut qu'on signale. Le journal, lui, garde la nuance. */
     return new Response(JSON.stringify({status, scope, ...total, zones: parZone}),
-      {headers: {"Content-Type": "application/json"}});
+      {status: status === "error" ? 502 : 200,
+       headers: {"Content-Type": "application/json"}});
   } catch (erreur) {
     const message = erreur instanceof Error ? erreur.message : String(erreur);
     await fermerCourse(course, {
