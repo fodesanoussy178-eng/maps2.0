@@ -48,6 +48,10 @@ const VILLES = {
   tourcoing: { centre: [50.7236, 3.1610], bb: ["50.6934","50.7480","3.1194","3.1929"] },
   lille:     { centre: [50.6292, 3.0573], bb: ["50.5949","50.6570","2.9557","3.1413"] },
   paris:     { centre: [48.8566, 2.3522], bb: ["48.8156","48.9022","2.2242","2.4699"] },
+  /* Rouen : un territoire du registre, loin des trois autres. Il éprouve un
+     enchaînement de plus — Paris → Rouen — c'est-à-dire une bascule entre
+     deux villes dont AUCUNE n'est la position physique. */
+  rouen:     { centre: [49.4432, 1.0999], bb: ["49.4100","49.4750","1.0200","1.1600"] },
 };
 
 /* Des lieux ouverts en permanence, pour que « Maintenant » ait de quoi
@@ -85,6 +89,8 @@ const DONNEES = {
                evts: evenementsAutour(VILLES.lille.centre, "LILLE") },
   paris:     { pois: poisAutour(VILLES.paris.centre, "PARIS"),
                evts: evenementsAutour(VILLES.paris.centre, "PARIS") },
+  rouen:     { pois: poisAutour(VILLES.rouen.centre, "ROUEN"),
+               evts: evenementsAutour(VILLES.rouen.centre, "ROUEN") },
 };
 
 /* Quelle ville sert-on pour un point donné ? Exactement comme un vrai backend :
@@ -231,12 +237,13 @@ async function etat() {
     const dedans = (l) => typeof dansZoneActive === "function" ? dansZoneActive(l) : true;
     const visibles = (typeof lieux !== "undefined" ? lieux : []).filter(dedans);
     const compte = (liste) => {
-      const c = { TOURCOING: 0, LILLE: 0, PARIS: 0, autre: 0 };
+      const c = { TOURCOING: 0, LILLE: 0, PARIS: 0, ROUEN: 0, autre: 0 };
       liste.forEach((l) => {
         const n = ((l && (l.titre || l.title || l.nom)) || "").toUpperCase();
         if (n.includes("TOURCOING")) c.TOURCOING += 1;
         else if (n.includes("LILLE")) c.LILLE += 1;
         else if (n.includes("PARIS")) c.PARIS += 1;
+        else if (n.includes("ROUEN")) c.ROUEN += 1;
         else c.autre += 1;
       });
       return c;
@@ -378,6 +385,27 @@ verifier("marqueurs Paris → aucun reste",
   e.marqueurs.LILLE === 0 && e.marqueurs.TOURCOING === 0,
   "marqueurs " + JSON.stringify(e.marqueurs));
 
+console.log("\n=== 3 bis. Puis « Rouen » : deux villes de suite, aucune n'est chez soi ===");
+const tRouen = await chercher("Rouen");
+e = await etat();
+console.log("   zone active :", JSON.stringify(e.zone), "· bascule", JSON.stringify(tRouen));
+verifier("Paris → Rouen → aucun reste de Paris",
+  e.visibles.PARIS === 0 && e.visibles.LILLE === 0 && e.visibles.TOURCOING === 0,
+  "visibles " + JSON.stringify(e.visibles));
+verifier("Rouen → la zone active est bien Rouen",
+  !!e.zone && e.zone.type === "recherche" && /rouen/i.test(e.zone.nom || ""),
+  JSON.stringify(e.zone));
+verifier("Maintenant Rouen → ni Paris, ni Lille, ni Tourcoing",
+  e.maintenant.PARIS === 0 && e.maintenant.LILLE === 0 && e.maintenant.TOURCOING === 0,
+  "Maintenant " + JSON.stringify(e.maintenant));
+verifier("marqueurs Rouen → aucun reste des villes précédentes",
+  e.marqueurs.PARIS === 0 && e.marqueurs.LILLE === 0 && e.marqueurs.TOURCOING === 0,
+  "marqueurs " + JSON.stringify(e.marqueurs));
+verifier("recommandations Rouen → aucune de Paris",
+  e.recos.PARIS === 0, "recos " + JSON.stringify(e.recos));
+verifier("l'écran ne reste pas vide à Rouen",
+  e.visibles.ROUEN > 0, "visibles " + JSON.stringify(e.visibles));
+
 console.log("\n=== 4. « Revenir autour de moi » ===");
 const t0 = Date.now();
 await page.evaluate(() => {
@@ -442,6 +470,9 @@ ligne("Lille · trois propositions Maintenant", tLille.trois);
 ligne("Paris · zone active changée", tParis.zone);
 ligne("Paris · premier lieu de Paris visible", tParis.premier);
 ligne("Paris · trois propositions Maintenant", tParis.trois);
+ligne("Rouen · zone active changée", tRouen.zone);
+ligne("Rouen · premier lieu de Rouen visible", tRouen.premier);
+ligne("Rouen · trois propositions Maintenant", tRouen.trois);
 ligne("retour autour de moi", msRetour);
 const lents = [tLille.premier, tParis.premier].filter((t) => t === null || t > 2500);
 if (lents.length) console.log("  ⚠ une bascule dépasse 2,5 s ou n’aboutit pas");

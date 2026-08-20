@@ -7,12 +7,13 @@
    et un test qui échoue si l'un d'eux a bougé sans que son empreinte suive. */
 
 import { createHash } from "node:crypto";
+import { MODULES, MODULES_DIFFERES } from "../outils/modules.mjs";
 import { readFile } from "node:fs/promises";
 
-export const MODULES = ["availability.js", "comprendre.js", "donnees.js", "intentions.js", "comptes.js", "maintenant.js", "ordonnanceur.js", "contexte.js", "plafonds.js", "aide.js", "signaux.js", "temporel.js",
-                        "explications.js", "events.js", "core.js", "providers/normaliser.js",
-                        "providers/googlePlaces.js", "providers/datatourisme.js", "providers/osm.js", "providers/decouvertes.js",
-                        "mapProviders/googleMaps.js", "app.js"];
+/* La liste elle-même vit dans `outils/modules.mjs` : c'est un manifeste de
+   livraison, dont la commande de build a besoin autant que les tests. On la
+   ré-exporte pour que rien de ce qui l'importait d'ici ne change. */
+export { MODULES, MODULES_DIFFERES } from "../outils/modules.mjs";
 
 export async function empreinte(fichier, base) {
   const contenu = await readFile(new URL("../" + fichier, base), "utf8");
@@ -21,6 +22,6 @@ export async function empreinte(fichier, base) {
 
 export async function empreintes(base) {
   const out = {};
-  for (const m of MODULES) out[m] = await empreinte(m, base);
+  for (const m of MODULES.concat(MODULES_DIFFERES)) out[m] = await empreinte(m, base);
   return out;
 }

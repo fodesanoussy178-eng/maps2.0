@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { corpsApplication } from "./source.mjs";
 
-const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+/* Les écrans de compte ont quitté `app.js` pour `differe/ecrans.js` : le
+   corps du programme est toujours la même chose, en deux fichiers. */
+const app = await corpsApplication(import.meta.url);
 
 /* Signalé depuis le terrain : « Connexion impossible pour le moment. » à
    l'écran de publication, et le bouton répond la même chose indéfiniment.

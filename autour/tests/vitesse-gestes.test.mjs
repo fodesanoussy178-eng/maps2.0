@@ -5,7 +5,12 @@ import { sourceApplication } from "./source.mjs";
 
 const src = await sourceApplication(import.meta.url);
 const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
-const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+const appSeul = await readFile(new URL("../app.js", import.meta.url), "utf8");
+/* Le corps de l'application se lit désormais en deux fichiers : `app.js`
+   pour le chemin critique, `differe/ecrans.js` pour les écrans qu'un
+   geste ouvre. Les règles ci-dessous portent sur le corps, pas sur la
+   répartition — sauf celle qui pèse `app.js`, qui garde `appSeul`. */
+const app = src;
 
 /* ======================================================================== */
 /*  Le chemin critique : rien d'utile ne doit attendre 680 ko               */
@@ -22,7 +27,7 @@ test("le corps du programme est un fichier archivable, pas un bloc en ligne", ()
   // et il reste petit : c'est ce qui arrive en premier sur le réseau
   assert.ok(index.length < 200000,
     "index.html doit rester léger, vu : " + Math.round(index.length / 1024) + " ko");
-  assert.ok(app.length > 400000, "app.js porte bien le corps du programme");
+  assert.ok(appSeul.length > 400000, "app.js porte bien le corps du programme");
 });
 
 test("aucun script ne bloque l'analyse du document", () => {

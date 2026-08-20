@@ -1,4 +1,6 @@
 {
+  "buildCommand": "node outils/alleger.mjs",
+  "outputDirectory": "livraison",
   "headers": [
     {
       "source": "/(.*)\\.js",

@@ -333,8 +333,11 @@ test("Profil connecté porte les six entrées attendues", () => {
 });
 
 test("se déconnecter ne laisse pas les favoris de quelqu'un d'autre à l'écran", () => {
-  const sortie = html.slice(html.indexOf("async function seDeconnecter"),
-                            html.indexOf("async function assurerIdentitePublication"));
+  /* Le corps de la fonction, pris pour lui-même : borner la coupe sur le nom
+     de la fonction SUIVANTE supposait qu'elles restent voisines, ce qui a
+     cessé d'être vrai quand les écrans de compte sont partis dans
+     `differe/ecrans.js`. */
+  const sortie = /async function seDeconnecter\(\)\{[\s\S]*?\n\}/.exec(html)[0];
   assert.match(sortie, /signOut\(\)/);
   assert.match(sortie, /favorisIds\.clear\(\)/);
   assert.match(sortie, /favorisEnMemoire\.clear\(\)/);

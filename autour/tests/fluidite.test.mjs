@@ -14,15 +14,15 @@ const html = sourceApplicationSync(import.meta.url);
 /*  « Y aller » répond, il ne renvoie pas vers une deuxième décision        */
 /* ======================================================================== */
 
-test("« Y aller » de la fiche carte déplie le trajet, il ne rouvre pas un menu", () => {
-  assert.match(html, /f\.querySelector\("\.fc-y"\)\.onclick[\s\S]{0,240}afficherTrajet\(l\)/,
-    "toucher « Y aller » doit produire les temps de trajet, pas une fiche à relire");
+test("« Y aller » de la fiche carte bascule en itinéraire, il ne rouvre pas un menu", () => {
+  assert.match(html, /f\.querySelector\("\.fc-y"\)\.onclick[\s\S]{0,420}afficherTrajet\(l\)/,
+    "toucher « Y aller » doit produire les moyens d’y aller, pas une fiche à relire");
 });
 
 test("« Y aller » et « Voir » ouvrent la fiche par le même chemin", () => {
   // deux boutons voisins qui ouvrent le même écran doivent laisser le bouton
   // retour du téléphone se comporter pareil
-  const y = /f\.querySelector\("\.fc-y"\)\.onclick = \(\)=>\{[\s\S]{0,240}?\};/.exec(html);
+  const y = /f\.querySelector\("\.fc-y"\)\.onclick = \(\)=>\{[\s\S]{0,520}?\n  \};/.exec(html);
   assert.ok(y, "le gestionnaire de « Y aller » doit exister");
   assert.match(y[0], /pileEcrans=\[\];/);
   assert.match(y[0], /pousserEcran\(/);
@@ -37,6 +37,51 @@ test("les temps à pied et à vélo s'affichent avant toute réponse réseau", (
 
 test("les modes complexes restent chez Maps, ils ne sont pas réimplémentés", () => {
   assert.match(html, /liensItinerairesExternes\(depart, dest\)/);
+});
+
+/* ======================================================================== */
+/*  « Y aller » remplace la fiche, il ne l'allonge pas                       */
+/* ======================================================================== */
+
+test("la feuille de détail porte deux panneaux, pas deux fiches", () => {
+  /* La fiche du lieu et les moyens d'y aller sont deux panneaux du MÊME
+     rendu : basculer ne reconstruit rien et ne redemande rien. */
+  assert.match(html, /<div class="d-lieu" id="ficheLieu">/);
+  assert.match(html, /<div class="itin" id="ficheItineraire" hidden><\/div>/);
+  assert.match(html, /let modeFeuille = "lieu";/);
+  assert.match(html, /function basculerModeFeuille\(mode\)\{/);
+});
+
+test("le mode itinéraire masque tout ce qui décrit le lieu", () => {
+  /* Une fois la décision prise, l'image, la catégorie, le prix, la
+     description, les horaires et les gestes de découverte n'ont plus rien à
+     faire à l'écran : c'est le panneau entier qui disparaît, pas chaque bloc
+     un par un. */
+  const bloc = /function basculerModeFeuille\(mode\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(bloc, /lieu\.hidden = versItineraire;/);
+  assert.match(bloc, /itineraire\.hidden = !versItineraire;/);
+  assert.doesNotMatch(bloc, /innerHTML/,
+    "basculer ne doit rien rendre : c'est ce qui le rend instantané");
+});
+
+test("« Retour » repose la fiche là où on l’avait laissée", () => {
+  const bloc = /function basculerModeFeuille\(mode\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(bloc, /if\(versItineraire\) defilementFiche = f\.scrollTop;/);
+  assert.match(bloc, /f\.scrollTop = versItineraire \? 0 : defilementFiche;/);
+  assert.match(html, /retour\.onclick = \(\)=>\{[\s\S]{0,320}?basculerModeFeuille\("lieu"\);/);
+  /* Le focus suit la bascule, sinon il reste sur un bouton qui vient de
+     disparaître — un clavier ou un lecteur d'écran se retrouve nulle part. */
+  assert.match(html, /if\(yAller\) yAller\.focus\(\{preventScroll:true\}\);/);
+  assert.match(html, /retour\.focus\(\{preventScroll:true\}\);/);
+  /* Deux « Retour » côte à côte ne ramèneraient pas au même endroit. */
+  assert.match(bloc, /if\(pile\) pile\.hidden = versItineraire;/);
+});
+
+test("choisir un mode interne part en navigation, il ne rouvre pas la fiche", () => {
+  assert.match(html, /entrerNav\(options\[Number\(b\.dataset\.opt\)\], l\.titre\)/);
+  const bloc = /zone\.querySelectorAll\("\[data-opt\]"\)[\s\S]{0,220}?\}\);/.exec(html)[0];
+  assert.doesNotMatch(bloc, /basculerModeFeuille\("lieu"\)|ouvrirDetail/,
+    "on est en train de se déplacer : la fiche du lieu ne revient pas");
 });
 
 /* ======================================================================== */

@@ -22,6 +22,10 @@ import { dirname, join, extname, normalize } from "node:path";
 import { chromium, devices } from "playwright";
 
 const RACINE = process.env.RACINE_MESURE || join(dirname(fileURLToPath(import.meta.url)), "..");
+/* La source du dépôt, distincte de ce qu'on sert. `RACINE_MESURE` peut viser
+   une copie de livraison, réimprimée sans commentaires : y chercher une règle
+   au caractère près ne dirait plus rien de l'application. */
+const SOURCE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME = process.env.AUTOUR_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
@@ -186,12 +190,15 @@ if (!detailOuvert) {
     return !!f;
   });
   verifier("le panneau de détail existe", garde);
-  const source = await (await readFile(join(RACINE, "app.js"), "utf8"));
+  const source = await readFile(join(SOURCE, "app.js"), "utf8");
+  /* Espaces libres : la même règle s'écrit `if(x > 2)` dans le dépôt et
+     `if (x > 2)` une fois réimprimée. C'est la règle qui compte. */
+  const regle = (motif) => new RegExp(motif.replace(/ /g, "\\s*")).test(source);
   verifier("un balayage ne ferme que depuis le haut de la liste",
-    /if\(depart\.scroll > 2\) return;/.test(source) &&
-    /if\(feuilleDetail\.scrollTop > 2\) return;/.test(source));
+    regle("if \\( depart\\.scroll > 2 \\) return;") &&
+    regle("if \\( feuilleDetail\\.scrollTop > 2 \\) return;"));
   verifier("un geste interrompu ne déclenche rien plus tard",
-    /feuilleDetail\.addEventListener\("touchcancel"/.test(source));
+    regle('feuilleDetail\\.addEventListener\\( "touchcancel"'));
 } else {
   await page.waitForTimeout(500);
   const ferme = await page.evaluate(async () => {
