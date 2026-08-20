@@ -1319,16 +1319,10 @@ test("les événements futurs partent dans des groupes, ils ne disparaissent pas
     "SECTIONS_DU_CRENEAU doit précéder son premier usage");
 });
 
-test("OpenAgenda transmet toutes ses séances, pas seulement la première",()=>{
-  // une série hebdomadaire datée sur `firstTiming` était jugée sur une séance
-  // passée depuis des mois
-  assert.match(html,/const occurrencesDe = \(evt\)=>\{/);
-  assert.match(html,/Array\.isArray\(evt\.timings\) && evt\.timings\.length/);
-  assert.match(html,/const occurrences = occurrencesDe\(evt\);/);
-  assert.match(html,/const seance = occurrenceUtile\(occurrences\);/);
-  assert.match(html,/debutLe: seance \? seance\.start : null,/);
-  // plus aucune lecture directe du premier créneau
-  assert.doesNotMatch(html,/evt\.nextTiming \|\| evt\.firstTiming \|\| \(evt\.timings\|\|\[\]\)\[0\]/);
+test("OpenAgenda ne fait plus d'appel depuis le bundle navigateur",()=>{
+  assert.doesNotMatch(html,/api\.openagenda\.com/);
+  assert.doesNotMatch(html,/CLE_OPENAGENDA/);
+  assert.match(html,/async function evenementsOpenAgenda\(\)\{[\s\S]*?return null;/);
 });
 
 test("le classement tranche le temps avant de calculer la pertinence",()=>{

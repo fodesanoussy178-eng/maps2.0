@@ -548,31 +548,13 @@ test("les pastilles réservent leur place avant tout placement d'étiquette", ()
 });
 
 /* ======================================================================== */
-/*  OpenAgenda : borné, mis en cache, et sans effacement en cas de panne    */
+/*  OpenAgenda : aucune lecture fournisseur dans le bundle navigateur        */
 /* ======================================================================== */
 
-test("chaque requête OpenAgenda est bornée dans le temps", () => {
-  assert.match(html, /const DELAI_OPENAGENDA_MS = 6000;/);
-  assert.match(html, /AbortSignal\.timeout\(DELAI_OPENAGENDA_MS\)/);
-});
-
-test("la concurrence est limitée pour ne pas déclencher de rate limit", () => {
-  assert.match(html, /const CONCURRENCE_OPENAGENDA = 3;/);
-  assert.match(html, /async function parLots\(taches, limite\)\{/);
-  assert.match(html, /\}\), CONCURRENCE_OPENAGENDA\);/);
-});
-
-test("une panne OpenAgenda rend la dernière réponse valide, jamais rien", () => {
-  const bloc = /async function evenementsOpenAgenda\(lat,lng\)\{[\s\S]*?\n\}/.exec(html);
-  assert.ok(bloc);
-  assert.match(bloc[0], /return enCache \? enCache\.items : null;/,
-    "un échec ne doit pas vider les événements déjà affichés");
-  assert.match(bloc[0], /if\(enCache && Date\.now\(\) - enCache\.le < CACHE_OPENAGENDA_MS\) return enCache\.items;/);
-});
-
-test("une tâche en échec n'arrête pas les autres", () => {
-  const bloc = /async function parLots\(taches, limite\)\{[\s\S]*?\n\}/.exec(html);
-  assert.match(bloc[0], /catch\(e\)\{ resultats\[i\] = \{status:"rejected", reason:e\}; \}/);
+test("OpenAgenda est désactivé côté navigateur pendant le test serveur", () => {
+  assert.doesNotMatch(html, /https:\/\/api\.openagenda\.com/);
+  assert.doesNotMatch(html, /CLE_OPENAGENDA/);
+  assert.match(html, /async function evenementsOpenAgenda\(\)\{[\s\S]*?return null;/);
 });
 
 /* ======================================================================== */
