@@ -1574,22 +1574,45 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .act-1{background:var(--signal);border-color:var(--signal);color:#fff}
 .act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
 
-.trajet{margin-top:14px;padding:14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
-.trajet-interne-titre{margin-bottom:8px;font-size:14px;font-weight:750}
-.trajet-temps{display:flex;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
-.trajet-temps button{padding:6px 11px;border:1px solid var(--bord);border-radius:99px;background:var(--paper);font:inherit;cursor:pointer}
-.trajet-temps button.conseille{background:var(--signal);border-color:var(--signal);color:#fff}
-.trajet-aide{margin:8px 0 0;font-size:11px;color:var(--ink2);line-height:1.4}
-.trajet-externes{display:grid;gap:10px;margin-top:16px;padding-top:14px;
-  border-top:1px solid rgba(20,30,25,.13)}
-.trajet-externe{padding:12px;border:1px solid var(--bord);border-radius:12px;background:var(--paper)}
-.trajet-externe strong,.trajet-externe>span{display:block}
-.trajet-externe strong{font-size:14px}
-.trajet-externe>span{margin-top:2px;font-size:12px;color:var(--ink2)}
-.trajet-liens{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
-.trajet-liens a{min-height:44px;padding:0 12px;display:inline-flex;align-items:center;
-  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+/* ---- Mode itinéraire : la feuille ne parle plus du lieu, mais du chemin --
+   Des choix larges, lisibles d'un coup d'œil, avec une cible tactile qui fait
+   toute la carte. Rien à faire défiler pour trouver comment y aller. */
+.itin{padding-bottom:8px}
+.itin-retour{margin-bottom:14px}
+h2.itin-titre{margin:0;text-align:center}
+.itin-adresse{margin:6px 0 0;text-align:center;font-size:13.5px;color:var(--ink2)}
+.itin-question{margin:22px 0 12px;font-size:17px;font-weight:750;color:var(--ink)}
+.itin-modes{display:grid;gap:10px}
+.itin-mode{display:flex;align-items:center;gap:13px;width:100%;
+  padding:13px 14px;border:1px solid var(--bord);border-radius:14px;background:#fff;
+  font:inherit;color:var(--ink);text-align:left}
+button.itin-mode{cursor:pointer;transition:transform .15s}
+button.itin-mode:active{transform:scale(.985)}
+.itin-mode-ext{margin-top:10px;flex-wrap:wrap}
+.itin-rond{flex:0 0 auto;width:44px;height:44px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;font-size:21px}
+.itin-rond-pied{background:#FFE8DE}
+.itin-rond-velo{background:#DFF3E4}
+.itin-rond-voiture{background:#DEEBFF}
+.itin-rond-transports{background:#E8E2FB}
+.itin-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.itin-txt b{font-size:16.5px;font-weight:750}
+.itin-txt>span{font-size:13px;color:var(--ink2);
+  font-family:'JetBrains Mono',monospace}
+.itin-chevron{flex:0 0 auto;font-size:22px;color:var(--ink2);line-height:1}
+.itin-liens{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
+.itin-lien{min-height:44px;padding:0 12px;display:inline-flex;align-items:center;
+  border:1px solid var(--bord);border-radius:99px;background:var(--paper);color:var(--ink);
   font-size:12px;font-weight:750;text-decoration:none}
+.itin-note{margin:18px 0 0;padding:12px 14px;border-radius:12px;background:var(--paper);
+  font-size:12px;line-height:1.45;color:var(--ink2)}
+/* Trois pastilles de fournisseur ne tiennent pas à côté du libellé sur un
+   téléphone. Elles passent alors sur une deuxième ligne — mais l'icône et le
+   nom du mode restent ensemble, sinon l'emoji se retrouve seul au-dessus. */
+@media (max-width:560px){
+  .itin-mode-ext{row-gap:10px}
+  .itin-liens{flex:1 1 100%;justify-content:flex-start}
+}
 .prix-n{font-weight:700;color:#1B7F3B}
 .horaires{margin:0 0 16px;padding:11px 14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
 .horaires summary{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
@@ -1910,6 +1933,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/decouvertes.js?v=e089f93c" defer></script>
 <script src="providers/osm.js?v=ce966e3f" defer></script>
 <script src="mapProviders/googleMaps.js?v=8748aa8a" defer></script>
-<script src="app.js?v=6a4dd617" defer></script>
+<script src="app.js?v=c5dbeb44" defer></script>
 </body>
 </html>

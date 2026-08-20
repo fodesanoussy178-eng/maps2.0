@@ -9,3 +9,6 @@ coverage
 *.tsbuildinfo
 /vite.config.d.ts
 /vitest.config.d.ts
+
+# la copie allégée produite par autour/outils/alleger.mjs : elle se régénère
+autour/livraison

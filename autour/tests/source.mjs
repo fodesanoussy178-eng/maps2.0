@@ -12,7 +12,11 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 
-const MORCEAUX = ["index.html", "app.js"];
+/* `differe/ecrans.js` porte les écrans qui ne partent plus avec la page : la
+   fiche d'un lieu, l'itinéraire, la publication, le compte. La frontière a
+   bougé une deuxième fois ; le contrat, lui, n'a pas changé — les tests
+   posent toujours la question à la source entière. */
+const MORCEAUX = ["index.html", "app.js", "differe/ecrans.js"];
 
 export function sourceApplicationSync(base) {
   return MORCEAUX.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");
@@ -21,5 +25,21 @@ export function sourceApplicationSync(base) {
 export async function sourceApplication(base) {
   const parts = [];
   for (const f of MORCEAUX) parts.push(await readFile(new URL("../" + f, base), "utf8"));
+  return parts.join("\n");
+}
+
+/* Le CORPS seul, sans `index.html` : pour les règles qui parlent du programme
+   et pas du document — « ce fichier ne contient aucune balise vers un CDN »
+   n'a de sens que si l'on ne vient pas de coller le document qui en porte
+   une, légitimement, pour Leaflet. */
+const CORPS = ["app.js", "differe/ecrans.js"];
+
+export function corpsApplicationSync(base) {
+  return CORPS.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");
+}
+
+export async function corpsApplication(base) {
+  const parts = [];
+  for (const f of CORPS) parts.push(await readFile(new URL("../" + f, base), "utf8"));
   return parts.join("\n");
 }

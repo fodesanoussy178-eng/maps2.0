@@ -1037,7 +1037,13 @@ test("le cadrage suit l'emprise réelle de la zone, bornée des deux côtés",()
   // Les laisser diverger posait la carte sur Paris au zoom 12, où chargerZone
   // refuse de partir — bon endroit, écran vide, aucune explication.
   assert.match(html,/const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;/);
-  assert.match(html,/if\(!o\.sansCarte && \(!map \|\| map\.getZoom\(\) < ZOOM_MIN_CHARGEMENT\)\) return Promise\.resolve\(\[\]\);/);
+  /* Le seuil est intact ; ce qu'on lui donne à lire a changé. La borne basse
+     réglait le cas de la carte POSÉE au zoom 12 ; restait celui de la carte
+     EN VOL, qui traverse des niveaux bien plus bas avant de se reposer et
+     faisait renoncer au chargement de la même façon — même symptôme, bon
+     endroit et écran vide. L'appelant annonce donc le niveau visé. */
+  assert.match(html,/const zoomVise = o\.zoomVise != null \? o\.zoomVise : \(map \? map\.getZoom\(\) : 16\);/);
+  assert.match(html,/if\(!o\.sansCarte && \(!map \|\| zoomVise < ZOOM_MIN_CHARGEMENT\)\) return Promise\.resolve\(\[\]\);/);
   // et il doit être déclaré avant d'être lu : une zone morte temporelle ici
   // casse tout le script au démarrage
   assert.ok(html.indexOf("const ZOOM_MIN_CHARGEMENT = 13;") <
@@ -1080,7 +1086,9 @@ test("un seul point de référence après un déplacement : celui de la carte",(
   assert.match(html,/const centre = e \? \[\(e\[0\]\[0\] \+ e\[1\]\[0\]\) \/ 2, \(e\[0\]\[1\] \+ e\[1\]\[1\]\) \/ 2\]/);
   assert.match(html,/\(c \? \[c\.lat, c\.lng\] : \[zone\.lat, zone\.lng\]\);/);
   assert.match(html,/rechercheGeo = \{nom:q, lat:centre\[0\], lng:centre\[1\], emprise:zone\.emprise \|\| null\};/);
-  assert.match(html,/chargerZone\(centre\[0\], centre\[1\], \{reglages: reglagesZone\(rechercheGeo\)\}\);/);
+  /* Et le chargement annonce où la carte va se poser : `ZOOM_ZONE_MIN` est le
+     plancher que les deux branches du cadrage garantissent juste au-dessus. */
+  assert.match(html,/chargerZone\(centre\[0\], centre\[1\],\s*\{reglages: reglagesZone\(rechercheGeo\), zoomVise: ZOOM_ZONE_MIN\}\);/);
   // le même point sert à la zone active : une seule référence, pas deux
   assert.match(html,/definirZoneActive\(CTX \? CTX\.zoneRecherche\(q, centre, zone\.emprise \|\| null\) : null\);/);
 });
@@ -1136,13 +1144,15 @@ test("Autour ne calcule en interne que les trajets à pied et à vélo",()=>{
   assert.match(html,/const OSRM_PROFILS = \{\s*pied:[\s\S]*routed-foot[\s\S]*velo:[\s\S]*routed-bike/);
   assert.match(html,/Promise\.all\(\[\s*segmentTrajet\("pied", depart, dest\),\s*segmentTrajet\("velo", depart, dest\),\s*\]\)/);
   assert.doesNotMatch(html,/routed-car|segmentTrajet\("voiture"|mode:"voiture"/);
-  assert.match(html,/entrerNav\(options\[iActif\], l\.titre\)/);
+  assert.match(html,/entrerNav\(options\[Number\(b\.dataset\.opt\)\], l\.titre\)/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ toast\("Choisis un point de départ/);
   // une ancienne réponse réseau ne repeint jamais la nouvelle fiche
   assert.match(html,/numeroDemande !== afficherTrajet\.numeroDemande/);
 });
 
 test("voiture et transports ouvrent des fournisseurs externes",()=>{
+  /* Ils n'affichent AUCUNE durée : Autour ne les route pas, et un chiffre
+     qu'on ne peut pas calculer serait un chiffre inventé. */
   assert.match(html,/Ouvrir l’itinéraire/);
   assert.match(html,/Voir en transports/);
   assert.match(html,/https:\/\/www\.google\.com\/maps\/dir\/\?api=1/);

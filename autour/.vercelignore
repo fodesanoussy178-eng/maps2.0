@@ -1,0 +1,19 @@
+# Ce qui n'est même pas téléversé vers Vercel.
+#
+# La livraison (outils/alleger.mjs → livraison/) décide de ce qui est SERVI ;
+# ce fichier décide de ce qui est ENVOYÉ. Les deux disent la même chose, mais
+# celui-ci s'applique avant le build : ces fichiers ne montent jamais.
+#
+# `outils/` n'y figure pas : la commande de build en a besoin. Il est retiré
+# de la sortie par `alleger.mjs`, qui ne le recopie pas dans `livraison/`.
+
+tests
+docs
+livraison
+node_modules
+
+# Les migrations et les fonctions Supabase sont déployées par le CLI Supabase,
+# jamais par Vercel. Vérifié le 20/08 : elles étaient publiquement lisibles sur
+# autour.eu/supabase/… — schéma, politiques RLS et protocole de synchronisation
+# compris.
+supabase

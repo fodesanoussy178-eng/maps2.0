@@ -309,3 +309,23 @@ test("les requêtes d’aide visent la zone active", () => {
   assert.match(html, /function chargerAideZone\(options\)\{/);
   assert.doesNotMatch(html, /chargerAide\(positionMoi\[0\], positionMoi\[1\]/);
 });
+
+/* ======================================================================== */
+/*  Le zoom d'une carte qui vole ne décide pas du chargement                 */
+/* ======================================================================== */
+
+test("une ville demandée est chargée même pendant l’animation de la carte", () => {
+  /* `cadrerSur` est animé. Pour aller de Paris à Rouen, Leaflet dézoome,
+     traverse, puis rezoome. `chargerZone` lisait ce zoom de survol et
+     renonçait : la zone changeait, la carte bougeait, et AUCUNE requête ne
+     partait — écran vide sur la ville demandée. Mesuré au banc des contextes
+     (`outils/contextes.mjs`, étape « 3 bis »), reproductible en enchaînant
+     deux villes lointaines. */
+  assert.match(html, /const zoomVise = o\.zoomVise != null \? o\.zoomVise : \(map \? map\.getZoom\(\) : 16\);/);
+  assert.match(html, /if\(!o\.sansCarte && \(!map \|\| zoomVise < ZOOM_MIN_CHARGEMENT\)\) return Promise\.resolve\(\[\]\);/);
+  assert.doesNotMatch(html, /if\(!o\.sansCarte && \(!map \|\| map\.getZoom\(\) < ZOOM_MIN_CHARGEMENT\)\)/,
+    "le zoom instantané ne doit plus décider seul");
+  /* La recherche annonce le plancher que le cadrage garantit : c'est le seul
+     niveau honnête tant que la carte n'est pas posée. */
+  assert.match(html, /chargerZone\(centre\[0\], centre\[1\],\s*\n?\s*\{reglages: reglagesZone\(rechercheGeo\), zoomVise: ZOOM_ZONE_MIN\}\);/);
+});

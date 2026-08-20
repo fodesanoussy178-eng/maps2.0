@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
+import {corpsApplicationSync} from "./source.mjs";
 
 const migration = readFileSync(new URL(
   "../supabase/migrations/20260820112353_territorial_event_orchestrator.sql", import.meta.url,
@@ -10,7 +11,7 @@ const migration = readFileSync(new URL(
 const migrationPerformance = readFileSync(new URL(
   "../supabase/migrations/20260820135233_optimize_evenements_proches.sql", import.meta.url,
 ), "utf8");
-const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const app = corpsApplicationSync(import.meta.url);
 
 test("les six territoires demandés sont inscrits dans le registre", () => {
   for (const slug of ["tourcoing", "roubaix", "lille", "paris", "rouen", "angers"]) {
