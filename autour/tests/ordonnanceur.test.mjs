@@ -153,7 +153,7 @@ test("le même état ne se reclasse pas deux fois", () => {
 
 test("la sélection de la carte ne redessine pas pour un résultat identique", () => {
   // c'est ce qui éviterait un reclassement visuel incessant
-  assert.match(html, /if\(ids\.join\("\|"\) === \(selectionAccueil \|\| \[\]\)\.join\("\|"\)\) return;/);
+  assert.match(html, /if\(ids\.join\("\|"\) === \(selectionAccueil \|\| \[\]\)\.join\("\|"\)\)\{[\s\S]{0,100}return;/);
 });
 
 test("la zone des recommandations garde sa place pendant le calcul", () => {

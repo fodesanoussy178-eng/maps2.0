@@ -6,7 +6,8 @@ import test from "node:test";
 
 import {eventsUrl} from "../supabase/functions/sync-openagenda/client.mjs";
 import {
-  OPENAGENDA_SOURCES, OPENAGENDA_SYNC, OPENAGENDA_TEST, openAgendaSyncPeriod,
+  OPENAGENDA_SYNC, OPENAGENDA_TEST, lilleTestSource, mapWithConcurrency,
+  openAgendaSourceFromRegistry, openAgendaSyncPeriod,
 } from "../supabase/functions/sync-openagenda/config.mjs";
 import {eventDedupKey} from "../supabase/functions/sync-openagenda/dedup.mjs";
 import {listOpenAgendaEvents} from "../supabase/functions/sync-openagenda/pagination.mjs";
@@ -18,7 +19,7 @@ import {
   occurrenceOverlapsWindow,
 } from "../supabase/functions/sync-openagenda/normalize.mjs";
 
-const source = OPENAGENDA_SOURCES.lille;
+const source = lilleTestSource();
 const now = new Date("2026-08-20T10:00:00.000Z");
 
 function targetEvent(overrides = {}) {
@@ -43,6 +44,37 @@ test("la configuration pointe vers l'agenda officiel Ville de Lille", () => {
   assert.equal(source.agendaUID, "57621068");
   assert.equal(source.agendaSlug, "ville-de-lille");
   assert.equal(source.officialName, "Ville de Lille");
+});
+
+test("une source de production est construite depuis le registre territorial", () => {
+  const registered = openAgendaSourceFromRegistry({
+    id: 42, territory_id: 7, provider: "openagenda",
+    source_identifier: "32344838", source_name: "Agenda culturel tourquennois",
+    active: true, priority: 20,
+    metadata: {agenda_slug: "agenda-culturel-tourquennois"},
+  }, {
+    id: 7, slug: "tourcoing", name: "Tourcoing", group_slug: "mel",
+    timezone: "Europe/Paris", active: true,
+  });
+  assert.equal(registered.registryId, 42);
+  assert.equal(registered.territory, "tourcoing");
+  assert.equal(registered.agendaUID, "32344838");
+  assert.equal(registered.territoryGroup, "mel");
+  assert.equal(registered.enabled, true);
+});
+
+test("l'orchestrateur borne réellement sa concurrence", async () => {
+  let active = 0;
+  let maximum = 0;
+  const settled = await mapWithConcurrency([1, 2, 3, 4, 5], 2, async (item) => {
+    active += 1;
+    maximum = Math.max(maximum, active);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    active -= 1;
+    return item * 2;
+  });
+  assert.equal(maximum, 2);
+  assert.deepEqual(settled.map((item) => item.value), [2, 4, 6, 8, 10]);
 });
 
 test("le titre et l'UID identifient l'événement cible malgré ses guillemets source", () => {
@@ -174,13 +206,16 @@ test("la fonction refuse tout import implicite et conserve le mode test", () => 
   const sourceCode = readFileSync(new URL(
     "../supabase/functions/sync-openagenda/index.ts", import.meta.url,
   ), "utf8");
-  assert.match(sourceCode, /mode !== "test" && mode !== "sync"/);
-  assert.match(sourceCode, /territory !== OPENAGENDA_SYNC\.territory/);
+  assert.match(sourceCode, /mode !== "test" && mode !== "sync" && mode !== "orchestrate"/);
+  assert.match(sourceCode, /territory_sources\?select=/);
+  assert.match(sourceCode, /loadRegistrySources/);
+  assert.match(sourceCode, /mapWithConcurrency/);
+  assert.doesNotMatch(sourceCode, /OPENAGENDA_SOURCES/);
   assert.match(sourceCode, /if \(mode === "test"\)/);
   assert.match(sourceCode, /on_conflict=source,source_occurrence_id/);
   assert.match(sourceCode, /SKIPPED_ALREADY_RUNNING/);
   assert.match(sourceCode, /status=eq\.running/);
-  assert.match(sourceCode, /\[OPENAGENDA SYNC — LILLE\]\\nSTART/);
+  assert.match(sourceCode, /\[OPENAGENDA SYNC — \$\{label\}\]\\nSTART/);
   for (const field of [
     "pages", "events_seen", "events_normalized", "events_inserted", "events_updated",
     "occurrences_seen", "occurrences_inserted", "occurrences_updated", "duplicates",

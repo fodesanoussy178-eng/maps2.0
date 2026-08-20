@@ -232,7 +232,9 @@ test("une recherche de ville fait le basculement complet", () => {
   const bloc = html.slice(html.indexOf("async function rechercheGeographique"),
                           html.indexOf("/* ---- Favoris, côté écran"));
   assert.match(bloc, /definirZoneActive\(CTX \? CTX\.zoneRecherche\(q, centre, zone\.emprise \|\| null\) : null\);/);
-  assert.match(bloc, /annulerChargementsZone\(\);/);
+  assert.match(bloc, /generationRecherche\.portee = porteeCourante;/);
+  assert.match(bloc, /annulerChargementsZone\("recherche:zone"\);/);
+  assert.match(html, /rechercheGeographique\(destination, generation\);/);
   assert.match(bloc, /rendre\(\);/);          // les marqueurs de l’ancienne zone partent
   assert.match(bloc, /majAccueil\(\);/);      // les recommandations aussi
   assert.match(bloc, /chargerZone\(centre\[0\], centre\[1\]/);
@@ -290,7 +292,7 @@ test("une réponse d’une zone quittée est ignorée, quelle que soit sa source
      DATAtourisme, Google, publications, événements. */
   assert.match(html, /signal:controleur\.signal, portee:porteeCourante/);
   assert.match(html, /if\(!porteeValide\(generation\.portee\)\) return false;/);
-  assert.match(html, /function annulerChargementsZone\(\)\{/);
+  assert.match(html, /function annulerChargementsZone\(saufCanal\)\{/);
   const bloc = html.slice(html.indexOf("function annulerChargementsZone"),
                           html.indexOf("function annulerChargementsZone") + 600);
   assert.match(bloc, /g\.controleur\.abort\(\)/);

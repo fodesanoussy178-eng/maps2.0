@@ -104,7 +104,7 @@ test("la bascule vers Explorer arrive avec la recherche déjà écrite", () => {
   /* Le corps de la bascule est une fonction nommée depuis qu'une lecture
      proposée (« un lieu près de moi ») peut la déclencher elle aussi : deux
      chemins vers Explorer, un seul code. */
-  const bloc = /function basculerVersExplorer\(requete\)\{[\s\S]*?\n  \}/.exec(html);
+  const bloc = /function basculerVersExplorer\(requete\)\{[\s\S]*?\n {2}\}/.exec(html);
   assert.ok(bloc, "le gestionnaire de bascule doit exister");
   assert.match(html, /corps\.querySelectorAll\("\[data-vers-explorer\]"\)/,
     "le bouton de redirection doit appeler la bascule");
@@ -284,7 +284,7 @@ test("la pastille disparaît à zéro au lieu d'afficher « Maintenant · 0 »",
 
 test("la pastille suit les données même sans carte", () => {
   // Leaflet vient d'un CDN : il peut manquer, la pastille doit rester juste
-  assert.match(html, /majBadgeMaintenant\(\);\n  if\(!map\) return;/);
+  assert.match(html, /majBadgeMaintenant\(\);[\s\S]{0,100}if\(!map\)\{[\s\S]{0,100}return;/);
 });
 
 test("un appui sur la pastille ouvre la liste, pas un menu", () => {
@@ -315,7 +315,7 @@ test("la couche Leaflet suit Google en continu, pas seulement en fin de geste", 
 
 test("le garde-fou de synchronisation empêche la boucle Google ↔ Leaflet", () => {
   const g = readFileSync(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
-  const bloc = /const suivre = \(\) => \{[\s\S]*?\n    \};/.exec(g);
+  const bloc = /const suivre = \(\) => \{[\s\S]*?\n {4}\};/.exec(g);
   assert.ok(bloc, "le suivi doit être une fonction unique, partagée par les deux écouteurs");
   assert.match(bloc[0], /if \(synchronisation\) return;/);
   assert.match(bloc[0], /synchronisation = true;/);
@@ -605,4 +605,30 @@ test("la liste réutilise la fiche compacte, sans nouveau panneau", () => {
   assert.match(bloc[0], /\$\("#ficheCompacte"\)/,
     "un panneau de plus serait un panneau de plus à connaître");
   assert.match(bloc[0], /pousserEcran\(\(\)=>ouvrirDetail\(l\.id\)\)/);
+});
+
+/* ======================================================================== */
+/*  Supabase territorial : SWR borné, coalescé et sans mélange              */
+/* ======================================================================== */
+
+test("le cache Supabase est géographique, court et borné", () => {
+  assert.match(html, /return "geo@"\+Number\(lat\)\.toFixed\(2\)\+","\+Number\(lng\)\.toFixed\(2\);/);
+  assert.match(html, /const CACHE_COUCHE_FRAICHE_MS = 5 \* 60 \* 1000;/);
+  assert.match(html, /const CACHE_COUCHE_MAX_MS = 30 \* 60 \* 1000;/);
+  assert.match(html, /const CACHE_COUCHES_ZONES_MAX = 4;/);
+});
+
+test("une zone ne possède qu'une requête Supabase en vol", () => {
+  const bloc = html.slice(html.indexOf("async function rafraichirCoucheSupabase"),
+    html.indexOf("function chargerCoucheSupabase", html.indexOf("async function rafraichirCoucheSupabase")));
+  assert.match(bloc, /if\(requetesCouchesSupabase\.has\(cle\)\) return requetesCouchesSupabase\.get\(cle\);/);
+  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng\)/);
+  assert.match(bloc, /if\(okPublications \|\| okEvenements\)/,
+    "une panne totale ne doit jamais remplacer le cache par du vide");
+});
+
+test("les deux flux Supabase ne reconstruisent la collection qu'une fois", () => {
+  assert.match(html, /function fusionnerLots\(lots, opts\)/);
+  assert.match(html, /differerReconstruction:true/);
+  assert.match(html, /if\(modifie\) finaliserFusion\(opts\);/);
 });

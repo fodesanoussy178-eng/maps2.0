@@ -22,6 +22,7 @@ import { dirname, join, extname, normalize } from "node:path";
 import { chromium, devices } from "playwright";
 
 const RACINE = process.env.RACINE_MESURE || join(dirname(fileURLToPath(import.meta.url)), "..");
+const CHROME = process.env.AUTOUR_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
@@ -46,6 +47,7 @@ function servir(port) {
 }
 
 const resultats = [];
+const latences = [];
 function verifier(nom, condition, detail) {
   resultats.push({ nom, ok: !!condition, detail: detail || "" });
   console.log((condition ? "  ✓ " : "  ✗ ") + nom + (condition || !detail ? "" : "  → " + detail));
@@ -54,7 +56,7 @@ function verifier(nom, condition, detail) {
 const port = 8600 + Math.floor(Math.random() * 300);
 const serveur = await servir(port);
 const navigateur = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: CHROME,
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 });
 const contexte = await navigateur.newContext(Object.assign({}, devices["Pixel 5"], {
@@ -89,13 +91,19 @@ const etat = () => page.evaluate(() => {
 
 console.log("\n── La poignée du panneau ──");
 
-async function ouvrirPanneau() {
+async function ouvrirPanneau(mesurer = false) {
+  const debut = Date.now();
   await page.evaluate(() => {
     if (typeof ouvrirFeuille2 === "function") ouvrirFeuille2("racine");
   });
+  await page.waitForFunction(() => {
+    const f = document.getElementById("feuilleBesoins");
+    return f && !f.hidden;
+  });
+  if (mesurer) latences.push({ geste:"ouvrir Autour de toi", ms:Date.now()-debut });
   await page.waitForTimeout(400);
 }
-await ouvrirPanneau();
+await ouvrirPanneau(true);
 verifier("le panneau s'ouvre en position moyenne", (await etat()) === "moyenne", await etat());
 
 /* Un glissement vers le haut sur la poignée. Avec l'ancien code, `pointerup`
@@ -126,11 +134,38 @@ verifier("un glissement vers le bas descend d'UN cran (dépliée → moyenne)",
 try {
   await page.locator("#fbPoignee").click({ timeout: 3000 });
   await page.waitForTimeout(400);
-  verifier("un appui bref cycle d'UN cran (moyenne → dépliée)",
+verifier("un appui bref cycle d'UN cran (moyenne → dépliée)",
     (await etat()) === "deplie", "état : " + (await etat()));
 } catch (e) {
   verifier("un appui bref cycle d'UN cran (moyenne → dépliée)", false,
     "la poignée n'était plus atteignable : " + String(e.message).split("\n")[0]);
+}
+
+/* ---- 1b. Les groupes temporels : retour visuel sous 100 ms -------------- */
+
+console.log("\n── Changer de groupe temporel ──");
+await page.evaluate(() => {
+  if (typeof ouvrirFeuille2 === "function") ouvrirFeuille2("racine");
+});
+for (const [id, libelle] of [["soir","Ce soir"],["avenir","À venir"],["maintenant","Maintenant"]]) {
+  const bouton = page.locator('[data-creneau="'+id+'"]');
+  if (!(await bouton.count())) {
+    verifier(libelle+" est disponible", false, "bouton absent");
+    continue;
+  }
+  /* Mesure dans la page jusqu'au frame qui peut peindre le nouvel état. Les
+     attentes d'actionnabilité propres à Playwright ne sont pas une latence de
+     l'application et ne doivent pas être comptées. */
+  const ms = Math.round(await page.evaluate(async (cible) => {
+    const b = document.querySelector('[data-creneau="'+cible+'"]');
+    const debut = performance.now();
+    b.click();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return performance.now()-debut;
+  }, id));
+  latences.push({geste:libelle, ms});
+  verifier(libelle+" répond en moins de 100 ms", ms < 100, ms+" ms");
+  await page.waitForTimeout(350);
 }
 
 /* ---- 2. Défiler ne ferme pas ------------------------------------------- */
@@ -201,6 +236,7 @@ verifier("la hauteur publiée retombe à zéro une fois le panneau fermé",
 console.log("\n── Journal ──");
 verifier("aucune erreur JavaScript pendant les gestes", erreurs.length === 0,
   erreurs.join(" | "));
+console.log("  latences : "+latences.map(x=>x.geste+" "+x.ms+" ms").join(" · "));
 
 await navigateur.close();
 await new Promise((r) => serveur.close(r));

@@ -108,9 +108,9 @@ test("une recherche de ville en remplace une autre, y compris en vol", () => {
   /* Sans annulation, taper une ville puis se raviser laissait les deux
      géocodages courir : c'est le premier arrivé qui déplaçait la carte. */
   assert.match(app, /nouvelleGeneration\("recherche:zone", destination, true\)/);
-  assert.match(app, /await rechercheGeographique\(destination, generation\.signal\)/);
+  assert.match(app, /await rechercheGeographique\(destination, generation\)/);
   assert.match(app, /if\(!generationCourante\(generation\)\) return;\s+\/\/ une autre recherche/);
-  assert.match(app, /async function rechercheGeographique\(q, signal\)\{\s*\n\s*const zone = await geocoderVille\(q, null, signal\);/);
+  assert.match(app, /async function rechercheGeographique\(q, generationOuSignal\)\{[\s\S]{0,300}const zone = await geocoderVille\(q, null, signal\);/);
 });
 
 /* ======================================================================== */
@@ -158,7 +158,7 @@ test("les cartes déjà rendues tiennent la place, et l'indicateur reste discret
 
 test("l'abandon des générations obsolètes est intact", () => {
   assert.match(src, /function generationCourante\(generation\)\{/);
-  assert.match(src, /function annulerChargementsZone\(\)\{/);
+  assert.match(src, /function annulerChargementsZone\(saufCanal\)\{/);
   assert.match(src, /if\(!o\.force && zonesVues\.has\(cle\)\) return Promise\.resolve\(\[\]\);/);
 });
 

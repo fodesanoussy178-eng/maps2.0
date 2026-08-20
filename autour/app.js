@@ -341,7 +341,10 @@ const ZOOM_ZONE_MAX = 15;
    endroit, écran vide, aucune explication. */
 const ZOOM_ZONE_MIN = ZOOM_MIN_CHARGEMENT;
 
-async function rechercheGeographique(q, signal){
+async function rechercheGeographique(q, generationOuSignal){
+  const generationRecherche = generationOuSignal && generationOuSignal.controleur
+    ? generationOuSignal : null;
+  const signal = generationRecherche ? generationRecherche.signal : generationOuSignal;
   const zone = await geocoderVille(q, null, signal);
   if(!zone || !map) return false;
   /* Le nom de la zone ne doit pas rester un filtre plein texte sur les lieux :
@@ -395,7 +398,16 @@ async function rechercheGeographique(q, signal){
      qui vient d'ailleurs — marqueurs compris, puisque `rendre()` retire ce
      qu'il ne garde pas. */
   definirZoneActive(CTX ? CTX.zoneRecherche(q, centre, zone.emprise || null) : null);
-  annulerChargementsZone();
+  /* Cette génération pilote le CHANGEMENT de portée : elle naît donc dans
+     l'ancienne zone et doit être rattachée à celle qu'elle vient de créer.
+     Les générations de données, elles, restent volontairement périmées. */
+  if(generationRecherche && generationsActives.get(generationRecherche.canal) === generationRecherche)
+    generationRecherche.portee = porteeCourante;
+  /* La génération qui a obtenu cette ville est encore celle que l'appelant
+     doit valider juste après notre retour. L'annuler avec les anciennes
+     requêtes laissait la carte bouger, mais empêchait le panneau de prendre le
+     nouveau contexte. */
+  annulerChargementsZone("recherche:zone");
   /* LE HUB DE LA VILLE DEMANDÉE D'ABORD. Les tuiles précalculées existent pour
      les grands centres ; si celle de la ville visée est là, elle remplit
      l'écran sans attendre Overpass. Elle porte la portée du moment : arrivée
@@ -530,12 +542,37 @@ const favorisEnMemoire = new Map();
    Toute la question « est-ce que c'est ouvert » passe par availability.js.
    Aucun écran ne relit un opening_hours de son côté, sinon la carte et la
    fiche finissent par se contredire. */
+const disponibilitesParObjet = new WeakMap();
+let instantDisponibiliteDuTour = null;
+
+function instantDisponibilite(){
+  if(instantDisponibiliteDuTour != null) return instantDisponibiliteDuTour;
+  instantDisponibiliteDuTour = instantCreneau().getTime();
+  queueMicrotask(()=>{ instantDisponibiliteDuTour = null; });
+  return instantDisponibiliteDuTour;
+}
+
 function dispoDe(l, arrivee, quand){
   const module = window.AutourAvailability;
   if(!module) return null;
   // l'instant est paramétrable : le moteur temporel évalue une exposition
   // longue à un moment donné, pas forcément le créneau affiché
-  return module.getPlaceAvailability(l, quand == null ? instantCreneau().getTime() : quand, arrivee);
+  const instant = quand == null ? instantDisponibilite() : quand;
+  if(!l || (typeof l !== "object" && typeof l !== "function"))
+    return module.getPlaceAvailability(l, instant, arrivee);
+  let cache = disponibilitesParObjet.get(l);
+  if(!cache){ cache = new Map(); disponibilitesParObjet.set(l, cache); }
+  /* Les horaires des lieux permanents sont exprimés à la minute. Les garder
+     pendant cette même minute évite de reparcourir leur planning à chaque
+     arrivée de source. Un événement daté conserve l'instant exact : aucune
+     frontière start/end n'est arrondie pour gagner du temps. */
+  const cleTemps = estTemporaire(l) ? instant : Math.floor(instant / 60000);
+  const cle = cleTemps+"|"+(arrivee == null ? "" : arrivee);
+  if(cache.has(cle)) return cache.get(cle);
+  const resultat = module.getPlaceAvailability(l, instant, arrivee);
+  if(cache.size >= 4) cache.clear();
+  cache.set(cle, resultat);
+  return resultat;
 }
 
 /* Le libellé exact demandé par cas : « Ouvert • ferme à 23:30 », « Fermé •
@@ -569,17 +606,27 @@ const PERF = {
   lcp: 0,
   temps: Object.create(null),
   rendus: {panneau:0, carte:0},
+  cpu: Object.create(null),
   erreurs: 0,
   reseau: {total:0, demarrage:0, parSource:Object.create(null)},
   demarrageTermine: false,
+  expositionPlanifiee: false,
   exposer(){
     try{
       document.documentElement.dataset.autourPerf = JSON.stringify({
         temps:this.temps, reseau:this.reseau, rendus:this.rendus,
-        erreurs:this.erreurs, demarrageTermine:this.demarrageTermine,
+        cpu:this.cpu, erreurs:this.erreurs, demarrageTermine:this.demarrageTermine,
         cache:this.cache,
       });
     }catch(e){}
+  },
+  exposerBientot(){
+    if(this.expositionPlanifiee) return;
+    this.expositionPlanifiee = true;
+    queueMicrotask(()=>{
+      this.expositionPlanifiee = false;
+      this.exposer();
+    });
   },
   jalon(nom){
     // un jalon décrit un premier instant : le remarquer cent fois le noierait
@@ -613,6 +660,18 @@ const PERF = {
     c.durees[source] = Math.max(c.durees[source] || 0, ms);
     if(ms >= this.SEUIL_LENT_MS && c.lentes.indexOf(source) < 0) c.lentes.push(source);
     this.exposer();
+    return ms;
+  },
+  travail(nom, depart){
+    const ms = Math.round((performance.now ? performance.now() : Date.now()) - depart);
+    const ligne = this.cpu[nom] || (this.cpu[nom] = {nombre:0,totalMs:0,pireMs:0});
+    ligne.nombre += 1;
+    ligne.totalMs += ms;
+    ligne.pireMs = Math.max(ligne.pireMs, ms);
+    /* Plusieurs sous-phases sont mesurées dans une même pile d'exécution.
+       Publier le JSON après chacune ajoutait au travail que l'on mesure ; une
+       seule publication en microtâche conserve les mêmes chiffres exposés. */
+    this.exposerBientot();
     return ms;
   },
   /* Le cache : combien de fois on a évité le réseau. Un « hit » n'est pas une
@@ -1961,16 +2020,114 @@ function emprisePublications(lat, lng){
   return { s:lat-dLat, n:lat+dLat, o:lng-dLng, e:lng+dLng };
 }
 
-async function chargerPublications(lat,lng){
-  if(!sbLecture) return [];
-  const b = emprisePublications(lat, lng);
-  PERF.requete("supabase_publications");
-  const { data, error } = await sbLecture.rpc("publications_proches", {
-    p_sud:Number(b.s), p_ouest:Number(b.o),
-    p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+/* ---- Cache territorial Supabase -----------------------------------------
+   Les publications et les événements canoniques étaient demandés par trois
+   chemins voisins au démarrage (initialisation, zone et données temporaires).
+   Le réseau recevait donc trois fois les deux mêmes RPC, plus trois résolutions
+   de territoire. Cette couche possède une seule requête en vol par zone et un
+   petit cache stale-while-revalidate : une réponse récente s'affiche sans
+   attendre, puis une version plus fraîche la remplace uniquement si elle a
+   réellement changé.
+
+   La clé est la cellule géographique arrondie de la requête : elle reste la
+   même pendant l'installation du contexte, mais Lille, Tourcoing et Paris ne
+   peuvent jamais partager une entrée. Quatre
+   zones au plus, trente minutes au plus — assez pour un retour en arrière,
+   trop peu pour transformer un ancien statut temporel en vérité durable. */
+const CLE_CACHE_COUCHES_SUPABASE = "autour:supabase-zones:v1";
+const CACHE_COUCHE_FRAICHE_MS = 5 * 60 * 1000;
+const CACHE_COUCHE_MAX_MS = 30 * 60 * 1000;
+const CACHE_COUCHES_ZONES_MAX = 4;
+const requetesCouchesSupabase = new Map();
+const signaturesCouchesPubliees = new Map();
+let cacheCouchesSupabaseMemo = null;
+
+function cleCoucheSupabase(lat,lng){
+  return "geo@"+Number(lat).toFixed(2)+","+Number(lng).toFixed(2);
+}
+
+function cacheCouchesSupabase(){
+  if(cacheCouchesSupabaseMemo) return cacheCouchesSupabaseMemo;
+  let cache = {};
+  try{ cache = JSON.parse(localStorage.getItem(CLE_CACHE_COUCHES_SUPABASE) || "{}") || {}; }
+  catch(e){ cache = {}; }
+  const maintenant = Date.now();
+  Object.keys(cache).forEach(cle=>{
+    const entree = cache[cle];
+    if(!entree || !Number.isFinite(entree.t) || maintenant-entree.t > CACHE_COUCHE_MAX_MS)
+      delete cache[cle];
   });
-  if(error){ console.error("Lecture des publications :", error.message); return []; }
-  return (data||[]).map(versLieu);
+  cacheCouchesSupabaseMemo = cache;
+  return cache;
+}
+
+function ecrireCacheCouchesSupabase(cle, entree){
+  const cache = cacheCouchesSupabase();
+  cache[cle] = {
+    t:entree.t,
+    publications:entree.publications || [],
+    evenements:entree.evenements || [],
+  };
+  const cles = Object.keys(cache).sort((a,b)=>(cache[b].t||0)-(cache[a].t||0));
+  cles.slice(CACHE_COUCHES_ZONES_MAX).forEach(c=>delete cache[c]);
+  try{ localStorage.setItem(CLE_CACHE_COUCHES_SUPABASE, JSON.stringify(cache)); }
+  catch(e){
+    /* Une image ou une longue description peut remplir le quota. On garde la
+       zone courante, qui est précisément celle dont la prochaine ouverture a
+       besoin, au lieu de rendre le cache entier inutilisable. */
+    cles.slice(1).forEach(c=>delete cache[c]);
+    try{ localStorage.setItem(CLE_CACHE_COUCHES_SUPABASE, JSON.stringify(cache)); }
+    catch(e2){}
+  }
+}
+
+function signatureCoucheSupabase(entree){
+  const champs = (l)=>[
+    l && l.id, l && l.titre, l && l.title,
+    l && l.debutLe, l && l.finLe, l && l.start_at, l && l.end_at,
+    l && l.temporalStatus, l && l.temporal_status,
+    l && l.status, l && l.annule, l && l.cancelled,
+    l && l.lat, l && l.lng, l && l.majLe, l && l.last_synced_at,
+  ].join("~");
+  return [
+    ...(entree.publications || []).map(champs),
+    "#",
+    ...(entree.evenements || []).map(champs),
+  ].join("|");
+}
+
+function coucheSupabaseToujoursCourante(cle, portee, lat, lng){
+  if(!porteeValide(portee)) return false;
+  const centre = centreDonnees();
+  if(!centre) return false;
+  return cleCoucheSupabase(centre[0], centre[1]) === cle &&
+    distanceM(centre[0], centre[1], lat, lng) < 1600;
+}
+
+function publierCoucheSupabase(cle, entree, portee, lat, lng){
+  if(!coucheSupabaseToujoursCourante(cle, portee, lat, lng)) return false;
+  const signature = signatureCoucheSupabase(entree);
+  if(signaturesCouchesPubliees.get(cle) === signature) return false;
+  signaturesCouchesPubliees.set(cle, signature);
+  fusionnerLots([
+    {donnees:entree.publications, flux:"user"},
+    {donnees:entree.evenements, flux:"external"},
+  ]);
+  return !!((entree.publications || []).length || (entree.evenements || []).length);
+}
+
+async function chargerPublications(lat,lng){
+  if(!sbLecture) return null;
+  const b = emprisePublications(lat, lng);
+  const fini = PERF.requete("supabase_publications");
+  try{
+    const { data, error } = await sbLecture.rpc("publications_proches", {
+      p_sud:Number(b.s), p_ouest:Number(b.o),
+      p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+    });
+    if(error){ console.error("Lecture des publications :", error.message); return null; }
+    return (data||[]).map(versLieu);
+  } finally { fini(); }
 }
 
 /* ---- Les événements de la couche canonique -------------------------------
@@ -2025,20 +2182,80 @@ function versEvenementCanonique(e){
 }
 
 async function chargerEvenementsCanoniques(lat,lng){
-  if(!sbLecture) return [];
+  if(!sbLecture) return null;
   const b = emprisePublications(lat, lng);
-  PERF.requete("supabase_evenements");
-  const { data, error } = await sbLecture.rpc("evenements_proches", {
-    p_sud:Number(b.s), p_ouest:Number(b.o),
-    p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+  /* La résolution mutualise la synchronisation par territoire. Elle ne
+     déclenche aucune collecte et n'influence ni l'interface ni le classement
+     de cette requête ; une zone inconnue devient seulement un candidat DB. */
+  const finTerritoire = PERF.requete("supabase_territoire");
+  void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
+    p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
+  })).then(({error})=>{
+    if(error) console.error("Résolution du territoire :", error.message);
+  }).catch(()=>{}).finally(finTerritoire);
+  const fini = PERF.requete("supabase_evenements");
+  try{
+    const { data, error } = await sbLecture.rpc("evenements_proches", {
+      p_sud:Number(b.s), p_ouest:Number(b.o),
+      p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+    });
+    if(error){
+      /* Une couche indisponible ne vide pas la carte : les autres sources
+         restent, et l'utilisateur voit moins plutôt que rien. */
+      console.error("Lecture des événements :", error.message);
+      return null;
+    }
+    return (data||[]).map(versEvenementCanonique).filter(Boolean);
+  } finally { fini(); }
+}
+
+async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
+  if(requetesCouchesSupabase.has(cle)) return requetesCouchesSupabase.get(cle);
+  let promesse;
+  promesse = (async()=>{
+    if(!(await connecter())) return precedent || {
+      t:0, publications:[], evenements:[], okPublications:false, okEvenements:false,
+    };
+    const [publications, evenements] = await Promise.all([
+      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng)
+    ]);
+    const okPublications = Array.isArray(publications);
+    const okEvenements = Array.isArray(evenements);
+    const entree = {
+      t:Date.now(),
+      publications:okPublications ? publications : ((precedent && precedent.publications) || []),
+      evenements:okEvenements ? evenements : ((precedent && precedent.evenements) || []),
+      okPublications, okEvenements,
+    };
+    /* Une panne ne transforme jamais une réponse valide en tableau vide. */
+    if(okPublications || okEvenements){
+      cacheCouchesSupabase()[cle] = entree;
+      ecrireCacheCouchesSupabase(cle, entree);
+      publierCoucheSupabase(cle, entree, portee, lat, lng);
+    }
+    return entree;
+  })().finally(()=>{
+    if(requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
   });
-  if(error){
-    /* Une couche indisponible ne vide pas la carte : les autres sources
-       restent, et l'utilisateur voit moins plutôt que rien. */
-    console.error("Lecture des événements :", error.message);
-    return [];
+  requetesCouchesSupabase.set(cle, promesse);
+  return promesse;
+}
+
+function chargerCoucheSupabase(lat,lng){
+  const cle = cleCoucheSupabase(lat,lng);
+  const portee = porteeCourante;
+  const cache = cacheCouchesSupabase();
+  const entree = cache[cle];
+  const age = entree ? Date.now()-entree.t : Infinity;
+  if(entree && age <= CACHE_COUCHE_MAX_MS){
+    PERF.touche("supabase_zone", true);
+    publierCoucheSupabase(cle, entree, portee, lat, lng);
+    if(age > CACHE_COUCHE_FRAICHE_MS)
+      void rafraichirCoucheSupabase(cle, lat, lng, entree, portee);
+    return Promise.resolve(Object.assign({},entree,{depuisCache:true}));
   }
-  return (data||[]).map(versEvenementCanonique).filter(Boolean);
+  PERF.touche("supabase_zone", false);
+  return rafraichirCoucheSupabase(cle, lat, lng, null, portee);
 }
 
 const Store = {
@@ -3185,8 +3402,14 @@ function familleDedupLieu(l){
   return ["resto","fastfood","cafe","bar"].includes(l && l.cat) ? "restauration" : (l && l.cat);
 }
 function fusionnerFichesFournisseurs(candidats){
+  const liste = candidats || [];
+  const aGoogle = liste.some(estGooglePlaces);
+  const aAutre = liste.some(l=>!estGooglePlaces(l));
+  /* Sans les deux familles, aucun rapprochement n'est possible : parcourir
+     toutes les paires ne pouvait donc que rendre la même liste. */
+  if(!aGoogle || !aAutre) return liste.slice();
   const fusionnes=[];
-  (candidats||[]).forEach(l=>{
+  liste.forEach(l=>{
     const i=fusionnes.findIndex(existant=>{
       if(!l || !existant || estTemporaire(l) || estTemporaire(existant)) return false;
       if(estGooglePlaces(l) === estGooglePlaces(existant)) return false;
@@ -3239,7 +3462,8 @@ function lieuxDeCategorie(cat){ return indexCategories.get(cat) || []; }
 function categorieEnMemoire(cat){ return lieuxDeCategorie(cat).length > 0; }
 
 function fusionner(nouveaux, flux, opts){
-  if(!nouveaux || !nouveaux.length) return;
+  if(!nouveaux || !nouveaux.length) return false;
+  const debutCpu = performance.now();
   // les lieux changent : la mémoire de disponibilité ne vaut plus rien
   oublierItemsMaintenant();
   const o = opts || {};
@@ -3258,8 +3482,17 @@ function fusionner(nouveaux, flux, opts){
   else if(type === "user") userPublications = dedupliques;
   else if(type === "datatourisme") datatourismePlaces = dedupliques;
   else permanentPlaces = dedupliques;
-  reconstruireLieux();
   journaliserPipeline(source, nouveaux.length, classes, dedupliques);
+  PERF.travail("fusion:"+type, debutCpu);
+  if(o.differerReconstruction) return true;
+  finaliserFusion(o);
+  return true;
+}
+
+function finaliserFusion(opts){
+  const debutCpu = performance.now();
+  const o = opts || {};
+  reconstruireLieux();
   if(!window.__premiereDonnee){
     window.__premiereDonnee = true;
     performance.mark("autour:donnees");
@@ -3274,6 +3507,20 @@ function fusionner(nouveaux, flux, opts){
     planifierRendu({carte:true, accueil:true, filtres:true});
     ouvrirLieuPartage();    // le lieu d'un lien partagé s'ouvre dès qu'il arrive
   }
+  PERF.travail("reconstruction", debutCpu);
+}
+
+/* Deux RPC Supabase arrivent ensemble. Mettre à jour leurs flux séparément
+   mais reconstruire/dédupliquer la collection UNE seule fois conserve le
+   résultat final tout en supprimant le travail quadratique intermédiaire. */
+function fusionnerLots(lots, opts){
+  let modifie = false;
+  (lots || []).forEach(lot=>{
+    if(fusionner(lot && lot.donnees, lot && lot.flux,
+      Object.assign({},opts||{},{differerReconstruction:true}))) modifie = true;
+  });
+  if(modifie) finaliserFusion(opts);
+  return modifie;
 }
 
 /* Une même génération peut interroger plusieurs fournisseurs en parallèle.
@@ -3593,9 +3840,12 @@ function generationCourante(generation){
 /* Changer de ville coupe court : toute requête en vol est avortée, la mémoire
    des chargements est vidée, et le garde-fou « on a déjà chargé à 800 m »
    est levé pour que la nouvelle zone parte vraiment. */
-function annulerChargementsZone(){
-  generationsActives.forEach(g=>{ try{ g.controleur.abort(); }catch(e){} });
-  generationsActives.clear();
+function annulerChargementsZone(saufCanal){
+  generationsActives.forEach((g,canal)=>{
+    if(canal === saufCanal) return;
+    try{ g.controleur.abort(); }catch(e){}
+    generationsActives.delete(canal);
+  });
   chargementsZone.clear();
   chargementEnCours = false;
   dernierChargement = null;
@@ -3739,19 +3989,16 @@ function chargerZone(lat, lng, opts){
     })
   );
   if(!o.cats && !o.osmSeulement) travaux.push(
-    connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
-      if(!generationCourante(generation) || !pubs || !pubs.length) return;
-      sourceExploitable = true;
-      fusionner(pubs,"user");
-      PERF.jalon("supabase_publications_ready");
-    })
-  );
-  if(!o.cats && !o.osmSeulement) travaux.push(
-    connecter().then(()=>chargerEvenementsCanoniques(lat,lng)).then(evts=>{
-      if(!generationCourante(generation) || !evts || !evts.length) return;
-      sourceExploitable = true;
-      fusionner(evts,"external");
-      PERF.jalon("supabase_evenements_ready");
+    chargerCoucheSupabase(lat,lng).then(couche=>{
+      if(!generationCourante(generation) || !couche) return;
+      if((couche.publications || []).length){
+        sourceExploitable = true;
+        PERF.jalon("supabase_publications_ready");
+      }
+      if((couche.evenements || []).length){
+        sourceExploitable = true;
+        PERF.jalon("supabase_evenements_ready");
+      }
     })
   );
   let promesse;
@@ -3835,21 +4082,13 @@ function chargerDonneesTemporaires(lat, lng, opts){
       if(ev.length) fusionner(ev,"external");
     })
   ];
-  if(!o.sansPublications) travaux.push(
-    connecter().then(()=>chargerPublications(lat,lng)).then(pubs=>{
-      if(!generationCourante(generation) || !Array.isArray(pubs)) return;
-      sourceExploitable = true;
-      if(pubs.length) fusionner(pubs,"user");
-    })
-  );
-  /* La couche canonique est demandée même quand les publications ne le sont
-     pas : ce sont deux jeux distincts, et c'est elle qui porte les événements
-     institutionnels. */
+  /* Les deux RPC forment une seule couche territoriale : elle possède une
+     requête en vol, une publication et une reconstruction de collection. */
   travaux.push(
-    connecter().then(()=>chargerEvenementsCanoniques(lat,lng)).then(evts=>{
-      if(!generationCourante(generation) || !Array.isArray(evts)) return;
-      sourceExploitable = true;
-      if(evts.length) fusionner(evts,"external");
+    chargerCoucheSupabase(lat,lng).then(couche=>{
+      if(!generationCourante(generation) || !couche) return;
+      sourceExploitable = couche.okPublications || couche.okEvenements ||
+        !!couche.depuisCache || sourceExploitable;
     })
   );
   let promesse;
@@ -3864,7 +4103,7 @@ function chargerDonneesTemporaires(lat, lng, opts){
     if(chargementsTemporaires.get(cle) === promesse) chargementsTemporaires.delete(cle);
     if(generationCourante(generation)){
       charge(null);
-      majAccueil();
+      planifierRendu({accueil:true, feuille:true});
       terminerGeneration(generation);
     }
   });
@@ -4445,21 +4684,18 @@ function chargerLeDemarrage(rapide){
       sourcePrete("datatourisme_done");
     }),
 
-    avecDelai(connecter().then(()=>chargerPublications(lat,lng)),4500,[],signal)
-      .then(pubs=>{
-        if(!generationCourante(generation) || !pubs || !pubs.length) return;
-        fusionner(pubs,"user");
-        sourcePrete("supabase_publications_ready");
-      }),
-
-    /* Au démarrage à froid, c'est la source d'événements la plus rapide : une
-       seule requête vers notre propre base, sans détour par un catalogue
-       tiers. Elle a donc le même budget que les publications. */
-    avecDelai(connecter().then(()=>chargerEvenementsCanoniques(lat,lng)),4500,[],signal)
-      .then(evts=>{
-        if(!generationCourante(generation) || !evts || !evts.length) return;
-        fusionner(evts,"external");
-        sourcePrete("supabase_evenements_ready");
+    /* Au démarrage à froid, la couche territoriale est une seule opération :
+       cache éventuel d'abord, deux RPC parallèles ensuite, une publication.
+       Les autres chemins du démarrage partagent exactement cette promesse. */
+    avecDelai(chargerCoucheSupabase(lat,lng),4500,null,signal)
+      .then(couche=>{
+        if(!generationCourante(generation) || !couche) return;
+        if((couche.publications || []).length)
+          PERF.jalon("supabase_publications_ready");
+        if((couche.evenements || []).length)
+          PERF.jalon("supabase_evenements_ready");
+        if((couche.publications || []).length || (couche.evenements || []).length)
+          sourcePrete("supabase_pret");
       }),
 
     avecDelai(connecter().then(()=>Promise.allSettled([rafraichirCanaux(), chargerFavoris()])),4500,[],signal)
@@ -5236,18 +5472,20 @@ function empreinteMarqueur(l){
 }
 
 function rendre(){
+  const debutCpu = performance.now();
   PERF.rendus.carte += 1;
   PERF.exposer();
   // la pastille ne dépend pas de la carte : elle doit suivre même si Leaflet
   // n'est pas arrivé, sinon elle reste muette là où l'application marche
   majBadgeMaintenant();
-  if(!map) return;
+  if(!map){ PERF.travail("rendu_carte", debutCpu); return; }
   majIndexEvenements();
   if(!rendre.mesure){ rendre.mesure = true; PERF.jalon("markers_ready"); }
   // en navigation, la carte n'appartient qu'à l'itinéraire
   if(modeNav){
     marqueurs.forEach(m=>map.removeLayer(m));
     marqueurs.clear();
+    PERF.travail("rendu_carte", debutCpu);
     return;
   }
   const garder = new Set();
@@ -5340,6 +5578,7 @@ function rendre(){
   // les étiquettes se départagent une fois les marqueurs réellement posés ; un
   // seul frame reste en attente même si plusieurs sources arrivent ensemble.
   planifierCollisions();
+  PERF.travail("rendu_carte", debutCpu);
 }
 
 /* ================================================================== */
@@ -7298,13 +7537,14 @@ async function chargerAide(lat,lng,options){
         zonesAideChargees.set(contexte.cle,[lat,lng]);
     }
     finally{
-      if(!generationCourante(generation)) return;
-      aideEnCours = false;
-      const trouve = contexte.besoins.length
-        ? lieux.some(l=>AIDE && AIDE.estSolution(l,contexte.besoins))
-        : lieux.some(l=>correspondUneCategorie(l,SET_AIDE));
-      definirEtatRechercheVersionne("places",trouve ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
-      terminerGeneration(generation);
+      if(generationCourante(generation)){
+        aideEnCours = false;
+        const trouve = contexte.besoins.length
+          ? lieux.some(l=>AIDE && AIDE.estSolution(l,contexte.besoins))
+          : lieux.some(l=>correspondUneCategorie(l,SET_AIDE));
+        definirEtatRechercheVersionne("places",trouve ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
+        terminerGeneration(generation);
+      }
     }
   })();
   chargementsAideEnCours.set(cleChargement,promesse);
@@ -8268,6 +8508,8 @@ function fermerFeuille2(options){
 
 /* Rendu de la feuille. Trois écrans possibles, jamais mélangés. */
 function majFeuille2(){
+  const debutCpu = performance.now();
+  try{
   const f = $("#feuilleBesoins");
   if(!f || feuilleNiveau === null || modeNav || modePose){
     if(f) f.hidden = true;
@@ -8393,6 +8635,9 @@ function majFeuille2(){
   brancherFeuille2();
   restaurerPanneau(corps, stabilite);
   requestAnimationFrame(synchroniserHauteurFeuille);
+  } finally {
+    PERF.travail("rendu_panneau", debutCpu);
+  }
 }
 
 /* Trois liens discrets, tout en bas : le hasard, le partage, et le réglage
@@ -9352,6 +9597,8 @@ function recoDejaCalculee(){
    touche QUE la zone des recommandations : rien au-dessus ne bouge, et
    surtout pas le bloc « Maintenant » ni la navigation. */
 function poserRecommandations(jeton, titre){
+  const debutCpu = performance.now();
+  try{
   if(jeton !== generationAccueil) return;      // la zone a changé entre-temps
   const corps = $("#fbCorps");
   const zone = corps && corps.querySelector("[data-reco-zone]");
@@ -9395,6 +9642,9 @@ function poserRecommandations(jeton, titre){
      on les rebranche sur la zone qu'on vient de remplir, et sur elle seule. */
   brancherGestesRecommandations(zone);
   PERF.jalon("recommandations_posees");
+  } finally {
+    PERF.travail("recommandations", debutCpu);
+  }
 }
 
 const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
@@ -10202,14 +10452,26 @@ function brancherFeuille2(){
   // les quatre groupes de temps : un seul geste, aucune page de plus
   corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
     if(creneau === b.dataset.creneau) return;
-    creneau = b.dataset.creneau;
+    const cible = b.dataset.creneau;
+    creneau = cible;
     // « n'afficher que ce qui est utilisable » n'a de sens que dans
     // « maintenant » : ailleurs c'est la date qui trie, pas l'ouverture
     filtreMaintenant = creneau === "maintenant";
-    majFeuille2();
+    /* Le geste répond avant le classement. Le bouton choisi prend son état
+       dans le même événement ; carte, contenu et filtres suivent au prochain
+       frame. Sur CPU ralenti, « Ce soir » attendait autrement 250 ms avant de
+       seulement paraître sélectionné. */
+    const barre = b.closest("[role=tablist]");
+    if(barre) barre.querySelectorAll("[data-creneau]").forEach(onglet=>{
+      const actif = onglet === b;
+      onglet.classList.toggle("actif", actif);
+      onglet.setAttribute("aria-selected", String(actif));
+    });
     reinitialiserScrollFeuille();
-    rendre();            // la carte suit le groupe choisi
-    majFiltres();
+    apresPeinture(()=>{
+      if(creneau === cible)
+        planifierRendu({feuille:true, carte:true, filtres:true});
+    });
   });
 
   // sans position connue : les deux gestes qui débloquent, et les envies
@@ -10708,13 +10970,14 @@ const ACCUEIL_MAX = 7;
 const ACCUEIL_SEUIL = 55;
 
 function majAccueil(){
+  const debutCpu = performance.now();
   /* La carte n'est plus une condition. Elle vient d'un CDN, elle peut manquer
      ou arriver en retard ; les recommandations, elles, ne dépendent que des
      lieux et de la position. Les faire attendre Leaflet rendait l'application
      entièrement vide quand le CDN toussait. */
   majBadgeMaintenant();
-  if(!positionMoi || modeNav) return;
-  if(selectionAccueil === false) return;
+  if(!positionMoi || modeNav){ PERF.travail("accueil", debutCpu); return; }
+  if(selectionAccueil === false){ PERF.travail("accueil", debutCpu); return; }
   const ctx = contexteActuel();
   /* Le point de référence est celui du classement — soi, ou la zone qu'on est
      parti voir. Chercher « Paris » depuis Tourcoing déplaçait bien la carte,
@@ -10726,12 +10989,20 @@ function majAccueil(){
   // en mode Aide on accepte d'aller plus loin : cinq kilomètres pour un
   // hébergement d'urgence, ce n'est pas la même chose que pour un café
   const rayon = modeAide ? 6000 : 2500;
-  let notes = visibles()
-    .filter(l=>nomExploitable(l) && proposableAuto(l, ctx))
+  let debutEtape = performance.now();
+  const visiblesAccueil = visibles();
+  PERF.travail("accueil:visibles", debutEtape);
+  debutEtape = performance.now();
+  let notes = visiblesAccueil
+    .filter(l=>nomExploitable(l) && proposableAuto(l, ctx));
+  PERF.travail("accueil:filtrage", debutEtape);
+  debutEtape = performance.now();
+  notes = notes
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
     .filter(l=>l.dist < rayon)
     .map(l=>{ const r = scoreLieu(l, ctx); return Object.assign(l, {score:r.score, raison:r.raison}); })
     .sort((a,b)=>b.score - a.score);
+  PERF.travail("accueil:classement", debutEtape);
   if(modeAide && !montrerFermes)
     notes = ecarterFermesSiAlternative(notes.map(l=>({l}))).map(x=>x.l);
   /* La réserve du jeu rapide : les meilleurs candidats du quartier, seuil
@@ -10802,16 +11073,22 @@ function majAccueil(){
     const jetonCarte = ++generationAccueil;
     if(annulerPourToiDifferee){ annulerPourToiDifferee(); annulerPourToiDifferee = null; }
     const affiner = ()=>{
+      const debutAffinage = performance.now();
       if(jetonCarte !== generationAccueil) return;
       const pourToi = recommandationsAccueil(ACCUEIL_MAX);
-      if(!pourToi.length || jetonCarte !== generationAccueil) return;
+      if(!pourToi.length || jetonCarte !== generationAccueil){
+        PERF.travail("classement_differe", debutAffinage); return;
+      }
       const ids = pourToi.slice(0,ACCUEIL_MAX).map(l=>l.id);
       // rien n'a changé : on ne redessine pas pour un résultat identique
-      if(ids.join("|") === (selectionAccueil || []).join("|")) return;
+      if(ids.join("|") === (selectionAccueil || []).join("|")){
+        PERF.travail("classement_differe", debutAffinage); return;
+      }
       selectionAccueil = ids;
       PERF.jalon("selection_affinee");
       rendre();
       if(feuilleNiveau !== null) majFeuille2();
+      PERF.travail("classement_differe", debutAffinage);
     };
     annulerPourToiDifferee = ORDO
       ? ORDO.differer(affiner, {timeout:400, valide:()=>jetonCarte === generationAccueil})
@@ -10825,9 +11102,10 @@ function majAccueil(){
   memoriserJeuRapide(choisis, reserve);
 
   // le rendu appartient à la feuille : ici on ne fait que choisir
-  if(renduEnLot) return;
+  if(renduEnLot){ PERF.travail("accueil", debutCpu); return; }
   if(feuilleNiveau !== null) majFeuille2();
   rendre();
+  PERF.travail("accueil", debutCpu);
 }
 
 /* Le nom est conservé : plusieurs endroits l'appellent après une publication
@@ -11311,7 +11589,7 @@ async function lancerRecherche(){
        porte plus la génération courante n'est simplement plus regardée. */
     const generation = nouvelleGeneration("recherche:zone", destination, true);
     charge("Recherche de "+destination+"…");
-    const trouvee = await rechercheGeographique(destination, generation.signal);
+    const trouvee = await rechercheGeographique(destination, generation);
     if(!generationCourante(generation)) return;   // une autre recherche a pris la main
     charge(null);
     terminerGeneration(generation);

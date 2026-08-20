@@ -660,7 +660,7 @@ test("l'envoi d'image accepte ce que produit réellement un téléphone",()=>{
   assert.match(html,/const IMAGE_COTE_MAX = 1600;/);
   assert.match(html,/toBlob\(r, "image\/jpeg", \.82\)/);
   // un format illisible ne bloque pas la publication
-  assert.match(html,/return null;   \/\/ format illisible/);
+  assert.match(html,/return null; {3}\/\/ format illisible/);
 });
 
 /* ---- Favoris et fiche compacte ----------------------------------------- */
@@ -812,8 +812,8 @@ test("quatre régimes gradués par distance, pas une frontière",()=>{
   for(const [nom, n] of [["local",10],["proche",5],["voisine",4],["loin",3]])
     assert.match(html, new RegExp(nom+":\\s*\\{ resultats:\\s*"+n),
       "le régime "+nom+" doit montrer "+n+" résultats");
-  assert.match(html,/const SEUIL_LOCAL_M   = 8000;/);
-  assert.match(html,/const SEUIL_PROCHE_M  = 30000;/);
+  assert.match(html,/const SEUIL_LOCAL_M {3}= 8000;/);
+  assert.match(html,/const SEUIL_PROCHE_M {2}= 30000;/);
   assert.match(html,/const SEUIL_VOISINE_M = 120000;/);
   // l'emprise reconnaît qu'on est DANS la ville, elle n'exclut jamais un riverain
   assert.match(html,/dansEmprise\(pos, zone\.emprise\) \|\| d <= SEUIL_LOCAL_M/);
@@ -1123,7 +1123,7 @@ test("« Revenir autour de moi » apparaît dès que la carte s'est déplacée",
 test("la navigation nomme le produit",()=>{
   for(const t of ["explorer","creer","favoris","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
-  assert.match(html,/Explorer\n  <\/button>/);
+  assert.match(html,/Explorer\n {2}<\/button>/);
   // le temps se choisit DANS Explorer, pas dans la barre du bas
   assert.match(html,/function ongletsTemps\(\)\{/);
   for(const label of ["Maintenant","Ce soir","Ce week-end","À venir"])
@@ -1158,8 +1158,8 @@ test("les données de découverte transport restent classées par mode",()=>{
   assert.match(html,/\["railway","tram_stop","tram"\]/);
   assert.match(html,/\["railway","station","train"\], \["railway","halt","train"\]/);
   // Bus et tram ne partagent plus une seule catégorie
-  assert.match(html,/tram:     \{label:"Tram"/);
-  assert.match(html,/train:    \{label:"Gares"/);
+  assert.match(html,/tram: {5}\{label:"Tram"/);
+  assert.match(html,/train: {4}\{label:"Gares"/);
   assert.doesNotMatch(html,/label:"Bus & tram"/);
 });
 
@@ -1897,7 +1897,7 @@ test("un seul rendu par image, quel que soit le nombre de sources",()=>{
   const finRendu = html.indexOf("/* ================================================================== */\n/*  Feuilles",debutRendu);
   assert.doesNotMatch(html.slice(debutRendu,finRendu),/majFeuille2\(\)/);
   assert.match(html,/if\(feuilleNiveau !== null\) planifierRendu\(\{feuille:true\}\);/);
-  assert.match(html,/if\(renduEnLot\) return;/);
+  assert.match(html,/if\(renduEnLot\)\{[^}]*PERF\.travail\("accueil", debutCpu\); return; \}/);
 });
 
 test("rien de lourd avant la première peinture",()=>{
@@ -1944,7 +1944,7 @@ test("Overpass n'est jamais ce qu'on attend au démarrage",()=>{
   assert.doesNotMatch(critiques,/vraisLieux\(/);
   assert.match(critiques,/avecDelai\(notesGoogle\(/);
   assert.match(critiques,/avecDelai\(lieuxDatatourisme\(/);
-  assert.match(critiques,/chargerPublications\(lat,lng\)/);
+  assert.match(critiques,/chargerCoucheSupabase\(lat,lng\)/);
   assert.doesNotMatch(html,/quartier_complet/);
   // le délai voyage jusqu'à la requête
   assert.match(html,/const delai = o\.delai \|\| OVERPASS_DELAI_DEMANDE;/);
@@ -1959,7 +1959,7 @@ test("la carte est une couche, pas une condition",()=>{
   assert.doesNotMatch(html,/panne\("Carte indisponible"/);
   assert.match(html,/Carte indisponible · les propositions restent affichées/);
   // les recommandations ne dépendent plus de la carte
-  assert.match(html,/function majAccueil\(\)\{[\s\S]{0,400}if\(!positionMoi \|\| modeNav\) return;/);
+  assert.match(html,/function majAccueil\(\)\{[\s\S]{0,400}if\(!positionMoi \|\| modeNav\)\{ PERF\.travail\("accueil", debutCpu\); return; \}/);
   // et la feuille de style de Leaflet ne bloque plus la première peinture
   assert.match(html,/<link rel="stylesheet" media="print" data-leaflet-css/);
 });

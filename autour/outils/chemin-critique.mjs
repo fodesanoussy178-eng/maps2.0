@@ -29,6 +29,8 @@ import { dirname, join, extname, normalize } from "node:path";
 import { chromium, devices } from "playwright";
 
 const RACINE = process.env.RACINE_MESURE || join(dirname(fileURLToPath(import.meta.url)), "..");
+const CHROME = process.env.AUTOUR_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const LEAFLET = process.env.AUTOUR_LEAFLET_DIST || "node_modules/leaflet/dist";
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
@@ -45,33 +47,49 @@ const PROFILS = {
   "defaut": {
     cpu: 4, download: 1.6e6 / 8, upload: 750e3 / 8, latence: 150,
     sources: { overpass: 1800, supabase: 700, openagenda: 1200, commune: 600,
-               datatourisme: 1500, tuiles: 120, cdn: 300 },
+               datatourisme: 1500, google: 500, tuiles: 120, cdn: 300 },
+  },
+  "geolocalisation-lente": {
+    cpu: 4, download: 1.6e6 / 8, upload: 750e3 / 8, latence: 150,
+    geolocation: 4000,
+    sources: { overpass: 1800, supabase: 700, openagenda: 1200, commune: 600,
+               datatourisme: 1500, google: 500, tuiles: 120, cdn: 300 },
+  },
+  "supabase-lent": {
+    cpu: 4, download: 1.6e6 / 8, upload: 750e3 / 8, latence: 150,
+    sources: { overpass: 1800, supabase: 5000, openagenda: 1200, commune: 600,
+               datatourisme: 1500, google: 500, tuiles: 120, cdn: 300 },
+  },
+  "google-lent": {
+    cpu: 4, download: 1.6e6 / 8, upload: 750e3 / 8, latence: 150,
+    sources: { overpass: 1800, supabase: 700, openagenda: 1200, commune: 600,
+               datatourisme: 1500, google: 5000, tuiles: 120, cdn: 300 },
   },
   /* Overpass traîne. Rien d'autre ne change : c'est exactement le cas décrit
      — « si Overpass prend 3 ou 5 secondes ». */
   "overpass-lent": {
     cpu: 4, download: 1.6e6 / 8, upload: 750e3 / 8, latence: 150,
     sources: { overpass: 5000, supabase: 700, openagenda: 1200, commune: 600,
-               datatourisme: 1500, tuiles: 120, cdn: 300 },
+               datatourisme: 1500, google: 500, tuiles: 120, cdn: 300 },
   },
   /* Réseau médiocre de bout en bout. */
   "reseau-lent": {
     cpu: 6, download: 400e3 / 8, upload: 400e3 / 8, latence: 400,
     sources: { overpass: 4000, supabase: 2000, openagenda: 3000, commune: 2000,
-               datatourisme: 3500, tuiles: 800, cdn: 1500 },
+               datatourisme: 3500, google: 3000, tuiles: 800, cdn: 1500 },
   },
   /* Tout ce qui est distant échoue. L'application doit rester utilisable. */
   "hors-ligne": {
     cpu: 4, download: 1.6e6 / 8, upload: 750e3 / 8, latence: 150,
     sources: { overpass: "panne", supabase: "panne", openagenda: "panne",
-               commune: "panne", datatourisme: "panne", tuiles: "panne",
+               commune: "panne", datatourisme: "panne", google: "panne", tuiles: "panne",
                cdn: "panne" },
   },
   /* Un ordinateur de bureau sur fibre : le plancher incompressible du code. */
   "rapide": {
     cpu: 1, download: 0, upload: 0, latence: 0,
     sources: { overpass: 60, supabase: 40, openagenda: 60, commune: 30,
-               datatourisme: 60, tuiles: 10, cdn: 20 },
+               datatourisme: 60, google: 20, tuiles: 10, cdn: 20 },
   },
 };
 
@@ -156,6 +174,7 @@ function categorieDe(url) {
   if (/overpass/.test(url)) return "overpass";
   if (/supabase/.test(url)) return "supabase";
   if (/openagenda/.test(url)) return "openagenda";
+  if (/maps\.googleapis|places\.googleapis/.test(url)) return "google";
   if (/\/api\/commune|nominatim/.test(url)) return "commune";
   if (/\/api\/datatourisme|\/api\/lieux/.test(url)) return "datatourisme";
   if (/basemaps|tile\./.test(url)) return "tuiles";
@@ -183,6 +202,20 @@ async function brancherSources(page, profil, journal) {
     }
     await attendre(Number(reglage) || 0);
     journal.push({ categorie, url, ms: Date.now() - depart });
+    if (categorie === "cdn" && /leaflet.*\.js(?:\?|$)/.test(url)) {
+      return route.fulfill({
+        status: 200, contentType: "application/javascript",
+        headers: { "access-control-allow-origin": "*" },
+        body: await readFile(join(LEAFLET, "leaflet.js"), "utf8"),
+      });
+    }
+    if (categorie === "cdn" && /leaflet.*\.css(?:\?|$)/.test(url)) {
+      return route.fulfill({
+        status: 200, contentType: "text/css",
+        headers: { "access-control-allow-origin": "*" },
+        body: await readFile(join(LEAFLET, "leaflet.css"), "utf8"),
+      });
+    }
     const corps = REPONSES[categorie] ? REPONSES[categorie]() : "";
     return route.fulfill({
       status: 200,
@@ -204,7 +237,7 @@ async function mesurer(nomProfil, options) {
   const port = 8100 + Math.floor(Math.random() * 400);
   const serveur = await servir(port);
   const navigateur = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    executablePath: CHROME,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const contexte = await navigateur.newContext(Object.assign({}, devices["Pixel 5"], {
@@ -225,6 +258,18 @@ async function mesurer(nomProfil, options) {
       }).observe({ type: "longtask", buffered: true });
     } catch (e) {}
   });
+  if (profil.geolocation) {
+    await page.addInitScript((delai) => {
+      const geo = navigator.geolocation;
+      if (!geo) return;
+      const proto = Object.getPrototypeOf(geo);
+      const original = proto && proto.getCurrentPosition;
+      if (typeof original !== "function") return;
+      proto.getCurrentPosition = function (...args) {
+        setTimeout(() => original.apply(this, args), delai);
+      };
+    }, profil.geolocation);
+  }
   const journalReseau = [];
   await brancherSources(page, profil, journalReseau);
 

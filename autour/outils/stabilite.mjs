@@ -167,6 +167,11 @@ function surveiller(page, etiquette) {
     // journalisation volontaire d'une source indisponible : c'est le
     // comportement attendu, pas un défaut
     if (/OpenAgenda|Google Maps|maps\.googleapis|Refused to execute/.test(t)) return;
+    // Dans le scénario qui coupe volontairement toutes les API, les trois
+    // journaux de lecture en échec prouvent le repli ; ils ne sont pas des
+    // anomalies JavaScript de l'application.
+    if (etiquette === "API en panne" &&
+        /Lecture des publications|Résolution du territoire|Lecture des événements/.test(t)) return;
     anomalies.push(`[${etiquette}] console.error : ${t.slice(0, 200)}`);
   });
 }

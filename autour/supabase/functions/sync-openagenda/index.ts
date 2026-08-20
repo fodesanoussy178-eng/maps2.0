@@ -1,15 +1,16 @@
 /* ---------------------------------------------------------------------------
-   sync-openagenda — Ville de Lille, serveur uniquement
+   sync-openagenda — moteur territorial, serveur uniquement
 
-   Deux modes explicites existent :
+   Trois modes explicites existent :
    - mode=test : conserve le test réel ciblé Braderie ;
-   - mode=sync&territory=lille : synchronise l'agenda officiel dans une
-     fenêtre glissante couvrant au minimum la Braderie 2026.
+   - mode=sync&territory=<slug> : synchronise une source enregistrée ;
+   - mode=orchestrate : traite les sources actives avec concurrence bornée.
    Aucun mode implicite et aucune planification dans cette fonction.
 --------------------------------------------------------------------------- */
 
 import {
-  OPENAGENDA_SYNC, OPENAGENDA_TEST, openAgendaSyncPeriod, sourceOpenAgenda,
+  OPENAGENDA_SYNC, OPENAGENDA_TEST, mapWithConcurrency,
+  openAgendaSourceFromRegistry, openAgendaSyncPeriod,
 } from "./config.mjs";
 import {fetchEventsPage, OpenAgendaConfigurationError} from "./client.mjs";
 import {eventDedupKey} from "./dedup.mjs";
@@ -17,6 +18,23 @@ import {listOpenAgendaEvents} from "./pagination.mjs";
 import {isTargetEvent, normalizeOpenAgendaEvent} from "./normalize.mjs";
 
 type Json = Record<string, unknown>;
+
+type OpenAgendaSource = {
+  registryId: number;
+  territoryId: number;
+  provider: "openagenda";
+  territory: string;
+  territoryName: string;
+  territoryGroup: string;
+  agendaSlug: string;
+  agendaUID: string;
+  sourceAgenda: string;
+  sourceAgendaUid: string;
+  officialName: string;
+  timezone: string;
+  priority: number;
+  enabled: boolean;
+};
 
 type NormalizedOccurrence = {
   source_event_id: string;
@@ -62,7 +80,9 @@ type PersistResult = {
 type SyncReport = {
   status: "SUCCESS" | "PARTIAL" | "FAIL";
   provider: "openagenda";
-  territory: "lille";
+  territory: string;
+  territory_source_id: number;
+  source_name: string;
   agenda_uid: string;
   period_start: string;
   period_end: string;
@@ -102,8 +122,8 @@ class SupabaseWriteError extends Error {
 class AlreadyRunningError extends Error {
   runId: number | null;
 
-  constructor(runId: number | null) {
-    super("synchronisation OpenAgenda Lille déjà en cours");
+  constructor(runId: number | null, scope: string) {
+    super(`synchronisation OpenAgenda déjà en cours : ${scope}`);
     this.name = "AlreadyRunningError";
     this.runId = runId;
   }
@@ -176,7 +196,46 @@ async function write(path: string, init: RequestInit): Promise<Json[]> {
   return Array.isArray(rows) ? rows as Json[] : [];
 }
 
-async function openRun(scope: string): Promise<number | null> {
+async function loadRegistrySources({territory, registryId, agendaUID}: {
+  territory?: string | null;
+  registryId?: number | null;
+  agendaUID?: string | null;
+} = {}): Promise<OpenAgendaSource[]> {
+  let path = "territory_sources?select=id,territory_id,provider,source_identifier," +
+    "source_name,active,priority,metadata&provider=eq.openagenda&active=eq.true";
+  if (registryId != null) path += `&id=eq.${registryId}`;
+  if (agendaUID) path += `&source_identifier=eq.${encodeURIComponent(agendaUID)}`;
+  path += "&order=priority.asc,id.asc";
+  const [sourceRows, territoryRows] = await Promise.all([
+    readRows(path),
+    readRows("territories?select=id,slug,name,group_slug,timezone,active,status" +
+      "&active=eq.true&status=eq.active&order=slug.asc"),
+  ]);
+  const territories = new Map(territoryRows.flatMap((row) =>
+    typeof row.id === "number" ? [[row.id, row] as const] : []));
+  const sources: OpenAgendaSource[] = [];
+  for (const row of sourceRows) {
+    const territoryRow = territories.get(Number(row.territory_id));
+    if (!territoryRow) continue;
+    const source = openAgendaSourceFromRegistry(row, territoryRow) as OpenAgendaSource;
+    if (!source.enabled || (territory && source.territory !== territory)) continue;
+    sources.push(source);
+  }
+  return sources;
+}
+
+async function sourceForTerritory(territory: string, registryId?: number | null,
+  agendaUID?: string | null): Promise<OpenAgendaSource> {
+  const sources = await loadRegistrySources({territory, registryId, agendaUID});
+  if (!sources.length) {
+    throw new OpenAgendaConfigurationError(
+      `OpenAgenda : source non configurée pour ${territory}`,
+    );
+  }
+  return sources[0];
+}
+
+async function openRun(scope: string, source: OpenAgendaSource): Promise<number | null> {
   const staleBefore = new Date(Date.now() - STALE_RUN_MS).toISOString();
   await write(
     `event_sync_runs?source=eq.openagenda&scope=eq.${encodeURIComponent(scope)}` +
@@ -194,7 +253,8 @@ async function openRun(scope: string): Promise<number | null> {
       method: "POST",
       headers: {Prefer: "return=representation"},
       body: JSON.stringify([{
-        source: "openagenda", scope, territory: "lille", status: "running",
+        source: "openagenda", scope, territory: source.territory,
+        territory_source_id: source.registryId, status: "running",
       }]),
     });
     const id = rows[0]?.id;
@@ -205,13 +265,17 @@ async function openRun(scope: string): Promise<number | null> {
       method: "POST",
       headers: {Prefer: "return=representation"},
       body: JSON.stringify([{
-        source: "openagenda", scope, territory: "lille", status: "skipped",
+        source: "openagenda", scope, territory: source.territory,
+        territory_source_id: source.registryId, status: "skipped",
         finished_at: new Date().toISOString(), duration_ms: 0,
         errors: "synchronisation déjà en cours",
         details: {reason: "already_running"},
       }]),
     });
-    throw new AlreadyRunningError(typeof rows[0]?.id === "number" ? rows[0].id : null);
+    throw new AlreadyRunningError(
+      typeof rows[0]?.id === "number" ? rows[0].id : null,
+      scope,
+    );
   }
 }
 
@@ -223,7 +287,7 @@ async function closeRun(id: number | null, patch: Json) {
   });
 }
 
-async function loadExistingState(source: ReturnType<typeof sourceOpenAgenda>): Promise<ExistingState> {
+async function loadExistingState(source: OpenAgendaSource): Promise<ExistingState> {
   const [sourceRows, occurrenceRows] = await Promise.all([
     readAllRows(
       `event_sources?select=event_id,external_id&source=eq.openagenda` +
@@ -393,8 +457,7 @@ function validateConfiguration() {
   readSecret();
 }
 
-async function runTest() {
-  const source = sourceOpenAgenda("lille");
+async function runTest(source: OpenAgendaSource) {
   const now = new Date();
   const result = await listOpenAgendaEvents({
     client: {fetchEventsPage}, source,
@@ -444,6 +507,45 @@ async function runTest() {
   };
 }
 
+async function runRecordedTest() {
+  const source = await sourceForTerritory(
+    OPENAGENDA_TEST.territory,
+    null,
+    OPENAGENDA_TEST.agendaUID,
+  );
+  const scope = `${source.territory}:${source.agendaUID}:test`;
+  const started = Date.now();
+  let runId: number | null = null;
+  try {
+    runId = await openRun(scope, source);
+    const result = await runTest(source);
+    await closeRun(runId, {
+      status: "success", duration_ms: Date.now() - started,
+      events_seen: result.events_seen,
+      events_inserted: result.events_inserted,
+      events_updated: result.events_updated,
+      territory: source.territory, territory_source_id: source.registryId,
+      pages: result.pages,
+      details: {
+        mode: "test", pages: result.pages, event_uid: result.event_uid,
+        territory_source_id: source.registryId,
+      },
+    });
+    return result;
+  } catch (error) {
+    if (!(error instanceof AlreadyRunningError)) {
+      const message = error instanceof Error ? error.message : String(error);
+      await closeRun(runId, {
+        status: "error", duration_ms: Date.now() - started,
+        territory: source.territory, territory_source_id: source.registryId,
+        errors: message,
+        details: {mode: "test", agenda_uid: source.agendaUID, error: message},
+      });
+    }
+    throw error;
+  }
+}
+
 function rawUid(event: unknown): string | null {
   if (!event || typeof event !== "object") return null;
   const candidate = (event as {uid?: unknown; id?: unknown}).uid ??
@@ -452,7 +554,8 @@ function rawUid(event: unknown): string | null {
 }
 
 function logSyncSummary(report: SyncReport) {
-  console.log(`[OPENAGENDA SYNC — LILLE]\n\n` +
+  console.log(`[OPENAGENDA SYNC — ${report.territory.toUpperCase()}]\n\n` +
+    `Source:\n${report.source_name}\n\n` +
     `Agenda UID:\n${report.agenda_uid}\n\n` +
     `Période:\n${report.period_start} → ${report.period_end}\n\n` +
     `Pages:\n${report.pages}\n\n` +
@@ -466,13 +569,13 @@ function logSyncSummary(report: SyncReport) {
     `Duration:\n${report.duration_ms} ms`);
 }
 
-async function runSync(): Promise<SyncReport> {
+async function runSync(source: OpenAgendaSource): Promise<SyncReport> {
   const started = Date.now();
   const now = new Date();
   const period = openAgendaSyncPeriod(now);
   const periodStart = period.start;
-  const source = sourceOpenAgenda(OPENAGENDA_SYNC.territory);
-  console.log("[OPENAGENDA SYNC — LILLE]\nSTART");
+  const label = source.territory.toUpperCase();
+  console.log(`[OPENAGENDA SYNC — ${label}]\nSTART`);
 
   const result = await listOpenAgendaEvents({
     client: {fetchEventsPage}, source,
@@ -518,7 +621,7 @@ async function runSync(): Promise<SyncReport> {
     } catch (error) {
       errors += 1;
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[OPENAGENDA SYNC — LILLE] ${normalized.external_id}: ${message}`);
+      console.error(`[OPENAGENDA SYNC — ${label}] ${normalized.external_id}: ${message}`);
     }
   }
 
@@ -526,7 +629,9 @@ async function runSync(): Promise<SyncReport> {
   const report: SyncReport = {
     status: errors === 0 ? "SUCCESS" : (successful > 0 ? "PARTIAL" : "FAIL"),
     provider: "openagenda",
-    territory: "lille",
+    territory: source.territory,
+    territory_source_id: source.registryId,
+    source_name: source.officialName,
     agenda_uid: source.agendaUID,
     period_start: periodStart,
     period_end: period.end,
@@ -560,45 +665,32 @@ async function sameSecret(provided: string, expected: string): Promise<boolean> 
   return difference === 0;
 }
 
-Deno.serve(async (request: Request) => {
-  if (!await sameSecret(request.headers.get("x-sync-secret") ?? "", SYNC_SECRET)) {
-    return Response.json({error: "non autorisé"}, {status: 401});
+async function markSourceResult(source: OpenAgendaSource, status: string) {
+  const at = new Date().toISOString();
+  const patch: Json = status === "SUCCESS"
+    ? {last_success_at: at}
+    : status === "PARTIAL"
+      ? {last_success_at: at, last_failure_at: at}
+      : {last_failure_at: at};
+  await write(`territory_sources?id=eq.${source.registryId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  if (status === "SUCCESS" || status === "PARTIAL") {
+    await write(`territories?id=eq.${source.territoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify({last_synced_at: at}),
+    });
   }
-  const url = new URL(request.url);
-  const mode = url.searchParams.get("mode");
-  const territory = url.searchParams.get("territory");
-  if (mode !== "test" && mode !== "sync") {
-    return Response.json({error: "mode=test ou mode=sync obligatoire"}, {status: 400});
-  }
-  if (mode === "sync" && territory !== OPENAGENDA_SYNC.territory) {
-    return Response.json({error: "territory=lille obligatoire pour mode=sync"}, {status: 400});
-  }
-  try {
-    validateConfiguration();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return Response.json({status: "FAIL", error: message}, {status: 503});
-  }
+}
 
-  const scope = mode === "test" ? "lille:test" : "lille:sync";
-  let runId: number | null = null;
+async function syncRegisteredSource(source: OpenAgendaSource): Promise<Json> {
+  const scope = `${source.territory}:${source.agendaUID}:sync`;
   const started = Date.now();
+  let runId: number | null = null;
   try {
-    runId = await openRun(scope);
-    if (mode === "test") {
-      const result = await runTest();
-      await closeRun(runId, {
-        status: "success", duration_ms: Date.now() - started,
-        events_seen: result.events_seen,
-        events_inserted: result.events_inserted,
-        events_updated: result.events_updated,
-        territory: "lille", pages: result.pages,
-        details: {mode: "test", pages: result.pages, event_uid: result.event_uid},
-      });
-      return Response.json(result);
-    }
-
-    const result = await runSync();
+    runId = await openRun(scope, source);
+    const result = await runSync(source);
     await closeRun(runId, {
       status: result.status === "SUCCESS" ? "success" :
         (result.status === "PARTIAL" ? "partial" : "error"),
@@ -609,6 +701,7 @@ Deno.serve(async (request: Request) => {
       events_merged: result.duplicates,
       events_rejected: result.ignored,
       territory: result.territory,
+      territory_source_id: result.territory_source_id,
       pages: result.pages,
       occurrences_seen: result.occurrences_seen,
       occurrences_inserted: result.occurrences_inserted,
@@ -617,7 +710,9 @@ Deno.serve(async (request: Request) => {
       ignored: result.ignored,
       errors: result.errors ? `${result.errors} erreur(s), voir les logs Edge Function` : null,
       details: {
-        mode: "sync", territory: result.territory, agenda_uid: result.agenda_uid,
+        mode: "sync", territory: result.territory,
+        territory_source_id: result.territory_source_id,
+        source_name: result.source_name, agenda_uid: result.agenda_uid,
         period_start: result.period_start, period_end: result.period_end,
         pages: result.pages, events_normalized: result.events_normalized,
         occurrences_seen: result.occurrences_seen,
@@ -625,20 +720,105 @@ Deno.serve(async (request: Request) => {
         occurrences_updated: result.occurrences_updated, errors: result.errors,
       },
     });
-    return Response.json(result, {status: result.status === "FAIL" ? 502 : 200});
+    await markSourceResult(source, result.status);
+    return result as unknown as Json;
   } catch (error) {
     if (error instanceof AlreadyRunningError) {
-      return Response.json({
+      return {
         status: "SKIPPED_ALREADY_RUNNING",
         provider: "openagenda",
-        territory: "lille",
-        agenda_uid: sourceOpenAgenda("lille").agendaUID,
+        territory: source.territory,
+        territory_source_id: source.registryId,
+        agenda_uid: source.agendaUID,
         run_id: error.runId,
-      });
+      };
     }
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[OPENAGENDA ${mode === "sync" ? "SYNC" : "TEST"} — VILLE DE LILLE] FAIL: ${message}`);
-    await closeRun(runId, {status: "error", duration_ms: Date.now() - started, errors: message});
+    console.error(`[OPENAGENDA SYNC — ${source.territory.toUpperCase()}] FAIL: ${message}`);
+    await closeRun(runId, {
+      status: "error", duration_ms: Date.now() - started,
+      territory: source.territory, territory_source_id: source.registryId,
+      errors: message,
+      details: {mode: "sync", agenda_uid: source.agendaUID, error: message},
+    });
+    await markSourceResult(source, "FAIL");
+    return {
+      status: "FAIL", provider: "openagenda", territory: source.territory,
+      territory_source_id: source.registryId, agenda_uid: source.agendaUID,
+      source_name: source.officialName, error: message,
+      duration_ms: Date.now() - started,
+    };
+  }
+}
+
+async function runOrchestrator() {
+  const sources = await loadRegistrySources();
+  if (!sources.length) throw new OpenAgendaConfigurationError("aucune source OpenAgenda active");
+  const settled = await mapWithConcurrency(
+    sources,
+    OPENAGENDA_SYNC.orchestratorConcurrency,
+    (source) => syncRegisteredSource(source),
+  );
+  const results = settled.map((item, index) => item.status === "fulfilled"
+    ? item.value
+    : {
+      status: "FAIL", provider: "openagenda",
+      territory: sources[index].territory,
+      territory_source_id: sources[index].registryId,
+      agenda_uid: sources[index].agendaUID,
+      error: item.reason instanceof Error ? item.reason.message : String(item.reason),
+    });
+  const failures = results.filter((result) => result.status === "FAIL").length;
+  const status = failures === 0 ? "SUCCESS" :
+    (failures < results.length ? "PARTIAL" : "FAIL");
+  return {
+    status,
+    provider: "openagenda",
+    territories_processed: results.length,
+    concurrency: OPENAGENDA_SYNC.orchestratorConcurrency,
+    results,
+  };
+}
+
+Deno.serve(async (request: Request) => {
+  if (!await sameSecret(request.headers.get("x-sync-secret") ?? "", SYNC_SECRET)) {
+    return Response.json({error: "non autorisé"}, {status: 401});
+  }
+  const url = new URL(request.url);
+  const mode = url.searchParams.get("mode");
+  const territory = url.searchParams.get("territory");
+  const registryIdRaw = url.searchParams.get("source");
+  const registryId = registryIdRaw && /^\d+$/.test(registryIdRaw) ? Number(registryIdRaw) : null;
+  if (mode !== "test" && mode !== "sync" && mode !== "orchestrate") {
+    return Response.json({error: "mode=test, mode=sync ou mode=orchestrate obligatoire"}, {status: 400});
+  }
+  if (mode === "sync" && !territory) {
+    return Response.json({error: "territory obligatoire pour mode=sync"}, {status: 400});
+  }
+  try {
+    validateConfiguration();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return Response.json({status: "FAIL", error: message}, {status: 503});
+  }
+
+  try {
+    if (mode === "orchestrate") {
+      const result = await runOrchestrator();
+      return Response.json(result, {status: result.status === "FAIL" ? 502 : 200});
+    }
+    if (mode === "sync") {
+      const source = await sourceForTerritory(String(territory), registryId);
+      const result = await syncRegisteredSource(source);
+      return Response.json(result, {status: result.status === "FAIL" ? 502 : 200});
+    }
+
+    if (mode === "test") {
+      return Response.json(await runRecordedTest());
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[OPENAGENDA ${String(mode).toUpperCase()}] FAIL: ${message}`);
     const status = error instanceof OpenAgendaConfigurationError ? 503 : 502;
     return Response.json({status: "FAIL", error: message}, {status});
   }

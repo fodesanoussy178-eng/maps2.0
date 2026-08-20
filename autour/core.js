@@ -691,11 +691,60 @@
 
   function dedupeItems(items, distanceBetween) {
     const result = [];
+    /* Toutes les heuristiques géographiques sont bornées à 500 m. Parcourir
+       toute la collection pour chaque fiche rendait pourtant l'ingestion
+       quadratique. La grille ne DÉCIDE rien : elle ne fait que fournir les
+       voisins possibles ; `memeEnregistrement` reste l'unique règle et les
+       indices sont triés pour conserver exactement le premier rapprochement
+       qu'aurait trouvé `findIndex`. Les identifiants stables gardent leur
+       index séparé, car eux valent preuve même si les coordonnées divergent. */
+    const pas = 0.004;
+    const grille = new Map();
+    const parId = new Map();
+    const parRef = new Map();
+    const cellule = (item) => {
+      const lat = Number(item && item.latitude);
+      const lng = Number(item && item.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lng)
+        ? [Math.floor(lat / pas), Math.floor(lng / pas)] : null;
+    };
+    const enregistrer = (item, index) => {
+      if (item && item.id != null) parId.set(String(item.id), index);
+      identifiantsExternes(item).forEach((ref) => parRef.set(ref, index));
+      const c = cellule(item);
+      if (!c) return;
+      const cle = c[0] + ":" + c[1];
+      if (!grille.has(cle)) grille.set(cle, new Set());
+      grille.get(cle).add(index);
+    };
+    const candidats = (item) => {
+      const indices = new Set();
+      if (item && item.id != null && parId.has(String(item.id)))
+        indices.add(parId.get(String(item.id)));
+      identifiantsExternes(item).forEach((ref) => {
+        if (parRef.has(ref)) indices.add(parRef.get(ref));
+      });
+      const c = cellule(item);
+      if (!c) return [...indices].sort((a, b) => a - b);
+      for (let x = c[0] - 2; x <= c[0] + 2; x += 1) {
+        for (let y = c[1] - 2; y <= c[1] + 2; y += 1) {
+          const proches = grille.get(x + ":" + y);
+          if (proches) proches.forEach((index) => indices.add(index));
+        }
+      }
+      return [...indices].sort((a, b) => a - b);
+    };
     (items || []).forEach((item) => {
-      const found = result.findIndex((existing) =>
-        memeEnregistrement(existing, item, distanceBetween));
-      if (found === -1) result.push(item);
-      else result[found] = mergeDuplicate(result[found], item);
+      const found = candidats(item).find((index) =>
+        memeEnregistrement(result[index], item, distanceBetween));
+      if (found === undefined) {
+        const index = result.length;
+        result.push(item);
+        enregistrer(item, index);
+      } else {
+        result[found] = mergeDuplicate(result[found], item);
+        enregistrer(result[found], found);
+      }
     });
     return result;
   }
@@ -798,6 +847,36 @@
     const settings = options || {};
     const radii = Object.assign({}, GROUPING_RADIUS, settings.radius);
     const groups = [];
+    /* Même principe que pour le dédoublonnage : le rayon maximal est 350 m,
+       donc seuls les groupes présents dans les cellules voisines peuvent
+       convenir. Le test de famille, de nom et de distance reste inchangé. */
+    const pas = 0.003;
+    const grille = new Map();
+    const cellule = (item) => {
+      const lat = Number(item && item.latitude);
+      const lng = Number(item && item.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lng)
+        ? [Math.floor(lat / pas), Math.floor(lng / pas)] : null;
+    };
+    const enregistrer = (item, index) => {
+      const c = cellule(item);
+      if (!c) return;
+      const cle = c[0] + ":" + c[1];
+      if (!grille.has(cle)) grille.set(cle, new Set());
+      grille.get(cle).add(index);
+    };
+    const candidats = (item) => {
+      const c = cellule(item);
+      if (!c) return groups.map((_, index) => index);
+      const indices = new Set();
+      for (let x = c[0] - 2; x <= c[0] + 2; x += 1) {
+        for (let y = c[1] - 2; y <= c[1] + 2; y += 1) {
+          const proches = grille.get(x + ":" + y);
+          if (proches) proches.forEach((index) => indices.add(index));
+        }
+      }
+      return [...indices].sort((a, b) => a - b);
+    };
 
     (items || []).forEach((item) => {
       // un événement daté n'est pas un lieu : deux concerts au même endroit
@@ -805,10 +884,15 @@
       if (item.isTemporary) { groups.push({ members: [item], family: "evenement" }); return; }
       const family = placeFamily(item);
       const name = normalizePlaceName(item.title || item.titre, family);
-      if (!name) { groups.push({ members: [item], family, name }); return; }
+      if (!name) {
+        groups.push({ members: [item], family, name });
+        enregistrer(item, groups.length - 1);
+        return;
+      }
       const radius = radii[family] || radii.autre;
 
-      const found = groups.find((group) => {
+      const foundIndex = candidats(item).find((index) => {
+        const group = groups[index];
         if (group.family !== family || !group.name) return false;
         const relation = nameRelation(group.name, name);
         if (!relation) return false;
@@ -819,8 +903,13 @@
         });
       });
 
-      if (found) found.members.push(item);
-      else groups.push({ members: [item], family, name });
+      if (foundIndex !== undefined) {
+        groups[foundIndex].members.push(item);
+        enregistrer(item, foundIndex);
+      } else {
+        groups.push({ members: [item], family, name });
+        enregistrer(item, groups.length - 1);
+      }
     });
 
     return groups.map((group) => {
@@ -934,9 +1023,24 @@
   /* Les horaires d'un lieu, lus par le module qui fait autorité là-dessus.
      Passé au moteur temporel plutôt que réimplémenté : une exposition longue a
      besoin de la même lecture qu'un café. */
-  function disponibiliteDe(item, at) {
+  const disponibiliteMemo = new WeakMap();
+  function disponibiliteDe(item, at, arrival) {
     const module = root.AutourAvailability;
-    return module ? module.getPlaceAvailability(item, at) : null;
+    if(!module) return null;
+    if(!item || (typeof item !== "object" && typeof item !== "function"))
+      return module.getPlaceAvailability(item, at, arrival);
+    let cache = disponibiliteMemo.get(item);
+    if(!cache){ cache = new Map(); disponibiliteMemo.set(item, cache); }
+    const temporaire = item.isTemporary === true || TEMPORARY_CATEGORIES.includes(item.cat);
+    const cleTemps = temporaire ? Number(at) : Math.floor(Number(at) / 60000);
+    const cleArrivee = arrival == null ? ""
+      : (temporaire ? Number(arrival) : Math.floor(Number(arrival) / 60000));
+    const cle = cleTemps + "|" + cleArrivee;
+    if(cache.has(cle)) return cache.get(cle);
+    const resultat = module.getPlaceAvailability(item, at, arrival);
+    if(cache.size >= 4) cache.clear();
+    cache.set(cle, resultat);
+    return resultat;
   }
 
   function isAvailableNow(item, at) {
@@ -1152,8 +1256,7 @@
     // ---- lieux permanents : la disponibilité fait autorité ----------------
     // Une seule source de vérité pour les horaires (voir availability.js) ;
     // le classement ne relit jamais un opening_hours de son côté.
-    const module = root.AutourAvailability;
-    const dispo = module ? module.getPlaceAvailability(item, now, arrival) : null;
+    const dispo = disponibiliteDe(item, now, arrival);
 
     if (dispo && dispo.status === "permanently_closed") {
       // définitivement fermé : jamais recommandé, quel que soit le mode

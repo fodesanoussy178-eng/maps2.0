@@ -107,6 +107,7 @@ async function ouvrir(navigateur, opts) {
   });
   const page = await ctx.newPage();
   let requetes = 0;
+  const urls = new Map();
 
   await page.route("**/*", async (route) => {
     const url = route.request().url();
@@ -114,6 +115,10 @@ async function ouvrir(navigateur, opts) {
                                         body: JSON.stringify(c) });
     if (url.startsWith(BASE) && !/\/api\/|\/rpc\//.test(url)) return route.continue();
     requetes += 1;
+    const chargeRequete = route.request().postData() || "";
+    const cleRequete = route.request().method() + " " + url +
+      (chargeRequete ? " " + chargeRequete : "");
+    urls.set(cleRequete, (urls.get(cleRequete) || 0) + 1);
     if (/tile|basemaps|openstreetmap\.org\/\d|googleapis\.com\/maps/.test(url))
       return route.fulfill({ status: 200, contentType: "image/png",
         body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") });
@@ -159,6 +164,17 @@ async function ouvrir(navigateur, opts) {
       window.__battements.dernier = t;
       if (ecart > window.__battements.pireMs) window.__battements.pireMs = Math.round(ecart);
     }, 100);
+    window.__tachesLongues = { nombre: 0, totalMs: 0, pireMs: 0 };
+    try {
+      new PerformanceObserver((liste) => {
+        liste.getEntries().forEach((entree) => {
+          window.__tachesLongues.nombre += 1;
+          window.__tachesLongues.totalMs += entree.duration;
+          window.__tachesLongues.pireMs = Math.max(
+            window.__tachesLongues.pireMs, entree.duration);
+        });
+      }).observe({ type: "longtask", buffered: true });
+    } catch {}
   });
 
   await page.addInitScript(() => {
@@ -167,7 +183,10 @@ async function ouvrir(navigateur, opts) {
       from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => rep(null) }),
         order() { return this; }, limit() { return this; },
         then: (r) => rep([]).then(r) }) }),
-      rpc: (nom) => fetch("/rpc/" + nom).then((r) => r.json())
+      rpc: (nom, args) => fetch("/rpc/" + nom, {
+        method: "POST", headers:{"content-type":"application/json"},
+        body:JSON.stringify(args || {}),
+      }).then((r) => r.json())
         .then((d) => ({ data: d, error: null })).catch(() => ({ data: [], error: null })),
       auth: { getSession: () => rep({ session: null }),
               onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) },
@@ -176,7 +195,15 @@ async function ouvrir(navigateur, opts) {
   });
 
   await page.goto(BASE + "/index.html");
-  return { ctx, page, compteur: () => requetes };
+  return {
+    ctx,
+    page,
+    compteur: () => requetes,
+    tracesRpc: () => [...urls.keys()].filter(url => /\/rpc\//.test(url)),
+    doublons: () => [...urls.entries()]
+      .filter(([, total]) => total > 1)
+      .map(([url, total]) => ({ url, total, surplus: total - 1 })),
+  };
 }
 
 /* Ce que la page sait d'elle-même. `PERF` publie déjà tout dans un attribut du
@@ -191,7 +218,7 @@ const combienAffiches = (page) => page.evaluate(() =>
   document.querySelectorAll('[data-testid="maintenant-liste"] [data-mn]').length);
 
 async function scenario(navigateur, nom, opts) {
-  const { ctx, page, compteur } = await ouvrir(navigateur, opts);
+  const { ctx, page, compteur, doublons, tracesRpc } = await ouvrir(navigateur, opts);
   /* On attend que « Maintenant » soit sorti de `loading` — c'est la définition
      honnête de « l'application a répondu ». */
   await page.waitForFunction(() => {
@@ -202,6 +229,8 @@ async function scenario(navigateur, nom, opts) {
 
   const p = await perf(page);
   const t = p.temps || {};
+  const longues = await page.evaluate(() => window.__tachesLongues || {});
+  const dupliquees = doublons();
   const m = {
     nom,
     localisation: t.geolocation_ready ?? t.position_gps_memorisee ?? null,
@@ -209,18 +238,29 @@ async function scenario(navigateur, nom, opts) {
     complet: t.maintenant_complet ?? null,
     premierLieu: t.premier_lieu ?? null,
     requetes: compteur(),
+    requetesDupliquees: dupliquees.reduce((n, x) => n + x.surplus, 0),
+    doublons: dupliquees.map(x => x.total + "× " + x.url).join("\n        "),
+    tracesRpc: tracesRpc(),
     reseauDemarrage: (p.reseau || {}).demarrage ?? null,
+    cpu: p.cpu || {},
+    rendusCarte: (p.rendus || {}).carte ?? 0,
+    rendusPanneau: (p.rendus || {}).panneau ?? 0,
     hits: (p.cache || {}).hits ?? 0,
     miss: (p.cache || {}).miss ?? 0,
     lentes: ((p.cache || {}).lentes || []).join(", ") || "aucune",
     blocage: await page.evaluate(() =>
       (window.__battements || {}).pireMs || 0),
+    tachesLongues: longues.nombre || 0,
+    cpuLongMs: Math.round(longues.totalMs || 0),
+    pireTacheMs: Math.round(longues.pireMs || 0),
     affiches: await combienAffiches(page),
     etat: await page.evaluate(() =>
       (document.querySelector('[data-testid="maintenant-liste"]') || { dataset: {} })
         .dataset.mnEtat),
   };
   mesures.push(m);
+  if(opts && opts.traceRpc)
+    console.log("  RPC " + nom + "\n    " + m.tracesRpc.join("\n    "));
   const etatStock = await ctx.storageState();
   await ctx.close();
   return { m, etatStock };
@@ -255,14 +295,26 @@ const creuse = await scenario(navigateur, "zone peu dense (4 lieux)",
 
 console.log("");
 const colonne = (v) => (v == null ? "  —  " : String(v).padStart(5));
-console.log("  scénario                        loc  1er  3/3   req  hit miss  aff  état");
+console.log("  scénario                        loc  1er  3/3  bloc  req  dup rendus LT/cpu  aff  état");
 for (const m of mesures) {
   console.log("  " + m.nom.padEnd(30) +
     colonne(m.localisation) + colonne(m.premier) + colonne(m.complet) +
     colonne(m.blocage) +
-    colonne(m.requetes) + colonne(m.hits) + colonne(m.miss) +
+    colonne(m.requetes) + colonne(m.requetesDupliquees) +
+    colonne(m.rendusCarte + "/" + m.rendusPanneau) +
+    colonne(m.tachesLongues + "/" + m.cpuLongMs) +
     colonne(m.affiches) + "  " + m.etat +
-    (m.lentes !== "aucune" ? "\n      sources > 1 s : " + m.lentes : ""));
+    (m.lentes !== "aucune" ? "\n      sources > 1 s : " + m.lentes : "") +
+    (m.doublons ? "\n      doublons : " + m.doublons : ""));
+}
+
+for (const m of mesures) {
+  const cpu = Object.entries(m.cpu || {})
+    .sort((a,b)=>(b[1].totalMs||0)-(a[1].totalMs||0))
+    .slice(0,5)
+    .map(([nom,v])=>nom+" "+v.totalMs+" ms (pire "+v.pireMs+")")
+    .join(" · ");
+  if(cpu) console.log("  CPU " + m.nom + " : " + cpu);
 }
 
 console.log("\n──── ce qu'on en conclut ────");
@@ -336,19 +388,9 @@ ok("aucun scénario ne reste bloqué sur « loading »",
    mesures.every((m) => m.etat !== "loading"),
    mesures.filter((m) => m.etat === "loading").map((m) => m.nom).join(", "));
 
-/* LE VRAI GOULOT, MESURÉ ET NOMMÉ.
-
-   Sur un centre-ville dense, le fil principal reste occupé plusieurs secondes
-   d'affilée : normalisation, déduplication, classement et pose des marqueurs
-   pour cent trente lieux, en une seule tenue. Pendant ce temps l'écran ne
-   réagit à rien — et « Maintenant » ne peut pas s'afficher, non pas parce
-   qu'il attend une donnée, mais parce que personne ne peut le dessiner.
-
-   Le seuil ci-dessous est celui d'aujourd'hui, pas celui qu'on vise. Il est
-   écrit pour attraper une DÉGRADATION ; l'objectif reste une seconde, et il
-   n'est pas tenu. Découper cette ingestion est un chantier à part entière —
-   ce n'est pas une passe de stabilisation. */
-const OBJECTIF_BLOCAGE_MS = 1000;
+/* Le battement est cadencé toutes les 100 ms : son pire écart doit rester
+   suffisamment court pour qu'un geste soit pris en compte sans freeze. */
+const OBJECTIF_BLOCAGE_MS = 300;
 const pireBlocage = Math.max(...mesures.map((m) => m.blocage || 0));
 const pireOu = (mesures.find((m) => m.blocage === pireBlocage) || {}).nom || "?";
 
@@ -361,11 +403,8 @@ console.log("  pire blocage du fil principal : " + pireBlocage + " ms  (" + pire
 console.log("  objectif : " + OBJECTIF_BLOCAGE_MS + " ms — " +
   (pireBlocage <= OBJECTIF_BLOCAGE_MS ? "tenu" : "NON TENU"));
 if (pireBlocage > OBJECTIF_BLOCAGE_MS) {
-  console.log("  Les deux classements ont été sortis du chemin critique (ils");
-  console.log("  s'exécutent en tranche d'inactivité, annulables). Ce qui reste");
-  console.log("  est la pose des marqueurs et la déduplication — même travail,");
-  console.log("  toujours d'un bloc. Repères : avant cette passe, 3 963 ms de");
-  console.log("  blocage et 4 703 ms avant la première proposition.");
+  console.log("  Une phase synchrone dépasse encore le budget perceptif ; voir");
+  console.log("  les lignes CPU et les tâches longues ci-dessus pour l'attribuer.");
 }
 
 /* Le nombre de requêtes au démarrage : ce n'est pas un objectif en soi, mais

@@ -126,7 +126,11 @@ test("le démarrage borne les sources primaires et laisse OSM hors du groupe cri
   const critique = html.slice(debut, finCritique);
   assert.match(critique,/avecDelai\(notesGoogle\(lat,lng,\{signal\}\),4000,\[\],signal\)/);
   assert.match(critique,/avecDelai\(lieuxDatatourisme\(lat,lng,signal\),4000,\[\],signal\)/);
-  assert.match(critique,/avecDelai\(connecter\(\)\.then\(\(\)=>chargerPublications\(lat,lng\)\),4500,\[\],signal\)/);
+  assert.match(critique,/avecDelai\(chargerCoucheSupabase\(lat,lng\),4500,null,signal\)/);
+  assert.equal((critique.match(/chargerCoucheSupabase\(lat,lng\)/g)||[]).length,1,
+    "la couche territoriale ne doit partir qu'une fois dans le chemin critique");
+  assert.doesNotMatch(critique,/chargerPublications\(lat,lng\)|chargerEvenementsCanoniques\(lat,lng\)/,
+    "les RPC individuels ne doivent pas contourner le coalescing territorial");
   assert.doesNotMatch(critique,/vraisLieux\(/);
   assert.match(html,/chargerZone\(lat,lng,\{sansCarte:true, osmSeulement:true,/);
   assert.match(html,/finDemarrage\(\)\{ this\.demarrageTermine = true; this\.exposer\(\); \}/);

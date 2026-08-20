@@ -156,7 +156,7 @@ await page.route("**/*", async (route) => {
   /* Le géocodeur : il rend la vraie emprise de la ville demandée. C'est elle
      qui définit ensuite la zone active. */
   if (/nominatim/.test(u)) {
-    const q = decodeURIComponent((u.match(/[?&]q=([^&]*)/) || [,""])[1]).toLowerCase();
+    const q = decodeURIComponent((u.match(/[?&]q=([^&]*)/) || ["",""])[1]).toLowerCase();
     const clef = Object.keys(VILLES).find((v) => q.includes(v));
     if (!clef) return json([]);
     const v = VILLES[clef];
@@ -252,17 +252,39 @@ async function etat() {
         if (m && m._pile) m._pile.forEach((x) => poses.push(x));
       });
     } catch (e) { poses.push({ titre: "LECTURE IMPOSSIBLE " + e.message }); }
+    const corps = document.querySelector("#fbCorps");
+    const copie = corps && corps.cloneNode(true);
+    /* « Revenir autour de Tourcoing » est une commande légitime depuis Lille,
+       pas un résultat resté dans la feuille. On la retire avant de vérifier le
+       contenu de la zone demandée. */
+    if(copie) copie.querySelectorAll("[data-retour-moi]").forEach(x=>x.remove());
     return {
       zone: typeof zoneActive !== "undefined" && zoneActive
         ? { type: zoneActive.type, nom: zoneActive.nom,
             lat: Math.round(zoneActive.lat * 1000) / 1000 } : null,
+      zoneAffichee: typeof zoneAffichee !== "undefined" ? zoneAffichee : null,
+      feuilleNiveau: typeof feuilleNiveau !== "undefined" ? feuilleNiveau : null,
       portee: typeof porteeCourante !== "undefined" ? porteeCourante : null,
       enMemoire: (typeof lieux !== "undefined" ? lieux : []).length,
       visibles: compte(visibles),
       maintenant: compte(typeof selectionMaintenant === "function" ? selectionMaintenant() : []),
       marqueurs: compte(poses),
       recos: compte(typeof recommandationsAccueil === "function" ? recommandationsAccueil(12) : []),
-      texte: (document.querySelector("#fbCorps") || { textContent: "" }).textContent,
+      texte: copie ? copie.textContent : "",
+      cartesDom: corps ? [...corps.querySelectorAll("[data-ac]")].map((x)=>{
+        const id = x.getAttribute("data-ac");
+        const courant = (typeof lieux !== "undefined" ? lieux : []).find((l)=>String(l.id) === id);
+        return {id, texte:(x.textContent || "").trim().slice(0, 80),
+          courant:courant && courant.titre};
+      }) : [],
+      mentionsTourcoing: copie
+        ? [...copie.querySelectorAll("*")]
+            .filter((x)=>/TOURCOING/i.test(x.textContent || "") &&
+              ![...x.children].some((y)=>/TOURCOING/i.test(y.textContent || "")))
+            .map((x)=>({tag:x.tagName, classe:x.className,
+              id:x.getAttribute("data-ac") || x.getAttribute("data-mn") || "",
+              texte:(x.textContent || "").trim()})).slice(0, 6)
+        : [],
       refuses: (typeof lieux !== "undefined" ? lieux : []).filter((l) => !dedans(l))
         .slice(0, 4).map((l) => (l.titre || "?") + " @" + l.lat + "," + l.lng),
     };
@@ -286,8 +308,8 @@ async function chercher(ville) {
     if (f) f.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   }, ville);
 
-  const jalon = async (predicat, arg) => {
-    try { await page.waitForFunction(predicat, arg, { timeout: 12000, polling: 60 });
+  const jalon = async (predicat, arg, timeout = 12000) => {
+    try { await page.waitForFunction(predicat, arg, { timeout, polling: 60 });
           return Date.now() - t0; }
     catch (e) { return null; }
   };
@@ -306,7 +328,7 @@ async function chercher(ville) {
   const trois = await jalon(() => {
     const s = typeof selectionMaintenant === "function" ? selectionMaintenant() : [];
     return s.length >= 3 && s.every((l) => dansZoneActive(l));
-  });
+  }, null, 2500);
   await page.waitForTimeout(1200);         // laisser retomber les arrivées tardives
   return { zone, premier, trois };
 }
@@ -326,6 +348,7 @@ console.log("\n=== 2. Recherche « Lille » ===");
 const tLille = await chercher("Lille");
 e = await etat();
 console.log("   zone active :", JSON.stringify(e.zone), "· portée", e.portee,
+            "· feuille", JSON.stringify(e.zoneAffichee), e.feuilleNiveau,
             "· en mémoire", e.enMemoire, "· bascule", JSON.stringify(tLille));
 verifier("Tourcoing → recherche Lille → 0 résultat Tourcoing",
   e.visibles.TOURCOING === 0, "visibles " + JSON.stringify(e.visibles));
@@ -337,7 +360,7 @@ verifier("Maintenant Lille → uniquement des éléments de la zone Lille",
 verifier("recommandations → aucune de Tourcoing",
   e.recos.TOURCOING === 0, "recos " + JSON.stringify(e.recos));
 verifier("la feuille ne cite plus Tourcoing",
-  !/TOURCOING/i.test(e.texte), e.texte.slice(0, 120));
+  !/TOURCOING/i.test(e.texte), JSON.stringify({mentions:e.mentionsTourcoing, cartes:e.cartesDom}));
 verifier("les lieux de Tourcoing restent en mémoire (le retour doit être instantané)",
   e.enMemoire > e.visibles.LILLE, "en mémoire " + e.enMemoire);
 
