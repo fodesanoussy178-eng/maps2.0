@@ -150,7 +150,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=bf64f6d8"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=9e652adc"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -1148,11 +1148,45 @@ const CATS = {
   // « Bus & tram » mélangeait deux réseaux distincts : chercher un tram
   // renvoyait des arrêts de bus, et l'inverse
   bus:      {label:"Bus",           emoji:"🚌", eph:false},
-  tram:     {label:"Tram",          emoji:"🚊", eph:false},
+  tram:     {label:"Tram",          emoji:"🚋", eph:false},
   train:    {label:"Gares",         emoji:"🚆", eph:false},
   recharge: {label:"Recharge",      emoji:"🔌", eph:false},
   toilettes:{label:"Toilettes",     emoji:"🚻", eph:false},
 };
+
+/* ---- L'icône dit le type réel, la catégorie dit le comportement ----------
+   Une pharmacie et un hôpital partagent la catégorie « santé ». C'est ce qui
+   les fait remonter ensemble dans Aide, et il ne faut surtout pas y toucher :
+   quelqu'un qui cherche des soins doit trouver les deux. Mais sur la carte,
+   un stéthoscope devant une pharmacie ne dit pas ce qu'on y trouve.
+
+   Un sous-type ne change QUE l'icône. Aucune recherche, aucun filtre, aucun
+   classement, aucun besoin d'Aide ne le regarde — la catégorie reste entière.
+   C'est la seule façon de préciser un pictogramme sans déplacer un lieu hors
+   de la famille où on doit pouvoir le retrouver. */
+const SOUS_TYPES = [
+  ["pharmacie", "💊", (t,type)=>
+    t.amenity === "pharmacy" || t.healthcare === "pharmacy" || type === "pharmacy"],
+];
+
+const DESCRIPTEURS_SOUS_TYPE = new Map();
+
+function categorieAffichee(l, defaut){
+  const base = (l && CATS[l.cat]) || defaut || CATS.event;
+  if(!l) return base;
+  const tags = l.tags || {};
+  const trouve = SOUS_TYPES.find(([,,teste])=>teste(tags, l.type || ""));
+  if(!trouve) return base;
+  /* Le descripteur affiné est mémorisé : `rendre()` passe ici une fois par
+     marqueur et par image, il n'a pas à reconstruire un objet à chaque tour. */
+  const cle = l.cat+"|"+trouve[0];
+  let descripteur = DESCRIPTEURS_SOUS_TYPE.get(cle);
+  if(!descripteur){
+    descripteur = Object.assign({}, base, {emoji:trouve[1]});
+    DESCRIPTEURS_SOUS_TYPE.set(cle, descripteur);
+  }
+  return descripteur;
+}
 
 /* Mission locale, France Travail et Cap emploi partagent le même tag OSM
    (office=employment_agency) alors qu'ils ne s'adressent pas au même public.
@@ -1195,6 +1229,10 @@ function affinerCategorie(cat, nom, tags){
     if(NOM_HEBERGEMENT.test(n)) return "hebergement";
   }
   if(!nom) return cat;
+  /* Un transport est établi par ses tags : aucun affinage de nom ne le
+     rattrape. « Cinéma » dans « Métro Gare Lille Flandres » ne doit pas
+     transformer une station en salle obscure. */
+  if(CATS_TRANSPORT.has(cat)) return cat;
   if(classifyPlace({cat, title:nom}).includes("cinema")) return "cinema";
   if(cat === "resto" || cat === "fastfood" || cat === "cafe"){
     if(CHAINES_CAFE.test(nom))     return "cafe";
@@ -1239,6 +1277,77 @@ const JAMAIS_AUTO = new Set(["ecole","mairie"]);
    lieu. Ils ne sont simplement pas DESSINÉS tant qu'on ne les a pas demandés
    — couche transport allumée ou recherche explicite de transport. */
 const CATS_TRANSPORT = new Set(["metro","bus","tram","train","velo"]);
+
+/* ---- Quel transport, exactement ? ---------------------------------------
+   « Phalempins » et « Pont de Neuville » sont deux stations de la ligne 2 à
+   Tourcoing. Elles s'affichaient avec une icône de vélo.
+
+   La cause n'était pas la table des tags, qui les connaît : c'était la façon
+   de la lire. `REQUETES.find` rend la PREMIÈRE règle qui correspond, dans
+   l'ordre du fichier — et les stations de vélo y sont écrites avant les
+   transports. Un objet qui porte à la fois `station=subway` et un tag de
+   stationnement vélo — l'arceau à l'entrée de la station, tagué sur le même
+   objet — était donc classé « vélo » parce que le vélo venait plus haut dans
+   une liste. L'ordre d'un tableau décidait du mode de transport.
+
+   Ici, c'est la SPÉCIFICITÉ qui décide, et elle est écrite noir sur blanc.
+   Une station de métro porte `railway=station` ET `station=subway` : le
+   second dit le mode, le premier dit seulement que c'est ferroviaire. On lit
+   donc le plus précis d'abord, dans un ordre qui ne dépend d'aucune autre
+   table.
+
+   Envoyer quelqu'un chercher un vélo là où il y a un métro, ce n'est pas une
+   icône de travers : c'est un trajet raté. */
+function modeTransportOsm(t){
+  if(!t) return null;
+  /* Métro. `station=subway` est le tag qui porte le mode ; `railway=subway`
+     et l'entrée de bouche disent la même chose autrement. */
+  if(t.station === "subway" || t.subway === "yes" ||
+     t.railway === "subway" || t.railway === "subway_entrance") return "metro";
+  /* Tram. En France `railway=tram_stop`, ailleurs `station=light_rail`. */
+  if(t.station === "light_rail" || t.railway === "tram_stop" ||
+     t.railway === "tram" || t.tram === "yes" || t.light_rail === "yes") return "tram";
+  /* Train. Volontairement APRÈS métro et tram : une station de métro est
+     aussi `railway=station`, et lui rendre « gare » serait la même erreur à
+     l'envers. */
+  if(t.railway === "station" || t.railway === "halt" ||
+     t.station === "train" || t.train === "yes") return "train";
+  /* Bus et trolleybus. */
+  if(t.highway === "bus_stop" || t.amenity === "bus_station" ||
+     t.station === "bus" || t.bus === "yes" || t.trolleybus === "yes") return "bus";
+  /* Vélo en dernier, et seulement si rien de ferroviaire n'a parlé : c'est
+     exactement l'inversion qui produisait le bogue. */
+  if(t.amenity === "bicycle_rental" || t.amenity === "bicycle_parking") return "velo";
+  return null;
+}
+
+/* Le nom ne sert QU'EN DERNIER RECOURS, quand aucun tag ne dit le mode. Un
+   objet dont le seul tag utile est `public_transport=station` existe : son
+   enseigne — « Métro Phalempins », « Gare de Tourcoing » — est alors la seule
+   information disponible. Elle ne prend jamais le pas sur un tag. */
+const NOM_TRANSPORT = [
+  [/\bm[ée]tros?\b/,                          "metro"],
+  [/\btram(way)?s?\b/,                        "tram"],
+  [/\b(gares?|haltes?)\b/,                    "train"],
+  [/\b(arr[êe]ts? de bus|gare routi[èe]re)\b/,"bus"],
+  [/\b(v[' ]?lille|v[ée]los?|cycles?)\b/,     "velo"],
+];
+
+function modeTransportNom(nom){
+  const n = sansAccents(nom || "");
+  for(const [re, mode] of NOM_TRANSPORT) if(re.test(n)) return mode;
+  return null;
+}
+
+/* La règle trouvée dans REQUETES donne la famille ; les tags donnent le mode.
+   Le mode ne l'emporte que si la règle décrivait DÉJÀ un transport : on ne
+   transforme pas la boulangerie d'une gare en station de métro parce que le
+   bâtiment porte `railway=station`. */
+function categorieTransport(catRegle, nom, tags){
+  if(!CATS_TRANSPORT.has(catRegle)) return catRegle;
+  return modeTransportOsm(tags) || modeTransportNom(nom) || catRegle;
+}
+
 let coucheTransport = false;      // allumée par le bouton transports
 
 function transportsDemandes(ctx){
@@ -2796,7 +2905,9 @@ async function vraisLieux(lat,lng,bornes,opts){
     const regle = REQUETES.find(([k,v])=>t[k]===v);
     if(!regle) return null;
     const nom = nomReelOsm(t);
-    const cat = affinerCategorie(regle[2], nom, t);
+    /* Le mode réel d'abord — un objet ferroviaire n'est jamais une station de
+       vélo —, puis les affinages de nom pour les familles qui en ont besoin. */
+    const cat = affinerCategorie(categorieTransport(regle[2], nom, t), nom, t);
     const brut = {
       id:"osm"+e.type+e.id, cat,
       titre: nom || CATS[cat].label,
@@ -5026,7 +5137,7 @@ function ouvrirPileCompacte(g){
     reglerEtatFeuille("reduite");
   const t = Date.now();
   const ligne = (l)=>{
-    const c = CATS[l.cat] || CATS.event;
+    const c = categorieAffichee(l);
     const etat = statutTemps(l, t);
     const quand = l.annule ? "Annulé"
       : TEMPS.libelleTemporel(l, t, {disponibilite:(x,q)=>dispoDe(x, null, q), statut:etat});
@@ -5087,7 +5198,7 @@ function sousTitreMarqueur(l){
 }
 
 function htmlMarqueur(l){
-  const c = CATS[l.cat]||CATS.event;
+  const c = categorieAffichee(l);
 
   /* CE QUI A LIEU MAINTENANT NE SE DESSINE PAS COMME UN COMMERCE.
 
@@ -6546,7 +6657,7 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner, connus){
     '</div>';
 
   const lignes = l.map((x,i)=>{
-    const c = CATS[x.cat] || {emoji:"📍"};
+    const c = categorieAffichee(x, {emoji:"📍"});
     const sous = [];
     if(x.note && !sansPalmares) sous.push('<span class="rang-note">★ '+x.note.toFixed(1)+
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
@@ -8072,7 +8183,7 @@ function blocResultats(){
     '<span>'+(ouverts ? ouverts+' '+(ouverts>1?'ouvertes':'ouverte') : 'Les mieux classées')+'</span></div>';
   if(!items.length) return (nombreAffiche ? entete : "")+statut;
   const liste = items.map((l,index)=>{
-    const c = CATS[l.cat] || {emoji:"📍"};
+    const c = categorieAffichee(l, {emoji:"📍"});
     const bouts = ['<span class="raison">'+esc(l.rankReason)+'</span>'];
     if(l.note) bouts.push("★ "+l.note.toFixed(1)+
       (l.avis ? " ("+Number(l.avis).toLocaleString("fr-FR")+" avis)" : ""));
@@ -8526,7 +8637,7 @@ function ouvertOuImminent(l){
    annoncé comme tel. */
 function carteAide(l){
   favorisEnMemoire.set(cleFavori(l), l);
-  const c = CATS[l.cat] || {emoji:"🤝"};
+  const c = categorieAffichee(l, {emoji:"🤝"});
   const photo = photoAutoriseeAide(l);
   const eph = estTemporaire(l);
   const quand = eph
@@ -8760,7 +8871,7 @@ function tempsMaintenant(l){
 }
 
 function ligneMaintenant(l){
-  const c = CATS[l.cat] || CATS.event;
+  const c = categorieAffichee(l);
   /* Regarder Paris depuis Lille affichait « 220 km » sous chaque concert : une
      mesure exacte et parfaitement inutile. On ne montre une distance que
      lorsqu'on est dans la zone regardée ; sinon le lieu se suffit. */
@@ -9352,7 +9463,7 @@ function fermeDansMoinsDUneHeure(d){
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
 function carteRecommandation(l){
   favorisEnMemoire.set(cleFavori(l), l);
-  const c = CATS[l.cat] || {emoji:"📍"};
+  const c = categorieAffichee(l, {emoji:"📍"});
   // même règle que pour les cartes d'aide : aucune durée tant que le point
   // n'est pas mesuré par le navigateur
   const eta = positionPrecise() ? l.rankEta : null;
@@ -10043,7 +10154,7 @@ function surprendre(){
   memoriserSurprise(l.id);
   const depuis = (ctx.moi && ctx.moi[0]) ? ctx.moi : ctx.centre;
   const d = distanceM(depuis[0], depuis[1], l.lat, l.lng);
-  const c = CATS[l.cat] || {emoji:"📍", label:""};
+  const c = categorieAffichee(l, {emoji:"📍", label:""});
 
   allerVers([l.lat, l.lng], 17, {duration:.7});
   pileEcrans = [];
@@ -10752,7 +10863,7 @@ function suggerer(q){
     if(sug.length >= 10) return;
     if(!sansAccents(l.titre).includes(t) || vus.has(l.titre)) return;
     vus.add(l.titre);
-    sug.push({emo:(CATS[l.cat]||{}).emoji||"📍", lab:l.titre, sous:"lieu", id:l.id});
+    sug.push({emo:categorieAffichee(l, {}).emoji||"📍", lab:l.titre, sous:"lieu", id:l.id});
   });
 
   if(!sug.length){ z.hidden = true; layerManager.deactivate(NOMS_COUCHES.searchOverlay); return; }

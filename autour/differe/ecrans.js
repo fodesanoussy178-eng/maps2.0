@@ -228,7 +228,7 @@ function faitsAide(l){
 
 function ouvrirDetail(id){
   const l = lieux.find(x=>x.id===id); if(!l) return;
-  const c = CATS[l.cat]||CATS.event;
+  const c = categorieAffichee(l);
   const mien = estPublicationAMoi(l);
   const ficheAide = estFicheAide(l);
   const prix = l.gratuit === true ? "Gratuit" : Number.isFinite(Number(l.prix)) ? Number(l.prix)+" €" : "";
@@ -709,7 +709,7 @@ function ouvrirChoixLieu(){
     '<p class="ex-groupe">Lieux libres autour de toi</p>'+
     (libres.length
       ? libres.map(l=>{
-          const c = CATS[l.cat] || {emoji:"📍"};
+          const c = categorieAffichee(l, {emoji:"📍"});
           return '<button class="rang" data-lib="'+esc(l.id)+'">'+
             '<span class="rang-emoji">'+c.emoji+'</span>'+
             '<span class="rang-txt"><span class="rang-nom">'+esc(l.titre)+'</span>'+
@@ -1149,7 +1149,7 @@ async function ouvrirMesPublications(){
   }
   const corps = lignes.length
     ? lignes.map(p=>{
-        const c = CATS[p.cat] || {emoji:"📍"};
+        const c = categorieAffichee(p, {emoji:"📍"});
         return '<button class="ac-item" data-mienne="'+esc(p.id)+'">'+
           '<span class="ac-emoji">'+c.emoji+'</span>'+
           '<span class="ac-txt"><span class="ac-nom">'+esc(p.titre || "Sans titre")+
