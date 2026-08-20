@@ -937,7 +937,10 @@ test("un social_facility sans sous-tag est classé par son nom",()=>{
   // sert à rien. Le nom est celui réellement retenu — `name`, mais aussi le
   // nom officiel ou l'enseigne quand `name` manque
   assert.match(html,/const nom = nomReelOsm\(t\);/);
-  assert.match(html,/affinerCategorie\(regle\[2\], nom, t\)/);
+  /* La famille passe d'abord par la résolution de mode — un objet ferroviaire
+     n'est jamais une station de vélo — puis par l'affinage de nom, qui reçoit
+     toujours le nom ET les tags. */
+  assert.match(html,/affinerCategorie\(categorieTransport\(regle\[2\], nom, t\), nom, t\)/);
   // « foyer » doit rester le mot qui mène à l'hébergement
   assert.match(html,/hebergement:\["hebergement","dormir","abri","foyer"/);
 });
