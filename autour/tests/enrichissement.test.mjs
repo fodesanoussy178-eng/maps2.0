@@ -23,6 +23,8 @@ const fonction = await readFile(
   new URL("../supabase/functions/enrichir-lieu/index.ts", import.meta.url), "utf8");
 const config = await readFile(
   new URL("../supabase/config.toml", import.meta.url), "utf8");
+const extraction = await readFile(
+  new URL("../supabase/functions/enrichir-lieu/extraction.mjs", import.meta.url), "utf8");
 
 const T = Date.parse("2026-08-21T12:00:00Z");
 const ctx = (extra) => Object.assign({ nom: "Le Grand Mix", commune: "Tourcoing",
@@ -207,6 +209,31 @@ test("l'invite est écrite côté serveur, pas reçue", () => {
   const texte = invite({ nom: "X", lat: 50, lng: 3 }, { maintenant: T });
   assert.match(texte, /N'invente aucune information/);
   assert.match(texte, /ORDRE DES SOURCES/);
+});
+
+test("l'invite dit que c'est une tâche de recherche, pas de mémoire", () => {
+  /* Sans cette consigne, le modèle répond de mémoire : `webSearchQueries`
+     vide, `groundingChunks` vide, et trente secondes dépensées pour une
+     réponse que `construireFait` jette — à juste titre. */
+  const texte = invite({ nom: "Stab Vélodrome", commune: "Roubaix",
+                         lat: 50.6789, lng: 3.205 }, { maintenant: T });
+  assert.match(texte, /T\u00c2CHE DE RECHERCHE/);
+  assert.match(texte, /LOCALES et ACTUELLES/);
+  assert.match(texte, /Tu DOIS utiliser l'outil de\s*\n?\s*recherche Google AVANT de r\u00e9pondre/);
+  assert.match(texte, /connaissances internes est une r\u00e9ponse fausse/);
+  /* Et elle dit quoi taper : le nom exact, avec la commune. */
+  assert.match(texte, /« Stab Vélodrome Roubaix » — le nom exact du lieu, avec sa commune/);
+  assert.match(texte, /« Stab Vélodrome Roubaix horaires ouverture »/);
+  assert.match(texte, /« Stab Vélodrome Roubaix site officiel »/);
+  /* La consigne de recherche passe AVANT la description du lieu : on ne lui
+     demande pas de vérifier puis de chercher, mais de chercher puis de lire. */
+  assert.ok(texte.indexOf("COMMENCE PAR CHERCHER") < texte.indexOf("- nom :"));
+});
+
+test("sans commune, l'invite ne fabrique pas de requête bancale", () => {
+  const texte = invite({ nom: "Le Grand Mix", lat: 50.7, lng: 3.16 }, { maintenant: T });
+  assert.match(texte, /« Le Grand Mix » — le nom exact/);
+  assert.doesNotMatch(texte, /«  |  »/, "pas d'espace en trop faute de commune");
 });
 
 test("le texte venu du client est réduit avant d'approcher l'invite", () => {
@@ -406,34 +433,85 @@ test("aucune clé ne part dans les journaux du travail de fond", () => {
   /* On inspecte ce que chaque appel à `trace` emporte, un par un. Ni le texte
      rendu par le modèle, ni l'invite, ni les sources elles-mêmes : leur
      TAILLE, leur NOMBRE, et de quoi relier les lignes. */
-  const appels = [...fond.matchAll(/trace\("[a-z_]+",\s*\{[\s\S]*?\}/g)].map((m) => m[0]);
-  assert.equal(appels.length, 6, "six étapes, six appels");
+  /* Le dernier appel porte un troisième argument — `trace(..., {...}, true)`
+     pour la gravité — d'où le groupe optionnel avant la parenthèse. */
+  const appels = [...fond.matchAll(/trace\("[a-z_]+",\s*\{[\s\S]*?\}(?:,\s*\w+)?\)/g)]
+    .map((m) => m[0]);
+  assert.equal(appels.length, 7, "sept étapes, sept appels");
   for (const appel of appels) {
     assert.doesNotMatch(appel, /\btexte\b(?!_len)(?!\.length)/, `texte brut journalisé : ${appel}`);
-    assert.doesNotMatch(appel, /invite|sources\[|sources\.map|lieu\.nom|lieu\.adresse/,
+    assert.doesNotMatch(appel, /invite|sources\[|lieu\.nom|lieu\.adresse|requetes\[|requetes\.map/,
       `contenu sensible journalisé : ${appel}`);
   }
   assert.match(fond, /texte_len: texte\.length/);
+  /* Les requêtes tapées se comptent, elles ne se recopient pas : elles portent
+     le nom du lieu, et le journal n'a pas besoin de le lire trois fois. */
+  assert.match(fond, /search_queries: requetes\.length/);
 });
 
+test("les sources sont journalisées par domaine et titre, jamais par contenu", () => {
+  const bloc = /function domainesSources\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* Le domaine, pas l'URL complète : une URL emporte ses paramètres. */
+  assert.match(code, /new URL\(source\.url\)\.hostname\.replace\(\/\^www\\\.\/, ""\)/);
+  assert.match(code, /String\(source\.titre \?\? ""\)\.slice\(0, 60\)/);
+  assert.match(code, /sources\.slice\(0, 5\)/);
+  assert.doesNotMatch(code, /source\.url\}|href|search|pathname/);
+});
+
+const ETAPES = ["gemini_start", "gemini_response", "no_search", "no_fact",
+                "write_start", "write_success", "background_error"];
+
 test("le travail de fond dit où il s'arrête", () => {
-  /* Six étapes, et elles racontent le chemin dans l'ordre : si la trace
+  /* Sept étapes, et elles racontent le chemin dans l'ordre : si la trace
      s'interrompt, la dernière ligne écrite nomme le point de rupture. */
-  for (const etape of ["gemini_start", "gemini_response", "no_fact",
-                       "write_start", "write_success", "background_error"]) {
+  for (const etape of ETAPES) {
     assert.match(fond, new RegExp(`trace\\("${etape}"`), `étape manquante : ${etape}`);
   }
-  const ordre = ["gemini_start", "gemini_response", "no_fact",
-                 "write_start", "write_success", "background_error"]
-    .map((e) => fond.indexOf(`trace("${e}"`));
+  const ordre = ETAPES.map((e) => fond.indexOf(`trace("${e}"`));
   assert.deepEqual(ordre, [...ordre].sort((a, b) => a - b),
     "les étapes doivent apparaître dans l'ordre du chemin");
 });
 
+test("rien cherché et rien trouvé sont deux pannes différentes", () => {
+  /* `no_search` : le modèle a répondu de mémoire. `no_fact` : il a cherché
+     mais rien d'exploitable. Les confondre, c'est confondre un défaut d'invite
+     avec un lieu dont le web ne parle pas. */
+  const sansRecherche = fond.indexOf("if (!requetes.length)");
+  const sansFait = fond.indexOf("if (!fait)");
+  const construit = fond.indexOf("construireFait(");
+  assert.ok(sansRecherche > 0 && construit > sansRecherche && sansFait > construit,
+    "le garde-fou « aucune recherche » passe avant même de lire la réponse");
+  /* Et ni l'une ni l'autre n'écrit quoi que ce soit. */
+  const avantEcriture = fond.slice(0, fond.indexOf("await ecrire("));
+  assert.equal((avantEcriture.match(/return;/g) || []).length, 2,
+    "deux sorties sèches avant l'écriture, et aucune ligne posée");
+});
+
 test("chaque étape porte de quoi relier les lignes entre elles", () => {
-  assert.match(fond, /trace\("gemini_response", \{place_key: lieu\.cle, duree_ms: Date\.now\(\) - debut,\s*\n?\s*sources: sources\.length/);
-  assert.match(fond, /trace\("no_fact", \{place_key: lieu\.cle, sources: sources\.length\}\)/);
+  /* `gemini_response` est la ligne qui tranche : durée, recherches lancées,
+     pages citées, taille du texte, et les domaines pour vérifier d'un coup
+     d'œil qu'on a lu le bon lieu. */
+  for (const champ of ["place_key: lieu.cle", "duree_ms: Date.now() - debut",
+                       "search_queries: requetes.length", "sources: sources.length",
+                       "texte_len: texte.length", "domaines: domainesSources(sources)"]) {
+    assert.ok(fond.includes(champ), `gemini_response sans ${champ}`);
+  }
+  assert.match(fond, /trace\("no_search", \{place_key: lieu\.cle, texte_len: texte\.length\}\)/);
+  assert.match(fond, /trace\("no_fact", \{place_key: lieu\.cle, search_queries: requetes\.length/);
   assert.match(fond, /trace\("write_success", \{place_key: lieu\.cle/);
+});
+
+test("construireFait n'est pas assoupli : sans source, rien", () => {
+  /* La règle qui a fait rejeter la réponse de mémoire est celle qu'on garde.
+     C'est l'invite qu'on corrige, jamais le juge. */
+  assert.equal(construireFait({ statut: "ouvert", confiance: 1 },
+    ctx({ sources: [] })), null);
+  assert.equal(construireFait({ statut: "ouvert", confiance: 1 },
+    ctx({ sources: [{ url: "pas-une-url", titre: "x" }] })), null);
+  const source = /export function construireFait[\s\S]*?\n\}/.exec(extraction)[0];
+  assert.match(source, /if \(!sources\.length\) return null;/);
 });
 
 test("background_error ne rend que le message, tronqué", () => {
