@@ -21,6 +21,8 @@ const client = await readFile(new URL("../enrichissements.js", import.meta.url),
 const moteur = await readFile(new URL("../maintenant.js", import.meta.url), "utf8");
 const fonction = await readFile(
   new URL("../supabase/functions/enrichir-lieu/index.ts", import.meta.url), "utf8");
+const config = await readFile(
+  new URL("../supabase/config.toml", import.meta.url), "utf8");
 
 const T = Date.parse("2026-08-21T12:00:00Z");
 const ctx = (extra) => Object.assign({ nom: "Le Grand Mix", commune: "Tourcoing",
@@ -232,11 +234,41 @@ test("aucune clé de modèle ne descend dans le navigateur", () => {
   assert.match(code, /\/functions\/v1\/enrichir-lieu/);
 });
 
-test("le navigateur n'utilise que la clé publiable, déjà publique", () => {
-  assert.match(html, /apikey:SUPABASE_CLE, authorization:"Bearer "\+SUPABASE_CLE/);
+test("le navigateur ne détient que la clé publiable et le jeton de la personne", () => {
+  /* Deux valeurs, et aucune n'est un secret : la clé publiable est déjà dans
+     la page, et le JWT appartient à qui est connecté. */
+  assert.match(html, /apikey:SUPABASE_CLE, authorization:"Bearer "\+session\.access_token/);
   assert.match(html, /const SUPABASE_CLE = "sb_publishable_/);
   /* Un secret de synchronisation dans une page serait un secret publié. */
   assert.doesNotMatch(html, /x-sync-secret|EVENT_SYNC_SECRET|SUPABASE_SECRET_KEY/);
+});
+
+test("sans personne connectée, on ne demande rien — on n'ouvre pas la porte", () => {
+  const bloc = /async function demanderVerification\([\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc);
+  /* Les commentaires nomment `sbLecture` pour expliquer pourquoi on ne s'en
+     sert pas : c'est le CODE qu'on interroge, pas la prose. */
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  /* Le jeton vient de `sb`, le client qui porte la session — pas de
+     `sbLecture`, délibérément sans session. */
+  assert.match(code, /await sb\.auth\.getSession\(\)/);
+  assert.doesNotMatch(code, /sbLecture/);
+  /* Pas de session : on rend `null`, on ne se rabat pas sur la clé publiable. */
+  assert.match(code, /if\(!session \|\| !session\.access_token\) return null;/);
+  assert.doesNotMatch(code, /authorization:"Bearer "\+SUPABASE_CLE/);
+  /* Et la fonction reste protégée côté serveur. */
+  assert.match(config, /\[functions\.enrichir-lieu\][\s\S]{0,120}verify_jwt = true/);
+});
+
+test("un candidat écarté faute de session reste vérifiable après connexion", () => {
+  /* `_reserver` marque la clé pour toute la session : la réserver avant
+     d'avoir un jeton condamnerait le lieu à ne plus jamais être vérifié. */
+  const bloc = /async function demanderVerification\([\s\S]*?\n\}/.exec(html);
+  assert.ok(bloc);
+  const posJeton = bloc[0].indexOf("access_token");
+  const posReserve = bloc[0].indexOf("ENR._reserver");
+  assert.ok(posJeton > 0 && posReserve > posJeton,
+    "la réservation doit venir après la lecture du jeton");
 });
 
 test("la clé du modèle est lue en en-tête, jamais dans une URL", () => {
