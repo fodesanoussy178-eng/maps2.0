@@ -60,7 +60,7 @@ const POINT_DE_TERMINAISON =
 /* Au-delà, ce n'est plus une source secondaire, c'est une attente. Le client
    n'attend de toute façon pas — mais une fonction qui vit trente secondes
    coûte trente secondes à chaque lieu silencieux. */
-const DELAI_MS = 15_000;
+const DELAI_MS = 25_000;
 
 /* Le plafond du jour. Il ne protège pas d'un abus ciblé — rien ne le fait sur
    une route publique — il garantit que le pire cas reste borné et connu. */
