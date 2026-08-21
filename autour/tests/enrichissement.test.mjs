@@ -430,6 +430,39 @@ test("l'appel passe par l'Interactions API, avec le corps documenté", () => {
   assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
 });
 
+test("les sources viennent des annotations url_citation, jamais du texte", () => {
+  const bloc = /function citationsDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* On ne lit que le tableau `annotations`, et rien d'autre du bloc. */
+  assert.match(code, /\(bloc as \{annotations\?: unknown\}\)\?\.annotations/);
+  assert.match(code, /if \(!Array\.isArray\(brutes\)\) continue;/);
+  /* Une URL dans `text` est une adresse que le modèle a tapée : jamais. */
+  assert.doesNotMatch(code, /\.text/);
+  /* Et seul ce qui s'annonce comme citation compte. */
+  assert.match(code, /String\(a\.type \?\? ""\) !== "url_citation"/);
+  assert.match(code, /typeof a\.url === "string" \? a\.url/);
+  assert.match(code, /typeof a\.uri === "string" \? a\.uri : ""/);
+  assert.match(code, /if \(!\/\^https\?:\\\/\\\/\/i\.test\(lien\)\) continue;/);
+});
+
+test("l'étape d'outil reste un repli, pas la source d'autorité", () => {
+  const bloc = /function sourcesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* Les annotations d'abord ; l'étape d'outil seulement si elles manquent. */
+  const citations = code.indexOf("citationsDesEtapes(etapes)");
+  const repli = code.indexOf("ETAPES_OUTIL.has");
+  assert.ok(citations > 0 && repli > citations);
+  assert.match(code, /if \(citations\.length\) return citations;/);
+});
+
+test("le journal sépare les citations des sources retenues", () => {
+  assert.ok(fond.includes("annotation_citations: citations"));
+  assert.ok(fond.includes("sources: sources.length"));
+  assert.ok(fond.includes("domaines: domainesSources(sources)"));
+});
+
 test("le modèle ne fabrique pas ses propres citations", () => {
   /* `model_output` et `thought` sont ce que le modèle DIT. Y ramasser des URL
      reviendrait à le laisser se citer lui-même — exactement ce que la règle
@@ -438,8 +471,17 @@ test("le modèle ne fabrique pas ses propres citations", () => {
     /const ETAPES_OUTIL = new Set\(\["google_search_call", "google_search_result"\]\)/);
   const bloc = /function sourcesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
   assert.ok(bloc);
-  assert.match(bloc[0], /if \(!ETAPES_OUTIL\.has\(typeEtape\(etape\)\)\) continue;/);
-  assert.doesNotMatch(bloc[0], /model_output|thought/);
+  /* Le commentaire nomme les étapes écartées pour dire pourquoi : c'est le
+     code qu'on interroge, pas la prose. */
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(code, /if \(!ETAPES_OUTIL\.has\(typeEtape\(etape\)\)\) continue;/);
+  /* Le repli ne descend jamais dans une étape de parole : la seule lecture de
+     `model_output` autorisée est celle des annotations, et elle est ailleurs. */
+  assert.doesNotMatch(code, /model_output|thought/);
+  const citations = /function citationsDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(citations);
+  assert.doesNotMatch(citations[0].replace(/\/\*[\s\S]*?\*\//g, ""),
+    /collecterLiens|ETAPES_OUTIL/);
 });
 
 test("la forme reçue se journalise en noms de clés, jamais en valeurs", () => {
