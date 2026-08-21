@@ -267,6 +267,12 @@ function ouvrirDetail(id){
         : '<button class="act" type="button" disabled aria-label="Téléphone non renseigné">Appeler</button>')+
       (site ? '<a class="act" href="'+esc(site)+'" target="_blank" rel="noopener">Site web</a>'
         : '<button class="act" type="button" disabled aria-label="Site non renseigné">Site web</button>')+
+      /* La billetterie n'apparaît QUE si une source vérifiée en a trouvé une.
+         Un bouton « Billetterie » qui mène nulle part est pire que son
+         absence : il fait cliquer pour rien quelqu'un qui voulait y aller. */
+      (l.ticket_url
+        ? '<a class="act" href="'+esc(l.ticket_url)+'" target="_blank" rel="noopener">Billetterie</a>'
+        : '')+
       '<button class="act" id="btnPartLieu">Partager</button>'+
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Favori ajouté':'Favori')+'</button>'+
     '</div>'+

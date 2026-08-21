@@ -1,0 +1,50 @@
+# ===========================================================================
+# Les fonctions Edge d'Autour, et QUI a le droit de les appeler
+#
+# Ce fichier n'existait pas : les trois fonctions vivaient en production avec
+# des réglages d'authentification qu'aucun fichier ne disait. On ne pouvait
+# donc ni les relire, ni les redéployer à l'identique, ni remarquer qu'une
+# d'elles avait changé de régime. Le voici.
+#
+# DEUX RÉGIMES, ET LA DIFFÉRENCE N'EST PAS UN DÉTAIL
+#
+#   · Les SYNCHRONISATIONS (`sync-*`) sont appelées par GitHub Actions, jamais
+#     par un navigateur. Elles portent leur propre authentification — un secret
+#     partagé vérifié dans le code, `x-sync-secret` — et désactivent donc la
+#     vérification de JWT, qui ferait doublon. Ce secret est un secret de dépôt,
+#     il ne sort jamais d'un serveur.
+#
+#   · `enrichir-lieu` est appelée DEPUIS LE NAVIGATEUR, pour un lieu que la
+#     personne regarde. Elle garde `verify_jwt = true` : l'appelant s'authentifie
+#     avec la clé PUBLIABLE, celle qui est déjà dans la page et qui est publique
+#     par construction. Aucun secret privé ne descend donc dans le navigateur —
+#     et surtout pas `GEMINI_API_KEY`, qui ne quitte jamais Supabase.
+#
+#     Lui donner à la place un `x-sync-secret` serait un recul : il faudrait
+#     soit poser un secret privé dans la page — c'est-à-dire le publier — soit
+#     ajouter un relais serveur qui n'apporterait rien de plus que le JWT.
+#     Le vrai garde-fou d'une route publique n'est pas le jeton, c'est le
+#     budget quotidien : voir ENRICHISSEMENT_BUDGET_JOUR.
+# ===========================================================================
+
+project_id = "sxnzyvcgwbwnpjnqmpkp"
+
+# ---- Enrichissement : appelée depuis le navigateur -------------------------
+[functions.enrichir-lieu]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/enrichir-lieu/index.ts"
+
+# ---- Synchronisations : appelées par GitHub Actions ------------------------
+# `verify_jwt = false` NE VEUT PAS DIRE « sans authentification » : chacune
+# vérifie `x-sync-secret` avant la moindre lecture, la moindre écriture et la
+# moindre ligne de journal.
+[functions.sync-datatourisme]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/sync-datatourisme/index.ts"
+
+[functions.sync-openagenda]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/sync-openagenda/index.ts"

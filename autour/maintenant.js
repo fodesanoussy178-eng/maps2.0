@@ -181,6 +181,7 @@
     SANS_FIN:         "sans_fin",
     FERME:            "ferme",
     COMMODITE:        "commodite",
+    FERME_VERIFIE:    "ferme_verifie",
     TROP_LOIN:        "trop_loin",
     POSITION_INCONNUE: "position_inconnue",
     PAS_OUVERT:       "pas_ouvert",
@@ -321,6 +322,24 @@
       return retenu(NATURES.SEANCE, d);
     }
 
+    /* ---- LE CALQUE VÉRIFIÉ PASSE EN PREMIER -----------------------------
+
+       Ordre de vérité : un enrichissement officiel frais l'emporte sur une
+       donnée institutionnelle récente, qui l'emporte sur un tag OpenStreetMap,
+       ancien ou non. Le serveur a déjà refusé d'écrire un statut qu'aucune
+       source assez sûre n'appuyait (voir `peutEcraserOsm`) : ce qui arrive ici
+       a donc déjà passé cet examen, et on n'en refait pas un second.
+
+       Une fermeture temporaire EXCLUT. C'est le cas qui justifie à lui seul
+       toute cette couche : le lieu que nos données disent ouvert et dont la
+       page officielle annonce des travaux ne doit plus être proposé. */
+    if (item.temporary_closed === true) return refusNature(RAISONS.FERME_VERIFIE);
+    if (item.current_status === "closed" || item.current_status === "permanently_closed")
+      return refusNature(RAISONS.FERME_VERIFIE);
+    /* À l'inverse, un « ouvert » vérifié lève l'inconnu que nos données
+       laissaient : c'est exactement ce qu'on est allé chercher. */
+    const ouvertVerifie = item.current_status === "open";
+
     /* Un LIEU. Trois conditions, et pas une de moins.
 
        `ouvert` vaut `true`, `false` ou `null`. Le `null` est le cas le plus
@@ -329,7 +348,7 @@
        envoyer quelqu'un devant une porte close parce qu'on ne savait pas est
        exactement ce qu'on veut éviter. Dans « Maintenant », l'inconnu ne
        passe pas. */
-    if (item.ouvert !== true) {
+    if (item.ouvert !== true && !ouvertVerifie) {
       return refusNature(item.ouvert === false ? RAISONS.PAS_OUVERT
                                                : RAISONS.HORAIRE_INCONNU);
     }
@@ -342,11 +361,26 @@
     if (d === null) return refusNature(RAISONS.POSITION_INCONNUE);
     if (d > rayonDe(ctx)) return refusNature(RAISONS.TROP_LOIN);
 
-    /* Ouvert, proche, et pourtant pas une proposition : voir COMMODITES. */
-    if (estCommodite(item.categorie) && !commoditeDemandee(item.categorie, ctx))
+    /* UNE PROGRAMMATION EN COURS EST UNE SORTIE, PAS UNE OUVERTURE.
+
+       Un musée ouvert est une commodité culturelle ; un musée qui a une
+       exposition en ce moment est une proposition. C'est la même distinction
+       qu'entre « c'est ouvert » et « il s'y passe quelque chose », et elle
+       vaut une remontée franche : `ACTIVITE` passe devant `OUVERT` dans RANG.
+
+       `programme_soon`, lui, ne remonte JAMAIS ici : ce qui commence demain
+       n'a pas lieu maintenant, et le faire entrer viderait le mot de son sens.
+       Il appartient aux créneaux « ce soir » et « à venir ». */
+    const programmeEnCours = Array.isArray(item.programme_now) && item.programme_now.length > 0;
+
+    /* Ouvert, proche, et pourtant pas une proposition : voir COMMODITES.
+       Une programmation vérifiée lève cette exclusion — une salle qui joue ce
+       soir n'est plus une commodité, quoi que dise sa catégorie. */
+    if (estCommodite(item.categorie) && !commoditeDemandee(item.categorie, ctx)
+        && !programmeEnCours)
       return refusNature(RAISONS.COMMODITE);
 
-    const activite = ACTIVITES.indexOf(item.categorie) >= 0;
+    const activite = programmeEnCours || ACTIVITES.indexOf(item.categorie) >= 0;
     return retenu(activite ? NATURES.ACTIVITE : NATURES.OUVERT, d);
   }
 
