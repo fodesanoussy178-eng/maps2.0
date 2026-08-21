@@ -307,7 +307,54 @@ function collecterLiens(valeur: unknown, sorties: {url: string; titre: string}[]
    la recherche a rapportée, pas une adresse que le modèle a écrite. */
 const ETAPES_OUTIL = new Set(["google_search_call", "google_search_result"]);
 
+/* LES CITATIONS STRUCTURÉES, ET POURQUOI C'EST LÀ QU'ELLES SONT.
+
+   La mesure a montré que l'étape de résultat ne porte rien d'exploitable :
+   `google_search_result.result[]` ne contient que `search_suggestions`. Les
+   vraies sources sont attachées au CONTENU DE SORTIE, sous forme
+   d'annotations — des objets que l'API pose elle-même à côté du texte, avec
+   `type: "url_citation"`.
+
+   LA DISTINCTION AVEC LE TEXTE N'EST PAS FORMELLE, C'EST TOUTE LA RÈGLE.
+
+   Une URL écrite dans `content.text` est une adresse que le MODÈLE a tapée :
+   il peut l'inventer, et une citation inventée est exactement ce que
+   « aucune donnée sans source » interdit. Une annotation est une page que la
+   recherche a réellement rapportée, posée par l'API et non par le modèle. On
+   ne lit donc que le tableau `annotations`, jamais `text` — et on n'accepte
+   que ce qui s'y annonce comme `url_citation`. */
+function citationsDesEtapes(etapes: Record<string, unknown>[]) {
+  const sorties: {url: string; titre: string}[] = [];
+  for (const etape of etapes) {
+    if (typeEtape(etape) !== "model_output") continue;
+    const contenu = Array.isArray(etape.content) ? etape.content : [];
+    for (const bloc of contenu) {
+      const brutes = (bloc as {annotations?: unknown})?.annotations;
+      if (!Array.isArray(brutes)) continue;
+      for (const annotation of brutes) {
+        if (!annotation || typeof annotation !== "object") continue;
+        const a = annotation as Record<string, unknown>;
+        if (String(a.type ?? "") !== "url_citation") continue;
+        const lien = typeof a.url === "string" ? a.url
+          : typeof a.uri === "string" ? a.uri : "";
+        /* Une annotation sans adresse web n'est pas une source. */
+        if (!/^https?:\/\//i.test(lien)) continue;
+        sorties.push({url: lien, titre: String(a.title ?? a.titre ?? "")});
+        if (sorties.length >= 20) return sorties;
+      }
+    }
+  }
+  return sorties;
+}
+
 function sourcesDesEtapes(etapes: Record<string, unknown>[]) {
+  /* Les annotations d'abord : c'est la source d'autorité. */
+  const citations = citationsDesEtapes(etapes);
+  if (citations.length) return citations;
+
+  /* Repli, pour le jour où l'API poserait les liens dans l'étape d'outil
+     plutôt qu'en annotation. Il ne ramasse que de vraies adresses, et jamais
+     dans `model_output` ni `thought` — la parole du modèle reste hors jeu. */
   const sorties: {url: string; titre: string}[] = [];
   for (const etape of etapes) {
     if (!ETAPES_OUTIL.has(typeEtape(etape))) continue;
@@ -370,6 +417,7 @@ async function interroger(lieu: Record<string, unknown>, maintenant: number) {
   const etapes = etapesDe(await r.json());
   return {
     sources: sourcesDesEtapes(etapes),
+    citations: citationsDesEtapes(etapes).length,
     requetes: requetesDesEtapes(etapes),
     texte: texteDesEtapes(etapes),
     /* Combien d'étapes de recherche : la preuve, indépendante du nom des
@@ -459,7 +507,8 @@ async function verifier(lieu: Lieu) {
   const debut = Date.now();
   try {
     trace("gemini_start", {place_key: lieu.cle, modele: MODELE});
-    const {sources, requetes, texte, appels, formes, cles} = await interroger(lieu, debut);
+    const {sources, citations, requetes, texte, appels, formes, cles} =
+      await interroger(lieu, debut);
     /* La longueur du texte, pas le texte. Et les compteurs séparément :
        `search_calls` dit si le modèle est allé chercher, `sources` dit s'il a
        trouvé. Confondre les deux, c'est confondre un défaut de réglage avec un
@@ -468,6 +517,7 @@ async function verifier(lieu: Lieu) {
     trace("gemini_response", {place_key: lieu.cle, duree_ms: Date.now() - debut,
                               search_calls: appels,
                               search_queries: requetes.length,
+                              annotation_citations: citations,
                               sources: sources.length, texte_len: texte.length,
                               domaines: domainesSources(sources), formes, cles});
 
