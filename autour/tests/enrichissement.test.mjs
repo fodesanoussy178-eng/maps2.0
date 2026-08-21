@@ -318,11 +318,9 @@ test("une panne du modèle laisse Autour intact", () => {
   assert.match(bloc[0], /AbortSignal\.timeout\(20000\)/);
   /* Et côté serveur : la panne survient maintenant APRÈS la réponse, dans le
      travail de fond. Elle ne peut donc plus rien casser en aval — elle est
-     notée, et le lieu sera redemandé quand son entrée aura expiré. */
-  const fond = /async function verifier\([\s\S]*?\n\}/.exec(fonction);
-  assert.ok(fond);
-  assert.match(fond[0], /catch \(erreur\) \{[\s\S]{0,600}console\.error/);
-  assert.doesNotMatch(fond[0], /throw /);
+     tracée, et le lieu sera redemandé quand son entrée aura expiré. */
+  assert.match(fond, /catch \(erreur\) \{[\s\S]{0,400}trace\("background_error"/);
+  assert.doesNotMatch(fond, /throw /);
 });
 
 /* ======================================================================== */
@@ -380,11 +378,10 @@ test("le budget du jour garde sa place avant le lancement", () => {
 });
 
 test("le travail de fond n'écrit jamais un fait sans source", () => {
-  const bloc = /async function verifier\([\s\S]*?\n\}/.exec(fonction);
-  assert.ok(bloc);
-  const garde = bloc[0].indexOf("if (!fait) return;");
-  const ecriture = bloc[0].indexOf("await ecrire(");
-  assert.ok(garde > 0 && ecriture > garde,
+  const garde = fond.indexOf("if (!fait)");
+  const sortie = fond.indexOf('trace("no_fact"');
+  const ecriture = fond.indexOf("await ecrire(");
+  assert.ok(garde > 0 && sortie > garde && ecriture > sortie,
     "le garde-fou « aucune source citée » doit passer avant l'écriture");
 });
 
@@ -396,11 +393,62 @@ test("le délai serveur borne un travail de fond, pas une attente", () => {
   assert.match(html, /AbortSignal\.timeout\(20000\)/);
 });
 
-test("aucune clé ne part dans les journaux du travail de fond", () => {
+/* Le corps de `verifier`, commentaires retirés : c'est le CODE qu'on
+   interroge sur ce qu'il journalise, pas la prose qui l'explique. */
+const fond = (() => {
   const bloc = /async function verifier\([\s\S]*?\n\}/.exec(fonction);
-  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.match(code, /console\.error\("enrichir-lieu :"/);
-  assert.doesNotMatch(code, /CLE_GEMINI|SUPABASE_SECRET|cleSecrete/);
+  assert.ok(bloc, "verifier() introuvable");
+  return bloc[0].replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+})();
+
+test("aucune clé ne part dans les journaux du travail de fond", () => {
+  assert.doesNotMatch(fond, /CLE_GEMINI|SUPABASE_SECRET|cleSecrete|apikey|Authorization/);
+  /* On inspecte ce que chaque appel à `trace` emporte, un par un. Ni le texte
+     rendu par le modèle, ni l'invite, ni les sources elles-mêmes : leur
+     TAILLE, leur NOMBRE, et de quoi relier les lignes. */
+  const appels = [...fond.matchAll(/trace\("[a-z_]+",\s*\{[\s\S]*?\}/g)].map((m) => m[0]);
+  assert.equal(appels.length, 6, "six étapes, six appels");
+  for (const appel of appels) {
+    assert.doesNotMatch(appel, /\btexte\b(?!_len)(?!\.length)/, `texte brut journalisé : ${appel}`);
+    assert.doesNotMatch(appel, /invite|sources\[|sources\.map|lieu\.nom|lieu\.adresse/,
+      `contenu sensible journalisé : ${appel}`);
+  }
+  assert.match(fond, /texte_len: texte\.length/);
+});
+
+test("le travail de fond dit où il s'arrête", () => {
+  /* Six étapes, et elles racontent le chemin dans l'ordre : si la trace
+     s'interrompt, la dernière ligne écrite nomme le point de rupture. */
+  for (const etape of ["gemini_start", "gemini_response", "no_fact",
+                       "write_start", "write_success", "background_error"]) {
+    assert.match(fond, new RegExp(`trace\\("${etape}"`), `étape manquante : ${etape}`);
+  }
+  const ordre = ["gemini_start", "gemini_response", "no_fact",
+                 "write_start", "write_success", "background_error"]
+    .map((e) => fond.indexOf(`trace("${e}"`));
+  assert.deepEqual(ordre, [...ordre].sort((a, b) => a - b),
+    "les étapes doivent apparaître dans l'ordre du chemin");
+});
+
+test("chaque étape porte de quoi relier les lignes entre elles", () => {
+  assert.match(fond, /trace\("gemini_response", \{place_key: lieu\.cle, duree_ms: Date\.now\(\) - debut,\s*\n?\s*sources: sources\.length/);
+  assert.match(fond, /trace\("no_fact", \{place_key: lieu\.cle, sources: sources\.length\}\)/);
+  assert.match(fond, /trace\("write_success", \{place_key: lieu\.cle/);
+});
+
+test("background_error ne rend que le message, tronqué", () => {
+  assert.match(fond,
+    /message: String\(erreur instanceof Error \? erreur\.message : erreur\)\.slice\(0, 300\)/);
+  /* Ni pile d'appel, ni corps de réponse, ni objet d'erreur entier. */
+  assert.doesNotMatch(fond, /erreur\.stack|JSON\.stringify\(erreur\)|erreur\}/);
+});
+
+test("le diagnostic ne crée aucune table", () => {
+  /* Une table de plus serait une table à purger, migrer et surveiller. */
+  const code = fonction.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /create table|enrichissement_logs|diagnostic/i);
+  const tables = [...code.matchAll(/rest\("([a-z_]+)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(tables)], ["place_enrichments"]);
 });
 
 /* ======================================================================== */

@@ -278,27 +278,63 @@ type Lieu = {
   commune: string; adresse: string; categorie: string; horairesConnus: string;
 };
 
+/* ---- La trace ------------------------------------------------------------
+   UN TRAVAIL DE FOND QUI S'ARRÊTE S'ARRÊTE EN SILENCE.
+
+   Il ne rend rien à personne : ni au navigateur, qui est déjà reparti, ni à la
+   base, puisque justement il n'y arrive pas. Ces six étapes sont donc le seul
+   endroit d'où l'on peut apprendre où il s'interrompt — modèle injoignable,
+   réponse sans page citée, écriture refusée, ou isolat coupé avant la fin,
+   auquel cas la trace s'arrête d'elle-même à la dernière étape franchie.
+
+   Elles vont dans les journaux de la fonction. Pas de table de diagnostic :
+   une table de plus serait une table à purger, à migrer et à surveiller, pour
+   une question qu'on se pose une fois.
+
+   CE QU'ELLES NE CONTIENNENT JAMAIS : aucune clé, aucun en-tête, aucun corps
+   de réponse, aucune invite, aucun texte rendu par le modèle. Un message
+   d'erreur est construit par notre propre code — on le tronque quand même,
+   parce qu'un message venu d'ailleurs pourrait un jour recopier ce qu'on lui a
+   envoyé. `place_key` est là pour relier les lignes entre elles : c'est un nom
+   de lieu et une position arrondie, la donnée la plus publique qui soit. */
+function trace(etape: string, details: Record<string, unknown> = {}, grave = false) {
+  const ligne = JSON.stringify({fonction: "enrichir-lieu", etape, ...details});
+  if (grave) console.error(ligne); else console.log(ligne);
+}
+
 async function verifier(lieu: Lieu) {
   const debut = Date.now();
   try {
+    trace("gemini_start", {place_key: lieu.cle, modele: MODELE});
     const {sources, texte} = await interroger(lieu, debut);
+    /* La longueur du texte, pas le texte : elle sépare « le modèle n'a rien
+       dit » de « il a parlé mais sans citer une seule page ». */
+    trace("gemini_response", {place_key: lieu.cle, duree_ms: Date.now() - debut,
+                              sources: sources.length, texte_len: texte.length});
+
     const fait = construireFait(extraireObjet(texte),
       {sources, nom: lieu.nom, commune: lieu.commune, maintenant: debut});
 
     /* Aucune page citée : le modèle a parlé sans avoir lu. On n'écrit rien —
        pas même un « inconnu » — parce qu'une réponse non ancrée ne prouve pas
        que le lieu est muet, seulement que la recherche a échoué cette fois. */
-    if (!fait) return;
+    if (!fait) {
+      trace("no_fact", {place_key: lieu.cle, sources: sources.length});
+      return;
+    }
 
+    trace("write_start", {place_key: lieu.cle});
     await ecrire(ligneEnrichissement(fait, lieu,
       {maintenant: debut, modele: MODELE, duree: Date.now() - debut}));
+    trace("write_success", {place_key: lieu.cle, duree_ms: Date.now() - debut});
   } catch (erreur) {
     /* Plus personne n'attend : une panne du modèle ne peut plus rien casser en
-       aval. On la note — le message est construit par notre propre code, il ne
-       recopie aucune clé — et le lieu sera redemandé quand son entrée aura
-       expiré. Autour, lui, continue d'afficher ce qu'il affichait. */
-    console.error("enrichir-lieu :",
-      erreur instanceof Error ? erreur.message : String(erreur));
+       aval. On la note — le message seul, tronqué — et le lieu sera redemandé
+       quand son entrée aura expiré. Autour, lui, continue d'afficher ce qu'il
+       affichait. */
+    trace("background_error", {place_key: lieu.cle,
+      message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 300),
+    }, true);
   }
 }
 
