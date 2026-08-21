@@ -268,10 +268,14 @@ function requetesDesEtapes(etapes: Record<string, unknown>[]): string[] {
   return [...new Set(sorties)];
 }
 
-/* Les pages citées. On descend dans l'étape de résultat à la recherche de tout
-   ce qui porte une URL — `url` ou `uri` — parce que c'est la seule chose dont
-   on ait besoin et la seule qu'on accepte. La descente est bornée : ni plus de
-   vingt sources, ni plus de six niveaux. */
+/* Les pages citées. On descend dans les étapes D'OUTIL à la recherche de tout
+   ce qui porte une URL. Plusieurs noms de champ sont acceptés parce qu'on lit
+   une surface jeune — mais la valeur, elle, doit être une vraie adresse web :
+   une chaîne quelconque nommée `source` n'est pas une source.
+
+   La descente est bornée : ni plus de vingt sources, ni plus de six niveaux. */
+const NOMS_DE_LIEN = ["url", "uri", "link", "source_url", "sourceUrl", "web_url"];
+
 function collecterLiens(valeur: unknown, sorties: {url: string; titre: string}[],
                         profondeur = 0): void {
   if (sorties.length >= 20 || profondeur > 6) return;
@@ -281,21 +285,56 @@ function collecterLiens(valeur: unknown, sorties: {url: string; titre: string}[]
     return;
   }
   const o = valeur as Record<string, unknown>;
-  const lien = typeof o.url === "string" ? o.url
-    : typeof o.uri === "string" ? o.uri : "";
+  let lien = "";
+  for (const nom of NOMS_DE_LIEN) {
+    const v = o[nom];
+    if (typeof v === "string" && /^https?:\/\//i.test(v)) { lien = v; break; }
+  }
   if (lien) {
-    sorties.push({url: lien, titre: String(o.title ?? o.titre ?? o.domain ?? "")});
+    sorties.push({url: lien,
+      titre: String(o.title ?? o.titre ?? o.domain ?? o.name ?? "")});
   }
   for (const v of Object.values(o)) collecterLiens(v, sorties, profondeur + 1);
 }
 
+/* LES ÉTAPES D'OUTIL, PAS LA PAROLE DU MODÈLE.
+
+   `model_output` et `thought` sont ce que le modèle DIT ; y ramasser des URL
+   reviendrait à le laisser fabriquer ses propres citations — exactement ce que
+   la règle « aucune donnée sans source » interdit. Une source est une page que
+   la recherche a rapportée, pas une adresse que le modèle a écrite. */
+const ETAPES_OUTIL = new Set(["google_search_call", "google_search_result"]);
+
 function sourcesDesEtapes(etapes: Record<string, unknown>[]) {
   const sorties: {url: string; titre: string}[] = [];
   for (const etape of etapes) {
-    if (typeEtape(etape) !== "google_search_result") continue;
+    if (!ETAPES_OUTIL.has(typeEtape(etape))) continue;
     collecterLiens(etape, sorties);
   }
   return sorties;
+}
+
+/* LA FORME REÇUE, EN NOMS DE CLÉS SEULEMENT.
+
+   On lit une surface dont on n'a pas la spécification depuis ici : plutôt que
+   de deviner une fois de plus, on fait dire à la réponse comment elle est
+   faite. Des NOMS, jamais des valeurs — aucune page, aucun extrait, aucun mot
+   du modèle ne passe par là. */
+function clesDesEtapes(etapes: Record<string, unknown>[]): string[] {
+  const sorties: string[] = [];
+  for (const etape of etapes.slice(0, 12)) {
+    if (!ETAPES_OUTIL.has(typeEtape(etape))) continue;
+    const niveaux = [`${typeEtape(etape)}{${Object.keys(etape).sort().join("|")}}`];
+    for (const [nom, valeur] of Object.entries(etape)) {
+      const echantillon = Array.isArray(valeur) ? valeur[0] : valeur;
+      if (echantillon && typeof echantillon === "object") {
+        const cles = Object.keys(echantillon as object).sort().join("|");
+        niveaux.push(`${nom}${Array.isArray(valeur) ? "[]" : ""}{${cles}}`);
+      }
+    }
+    sorties.push(niveaux.join(" "));
+  }
+  return [...new Set(sorties)].slice(0, 6);
 }
 
 async function interroger(lieu: Record<string, unknown>, maintenant: number) {
@@ -327,6 +366,7 @@ async function interroger(lieu: Record<string, unknown>, maintenant: number) {
        champs. Et les types d'étapes vus, pour resserrer les lecteurs. */
     appels: etapes.filter((e) => typeEtape(e) === "google_search_call").length,
     formes: [...new Set(etapes.map(typeEtape))].slice(0, 8),
+    cles: clesDesEtapes(etapes),
   };
 }
 
@@ -409,7 +449,7 @@ async function verifier(lieu: Lieu) {
   const debut = Date.now();
   try {
     trace("gemini_start", {place_key: lieu.cle, modele: MODELE});
-    const {sources, requetes, texte, appels, formes} = await interroger(lieu, debut);
+    const {sources, requetes, texte, appels, formes, cles} = await interroger(lieu, debut);
     /* La longueur du texte, pas le texte. Et les compteurs séparément :
        `search_calls` dit si le modèle est allé chercher, `sources` dit s'il a
        trouvé. Confondre les deux, c'est confondre un défaut de réglage avec un
@@ -419,7 +459,7 @@ async function verifier(lieu: Lieu) {
                               search_calls: appels,
                               search_queries: requetes.length,
                               sources: sources.length, texte_len: texte.length,
-                              domaines: domainesSources(sources), formes});
+                              domaines: domainesSources(sources), formes, cles});
 
     /* AUCUNE RECHERCHE LANCÉE. Le modèle a répondu de mémoire, et une
        information locale et actuelle ne se connaît pas : elle se lit. On

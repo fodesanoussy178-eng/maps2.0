@@ -430,13 +430,41 @@ test("l'appel passe par l'Interactions API, avec le corps documenté", () => {
   assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
 });
 
+test("le modèle ne fabrique pas ses propres citations", () => {
+  /* `model_output` et `thought` sont ce que le modèle DIT. Y ramasser des URL
+     reviendrait à le laisser se citer lui-même — exactement ce que la règle
+     « aucune donnée sans source » interdit. */
+  assert.match(fonction,
+    /const ETAPES_OUTIL = new Set\(\["google_search_call", "google_search_result"\]\)/);
+  const bloc = /function sourcesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  assert.match(bloc[0], /if \(!ETAPES_OUTIL\.has\(typeEtape\(etape\)\)\) continue;/);
+  assert.doesNotMatch(bloc[0], /model_output|thought/);
+});
+
+test("la forme reçue se journalise en noms de clés, jamais en valeurs", () => {
+  const bloc = /function clesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* Que des `Object.keys`. Aucune valeur ne sort d'ici. */
+  assert.match(code, /Object\.keys\(etape\)\.sort\(\)/);
+  assert.match(code, /Object\.keys\(echantillon as object\)\.sort\(\)/);
+  assert.doesNotMatch(code, /Object\.values|JSON\.stringify|\.text|snippet/);
+  /* Et c'est borné. */
+  assert.match(code, /etapes\.slice\(0, 12\)/);
+  assert.match(code, /\.slice\(0, 6\)/);
+});
+
 test("les lecteurs de la réponse n'acceptent jamais une source sans URL", () => {
   const bloc = /function collecterLiens\([\s\S]*?\n\}/.exec(fonction);
   assert.ok(bloc);
   const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
   /* `url` ou `uri`, et rien d'autre ne fait une source. */
-  assert.match(code, /typeof o\.url === "string" \? o\.url/);
-  assert.match(code, /typeof o\.uri === "string" \? o\.uri : ""/);
+  /* La liste des noms acceptés vit au-dessus de la fonction. */
+  assert.match(fonction, /const NOMS_DE_LIEN = \["url", "uri", "link"/);
+  /* Et la valeur doit être une vraie adresse web : une chaîne quelconque
+     nommée `source` n'est pas une source. */
+  assert.match(code, /\/\^https\?:\\\/\\\/\/i\.test\(v\)/);
   assert.match(code, /if \(lien\) \{/);
   /* La descente est bornée : une réponse hostile ne peut ni la faire tourner
      en rond ni la faire enfler. */
