@@ -126,7 +126,7 @@ async function bouchonner(page) {
     if (url.startsWith(BASE) && !/\/api\//.test(url)) return route.continue();
     if (/tile|basemaps|openstreetmap\.org\/\d/.test(url))
       return route.fulfill({ status: 200, contentType: "image/png",
-        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") });
+        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=", "base64") });
     if (/leaflet.*\.js(\?|$)/.test(url)) return route.fulfill({ status: 200,
       contentType: "text/javascript", body: await readFile(join(LEAFLET, "leaflet.js"), "utf8") });
     if (/leaflet.*\.css(\?|$)/.test(url)) return route.fulfill({ status: 200,

@@ -424,12 +424,22 @@ test("le bloc réserve sa place dès le premier rendu, dans les quatre états", 
     "un retour vide hors créneau, un si le module manque — et aucun autre");
   assert.doesNotMatch(bloc[0], /if\(!liste\.length\) return "";/,
     "un bloc vide doit occuper sa place, pas disparaître");
-  /* La hauteur est réservée en CSS, et sur le CORPS plutôt que sur la carte :
-     additionner une hauteur d'en-tête SUPPOSÉE donnait quatre pixels d'écart,
-     que le banc de navigateur a mesurés. L'en-tête garde sa taille naturelle,
-     le corps réserve exactement trois lignes plus le pied — et les lignes ont
-     une hauteur FIXE, pas déduite de leur contenu. */
-  assert.match(html, /\.mn-corps\{min-height:calc\(3 \* var\(--mn-ligne\) \+ var\(--mn-pied\)\)/);
+  /* LA RÉSERVE VAUT PENDANT LA COLLECTE, ET SEULEMENT LÀ.
+
+     Elle est en CSS et sur le CORPS plutôt que sur la carte : additionner une
+     hauteur d'en-tête SUPPOSÉE donnait quatre pixels d'écart, que le banc de
+     navigateur a mesurés. L'en-tête garde sa taille naturelle, le corps
+     réserve exactement trois lignes plus le pied — des lignes de hauteur
+     FIXE, pas déduite de leur contenu.
+
+     Mais une fois la réponse connue, la garder affichait une ligne et demie
+     de blanc sous deux résultats : trois emplacements dessinés pour un
+     contenu qui n'en remplit que deux. « Maximum trois », pas « toujours
+     trois » — le bloc fait donc la taille de ce qu'il montre. */
+  assert.match(html,
+    /\.mn\[data-mn-etat="loading"\] \.mn-corps\{\s*\n?\s*min-height:calc\(3 \* var\(--mn-ligne\) \+ var\(--mn-pied\)\)/);
+  assert.match(html, /\.mn-corps\{display:flex;flex-direction:column\}/,
+    "hors collecte, le corps fait la taille de son contenu");
   assert.match(html, /:root\{--mn-ligne:\d+px;--mn-pied:\d+px\}/);
   assert.match(html, /\.mn-l\{[^}]*height:var\(--mn-ligne\)/);
   assert.match(html, /<div class="mn-corps">/);
@@ -443,8 +453,10 @@ test("les quatre états sont rendus, et aucun ne déplace l'interface", () => {
   // pendant la collecte : un état léger et neutre, sans texte à lire
   assert.match(bloc, /class="mn-attente" aria-hidden="true"/);
   assert.match(html, /\.mn-attente i\{height:var\(--mn-ligne\)/);
-  // vide et erreur occupent la même hauteur que trois lignes
-  assert.match(html, /\.mn-rien\{flex:1/);
+  /* Vide et erreur ne miment plus une liste absente : ils disent ce qu'ils
+     ont à dire et s'arrêtent là. */
+  assert.doesNotMatch(html, /\.mn-rien\{flex:1/);
+  assert.match(html, /\.mn-rien\{display:flex;flex-direction:column/);
   assert.match(bloc, /aria-busy="'\+\(etat === M\.ETATS\.LOADING\)\+'"/);
 });
 
@@ -465,8 +477,15 @@ test("une ligne ouvre son événement, sans menu intermédiaire", () => {
 test("un événement en cours n'est jamais affiché deux fois dans la feuille", () => {
   assert.match(html, /const dejaListes = new Set\(enCours\.slice\(0, MAINTENANT_APERCU\)\.map\(l=>l\.id\)\);/);
   assert.match(html, /reco = reco\.filter\(l=>!dejaListes\.has\(l\.id\)\);/);
-  assert.match(html, /const titre = enCours\.length \? "Autour de toi"/,
+  /* La section du bas s'appelle « Autour de toi », toujours. Elle changeait
+     de nom selon qu'un concert était en cours ou non — « Pour toi,
+     maintenant » sinon — ce qui renommait une section sous les yeux pour un
+     contenu de même nature, et redonnait le mot « maintenant » à une
+     deuxième liste. Un seul « Maintenant » à l'écran : le bloc du haut. */
+  assert.match(html, /const titre = creneau === "maintenant" \? "Autour de toi"/,
     "deux sections nommées « maintenant » diraient la même chose deux fois");
+  assert.doesNotMatch(html, /"Pour toi, maintenant"/,
+    "ce titre disait « maintenant » une deuxième fois");
 });
 
 /* ======================================================================== */

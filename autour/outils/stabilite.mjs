@@ -117,7 +117,7 @@ async function bouchonner(page, { lent = false, panne = false } = {}) {
     // tuiles de fond : un pixel, jamais le vrai CDN
     if (/tile|basemaps|openstreetmap\.org\/\d|googleapis\.com\/maps/.test(url))
       return route.fulfill({ status: 200, contentType: "image/png",
-        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") });
+        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=", "base64") });
 
     /* Leaflet vient d'un CDN injoignable depuis ce bac à sable : on sert la
        même version depuis le disque, sinon la carte n'existe jamais et tous

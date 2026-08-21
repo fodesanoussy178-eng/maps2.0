@@ -124,6 +124,38 @@
   const ACTIVITES = Object.freeze(["cinema", "musee", "biblio", "parc", "terrain",
     "piscine", "sport", "spectacle", "concert", "coworking"]);
 
+  /* ---- CE QUI N'EST PAS UNE PROPOSITION ---------------------------------
+
+     Un supermarché ouvert, une pharmacie ouverte, une station de métro : ce
+     sont des commodités. Elles ont leur place sur la carte et dans « Autour
+     de toi » — on doit pouvoir les trouver — mais elles n'ont rien à faire
+     dans une sélection qui répond à « qu'est-ce que je fais maintenant ».
+
+     La règle d'admission des LIEUX était « ouvert + assez proche ». À cette
+     heure-ci, dans n'importe quel centre-ville, cela décrit d'abord Carrefour,
+     Zara et la pharmacie de garde : « Maintenant » se remplissait donc de
+     l'annuaire des commerces ouverts, et les trois places qu'il possède —
+     les seules qu'on lit d'un coup d'œil — étaient prises avant que le
+     moindre concert n'arrive.
+
+     Elles restent admissibles quand on les DEMANDE : « pharmacie ouverte
+     maintenant » est une intention explicite, et là c'est exactement ce
+     qu'il faut montrer. C'est le seul cas. */
+  const COMMODITES = Object.freeze(["commerce", "friperie", "marche", "sante",
+    "metro", "bus", "tram", "train", "velo", "recharge", "toilettes",
+    "mairie", "ecole", "emploi"]);
+
+  const estCommodite = (categorie) => COMMODITES.indexOf(categorie) >= 0;
+
+  /* Une commodité n'entre que si la personne l'a nommée — catégorie choisie
+     dans l'interface, ou tapée en toutes lettres. `demandees` est la liste
+     que l'appelant a comprise ; il n'y a aucune devinette ici. */
+  function commoditeDemandee(categorie, ctx) {
+    const demandees = (ctx && ctx.categoriesDemandees) || null;
+    if (!demandees || !demandees.length) return false;
+    return demandees.indexOf(categorie) >= 0;
+  }
+
   /* Trois emplacements, réservés dès le premier rendu et jamais davantage.
      Trois est le nombre qu'on lit d'un coup d'œil sans choisir. */
   const PLACES = 3;
@@ -148,6 +180,7 @@
     DEJA_FINI:        "deja_fini",
     SANS_FIN:         "sans_fin",
     FERME:            "ferme",
+    COMMODITE:        "commodite",
     TROP_LOIN:        "trop_loin",
     POSITION_INCONNUE: "position_inconnue",
     PAS_OUVERT:       "pas_ouvert",
@@ -308,6 +341,10 @@
     const d = distanceDe(item, ctx);
     if (d === null) return refusNature(RAISONS.POSITION_INCONNUE);
     if (d > rayonDe(ctx)) return refusNature(RAISONS.TROP_LOIN);
+
+    /* Ouvert, proche, et pourtant pas une proposition : voir COMMODITES. */
+    if (estCommodite(item.categorie) && !commoditeDemandee(item.categorie, ctx))
+      return refusNature(RAISONS.COMMODITE);
 
     const activite = ACTIVITES.indexOf(item.categorie) >= 0;
     return retenu(activite ? NATURES.ACTIVITE : NATURES.OUVERT, d);
@@ -489,7 +526,8 @@
 
   root.AutourMaintenant = Object.freeze({
     ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES,
-    NATURES, RANG, FAMILLES, ACTIVITES, SEANCE_MIN_MS, SEANCE_MAX_MS,
+    NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
+    SEANCE_MIN_MS, SEANCE_MAX_MS,
     fiable, disponible, candidats, selection, total, etat, textes,
     distanceM, familleDe,
   });
