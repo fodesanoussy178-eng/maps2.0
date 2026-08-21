@@ -412,6 +412,75 @@ test("le travail de fond n'écrit jamais un fait sans source", () => {
     "le garde-fou « aucune source citée » doit passer avant l'écriture");
 });
 
+test("l'appel passe par l'Interactions API, avec le corps documenté", () => {
+  /* Le commentaire nomme les réglages retirés pour expliquer pourquoi : c'est
+     le code qu'on interroge, pas la prose. */
+  const appel = fonction.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.match(appel,
+    /"https:\/\/generativelanguage\.googleapis\.com\/v1beta\/interactions"/);
+  /* Le modèle passe du chemin d'URL au corps. */
+  assert.doesNotMatch(appel, /:generateContent/);
+  assert.match(appel, /model: MODELE,\s*\n?\s*input: invite\(lieu, \{maintenant\}\),/);
+  assert.match(appel, /tools: \[\{type: "google_search"\}\]/);
+  /* Rien d'autre dans le corps : ni température, ni plafond, ni réflexion. La
+     campagne précédente a montré que ce n'était pas là que ça se jouait, et le
+     corps minimal est le test le plus propre. */
+  assert.doesNotMatch(appel, /temperature:|top_p|topP|top_k|topK|generationConfig|thinkingConfig/);
+  /* Le garde-fou de coût reste le budget du jour, pas la longueur. */
+  assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
+});
+
+test("le modèle ne fabrique pas ses propres citations", () => {
+  /* `model_output` et `thought` sont ce que le modèle DIT. Y ramasser des URL
+     reviendrait à le laisser se citer lui-même — exactement ce que la règle
+     « aucune donnée sans source » interdit. */
+  assert.match(fonction,
+    /const ETAPES_OUTIL = new Set\(\["google_search_call", "google_search_result"\]\)/);
+  const bloc = /function sourcesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  assert.match(bloc[0], /if \(!ETAPES_OUTIL\.has\(typeEtape\(etape\)\)\) continue;/);
+  assert.doesNotMatch(bloc[0], /model_output|thought/);
+});
+
+test("la forme reçue se journalise en noms de clés, jamais en valeurs", () => {
+  const bloc = /function formeDe\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* Que des noms de clés. Aucune valeur ne sort d'ici. */
+  assert.match(code, /Object\.keys\(o\)\.sort\(\)\.join\("\|"\)/);
+  assert.doesNotMatch(code, /JSON\.stringify|\.text|snippet|String\(v\)/);
+  /* Et c'est borné, en largeur comme en profondeur. */
+  assert.match(code, /sorties\.size >= 40 \|\| profondeur > 3/);
+  assert.match(code, /valeur\.slice\(0, 6\)/);
+  assert.match(fonction, /etapes\.slice\(0, 12\)/);
+});
+
+test("les requêtes se lisent sous arguments.queries", () => {
+  /* La mesure a donné le chemin : `google_search_call{arguments|id|search_type|
+     signature|type}` puis `arguments{queries}`. Les autres noms restent en
+     repli, ils ne coûtent rien. */
+  const bloc = /function requetesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  assert.match(bloc[0], /etape\.arguments \?\? etape\.args/);
+  assert.match(bloc[0], /\[args\.queries, args\.query, etape\.queries, etape\.query\]/);
+});
+
+test("les lecteurs de la réponse n'acceptent jamais une source sans URL", () => {
+  const bloc = /function collecterLiens\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* `url` ou `uri`, et rien d'autre ne fait une source. */
+  /* La liste des noms acceptés vit au-dessus de la fonction. */
+  assert.match(fonction, /const NOMS_DE_LIEN = \["url", "uri", "link"/);
+  /* Et la valeur doit être une vraie adresse web : une chaîne quelconque
+     nommée `source` n'est pas une source. */
+  assert.match(code, /\/\^https\?:\\\/\\\/\/i\.test\(v\)/);
+  assert.match(code, /if \(lien\) \{/);
+  /* La descente est bornée : une réponse hostile ne peut ni la faire tourner
+     en rond ni la faire enfler. */
+  assert.match(code, /sorties\.length >= 20 \|\| profondeur > 6/);
+});
+
 test("le délai serveur borne un travail de fond, pas une attente", () => {
   /* Soixante secondes que plus personne ne passe à regarder un écran. */
   assert.match(fonction, /const DELAI_MS = 60_000;/);
@@ -478,7 +547,7 @@ test("rien cherché et rien trouvé sont deux pannes différentes", () => {
   /* `no_search` : le modèle a répondu de mémoire. `no_fact` : il a cherché
      mais rien d'exploitable. Les confondre, c'est confondre un défaut d'invite
      avec un lieu dont le web ne parle pas. */
-  const sansRecherche = fond.indexOf("if (!requetes.length)");
+  const sansRecherche = fond.indexOf("if (!appels && !requetes.length)");
   const sansFait = fond.indexOf("if (!fait)");
   const construit = fond.indexOf("construireFait(");
   assert.ok(sansRecherche > 0 && construit > sansRecherche && sansFait > construit,
@@ -494,11 +563,12 @@ test("chaque étape porte de quoi relier les lignes entre elles", () => {
      pages citées, taille du texte, et les domaines pour vérifier d'un coup
      d'œil qu'on a lu le bon lieu. */
   for (const champ of ["place_key: lieu.cle", "duree_ms: Date.now() - debut",
-                       "search_queries: requetes.length", "sources: sources.length",
-                       "texte_len: texte.length", "domaines: domainesSources(sources)"]) {
+                       "search_calls: appels", "search_queries: requetes.length",
+                       "sources: sources.length", "texte_len: texte.length",
+                       "domaines: domainesSources(sources), formes"]) {
     assert.ok(fond.includes(champ), `gemini_response sans ${champ}`);
   }
-  assert.match(fond, /trace\("no_search", \{place_key: lieu\.cle, texte_len: texte\.length\}\)/);
+  assert.match(fond, /trace\("no_search", \{place_key: lieu\.cle, texte_len: texte\.length, formes\}\)/);
   assert.match(fond, /trace\("no_fact", \{place_key: lieu\.cle, search_queries: requetes\.length/);
   assert.match(fond, /trace\("write_success", \{place_key: lieu\.cle/);
 });
