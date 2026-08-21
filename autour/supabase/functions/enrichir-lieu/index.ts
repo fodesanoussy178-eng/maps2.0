@@ -54,8 +54,20 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const CLE_GEMINI = Deno.env.get("GEMINI_API_KEY") ?? "";
 
 const MODELE = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.0-flash";
+
+/* L'INTERACTIONS API, ET POURQUOI ON A CHANGÉ DE PORTE.
+
+   Sur `generateContent`, `tools:[{google_search:{}}]` était accepté sans une
+   erreur — et sans effet : deux campagnes de mesure, invite renforcée puis
+   `generationConfig` désarmé, et `webSearchQueries` restait vide à chaque fois.
+   Un outil qu'on déclare, que l'API ne refuse pas, et que le modèle n'appelle
+   jamais, n'est pas un outil mal utilisé : c'est un outil qui n'est pas là.
+
+   Sur `/interactions`, la recherche n'est plus une option de génération : c'est
+   une étape que le modèle exécute et qu'il rend dans sa réponse. Le modèle
+   passe donc du chemin d'URL au corps de la requête. */
 const POINT_DE_TERMINAISON =
-  `https://generativelanguage.googleapis.com/v1beta/models/${MODELE}:generateContent`;
+  "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 /* Le temps laissé au modèle. Il ne borne plus l'attente de personne : depuis
    que la vérification part en tâche de fond, ce nombre borne un travail que le
@@ -197,37 +209,93 @@ async function ecrire(ligne: Record<string, unknown>) {
   return (await r.json())?.[0] ?? ligne;
 }
 
-/* ---- L'appel au modèle --------------------------------------------------- */
-function sourcesAncrage(candidat: unknown): {url: string; titre: string}[] {
-  const meta = (candidat as {groundingMetadata?: {groundingChunks?: unknown[]}})
-    ?.groundingMetadata ?? {};
-  const morceaux = Array.isArray(meta.groundingChunks) ? meta.groundingChunks : [];
+/* ---- L'appel au modèle ---------------------------------------------------
+
+   LA RÉPONSE EST UNE SUITE D'ÉTAPES, PAS UN CANDIDAT UNIQUE.
+
+   Le modèle cherche, lit, puis répond, et chaque moment laisse sa trace dans
+   `steps`. On y prend trois choses : le texte, la preuve qu'une recherche a eu
+   lieu, et les pages citées.
+
+   On lit une surface jeune, dont on n'a pas pu vérifier le schéma exact depuis
+   ici. Les lecteurs ci-dessous tolèrent donc que les noms de champs varient —
+   et journalisent la forme réellement reçue, pour qu'un premier appel suffise
+   à les resserrer. Ce qu'ils ne tolèrent pas, c'est d'inventer une source :
+   une entrée sans URL n'en est pas une, et `construireFait` reste seul juge. */
+
+function etapesDe(json: unknown): Record<string, unknown>[] {
+  const j = (json ?? {}) as {steps?: unknown; outputs?: unknown};
+  const brut = Array.isArray(j.steps) ? j.steps
+    : Array.isArray(j.outputs) ? j.outputs : [];
+  return brut.filter((e): e is Record<string, unknown> =>
+    !!e && typeof e === "object");
+}
+
+const typeEtape = (etape: Record<string, unknown>) => String(etape.type ?? "");
+
+/* Le texte final : les parties textuelles des étapes de sortie, dans l'ordre. */
+function texteDesEtapes(etapes: Record<string, unknown>[]): string {
+  let sortie = "";
+  for (const etape of etapes) {
+    if (typeEtape(etape) !== "model_output") continue;
+    const contenu = Array.isArray(etape.content) ? etape.content : [];
+    for (const part of contenu) {
+      const t = (part as {text?: unknown})?.text;
+      if (typeof t === "string") sortie += t;
+    }
+  }
+  return sortie;
+}
+
+/* Les requêtes tapées. Le nom du champ n'est pas garanti, alors on ramasse les
+   chaînes de l'étape d'appel — mais la PREUVE qu'une recherche a eu lieu, elle,
+   est l'existence même de l'étape. C'est sur elle qu'on tranchera, pas sur le
+   succès d'une extraction de libellé. */
+function requetesDesEtapes(etapes: Record<string, unknown>[]): string[] {
+  const sorties: string[] = [];
+  for (const etape of etapes) {
+    if (typeEtape(etape) !== "google_search_call") continue;
+    const args = (etape.args ?? {}) as Record<string, unknown>;
+    for (const valeur of [etape.queries, etape.query, args.queries, args.query]) {
+      if (typeof valeur === "string" && valeur.trim()) sorties.push(valeur.trim());
+      else if (Array.isArray(valeur)) {
+        for (const q of valeur) {
+          if (typeof q === "string" && q.trim()) sorties.push(q.trim());
+        }
+      }
+    }
+  }
+  return [...new Set(sorties)];
+}
+
+/* Les pages citées. On descend dans l'étape de résultat à la recherche de tout
+   ce qui porte une URL — `url` ou `uri` — parce que c'est la seule chose dont
+   on ait besoin et la seule qu'on accepte. La descente est bornée : ni plus de
+   vingt sources, ni plus de six niveaux. */
+function collecterLiens(valeur: unknown, sorties: {url: string; titre: string}[],
+                        profondeur = 0): void {
+  if (sorties.length >= 20 || profondeur > 6) return;
+  if (!valeur || typeof valeur !== "object") return;
+  if (Array.isArray(valeur)) {
+    for (const v of valeur) collecterLiens(v, sorties, profondeur + 1);
+    return;
+  }
+  const o = valeur as Record<string, unknown>;
+  const lien = typeof o.url === "string" ? o.url
+    : typeof o.uri === "string" ? o.uri : "";
+  if (lien) {
+    sorties.push({url: lien, titre: String(o.title ?? o.titre ?? o.domain ?? "")});
+  }
+  for (const v of Object.values(o)) collecterLiens(v, sorties, profondeur + 1);
+}
+
+function sourcesDesEtapes(etapes: Record<string, unknown>[]) {
   const sorties: {url: string; titre: string}[] = [];
-  for (const morceau of morceaux) {
-    const web = (morceau as {web?: {uri?: string; title?: string}})?.web;
-    if (!web?.uri) continue;
-    sorties.push({url: String(web.uri), titre: String(web.title ?? "")});
+  for (const etape of etapes) {
+    if (typeEtape(etape) !== "google_search_result") continue;
+    collecterLiens(etape, sorties);
   }
   return sorties;
-}
-
-/* LES REQUÊTES RÉELLEMENT TAPÉES.
-
-   `groundingChunks` dit quelles pages ont été citées ; `webSearchQueries` dit
-   si le modèle est seulement allé chercher. Les deux vides ne se lisent pas
-   pareil : rien cherché est un défaut d'invite, cherché sans rien trouver est
-   un lieu dont le web ne parle pas. On les compte séparément. */
-function requetesRecherche(candidat: unknown): string[] {
-  const meta = (candidat as {groundingMetadata?: {webSearchQueries?: unknown[]}})
-    ?.groundingMetadata ?? {};
-  const brutes = Array.isArray(meta.webSearchQueries) ? meta.webSearchQueries : [];
-  return brutes.map((q) => String(q ?? "").trim()).filter(Boolean);
-}
-
-function texteDe(candidat: unknown): string {
-  const parties = (candidat as {content?: {parts?: {text?: string}[]}})
-    ?.content?.parts ?? [];
-  return parties.map((p) => (typeof p?.text === "string" ? p.text : "")).join("");
 }
 
 async function interroger(lieu: Record<string, unknown>, maintenant: number) {
@@ -238,38 +306,27 @@ async function interroger(lieu: Record<string, unknown>, maintenant: number) {
       // en en-tête, jamais dans une URL : une URL se journalise
       "x-goog-api-key": CLE_GEMINI,
     },
+    /* Le corps documenté, et rien de plus. On ne règle ni température, ni
+       plafond de sortie, ni réflexion : la campagne précédente a montré que ce
+       n'était pas là que ça se jouait, et le corps minimal est le test le plus
+       propre de « l'outil part-il, oui ou non ». */
     body: JSON.stringify({
-      contents: [{role: "user", parts: [{text: invite(lieu, {maintenant})}]}],
-      // l'ancrage : c'est lui qui transforme une génération en lecture
-      tools: [{google_search: {}}],
-      /* CE QU'ON NE RÈGLE PLUS.
-
-         `temperature: 0.1` et `maxOutputTokens: 1400` étaient les réglages
-         d'une extraction courte : on voulait une réponse sobre et brève. Mais
-         ce modèle raisonne avant de répondre, et ses jetons de réflexion se
-         paient sur le même budget de sortie. Un plafond serré ne raccourcit
-         alors pas la réponse : il ampute le raisonnement — dont la décision
-         d'aller chercher. Et une température écrasée pousse au chemin le plus
-         probable, qui est de répondre de mémoire.
-
-         On ne demande donc plus rien de tout cela. Le seul garde-fou de coût
-         qui compte ici est le budget quotidien, pas la longueur d'une réponse.
-         `thinkingLevel: "low"` dit ce qu'est vraiment la tâche : chercher,
-         lire, extraire — pas méditer. */
-      generationConfig: {
-        maxOutputTokens: 8192,
-        thinkingConfig: {thinkingLevel: "low"},
-      },
+      model: MODELE,
+      input: invite(lieu, {maintenant}),
+      tools: [{type: "google_search"}],
     }),
     signal: AbortSignal.timeout(DELAI_MS),
   });
   if (!r.ok) throw new Error(`modèle : HTTP ${r.status}`);
-  const json = await r.json();
-  const candidat = (json.candidates ?? [])[0];
+  const etapes = etapesDe(await r.json());
   return {
-    sources: sourcesAncrage(candidat),
-    requetes: requetesRecherche(candidat),
-    texte: texteDe(candidat),
+    sources: sourcesDesEtapes(etapes),
+    requetes: requetesDesEtapes(etapes),
+    texte: texteDesEtapes(etapes),
+    /* Combien d'étapes de recherche : la preuve, indépendante du nom des
+       champs. Et les types d'étapes vus, pour resserrer les lecteurs. */
+    appels: etapes.filter((e) => typeEtape(e) === "google_search_call").length,
+    formes: [...new Set(etapes.map(typeEtape))].slice(0, 8),
   };
 }
 
@@ -352,23 +409,29 @@ async function verifier(lieu: Lieu) {
   const debut = Date.now();
   try {
     trace("gemini_start", {place_key: lieu.cle, modele: MODELE});
-    const {sources, requetes, texte} = await interroger(lieu, debut);
-    /* La longueur du texte, pas le texte. Et les deux compteurs séparément :
-       `search_queries` dit si le modèle est allé chercher, `sources` dit s'il a
-       trouvé. Confondre les deux, c'est confondre un défaut d'invite avec un
-       lieu dont le web ne parle pas. */
+    const {sources, requetes, texte, appels, formes} = await interroger(lieu, debut);
+    /* La longueur du texte, pas le texte. Et les compteurs séparément :
+       `search_calls` dit si le modèle est allé chercher, `sources` dit s'il a
+       trouvé. Confondre les deux, c'est confondre un défaut de réglage avec un
+       lieu dont le web ne parle pas. `formes` nomme les types d'étapes reçus —
+       c'est ce qui permet de resserrer les lecteurs sans deviner. */
     trace("gemini_response", {place_key: lieu.cle, duree_ms: Date.now() - debut,
+                              search_calls: appels,
                               search_queries: requetes.length,
                               sources: sources.length, texte_len: texte.length,
-                              domaines: domainesSources(sources)});
+                              domaines: domainesSources(sources), formes});
 
     /* AUCUNE RECHERCHE LANCÉE. Le modèle a répondu de mémoire, et une
        information locale et actuelle ne se connaît pas : elle se lit. On
        n'écrit rien — pas même un « inconnu », qui laisserait croire qu'on a
-       cherché. Le lieu sera redemandé, et l'invite dit maintenant en toutes
-       lettres qu'il faut chercher d'abord. */
-    if (!requetes.length) {
-      trace("no_search", {place_key: lieu.cle, texte_len: texte.length});
+       cherché.
+
+       On tranche sur l'ÉTAPE de recherche, pas sur le libellé des requêtes :
+       une étape présente dont on n'a pas su lire le champ reste une recherche
+       faite, et la traiter en « rien cherché » serait une erreur de lecture
+       maquillée en fait. */
+    if (!appels && !requetes.length) {
+      trace("no_search", {place_key: lieu.cle, texte_len: texte.length, formes});
       return;
     }
 

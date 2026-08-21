@@ -412,23 +412,35 @@ test("le travail de fond n'écrit jamais un fait sans source", () => {
     "le garde-fou « aucune source citée » doit passer avant l'écriture");
 });
 
-test("rien dans generationConfig ne peut étouffer la recherche", () => {
-  /* Les jetons de réflexion se paient sur le budget de sortie : un plafond
-     serré n'abrège pas la réponse, il ampute le raisonnement — dont la
-     décision d'aller chercher. Et une température écrasée pousse au chemin le
-     plus probable, qui est de répondre de mémoire. */
+test("l'appel passe par l'Interactions API, avec le corps documenté", () => {
   /* Le commentaire nomme les réglages retirés pour expliquer pourquoi : c'est
      le code qu'on interroge, pas la prose. */
   const appel = fonction.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.doesNotMatch(appel, /temperature:|top_p|topP|top_k|topK/);
-  assert.match(appel, /thinkingConfig: \{thinkingLevel: "low"\}/);
-  const plafond = /maxOutputTokens: (\d+)/.exec(appel);
-  assert.ok(plafond && Number(plafond[1]) >= 8192,
-    "le plafond doit laisser de la place à la réflexion ET à la réponse");
-  /* L'outil, lui, ne bouge pas d'un caractère. */
-  assert.match(fonction, /tools: \[\{google_search: \{\}\}\]/);
-  /* Et le garde-fou de coût reste le budget du jour, pas la longueur. */
+  assert.match(appel,
+    /"https:\/\/generativelanguage\.googleapis\.com\/v1beta\/interactions"/);
+  /* Le modèle passe du chemin d'URL au corps. */
+  assert.doesNotMatch(appel, /:generateContent/);
+  assert.match(appel, /model: MODELE,\s*\n?\s*input: invite\(lieu, \{maintenant\}\),/);
+  assert.match(appel, /tools: \[\{type: "google_search"\}\]/);
+  /* Rien d'autre dans le corps : ni température, ni plafond, ni réflexion. La
+     campagne précédente a montré que ce n'était pas là que ça se jouait, et le
+     corps minimal est le test le plus propre. */
+  assert.doesNotMatch(appel, /temperature:|top_p|topP|top_k|topK|generationConfig|thinkingConfig/);
+  /* Le garde-fou de coût reste le budget du jour, pas la longueur. */
   assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
+});
+
+test("les lecteurs de la réponse n'acceptent jamais une source sans URL", () => {
+  const bloc = /function collecterLiens\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
+  /* `url` ou `uri`, et rien d'autre ne fait une source. */
+  assert.match(code, /typeof o\.url === "string" \? o\.url/);
+  assert.match(code, /typeof o\.uri === "string" \? o\.uri : ""/);
+  assert.match(code, /if \(lien\) \{/);
+  /* La descente est bornée : une réponse hostile ne peut ni la faire tourner
+     en rond ni la faire enfler. */
+  assert.match(code, /sorties\.length >= 20 \|\| profondeur > 6/);
 });
 
 test("le délai serveur borne un travail de fond, pas une attente", () => {
@@ -497,7 +509,7 @@ test("rien cherché et rien trouvé sont deux pannes différentes", () => {
   /* `no_search` : le modèle a répondu de mémoire. `no_fact` : il a cherché
      mais rien d'exploitable. Les confondre, c'est confondre un défaut d'invite
      avec un lieu dont le web ne parle pas. */
-  const sansRecherche = fond.indexOf("if (!requetes.length)");
+  const sansRecherche = fond.indexOf("if (!appels && !requetes.length)");
   const sansFait = fond.indexOf("if (!fait)");
   const construit = fond.indexOf("construireFait(");
   assert.ok(sansRecherche > 0 && construit > sansRecherche && sansFait > construit,
@@ -513,11 +525,12 @@ test("chaque étape porte de quoi relier les lignes entre elles", () => {
      pages citées, taille du texte, et les domaines pour vérifier d'un coup
      d'œil qu'on a lu le bon lieu. */
   for (const champ of ["place_key: lieu.cle", "duree_ms: Date.now() - debut",
-                       "search_queries: requetes.length", "sources: sources.length",
-                       "texte_len: texte.length", "domaines: domainesSources(sources)"]) {
+                       "search_calls: appels", "search_queries: requetes.length",
+                       "sources: sources.length", "texte_len: texte.length",
+                       "domaines: domainesSources(sources), formes"]) {
     assert.ok(fond.includes(champ), `gemini_response sans ${champ}`);
   }
-  assert.match(fond, /trace\("no_search", \{place_key: lieu\.cle, texte_len: texte\.length\}\)/);
+  assert.match(fond, /trace\("no_search", \{place_key: lieu\.cle, texte_len: texte\.length, formes\}\)/);
   assert.match(fond, /trace\("no_fact", \{place_key: lieu\.cle, search_queries: requetes\.length/);
   assert.match(fond, /trace\("write_success", \{place_key: lieu\.cle/);
 });
