@@ -36,6 +36,13 @@ const COMPRENDRE = window.AutourComprendre;
 const SIGNAUX = window.AutourSignaux;
 const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
+/* LE RÉSOLVEUR D'IMAGE. IL N'Y EN A QU'UN.
+
+   Toute question « quelle photo pour ce lieu, et de quel droit ? » passe par
+   lui — les tags OSM, Wikimedia, une affiche d'événement, une photo Places.
+   Le rendu ne l'appelle jamais : il lit `image` et `imageSource` comme avant,
+   aux mêmes emplacements, avec le même repli teinté. Voir `images.js`. */
+const IMAGES = window.AutourImages || null;
 
 /* Cette normalisation appartenait historiquement au bloc GBFS. Le transport
    interne a disparu, mais la recherche, le classement et la déduplication
@@ -2065,6 +2072,27 @@ function estPublicationAMoi(l){
   return !!(l && l.dbId && moiId && l.creatorId === moiId);
 }
 
+function visuelPublication(p){
+  const url = p.image_url || p.image || "";
+  const source = p.verifie ? "structure" : "autour";
+  const v = IMAGES && IMAGES.visuel({
+    image_url:url, image_source:source,
+    image_source_url:p.url || "",
+    image_author:p.creator_name || "",
+    image_license:IMAGES ? IMAGES.licenceImplicite(source) : "",
+    image_updated_at:p.updated_at || p.cree_le || null,
+    image_scope:"evenement",
+  });
+  if(!v) return {image:"", imageSource:"", image_scope:"evenement"};
+  return {
+    image:v.image_url, imageSource:v.image_source,
+    image_url:v.image_url, image_source:v.image_source,
+    image_source_url:v.image_source_url, image_author:v.image_author,
+    image_license:v.image_license, image_updated_at:v.image_updated_at,
+    image_scope:"evenement",
+  };
+}
+
 function versLieu(p){
   /* `created_by` est le propriétaire canonique. `creator_id` demeure lu pour
      les réponses RPC antérieures à la migration : il ne sert jamais à donner
@@ -2081,7 +2109,11 @@ function versLieu(p){
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
     finLe: p.fin_le ? new Date(p.fin_le).getTime() : null,
-    isTemporary:true, url:p.url || "", image:p.image_url || p.image || "",
+    isTemporary:true, url:p.url || "",
+    /* L'affiche d'une publication appartient à qui l'a déposée : c'est la
+       provenance la plus claire qu'Autour possède, et la seule qui n'ait
+       aucune contrainte d'attribution externe. */
+    ...visuelPublication(p),
     /* Une annulation était enregistrée en base, écrite dans le canal, et
        perdue ici : la carte et la fiche affichaient l'événement comme s'il
        avait lieu. Quelqu'un se déplaçait pour rien. */
@@ -2260,6 +2292,33 @@ async function chargerPublications(lat,lng){
    d'arriver par `publications_proches`, qui porte la propriété, les places et
    le prix. Les demander des deux côtés afficherait deux fois le même
    événement. */
+/* Les six champs du contrat, tels que `evenements_proches` les rend. Quand la
+   base est plus ancienne que la migration de provenance, `IMAGES` retrouve la
+   source depuis l'hébergeur plutôt que de la deviner. */
+function visuelEvenement(e){
+  const v = IMAGES && IMAGES.visuel({
+    image_url:e.image_url || "",
+    image_source:e.image_source || (IMAGES ? IMAGES.normaliserAncienneSource({
+      image:e.image_url, source:e.primary_source,
+    }) : ""),
+    image_source_url:e.image_source_url || e.source_url || "",
+    image_author:e.image_author || "",
+    image_license:e.image_license || "",
+    image_updated_at:e.image_updated_at || e.last_synced_at || null,
+    image_scope:"evenement",
+  });
+  if(!v) return {image:"", imageSource:"", image_scope:"evenement"};
+  return {
+    image:v.image_url, imageSource:v.image_source,
+    imageAttribution:IMAGES.creditObligatoire(v) && v.image_author
+      ? [{name:v.image_author, url:v.image_source_url}] : null,
+    image_url:v.image_url, image_source:v.image_source,
+    image_source_url:v.image_source_url, image_author:v.image_author,
+    image_license:v.image_license, image_updated_at:v.image_updated_at,
+    image_scope:"evenement",
+  };
+}
+
 function versEvenementCanonique(e){
   const debut = e.start_at ? new Date(e.start_at).getTime() : null;
   const fin = e.end_at ? new Date(e.end_at).getTime() : null;
@@ -2282,8 +2341,19 @@ function versEvenementCanonique(e){
     status:e.cancelled ? "cancelled" : "active",
     par:e.primary_source === "datatourisme" ? "DATAtourisme" : "Autour",
     url:"",   // une fiche Autour ne redirige pas vers une URL fournisseur
-    image:e.image_url || "",
-    imageSource:e.image_url ? "datatourisme_licence" : "",
+    /* L'AFFICHE DE L'ÉVÉNEMENT, AVEC SA VRAIE PROVENANCE.
+
+       Cette ligne écrivait `imageSource:"datatourisme_licence"` pour TOUTE
+       image d'événement. Or DATAtourisme n'en fournit aucune — son connecteur
+       écrit `image_url: null` — et les seules affiches en base viennent
+       d'OpenAgenda. On étiquetait donc une affiche d'organisateur comme une
+       image sous licence ouverte de catalogue, et `photoAutoriseeAide` la
+       laissait passer sur ce faux titre.
+
+       La provenance arrive maintenant de la base, où le connecteur l'a
+       écrite. `image_scope` marque que c'est l'affiche de L'ÉVÉNEMENT : une
+       photo du bâtiment ne viendra jamais la remplacer. */
+    ...visuelEvenement(e),
     majLe:e.last_synced_at || null,
   }, e.primary_source || "datatourisme");
 }
@@ -3532,12 +3602,42 @@ function fusionnerFichesFournisseurs(candidats){
     merged.sources=[...new Set([...(autre.sources||[autre.source]),...(google.sources||[google.source])])];
     merged.categories=[...new Set([...(autre.categories||[]),...(google.categories||[])])];
     merged.sourceRefs=Object.assign({},autre.sourceRefs||{},google.sourceRefs||{});
-    ["adresse","tel","url","horaires","description","image","imageSource"].forEach(cle=>{
+    ["adresse","tel","url","horaires","description"].forEach(cle=>{
       merged[cle]=google[cle] || autre[cle] || "";
     });
+    /* LA PHOTO NE SUIT PAS LA MÊME RÈGLE QUE L'ADRESSE.
+
+       Google est la source la plus précise pour une adresse ou des horaires ;
+       il est le DERNIER recours pour une photo. Prendre `google.image` d'office
+       écrasait ici la façade Commons du côté OpenStreetMap par une photo de
+       client — et lui faisait perdre au passage son auteur et sa licence.
+       Le visuel le mieux placé gagne, avec toute sa provenance. */
+    Object.assign(merged, visuelPrefere(google, autre));
     fusionnes[i]=merged;
   });
   return fusionnes;
+}
+
+/* Lequel des deux visuels représente le lieu ? L'ordre est celui du résolveur :
+   une photo Places ne prend jamais la place d'une photo dont on connaît
+   l'auteur et la licence. */
+function visuelPrefere(a, b){
+  const champs = ["image","imageSource","imageAttribution","image_url","image_source",
+    "image_source_url","image_author","image_license","image_updated_at","image_scope"];
+  const sources = IMAGES ? IMAGES.SOURCES : [];
+  /* Plus le rang est bas, mieux c'est. Pas d'image du tout : hors concours.
+     Une provenance qu'on ne reconnaît pas passe derrière toutes celles qu'on
+     reconnaît — elle existe, mais on ne peut rien dire d'elle. */
+  const rang = l=>{
+    if(!l || !l.image) return Infinity;
+    const i = sources.indexOf(l.imageSource);
+    return i < 0 ? sources.length : i;
+  };
+  const gagnant = rang(a) <= rang(b) ? a : b;
+  const out = {};
+  if(rang(gagnant) === Infinity) return out;       // aucun des deux n'a de photo
+  champs.forEach(cle=>{ if(gagnant[cle] !== undefined) out[cle] = gagnant[cle]; });
+  return out;
 }
 
 function reconstruireLieux(){
@@ -3751,6 +3851,10 @@ const RAPIDE_RAYON_M = 2000;
    (description, mots-clés, géométrie) pèse sans rien apporter au premier
    affichage : on ne l'écrit pas. */
 const CHAMPS_RAPIDE = ["id","autourId","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
+  /* La provenance suit la photo jusque dans le cache. Une image sans son
+     origine ne peut plus dire de quel droit on l'affiche à la réouverture :
+     elle serait alors une image de source inconnue, donc à ne pas montrer. */
+  "image_url","image_source","image_source_url","image_author","image_license","image_updated_at","image_scope",
   "note","avis","prix","gratuit","quand","cuisine","tags","pmr","source","sourceRefs",
   "par","isTemporary","debutLe","finLe","service","solidaire","sansNom"];
 
@@ -3762,6 +3866,21 @@ function alleger(l){
   const out = {};
   CHAMPS_RAPIDE.forEach(k=>{ if(l[k] !== undefined) out[k] = l[k]; });
   return out;
+}
+
+/* GOOGLE PLACES N'EST PAS UNE BIBLIOTHÈQUE PERMANENTE.
+
+   `estContenuGoogle` écarte déjà les FICHES venues de Google. Il reste un
+   chemin : un lieu OpenStreetMap qui, faute de mieux, a reçu une photo Places
+   en repli. La fiche est conservable, la photo ne l'est pas — les règles de
+   Google la veulent affichée en direct, avec son crédit, pas stockée. On la
+   retire donc du cache, et elle sera redemandée si elle est encore le
+   meilleur recours à la prochaine ouverture. */
+function sansPhotoGoogle(l){
+  if(!l || l.imageSource !== "google_places") return l;
+  ["image","imageSource","imageAttribution","image_url","image_source",
+   "image_source_url","image_author","image_license","image_updated_at"].forEach(k=>{ delete l[k]; });
+  return l;
 }
 
 let dernierJeuRapide = 0;
@@ -3781,7 +3900,7 @@ function memoriserJeuRapide(choisis, reserve){
         // ni fiche ne sont recopiés dans le cache Autour.
         if(estContenuGoogle(l)) return;
         if(!l || vus.has(l.id) || garder.length >= RAPIDE_MAX) return;
-        vus.add(l.id); garder.push(alleger(l));
+        vus.add(l.id); garder.push(sansPhotoGoogle(alleger(l)));
       });
       localStorage.setItem(CLE_RAPIDE, JSON.stringify({
         t:Date.now(), zone:positionMoi, commune,
@@ -5985,14 +6104,22 @@ function attributionPhoto(l){
 }
 
 /* Une image est un fait, pas une décoration : les fiches Aide n'emploient que
-   les images DATAtourisme avec licence ouverte explicite, celles fournies par
-   une structure vérifiée, ou une photo Google affichée avec la carte Google.
-   Les autres sources gardent la couverture graphique de catégorie, sans
-   aucune pénalité dans le classement. */
+   des photos dont on sait dire l'origine — une licence ouverte explicite, une
+   structure vérifiée, Commons, l'affiche d'un organisateur, le site officiel
+   du lieu, ou une photo Google affichée avec son crédit.
+
+   La liste n'est plus recopiée ici : c'est celle du résolveur, et les sources
+   qu'il apprend à reconnaître y entrent sans qu'on ait à y penser. Les deux
+   étiquettes historiques restent acceptées, le temps que le cache local des
+   anciennes sessions se renouvelle.
+
+   Ce qui n'a pas de provenance connue garde la couverture graphique de
+   catégorie, sans aucune pénalité dans le classement. */
 function photoAutoriseeAide(l){
   if(!l || !l.image) return "";
   const origine = l.imageSource || "";
-  return ["google_places", "datatourisme_licence", "structure", "autour_verifie"].includes(origine) ? l.image : "";
+  if(IMAGES && IMAGES.SOURCES.includes(origine)) return l.image;
+  return ["datatourisme_licence", "autour_verifie"].includes(origine) ? l.image : "";
 }
 
 function couvertureAide(l, c){
@@ -6453,6 +6580,20 @@ function enrichirCandidats(classement, intention, redessiner){
       if(f[cle] != null && f[cle] !== "") l[cle] = f[cle];
     });
   })).then(rendre1);
+
+  /* ---- Les photos réelles : après la peinture, et jamais attendues -------
+
+     Les cartes sont déjà posées, avec leur tuile teintée. Le résolveur va
+     voir si un vrai visuel existe pour les quelques lieux qu'on montre — les
+     tags OSM d'abord, Wikimedia ensuite, Places en dernier — et repeint
+     seulement s'il en trouve un. Une panne de Commons, un réseau coupé, un
+     lieu sans photo : l'écran garde exactement ce qu'il montrait. C'est la
+     seule propriété qui compte ici, et elle tient parce que rien de ceci
+     n'est sur le chemin d'un rendu.
+
+     `planifierRendu` regroupe les repeints par image : dix photos qui
+     arrivent en rafale ne produisent pas dix rendus. */
+  if(IMAGES) IMAGES.resoudreLot(classement, {redessiner:rendre1}).catch(()=>{});
 
   /* ---- Le calque vérifié : cache d'abord, appel ensuite ---- */
   if(!ENR) return;
@@ -8327,9 +8468,13 @@ function blocResultats(){
     // qu'on n'a pas eu besoin d'un CCAS. Une ligne dit à quoi ça sert.
     const aQuoi = EXPLIQUE && SET_AIDE.has(l.cat) ? EXPLIQUE.resumeCourt(l, 110) : "";
     /* Les petites lignes de résultat n'ont pas la place d'afficher une
-       attribution complète. Une photo Places reste donc réservée à la carte
-       de recommandation et à la fiche, où son crédit est réellement visible. */
-    const photoVisible = l.image && !(l.imageSource === "google_places" && l.imageAttribution);
+       attribution complète — 46 px de côté ne portent pas un crédit lisible.
+       Une photo qui EXIGE son crédit à côté d'elle reste donc réservée à la
+       carte de recommandation et à la fiche, qui ont un `figcaption`. La règle
+       ne nomme plus Google : elle vaut pour Places comme pour une CC-BY de
+       Commons, et laisse passer ce qui n'a rien à créditer — CC0, domaine
+       public, photo déposée par la structure elle-même. */
+    const photoVisible = l.image && !(IMAGES && IMAGES.creditObligatoire(l));
     const photo = photoVisible
       ? '<span class="ac-photo" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
           '<i>'+c.emoji+'</i><img loading="lazy" decoding="async" fetchpriority="low" alt="" '+

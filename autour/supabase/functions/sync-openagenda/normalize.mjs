@@ -1,3 +1,4 @@
+import {imageOpenAgenda} from "./image.mjs";
 import {extractOccurrences} from "./occurrences.mjs";
 
 function list(value) {
@@ -32,24 +33,6 @@ function number(value, max) {
 
 function object(value) {
   return list(value).find((item) => item && typeof item === "object") || {};
-}
-
-function imageUrl(value, depth = 0) {
-  if (depth > 5 || value == null) return null;
-  if (typeof value === "string") return /^https?:\/\//i.test(value) ? value : null;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = imageUrl(item, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (typeof value !== "object") return null;
-  for (const key of ["url", "full", "base", "original", "large", "medium", "thumbnail", "src", "@id"]) {
-    const found = imageUrl(value[key], depth + 1);
-    if (found) return found;
-  }
-  return null;
 }
 
 function locationData(event) {
@@ -127,6 +110,14 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
   const description = longDescription || shortDescription;
   const firstOccurrence = occurrences[0];
   const timezone = firstOccurrence.timezone || source.timezone;
+  /* L'affiche officielle de l'événement, recomposée depuis `base` + `filename`
+     (voir `image.mjs` : c'est elle qui rendait `.../main/` et donc HTTP 400).
+     Sa provenance voyage avec elle jusqu'en base — sans quoi le navigateur ne
+     saurait pas dire d'où vient ce qu'il affiche, ni sous quel droit. */
+  const affiche = imageOpenAgenda(event, {
+    sourceUrl: sourceUrl(event, source, externalId),
+    now,
+  });
   const normalized = {
     source: "openagenda",
     source_agenda: source.sourceAgenda,
@@ -142,7 +133,8 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
     address: location.address,
     latitude: location.latitude,
     longitude: location.longitude,
-    image_url: imageUrl(event.image),
+    image_url: affiche ? affiche.image_url : null,
+    image: affiche,
     source_url: sourceUrl(event, source, externalId),
     category: category(event),
     last_source_update: text(event.updatedAt) || null,
@@ -168,6 +160,14 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
       primary_source: "openagenda",
       source_url: normalized.source_url,
       image_url: normalized.image_url,
+      /* Les six champs du contrat, écrits tels quels : `persistEvent` recopie
+         `normalized.event` dans la table, donc la provenance suit la photo
+         sans qu'aucune couche intermédiaire ait à la connaître. */
+      image_source: affiche ? affiche.image_source : null,
+      image_source_url: affiche ? affiche.image_source_url : null,
+      image_author: affiche ? affiche.image_author : null,
+      image_license: affiche ? affiche.image_license : null,
+      image_updated_at: affiche ? affiche.image_updated_at : null,
       cancelled,
       last_source_update: normalized.last_source_update,
     },

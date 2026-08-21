@@ -561,7 +561,10 @@ test("les événements créés peuvent porter une image stockée dans Supabase",
   assert.match(html,/const chemin = moiId\+"\/"\+Date\.now\(\)/);
   assert.match(html,/sb\.storage\.from\("evenements"\)/);
   assert.match(html,/image_url:l\.image \|\| null/);
-  assert.match(html,/image:p\.image_url \|\| p\.image \|\| ""/);
+  // la publication porte désormais sa provenance avec sa photo : c'est
+  // `visuelPublication` qui la construit, `versLieu` l'étale telle quelle
+  assert.match(html,/\.\.\.visuelPublication\(p\),/);
+  assert.match(html,/const url = p\.image_url \|\| p\.image \|\| "";/);
   // l'image monte pendant que l'affiche est déjà sur la carte : la publication
   // est optimiste, mais l'insertion en base porte bien l'URL définitive
   assert.match(html,/const image = b\.imageFichier \? await Store\.televerserImage\(b\.imageFichier\) : "";/);
@@ -1644,7 +1647,10 @@ test("Aide garde uniquement les solutions liées au besoin et offre une fiche ex
   // photo de source autorisée ou couverture graphique : son absence ne sert
   // pas au classement et n'est jamais remplacée par une image inventée
   assert.match(html,/function photoAutoriseeAide\(l\)\{/);
-  assert.match(html,/\["google_places", "datatourisme_licence", "structure", "autour_verifie"\]/);
+  // la liste des origines autorisées vient du résolveur unique — elle n'est
+  // plus recopiée ici, et les anciennes étiquettes restent acceptées
+  assert.match(html,/if\(IMAGES && IMAGES\.SOURCES\.includes\(origine\)\) return l\.image;/);
+  assert.match(html,/\["datatourisme_licence", "autour_verifie"\]\.includes\(origine\)/);
   assert.match(html,/function couvertureAide\(l, c\)\{/);
   for(const action of ["Itinéraire","Appeler","Site web","Partager","Favori"])
     assert.match(html,new RegExp(action),action);

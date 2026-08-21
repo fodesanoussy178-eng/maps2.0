@@ -231,8 +231,15 @@ async function interroger(b, groupe, sortie) {
    à dessiner une carte et à la reclasser : pas de description, pas de
    géométrie, pas de tags décoratifs. Un fichier de zone doit rester petit —
    c'est tout son intérêt. */
+/* `image`, `wikimedia_commons` et `wikidata` ont été ajoutés le 21/08/2026.
+   Sans eux, un jeu de zone ne pouvait porter AUCUNE photo : le résolveur
+   n'avait rien à suivre, et le démarrage à froid — précisément le moment où
+   l'écran a le plus besoin d'être vivant — restait gris par construction.
+   Ils ne coûtent presque rien : trois chaînes courtes, sur la petite minorité
+   d'objets qui les portent. */
 const TAGS_UTILES = ["opening_hours","internet_access","outdoor_seating","indoor_seating",
-  "wheelchair","fee","cuisine","phone","website","access","playground","power_supply"];
+  "wheelchair","fee","cuisine","phone","website","access","playground","power_supply",
+  "image","wikimedia_commons","wikidata"];
 
 function versLieu(e) {
   const t = e.tags || {};
