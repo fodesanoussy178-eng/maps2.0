@@ -18,10 +18,10 @@
    grille pour que la couverture soit régulière au lieu d'être un tas au centre.
 
    Usage :
-     node outils/zones.mjs                      # les villes de villes.json
-     node outils/zones.mjs 50.7176,3.1611       # la tuile qui contient ce point
-     node outils/zones.mjs --liste outils/hubs.json   # les gares et centres denses
-     node outils/zones.mjs --liste mes-villes.json
+      node outils/zones.mjs                      # les villes de villes.json
+      node outils/zones.mjs 50.7176,3.1611       # la tuile qui contient ce point
+      node outils/zones.mjs --liste outils/hubs.json   # les gares et centres denses
+      node outils/zones.mjs --liste mes-villes.json
 
    Ce script a besoin d'un accès réseau à Overpass. Il n'invente rien : si une
    tuile ne rend aucun lieu exploitable, aucun fichier n'est écrit pour elle.
@@ -241,10 +241,20 @@ const TAGS_UTILES = ["opening_hours","internet_access","outdoor_seating","indoor
   "wheelchair","fee","cuisine","phone","website","access","playground","power_supply",
   "image","wikimedia_commons","wikidata"];
 
-function versLieu(e) {
+function versLieu(e, b) {
   const t = e.tags || {};
   const p = e.center || e;
   if (!p.lat || !p.lon || !t.name) return null;      // sans nom, aucun intérêt
+  
+  // Filter by tile bounds: Overpass may return ways whose bbox intersects the
+  // tile but whose computed center falls outside it. Only keep if coordinates
+  // are strictly within tile bounds.
+  if (b) {
+    if (p.lat < b.s || p.lat > b.n || p.lon < b.o || p.lon > b.e) {
+      return null;
+    }
+  }
+  
   /* `CATEGORIE` est indexée par VALEUR, pas par couple clé/valeur : deux clés
      qui partagent une valeur se confondent. `shelter` en est le cas :
      `social_facility=shelter` est un hébergement d'urgence, `amenity=shelter`
@@ -346,7 +356,7 @@ async function fabriquer(cle, noms) {
   // deux requêtes, donc deux occasions de ramener le même objet
   const parId = new Map();
   for (const e of [...(elAide || []), ...(elReste || [])]) {
-    const l = versLieu(e);
+    const l = versLieu(e, b);
     if (l && !parId.has(l.id)) parId.set(l.id, l);
   }
   const lieux = [...parId.values()];
