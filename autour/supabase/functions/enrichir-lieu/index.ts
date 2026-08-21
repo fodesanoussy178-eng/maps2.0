@@ -57,10 +57,12 @@ const MODELE = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.0-flash";
 const POINT_DE_TERMINAISON =
   `https://generativelanguage.googleapis.com/v1beta/models/${MODELE}:generateContent`;
 
-/* Au-delà, ce n'est plus une source secondaire, c'est une attente. Le client
-   n'attend de toute façon pas — mais une fonction qui vit trente secondes
-   coûte trente secondes à chaque lieu silencieux. */
-const DELAI_MS = 25_000;
+/* Le temps laissé au modèle. Il ne borne plus l'attente de personne : depuis
+   que la vérification part en tâche de fond, ce nombre borne un travail que le
+   navigateur n'attend pas. Aller lire trois pages officielles prend des
+   dizaines de secondes — c'est le métier de cette source, pas une lenteur
+   qu'on réglerait en montant le délai d'un cran de plus. */
+const DELAI_MS = 60_000;
 
 /* Le plafond du jour. Il ne protège pas d'un abus ciblé — rien ne le fait sur
    une route publique — il garantit que le pire cas reste borné et connu. */
@@ -237,6 +239,69 @@ async function interroger(lieu: Record<string, unknown>, maintenant: number) {
   return {sources: sourcesAncrage(candidat), texte: texteDe(candidat)};
 }
 
+/* ---- Le travail de fond ---------------------------------------------------
+
+   POURQUOI LA RÉPONSE N'ATTEND PLUS.
+
+   Interroger un modèle ancré sur la recherche, c'est lui laisser le temps
+   d'aller lire des pages. Tant que la réponse HTTP attendait ce travail, la
+   seule question était de savoir qui abandonnerait le premier — le navigateur
+   à vingt secondes, ou `AbortSignal` juste après. Monter les deux d'un cran
+   n'aurait fait que déplacer la course.
+
+   `EdgeRuntime.waitUntil` demande au runtime de garder l'isolat en vie APRÈS
+   la réponse, le temps que la promesse se règle. Sans lui, rendre la réponse
+   tuerait le travail en cours : une promesse flottante n'est pas une tâche de
+   fond, c'est une tâche qu'on abandonne.
+
+   Le repli ne réintroduit surtout pas l'attente — attendre est exactement le
+   défaut qu'on corrige. Là où `waitUntil` n'existe pas (un `deno serve` local,
+   un runtime plus ancien), on lance quand même : le travail vaut alors ce que
+   vaut la durée de vie de l'isolat, ce qui est plus que rien et n'a coûté
+   aucune seconde au navigateur. */
+const RUNTIME = (globalThis as {
+  EdgeRuntime?: {waitUntil?: (promesse: Promise<unknown>) => void};
+}).EdgeRuntime;
+
+function enTacheDeFond(travail: Promise<unknown>) {
+  /* `verifier` avale déjà ses propres pannes ; ce `catch` ne couvre qu'un
+     rejet inattendu, pour qu'aucune promesse ne parte non gérée. */
+  const sur = travail.catch(() => {});
+  const garder = RUNTIME?.waitUntil;
+  if (typeof garder === "function") {
+    try { garder.call(RUNTIME, sur); } catch { /* on continue sans */ }
+  }
+}
+
+type Lieu = {
+  cle: string; nom: string; lat: number; lng: number;
+  commune: string; adresse: string; categorie: string; horairesConnus: string;
+};
+
+async function verifier(lieu: Lieu) {
+  const debut = Date.now();
+  try {
+    const {sources, texte} = await interroger(lieu, debut);
+    const fait = construireFait(extraireObjet(texte),
+      {sources, nom: lieu.nom, commune: lieu.commune, maintenant: debut});
+
+    /* Aucune page citée : le modèle a parlé sans avoir lu. On n'écrit rien —
+       pas même un « inconnu » — parce qu'une réponse non ancrée ne prouve pas
+       que le lieu est muet, seulement que la recherche a échoué cette fois. */
+    if (!fait) return;
+
+    await ecrire(ligneEnrichissement(fait, lieu,
+      {maintenant: debut, modele: MODELE, duree: Date.now() - debut}));
+  } catch (erreur) {
+    /* Plus personne n'attend : une panne du modèle ne peut plus rien casser en
+       aval. On la note — le message est construit par notre propre code, il ne
+       recopie aucune clé — et le lieu sera redemandé quand son entrée aura
+       expiré. Autour, lui, continue d'afficher ce qu'il affichait. */
+    console.error("enrichir-lieu :",
+      erreur instanceof Error ? erreur.message : String(erreur));
+  }
+}
+
 /* ------------------------------------------------------------------------ */
 
 Deno.serve(async (requete: Request) => {
@@ -301,29 +366,15 @@ Deno.serve(async (requete: Request) => {
                     raison: "budget du jour atteint"});
   }
 
-  const debut = Date.now();
-  try {
-    const {sources, texte} = await interroger(lieu, maintenant);
-    const brut = extraireObjet(texte);
-    const fait = construireFait(brut, {sources, nom, commune: lieu.commune, maintenant});
+  /* ---- On lance, et on rend la main --------------------------------------
+     Le navigateur repart tout de suite avec ce qu'on a : l'entrée périmée si
+     elle existe — elle reste vraie plus souvent que rien — ou `null`. Dans les
+     deux cas `actif: true`, parce que quelque chose est bien en route.
 
-    /* Aucune page citée : le modèle a parlé sans avoir lu. On n'écrit rien —
-       pas même un « inconnu » — parce qu'une réponse non ancrée ne prouve pas
-       que le lieu est muet, seulement que la recherche a échoué cette fois. */
-    if (!fait) {
-      return reponse({enrichissement: cache, origine: "cache", actif: true,
-                      raison: "aucune source citée"});
-    }
-
-    const ligne = ligneEnrichissement(fait, lieu,
-      {maintenant, modele: MODELE, duree: Date.now() - debut});
-    const ecrite = await ecrire(ligne);
-    return reponse({enrichissement: ecrite, origine: "modele", actif: true});
-  } catch (erreur) {
-    /* Délai dépassé, modèle indisponible, réponse illisible : tous le même
-       sort. Ce n'est pas une panne d'Autour — on rend ce qu'on avait. */
-    const message = erreur instanceof Error ? erreur.message : String(erreur);
-    return reponse({enrichissement: cache, origine: "cache", actif: false,
-                    raison: message}, 200);
-  }
+     Le résultat, lui, s'écrira dans `place_enrichments`, et c'est la vague
+     suivante qui l'y lira, par le chemin qu'elle emprunte déjà pour toute
+     entrée en cache. Rien à brancher de plus, aucun second circuit. */
+  enTacheDeFond(verifier(lieu));
+  return reponse({enrichissement: cache, origine: "cache", actif: true,
+                  raison: "verification_lancee"});
 });
