@@ -243,3 +243,70 @@ Seul `--live` décrit le monde. Le mode `--routage` prouve l'ordre des sources
 et les règles de droit sur un corpus annoncé comme inventé ; il n'annonce
 aucune photo. S'il ne peut pas joindre Overpass, `--live` s'arrête et le dit,
 plutôt que de rendre un tableau qui ressemblerait à une mesure.
+
+---
+
+## 10. État de l'activation en production (21/08/2026)
+
+### Ce qui a été mesuré avant
+
+La base disait exactement ce que le diagnostic annonçait, et pire :
+
+| | |
+| --- | --- |
+| événements avec une image | **857** |
+| dont `https://img.openagenda.com/main/` | **857** — soit *100 %* |
+| événements OpenAgenda au total | 874 |
+
+Autrement dit : **98 % des événements OpenAgenda avaient une affiche, et aucune
+ne s'est jamais affichée.** Le champ d'origine, lui, était intact dans
+`event_sources.raw_data` — 862 objets `image` complets avec `base`,
+`filename` et `variants`, et 626 crédits photo jamais lus.
+
+La forme réelle servie par l'API, relevée en production :
+
+```json
+{ "base": "https://img.openagenda.com/main/",
+  "filename": "c39b….base.image.jpg",
+  "size": {"width": 700, "height": 700},
+  "variants": [ {"type": "full", "size": {"width": 1080}, "filename": "c39b….full.image.jpg"},
+                {"type": "thumbnail", "size": {"width": 200}, "filename": "c39b….thumb.image.jpg"} ] }
+```
+
+`construireUrlImage` retient le variant `full` : 1080 px, le plus petit qui
+reste au-dessus des 900 px utiles — pas la vignette de 200 px, pas l'original.
+
+### Ce qui a été fait
+
+1. **Migration appliquée.** 857 URL effacées, 5 colonnes de provenance,
+   contrainte `events_image_url_nomme_un_fichier` validée, `evenements_proches()`
+   recréée avec la provenance.
+2. **Fonction `sync-openagenda` redéployée** (v11) — obligatoire : l'ancienne
+   version aurait réécrit l'URL de répertoire que la contrainte refuse
+   désormais, et le cron de 3 h aurait échoué.
+3. **Synchronisation relancée** via `private.invoke_event_territory_sync()`.
+   Lille, Roubaix, Tourcoing, Rouen, Paris : **5 succès, 0 erreur**.
+
+### Après
+
+| | |
+| --- | --- |
+| affiches reconstruites | **836** |
+| URL encore cassées | **0** |
+| servant le variant `full` | 753 |
+| portant un crédit photo | 616 |
+| valeurs distinctes de `image_source` | 1 (`openagenda`) |
+
+### Écart connu, sans effet
+
+Les fichiers `dedup.mjs` et `normalize.mjs` déployés portent la classe de
+caractères combinants écrite en littéral (`[̀-ͯ]`) là où le dépôt écrit
+`[̀-ͯ]`. Les deux formes sont **la même expression régulière** — le
+moteur interprète `̀` comme le caractère U+0300 — et l'équivalence a été
+vérifiée sur des titres accentués réels.
+
+La cause est l'encodage JSON de l'outil de déploiement, qui décode les
+séquences `\uXXXX` avant de les écrire. Un déploiement par la CLI Supabase
+(`supabase functions deploy`) restitue le dépôt à l'octet près et referme
+l'écart. Tout le reste — les six autres fichiers, `index.ts` compris — est
+identique au dépôt, vérifié octet par octet.
