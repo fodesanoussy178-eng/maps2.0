@@ -316,8 +316,91 @@ test("une panne du modèle laisse Autour intact", () => {
   assert.ok(bloc);
   assert.match(bloc[0], /catch\(e\)\{[\s\S]{0,300}return null;/);
   assert.match(bloc[0], /AbortSignal\.timeout\(20000\)/);
-  // et côté serveur : une panne rend le cache, pas une erreur
-  assert.match(fonction, /origine: "cache", actif: false,\s*\n?\s*raison: message\}, 200\)/);
+  /* Et côté serveur : la panne survient maintenant APRÈS la réponse, dans le
+     travail de fond. Elle ne peut donc plus rien casser en aval — elle est
+     notée, et le lieu sera redemandé quand son entrée aura expiré. */
+  const fond = /async function verifier\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(fond);
+  assert.match(fond[0], /catch \(erreur\) \{[\s\S]{0,600}console\.error/);
+  assert.doesNotMatch(fond[0], /throw /);
+});
+
+/* ======================================================================== */
+/*  Le travail de fond : personne n'attend le modèle                        */
+/* ======================================================================== */
+
+/* Le `Deno.serve` seul — `verifier` est défini au-dessus, il n'en fait pas
+   partie. C'est exactement ce qu'on veut vérifier : ce que la RÉPONSE fait,
+   par opposition à ce que le travail de fond fait. */
+const traitant = /Deno\.serve\([\s\S]*$/.exec(fonction)[0];
+
+test("la réponse n'attend plus jamais le modèle", () => {
+  assert.doesNotMatch(traitant, /await interroger\(/,
+    "interroger le modèle depuis la réponse, c'est refaire courir le client");
+  assert.doesNotMatch(traitant, /await ecrire\(/);
+  assert.doesNotMatch(traitant, /construireFait\(|ligneEnrichissement\(/);
+  /* Le lancement, lui, ne s'attend pas : pas de `await` devant. */
+  assert.match(traitant, /\n  enTacheDeFond\(verifier\(lieu\)\);/);
+});
+
+test("le travail de fond tient l'isolat en vie avec EdgeRuntime.waitUntil", () => {
+  /* Une promesse flottante n'est pas une tâche de fond : c'est une tâche
+     qu'on abandonne dès que la réponse part. */
+  assert.match(fonction, /EdgeRuntime\?: \{waitUntil\?: \(promesse: Promise<unknown>\) => void\}/);
+  assert.match(fonction, /garder\.call\(RUNTIME, sur\)/);
+  /* Et le repli ne réintroduit pas l'attente qu'on vient de supprimer. */
+  const bloc = /function enTacheDeFond\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  assert.doesNotMatch(bloc[0], /await /);
+});
+
+test("la réponse annonce que la vérification est lancée", () => {
+  /* Le cache périmé repart avec elle quand il existe — il reste vrai plus
+     souvent que rien — et `null` sinon. Dans les deux cas `actif: true`. */
+  assert.match(traitant,
+    /enrichissement: cache, origine: "cache", actif: true,\s*\n?\s*raison: "verification_lancee"/);
+});
+
+test("le cache frais court-circuite tout, et rien ne part en fond", () => {
+  const posCache = traitant.indexOf("enCache(cle)");
+  const posFrais = traitant.indexOf('Date.parse(String(cache.expires_at)) > maintenant');
+  const posLancement = traitant.indexOf("enTacheDeFond(");
+  assert.ok(posCache > 0 && posFrais > posCache && posLancement > posFrais,
+    "l'entrée fraîche doit rendre la main avant qu'on lance quoi que ce soit");
+});
+
+test("le budget du jour garde sa place avant le lancement", () => {
+  const posBudget = traitant.indexOf("consommeAujourdhui()");
+  const posLancement = traitant.indexOf("enTacheDeFond(");
+  assert.ok(posBudget > 0 && posLancement > posBudget,
+    "un travail de fond gratuit resterait un travail de fond illimité");
+  assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
+  /* Et le plafond de candidats du client ne bouge pas. */
+  assert.match(client, /const MAX_CANDIDATS = 5;/);
+});
+
+test("le travail de fond n'écrit jamais un fait sans source", () => {
+  const bloc = /async function verifier\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  const garde = bloc[0].indexOf("if (!fait) return;");
+  const ecriture = bloc[0].indexOf("await ecrire(");
+  assert.ok(garde > 0 && ecriture > garde,
+    "le garde-fou « aucune source citée » doit passer avant l'écriture");
+});
+
+test("le délai serveur borne un travail de fond, pas une attente", () => {
+  /* Soixante secondes que plus personne ne passe à regarder un écran. */
+  assert.match(fonction, /const DELAI_MS = 60_000;/);
+  assert.match(fonction, /signal: AbortSignal\.timeout\(DELAI_MS\)/);
+  /* Le client, lui, ne bouge pas — il n'a plus de raison d'aller au bout. */
+  assert.match(html, /AbortSignal\.timeout\(20000\)/);
+});
+
+test("aucune clé ne part dans les journaux du travail de fond", () => {
+  const bloc = /async function verifier\([\s\S]*?\n\}/.exec(fonction);
+  const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.match(code, /console\.error\("enrichir-lieu :"/);
+  assert.doesNotMatch(code, /CLE_GEMINI|SUPABASE_SECRET|cleSecrete/);
 });
 
 /* ======================================================================== */

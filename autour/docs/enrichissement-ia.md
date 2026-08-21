@@ -41,18 +41,43 @@ enrichirCandidats()                      app.js
                 ↓ non
         POST /functions/v1/enrichir-lieu     (3 en vol au plus)
                 ↓
+        cache frais ? ─── oui ──→ on le rend, rien ne part
+                ↓ non
+        réponse IMMÉDIATE : le cache périmé s'il existe, sinon null,
+        avec raison: "verification_lancee"     ──→ le client repart
+                ↓
+        ┄┄┄ EdgeRuntime.waitUntil() ┄┄┄ à partir d'ici, personne n'attend
+                ↓
         Gemini + google_search               (côté serveur uniquement)
                 ↓
         extraction.mjs : classe les sources, valide, ou rend null
                 ↓
         écriture place_enrichments  (y compris « rien trouvé »)
                 ↓
-        retour au client → applique → planifierRendu()
+        la vague SUIVANTE le lit dans le cache, comme n'importe quelle entrée
 ```
 
 Rien de cette colonne n'est sur le chemin critique. Une panne du modèle, un
 budget épuisé, un réseau coupé : dans les trois cas l'écran garde exactement
 ce qu'il montrait.
+
+### Pourquoi la réponse n'attend pas
+
+Interroger un modèle ancré sur la recherche, c'est lui laisser le temps d'aller
+lire des pages : des dizaines de secondes, et c'est son métier, pas une
+lenteur. Tant que la réponse HTTP attendait ce travail, la seule question était
+de savoir qui abandonnerait le premier — le navigateur à vingt secondes, ou
+`AbortSignal` juste après. Monter les deux d'un cran n'aurait fait que déplacer
+la course.
+
+`EdgeRuntime.waitUntil()` garde l'isolat en vie **après** la réponse, le temps
+que la promesse se règle. C'est ce qui distingue une tâche de fond d'une
+promesse flottante — laquelle serait simplement abandonnée dès le retour.
+
+La conséquence à connaître : un lieu vérifié pour la première fois n'affiche
+rien de neuf dans la seconde. Son fait s'écrit en base, et il apparaît à la
+vague suivante — changement de zone, réouverture de l'application — par le même
+chemin que toute autre entrée en cache.
 
 ## Les trois règles
 
@@ -130,8 +155,8 @@ Les plafonds ne bougent pas : 3 visibles, 10 au total.
 | candidats par vague | 5 au plus |
 | vérifications en vol | 3 au plus |
 | budget quotidien | `ENRICHISSEMENT_BUDGET_JOUR`, 400 par défaut |
-| délai côté serveur | 15 s |
-| délai côté client | 20 s |
+| délai du modèle, en tâche de fond | 60 s |
+| délai côté client | 20 s (plus jamais atteint : la réponse est immédiate) |
 | commodités | jamais enrichies |
 | cache | consulté avant tout appel |
 
