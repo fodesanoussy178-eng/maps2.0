@@ -230,6 +230,21 @@ test("l'invite dit que c'est une tâche de recherche, pas de mémoire", () => {
   assert.ok(texte.indexOf("COMMENCE PAR CHERCHER") < texte.indexOf("- nom :"));
 });
 
+test("l'invite demande la prose AVANT le JSON — c'est la condition des citations", () => {
+  const texte = invite({ nom: "Stab Vélodrome", commune: "Roubaix",
+                         lat: 50.6789, lng: 3.205 }, { maintenant: T });
+  assert.match(texte, /RÉPONDS EN DEUX TEMPS/);
+  /* Les annotations de l'API portent start_index/end_index : elles s'ancrent
+     sur de la prose. Une réponse qui n'est que du JSON n'en porte aucune —
+     mesuré 6 citations → 0 sur la même question. */
+  assert.ok(texte.indexOf("passages de PROSE") < texte.indexOf('{"statut"'),
+    "la consigne de prose doit précéder le schéma JSON");
+  assert.doesNotMatch(texte, /Réponds UNIQUEMENT par un objet JSON/);
+  /* Et on n'a pas introduit de `response_format` : il a exactement le même
+     effet destructeur sur les citations. */
+  assert.doesNotMatch(fonction, /response_format/);
+});
+
 test("sans commune, l'invite ne fabrique pas de requête bancale", () => {
   const texte = invite({ nom: "Le Grand Mix", lat: 50.7, lng: 3.16 }, { maintenant: T });
   assert.match(texte, /« Le Grand Mix » — le nom exact/);

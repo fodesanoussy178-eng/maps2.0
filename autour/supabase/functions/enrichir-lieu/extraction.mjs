@@ -256,7 +256,23 @@ export function peutEcraserOsm(priorite, confiance) {
    l'appel a coûté trente secondes pour rien.
 
    Une information locale et actuelle ne se connaît pas : elle se lit. On le
-   lui dit, et on lui dit quoi taper. */
+   lui dit, et on lui dit quoi taper.
+
+   ET ELLE DEMANDE DE LA PROSE AVANT LE JSON. Ce n'est pas une préférence de
+   style, c'est la condition des citations. Mesuré sur la même question posée
+   deux fois, avec le même modèle et la même clé :
+
+     Euro 2024, réponse en texte libre ..............  6 citations
+     Euro 2024, même question, sortie JSON contrainte   0 citation
+
+   Les annotations de l'API portent un `start_index` et un `end_index` : elles
+   s'ancrent sur des passages de prose. Une réponse qui n'est que du JSON n'a
+   aucun passage à annoter, et ressort donc sans une seule source — que
+   `construireFait` jette, à raison. C'est vrai que la contrainte vienne d'un
+   `response_format` ou, comme ici, d'une consigne d'invite.
+
+   D'où les deux temps : la prose porte la preuve, le JSON porte les données,
+   et `extraireObjet` sait déjà prendre l'objet au milieu d'un texte. */
 export function invite(lieu, options) {
   const l = lieu || {};
   const o = options || {};
@@ -308,7 +324,15 @@ export function invite(lieu, options) {
     "- `confiance` vaut 1 quand une page officielle l'affirme noir sur blanc,",
     "  et descend vers 0 à mesure que tu extrapoles. Sois sévère.",
     "",
-    "Réponds UNIQUEMENT par un objet JSON, sans texte autour, sans balises de code :",
+    "RÉPONDS EN DEUX TEMPS, ET L'ORDRE COMPTE.",
+    "",
+    "1. D'abord deux ou trois phrases en français qui résument ce que tu as lu,",
+    "   en nommant les pages. Ce paragraphe n'est pas une politesse : les",
+    "   citations de l'API s'ancrent sur des passages de PROSE, et une réponse",
+    "   qui ne serait que du JSON n'en porte aucune. Sans citation, la donnée",
+    "   est jetée — tu aurais cherché pour rien.",
+    "",
+    "2. Ensuite seulement, l'objet JSON, sans balises de code :",
     '{"statut": "ouvert" | "ferme" | "ferme_temporairement" | "ferme_definitivement" | "inconnu",',
     ' "horaires_du_jour": string | null,',
     ' "horaires_semaine": string | null,   // syntaxe OpenStreetMap opening_hours, ex "Tu-Su 10:00-18:00; Mo off"',
