@@ -340,8 +340,15 @@ test("sur desktop la carte occupe toute la fenêtre, sans rail ni sidebar",()=>{
      donc à droite du panneau quand il est ouvert, et reviennent à gauche
      quand la carte a toute la fenêtre. */
   assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:var\(--marge-desktop\);right:auto/);
-  assert.match(desktop,/#appHeader\{left:var\(--decalage-desktop\);right:auto/);
-  assert.match(desktop,/body:not\(\.sheet-open\) #appHeader\{left:var\(--marge-desktop\)\}/);
+  /* LA BARRE DU HAUT TRAVERSE LA FENÊTRE.
+
+     Elle se décalait à droite du panneau, ce qui la faisait commencer au
+     milieu de l'écran. Elle porte maintenant les quatre entrées rapides —
+     Manger, Sortir, Maintenant, Aide — qui commandent TOUT l'écran et pas le
+     seul panneau de gauche : elle va donc d'un bord à l'autre, envies à
+     gauche, zone au centre, cloche à droite. */
+  assert.match(desktop,/#appHeader\{left:var\(--marge-desktop\);right:var\(--marge-desktop\)/);
+  assert.match(desktop,/#barreEnvies \.br-b\{min-height:46px/);
   assert.match(desktop,/#rechercheOverlay\{left:var\(--decalage-desktop\);right:auto/);
 
   // panneau de résultats : temporaire et fermable, pas une sidebar. La règle
@@ -1827,8 +1834,11 @@ test("sur desktop, les recommandations tiennent la gauche et la carte la droite"
   const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
                              html.indexOf("/* ---- grappes de marqueurs"));
   assert.match(desktop,/#feuilleBesoins\.reduite\{\s*\n\s*left:var\(--marge-desktop\);right:auto/);
-  // ce qui vivait à gauche se décale à droite du panneau
-  assert.match(desktop,/#appHeader\{left:var\(--decalage-desktop\)/);
+  // la barre du haut traverse la fenêtre : elle porte les entrées rapides
+  assert.match(desktop,/#appHeader\{left:var\(--marge-desktop\);right:var\(--marge-desktop\)/);
+  // et la troisième colonne se pose à droite, sans rogner la carte
+  assert.match(desktop,/#pourToi\{left:auto;right:var\(--marge-desktop\)/);
+  assert.match(desktop,/width:var\(--pourtoi\)/);
   assert.match(desktop,/#navBas\{top:auto;bottom:var\(--marge-desktop\);left:var\(--decalage-desktop\)/);
   // les flottants et l'attribution longent le bord droit
   assert.match(desktop,/#attribution\{left:auto;right:var\(--marge-desktop\)/);

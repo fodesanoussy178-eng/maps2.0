@@ -60,7 +60,7 @@ await page.route("**/*", async (route)=>{
     headers:{"access-control-allow-origin":"*"},body:JSON.stringify(d)});
   if(/tile|basemaps|openstreetmap\.org\/\d|googleapis\.com\/maps/.test(u))
     return route.fulfill({status:200,contentType:"image/png",
-      body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==","base64")});
+      body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=","base64")});
   if(/leaflet.*\.js(\?|$)/.test(u)) return route.fulfill({status:200,contentType:"text/javascript",
     body:await readFile(join(LEAFLET,"leaflet.js"),"utf8")});
   if(/leaflet.*\.css(\?|$)/.test(u)) return route.fulfill({status:200,contentType:"text/css",

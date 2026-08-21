@@ -121,7 +121,7 @@ async function ouvrir(navigateur, opts) {
     urls.set(cleRequete, (urls.get(cleRequete) || 0) + 1);
     if (/tile|basemaps|openstreetmap\.org\/\d|googleapis\.com\/maps/.test(url))
       return route.fulfill({ status: 200, contentType: "image/png",
-        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") });
+        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=", "base64") });
     if (/leaflet.*\.js(\?|$)/.test(url))
       return route.fulfill({ status: 200, contentType: "text/javascript",
         body: await readFile(join(LEAFLET, "leaflet.js"), "utf8") });

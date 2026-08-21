@@ -150,7 +150,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=9e652adc"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=b1cf2e3a"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -3615,6 +3615,10 @@ function finaliserFusion(opts){
     planifierRendu({carte:true, accueil:true, filtres:true});
     ouvrirLieuPartage();    // le lieu d'un lien partagé s'ouvre dès qu'il arrive
   }
+  /* De nouveaux événements peuvent concerner ce qu'on suit. Le panneau se
+     remet à jour quand il est ouvert, jamais autrement : peindre une colonne
+     invisible coûterait sans rien apporter. */
+  if(document.body.classList.contains("pourtoi-ouvert")) majPourToi();
   PERF.travail("reconstruction", debutCpu);
 }
 
@@ -4699,6 +4703,11 @@ async function demarrer(coords){
      libre. Le module arrive donc APRÈS le premier écran utile, et bien avant
      le premier appui d'une vraie personne. */
   prechargerEcrans();
+
+  /* ÉTAPE 4 — « Pour toi ». Il relit les événements déjà chargés, sans une
+     seule requête de plus, et n'a donc aucune raison de passer avant la
+     carte. */
+  amorcerPourToi();
 }
 
 /* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
@@ -7753,7 +7762,16 @@ function restaurerPanneau(corps, instantane){
   requestAnimationFrame(()=>{
     if(instantane.niveau !== feuilleNiveau) return;
     corps.scrollTop = instantane.scrollTop;
-    if(instantane.id){
+    /* EN HAUT, LA POSITION DE LECTURE EST LE HAUT.
+
+       L'ancre sert à ne pas déplacer la carte qu'on est en train de lire
+       quand une réponse tardive enrichit la liste au-dessus d'elle. Mais
+       lorsqu'on n'a pas défilé du tout, il n'y a pas de carte en cours de
+       lecture : il y a le début du panneau. Appliquer quand même la
+       correction faisait défiler PAR-DESSUS tout ce qui venait d'être inséré
+       plus haut — onglets de temps et bloc « nouveau » compris — pour garder
+       à sa place une recommandation que personne ne regardait. */
+    if(instantane.scrollTop > 0 && instantane.id){
       const ancre = [...corps.querySelectorAll("[data-ac]")]
         .find(el=>el.getAttribute("data-ac") === instantane.id);
       if(ancre){
@@ -7898,9 +7916,13 @@ function majFeuille2(){
        étiquette qui dit la même chose : deux lectures pour une information.
        Le carrousel devient alors ce qu'il est réellement — les lieux autour,
        pas ce qui s'y passe. */
-    const enCours = (creneau === "maintenant" && !modeAide) ? evenementsMaintenant() : [];
-    const titre = enCours.length ? "Autour de toi"
-      : creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label;
+    /* UN SEUL « AUTOUR DE TOI », ET C'EST LE BAS DU PANNEAU.
+
+       Le bloc « ⚡ Maintenant » dit ce qui se passe ; cette section-ci dit ce
+       qu'il y a. Les nommer différemment selon qu'un concert est en cours ou
+       non faisait changer le titre d'une section sous les yeux, pour un
+       contenu qui, lui, ne changeait pas de nature. */
+    const titre = creneau === "maintenant" ? "Autour de toi" : groupe.label;
     $("#fbTitre").textContent = titre;
     retour.hidden = true;
     // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
@@ -7932,12 +7954,18 @@ function majFeuille2(){
     corps.innerHTML =
       blocOuRegarder()+
       chipsHTML()+
-      besoinsRapidesHTML()+
+      /* Sur grand écran elles vivent dans la barre du haut : les rendre ici
+         aussi les ferait exister deux fois pour un lecteur d'écran. */
+      (NAV_FLOTTANTE.matches ? "" : besoinsRapidesHTML())+
       ongletsTemps()+
+      blocNouveauPourToi()+
       blocMaintenantAccueil()+
       blocAideAccueil()+
       '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
         '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
+      /* Les six grandes portes d'abord — c'est par elles qu'on retrouve les
+         lieux permanents et les commodités —, le classement ensuite. */
+      (creneau === "maintenant" ? grilleRaccourcisAutour() : "")+
       '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+
       (creneau === "maintenant" ? blocTransports() : "")+
       piedFeuille();
@@ -8772,6 +8800,22 @@ const BESOINS_RAPIDES = [
   {id:"aide", emoji:"❤️", label:"Aide"},
 ];
 
+/* Le même geste, où que les boutons soient posés — barre du haut sur grand
+   écran, panneau sur mobile. */
+function brancherBesoinsRapides(racine){
+  if(!racine) return;
+  racine.querySelectorAll("[data-br]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.br;
+    if(id === "aide"){ if(!modeAide) basculerAide(); ouvrirFeuille2("aide"); return; }
+    if(id === "maintenant"){
+      creneau = "maintenant"; filtreMaintenant = true;
+      majFeuille2(); rendre(); majFiltres(); return;
+    }
+    if(modeAide) basculerAide();
+    ouvrirFeuille2(id);
+  });
+}
+
 function besoinsRapidesHTML(){
   return '<div class="br" data-testid="besoins-rapides">'+
     BESOINS_RAPIDES.map(b=>{
@@ -8889,6 +8933,290 @@ function ligneMaintenant(l){
 }
 
 const ORDO = window.AutourOrdonnanceur || null;
+
+/* ==================================================================== */
+/*  POUR TOI — ce qui vient d'apparaître et qui te concerne              */
+/* ==================================================================== */
+/* Le panneau ne fabrique rien. Il regarde les événements DÉJÀ chargés par le
+   chemin critique, garde ceux qui se rattachent à une envie cochée, et les
+   présente avec la raison de leur présence. Aucune requête ne part d'ici :
+   sans donnée, il le dit et propose de choisir des envies.
+
+   Il est peint APRÈS le chemin critique — c'est une information secondaire,
+   elle n'a pas le droit de retarder la carte ni « Maintenant ». */
+
+const ENVIES = window.AutourEnvies || null;
+const CLE_POURTOI_VU = "autour:pourtoi-vu:v1";
+const POURTOI_MAX = 6;
+/* « Détecté il y a… » n'a de sens que sur une découverte récente. Au-delà,
+   l'événement n'est plus une nouvelle : il est simplement au programme. */
+const POURTOI_NOUVEAU_MS = 72 * 3600 * 1000;
+
+function marquesVues(){
+  try{ const v = JSON.parse(localStorage.getItem(CLE_POURTOI_VU) || "[]");
+    return new Set(Array.isArray(v) ? v : []); }
+  catch(e){ return new Set(); }
+}
+
+function ecrireMarquesVues(ids){
+  try{ localStorage.setItem(CLE_POURTOI_VU, JSON.stringify([...ids].slice(-200))); }
+  catch(e){}
+}
+
+/* Depuis combien de temps Autour connaît cet événement. La date vient de la
+   synchronisation en base (`last_synced_at`) : c'est une vraie mesure, pas une
+   impression d'actualité. Sans elle, on n'écrit rien. */
+function detecteDepuis(l){
+  const t = l && l.majLe ? new Date(l.majLe).getTime() : NaN;
+  if(!Number.isFinite(t)) return null;
+  const ms = Date.now() - t;
+  if(ms < 0 || ms > POURTOI_NOUVEAU_MS) return null;
+  const h = Math.floor(ms / 3600000);
+  if(h < 1) return "détecté il y a moins d’une heure";
+  if(h < 24) return "détecté il y a "+h+" h";
+  const j = Math.floor(h / 24);
+  return "détecté il y a "+j+" jour"+(j > 1 ? "s" : "");
+}
+
+/* Les propositions : des événements à venir, rattachés à une envie suivie.
+   Le plus récemment détecté d'abord — c'est ce que le panneau annonce. */
+function propositionsPourToi(){
+  if(!ENVIES || !ENVIES.choisies().length) return [];
+  const maintenant = Date.now();
+  const vues = marquesVues();
+  return lieux
+    .filter(l=>estTemporaire(l) && !l.annule)
+    /* Un événement déjà terminé n'est pas une proposition. Sans date de fin,
+       on se fie au début : mieux vaut ne rien promettre qu'annoncer un
+       concert d'hier. */
+    .filter(l=>{
+      const fin = l.finLe || l.debutLe;
+      return Number.isFinite(fin) && fin >= maintenant;
+    })
+    .map(l=>({l, pourquoi:ENVIES.pourquoi(l), nouveau:detecteDepuis(l)}))
+    .filter(x=>!!x.pourquoi)
+    .sort((a,b)=>{
+      /* Ce qui n'a pas encore été vu passe devant : c'est l'objet du panneau. */
+      const vuA = vues.has(a.l.id) ? 1 : 0, vuB = vues.has(b.l.id) ? 1 : 0;
+      if(vuA !== vuB) return vuA - vuB;
+      /* Puis la preuve la plus solide, puis la date la plus proche. */
+      if(a.pourquoi.solide !== b.pourquoi.solide) return a.pourquoi.solide ? -1 : 1;
+      return (a.l.debutLe || Infinity) - (b.l.debutLe || Infinity);
+    })
+    .slice(0, POURTOI_MAX)
+    .map(x=>Object.assign(x, {vu:vues.has(x.l.id)}));
+}
+
+/* La date d'un événement, écrite par le moteur temporel — le même texte que
+   partout ailleurs dans Autour. Sans date exploitable, la ligne disparaît. */
+function dateProposition(l){
+  if(!l.debutLe) return "";
+  const jour = new Date(l.debutLe).toLocaleDateString("fr-FR",
+    {day:"numeric", month:"long", year:"numeric"});
+  const heure = heureLocale(l.debutLe, l);
+  return heure ? jour+" · "+heure : jour;
+}
+
+function carteProposition(x){
+  const l = x.l;
+  const dist = jeSuisDansLaZoneRegardee() ? formatDist(distanceDepuisZone(l)) : "";
+  const ville = (l.cp || l.adresse || "").trim();
+  const lieuLigne = [ville, dist].filter(Boolean).join(" · ");
+  const date = dateProposition(l);
+  const c = categorieAffichee(l);
+  /* L'image est celle de la source, sous licence. Sans image, un pictogramme
+     de catégorie — jamais une photo d'illustration prise ailleurs. */
+  const visuel = l.image
+    ? '<img class="pt-img" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async">'
+    : '<span class="pt-img pt-img-vide" aria-hidden="true">'+c.emoji+'</span>';
+  return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'">'+
+    visuel+
+    '<div class="pt-txt">'+
+      '<p class="pt-haut">'+
+        (x.nouveau ? '<b class="pt-neuf">NOUVEAU</b><span>'+esc(x.nouveau)+'</span>' : '')+
+      '</p>'+
+      '<h3>'+esc(l.titre)+'</h3>'+
+      (date ? '<p class="pt-date">'+esc(date)+'</p>' : '')+
+      (lieuLigne ? '<p class="pt-lieu">'+esc(lieuLigne)+'</p>' : '')+
+      '<p class="pt-pourquoi"><span aria-hidden="true">✨</span>'+
+        'Pourquoi Autour te le montre</p>'+
+      '<p class="pt-raison">'+esc(x.pourquoi.texte)+'</p>'+
+      actionsProposition(l)+
+    '</div>'+
+  '</article>';
+}
+
+/* Le rang d'actions d'une proposition.
+
+   LA RÉFÉRENCE MONTRE AUSSI « Me prévenir ». Il n'est pas là, et c'est
+   délibéré : Autour n'a aujourd'hui aucun mécanisme de notification — ni
+   permission demandée, ni service worker, ni file de rappels. Un bouton qui
+   dirait « tu seras prévenu » promettrait quelque chose que rien ne tient, et
+   c'est pire que son absence.
+
+   Quand ce mécanisme existera, il s'ajoute ICI, sans toucher au reste de la
+   carte : une entrée de plus dans ce rang, un état par événement à côté de
+   `marquesVues` — même forme, même stockage —, et le bouton bascule cet état.
+   La carte, elle, ne bouge pas. */
+function actionsProposition(l){
+  return '<p class="pt-actions">'+
+    '<button class="pt-voir" data-pt-voir="'+esc(l.id)+'">Voir →</button>'+
+  '</p>';
+}
+
+/* « Tes surveillances » : ce qui est coché, et la porte pour en changer. */
+function blocSurveillances(){
+  if(!ENVIES) return "";
+  const suivies = ENVIES.details();
+  return '<section class="pt-envies">'+
+    '<div class="pt-envies-tete"><strong>Tes surveillances</strong>'+
+      '<button id="ptGerer">Gérer</button></div>'+
+    (suivies.length
+      ? '<div class="pt-envies-liste">'+suivies.map(e=>
+          '<span class="pt-envie"><em aria-hidden="true">'+e.emoji+'</em>'+
+          esc(e.label)+'</span>').join("")+
+          '<button class="pt-envie pt-envie-plus" id="ptPlus" aria-label="Ajouter une envie">+</button>'+
+        '</div>'
+      : '<p class="pt-envies-vide">Choisis ce que tu veux suivre : '+
+        'Autour te préviendra quand quelque chose arrive.</p>')+
+    (ENVIES.persistant() ? ''
+      : '<p class="pt-envies-vide">Ton navigateur n’enregistre pas ces choix : '+
+        'ils vaudront pour cette visite seulement.</p>')+
+    '</section>';
+}
+
+function majPourToi(){
+  const panneau = $("#pourToi");
+  const corps = $("#ptCorps");
+  if(!panneau || !corps) return;
+  const debutCpu = performance.now();
+  const propositions = propositionsPourToi();
+  const suivies = ENVIES ? ENVIES.choisies().length : 0;
+
+  let contenu;
+  if(!suivies){
+    /* Aucune envie cochée : le panneau ne se remplit pas de « suggestions »
+       génériques, il explique à quoi il sert. */
+    contenu = '<p class="pt-vide">Rien à suivre pour l’instant. '+
+      'Dis à Autour ce qui t’intéresse et il te préviendra quand ça arrive.</p>';
+  }else if(!propositions.length){
+    contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
+      'Autour continue de regarder.</p>';
+  }else{
+    contenu = propositions.map(carteProposition).join("");
+  }
+  corps.innerHTML = contenu + blocSurveillances();
+
+  const nonVues = propositions.filter(x=>!x.vu).length;
+  const toutVu = $("#ptToutVu");
+  if(toutVu) toutVu.hidden = !nonVues;
+  const pastille = $("#notifPastille");
+  if(pastille) pastille.hidden = !nonVues;
+  brancherPourToi(propositions);
+  PERF.travail("pour_toi", debutCpu);
+}
+
+function brancherPourToi(propositions){
+  const corps = $("#ptCorps");
+  if(!corps) return;
+  corps.querySelectorAll("[data-pt-voir]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.ptVoir;
+    marquerVu([id]);
+    if(!NAV_FLOTTANTE.matches) fermerPourToi();
+    pileEcrans = [];
+    pousserEcran(()=>ouvrirDetail(id));
+  });
+  const gerer = ()=>ouvrirEnvies();
+  if($("#ptGerer")) $("#ptGerer").onclick = gerer;
+  if($("#ptPlus")) $("#ptPlus").onclick = gerer;
+  const toutVu = $("#ptToutVu");
+  if(toutVu) toutVu.onclick = ()=>{
+    marquerVu(propositions.map(x=>x.l.id));
+    majPourToi();
+  };
+}
+
+function marquerVu(ids){
+  const vues = marquesVues();
+  ids.forEach(id=>vues.add(id));
+  ecrireMarquesVues(vues);
+}
+
+/* ---- L'écran « Gérer ses envies » ---------------------------------------
+   Une liste à cocher, rien de plus. Chaque geste est enregistré tout de
+   suite : il n'y a pas de « valider » à oublier. */
+function ouvrirEnvies(){
+  if(!ENVIES) return;
+  if(!NAV_FLOTTANTE.matches) fermerPourToi();
+  pileEcrans = [];
+  pousserEcran(()=>{
+    ouvrirFeuille(
+      '<h2 class="titre">Tes envies</h2>'+
+      '<p class="env-intro">Ce que tu coches sert à classer « Pour toi » et, '+
+        'plus tard, à te prévenir. Rien d’autre n’est déduit de ton usage.</p>'+
+      '<div class="env-liste" id="envListe"></div>',
+      {ariaLabel:"Choisir tes envies"});
+    peindreEnvies();
+  });
+}
+
+function peindreEnvies(){
+  const zone = $("#envListe");
+  if(!zone || !ENVIES) return;
+  zone.innerHTML = ENVIES.CATALOGUE.map(e=>{
+    const on = ENVIES.suivie(e.id);
+    return '<button type="button" class="env-b'+(on?" actif":"")+'" '+
+      'data-env="'+esc(e.id)+'" aria-pressed="'+on+'">'+
+      '<em aria-hidden="true">'+e.emoji+'</em><b>'+esc(e.label)+'</b>'+
+      '<span class="env-etat" aria-hidden="true">'+(on?"✓":"+")+'</span></button>';
+  }).join("");
+  zone.querySelectorAll("[data-env]").forEach(b=>b.onclick=()=>{
+    ENVIES.basculer(b.dataset.env);
+    peindreEnvies();
+    majPourToi();
+  });
+}
+
+/* ---- Ouvrir et fermer le panneau ---------------------------------------- */
+function ouvrirPourToi(){
+  const p = $("#pourToi");
+  if(!p) return;
+  p.hidden = false;
+  document.body.classList.add("pourtoi-ouvert");
+  majPourToi();
+  const x = $("#ptFermer");
+  if(x) x.hidden = NAV_FLOTTANTE.matches;
+}
+
+function fermerPourToi(){
+  const p = $("#pourToi");
+  if(!p) return;
+  document.body.classList.remove("pourtoi-ouvert");
+  /* Sur grand écran le panneau fait partie du décor : il reste en place. */
+  if(!NAV_FLOTTANTE.matches) p.hidden = true;
+}
+
+function basculerPourToi(){
+  const p = $("#pourToi");
+  if(!p) return;
+  if(!p.hidden && !NAV_FLOTTANTE.matches) return fermerPourToi();
+  if(NAV_FLOTTANTE.matches && document.body.classList.contains("pourtoi-ouvert"))
+    return fermerPourToi();
+  ouvrirPourToi();
+}
+
+/* ---- Les quatre envies rapides, ici ou là ------------------------------- */
+/* Un seul jeu de boutons. Sur grand écran il vit dans la barre du haut, sur
+   mobile dans le panneau : jamais aux deux endroits, sinon un même geste
+   existerait deux fois pour un lecteur d'écran. */
+function poserBesoinsRapides(){
+  const hote = $("#barreEnvies");
+  if(!hote) return;
+  const enTete = NAV_FLOTTANTE.matches;
+  hote.hidden = !enTete;
+  hote.innerHTML = enTete ? besoinsRapidesHTML() : "";
+  if(enTete) brancherBesoinsRapides(hote);
+}
 
 /* ==================================================================== */
 /*  Le classement de l'accueil, différé et annulable                    */
@@ -9132,7 +9460,28 @@ function contexteMaintenant(){
       && !rechercheGeo,
     chargement: rechercheEnCours(),
     panne: panneTechnique(),
+    /* CE QUE LA PERSONNE A EXPLICITEMENT DEMANDÉ.
+
+       « Maintenant » écarte les commodités — supermarché, pharmacie, métro —
+       parce qu'une sélection de trois places ne doit pas se remplir de
+       l'annuaire des commerces ouverts. Mais « pharmacie ouverte maintenant »
+       est une demande, pas une suggestion : ce qui a été nommé revient.
+
+       Rien n'est deviné ici : on ne transmet que des catégories choisies dans
+       l'interface ou comprises dans une phrase tapée. */
+    categoriesDemandees: categoriesDemandees(),
   };
+}
+
+/* Les catégories que la personne a nommées, par un filtre, une pastille de
+   catégorie ou une phrase que `comprendre.js` a interprétée. */
+function categoriesDemandees(){
+  const dites = new Set();
+  if(catsActives) catsActives.forEach(c=>dites.add(c));
+  if(filtreActif && filtreActif !== "tout") dites.add(filtreActif);
+  const q = intentionCourante && intentionCourante.chips;
+  if(q) q.forEach(c=>{ if(c && c.type === "cat" && c.id) dites.add(String(c.id).split(":")[1]); });
+  return [...dites];
 }
 
 /* La sélection elle-même : au plus trois, jamais complétée artificiellement. */
@@ -9257,6 +9606,48 @@ function aveuCouvertureMaintenant(combienAffiches){
     (cherche ? 'Autour cherche encore : d’autres propositions peuvent arriver.'
              : 'Une source n’a pas répondu — il se passe peut-être plus de choses qu’ici.')+
     '</p>';
+}
+
+/* ---- « ✨ NOUVEAU POUR TOI » -------------------------------------------
+
+   LA MÊME CHOSE QUE « POUR TOI », VUE D'AILLEURS.
+
+   Ce bloc ne calcule rien et ne connaît aucune donnée que le panneau de
+   droite n'ait déjà : il prend la PREMIÈRE proposition non lue de
+   `propositionsPourToi()` et la dessine autrement. Une seconde source de
+   vérité voudrait dire deux classements à garder d'accord, et un jour deux
+   réponses différentes à la même question.
+
+   Il disparaît complètement quand il n'y a rien à annoncer. « Nouveau » veut
+   dire nouveau : une proposition non lue MAIS déjà connue depuis une semaine
+   n'est pas une nouvelle, c'est le programme — elle reste à droite, elle
+   n'ouvre pas le panneau de gauche. */
+function nouveauPourToi(){
+  const propositions = propositionsPourToi();
+  return propositions.find(x=>!x.vu && x.nouveau) || null;
+}
+
+function blocNouveauPourToi(){
+  if(creneau !== "maintenant" || modeAide) return "";
+  const x = nouveauPourToi();
+  if(!x) return "";
+  const l = x.l;
+  const c = categorieAffichee(l);
+  const visuel = l.image
+    ? '<img class="npt-img" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async">'
+    : '<span class="npt-img npt-img-vide" aria-hidden="true">'+c.emoji+'</span>';
+  /* Date et lieu, tels quels : sans date exploitable la ligne disparaît
+     plutôt que d'écrire une approximation. */
+  const bas = [dateProposition(l), (l.cp || l.adresse || "").trim()]
+    .filter(Boolean).join(" · ");
+  return '<section class="npt" data-testid="nouveau-pour-toi">'+
+    '<p class="npt-tete"><em aria-hidden="true">✨</em>NOUVEAU POUR TOI</p>'+
+    '<button class="npt-l" data-npt="'+esc(l.id)+'">'+
+      visuel+
+      '<span class="npt-txt"><b>'+esc(l.titre)+'</b>'+
+        (bas ? '<i>'+esc(bas)+'</i>' : '')+'</span>'+
+      '<span class="npt-fl" aria-hidden="true">›</span>'+
+    '</button></section>';
 }
 
 function blocMaintenantAccueil(){
@@ -9590,6 +9981,58 @@ function carteRecommandation(l){
 
 /* Les arrêts restent des données de découverte. Le bouton Transport révèle
    leur couche ; il ne lance plus de moteur de départs ou de correspondances. */
+/* ==================================================================== */
+/*  AUTOUR DE TOI — les catégories générales, en gros et en bas          */
+/* ==================================================================== */
+/* « Maintenant » propose ce qu'il y a d'intéressant à faire là, tout de
+   suite. Il ne contient donc plus les commodités — supermarché, pharmacie,
+   métro — qui prenaient ses trois places (voir COMMODITES dans
+   maintenant.js). Elles ne disparaissent pas pour autant : c'est ICI qu'on
+   les retrouve, avec tous les lieux permanents, par de gros raccourcis qu'on
+   vise sans réfléchir.
+
+   Chaque raccourci ouvre une famille qui existe déjà dans BESOINS : rien
+   n'est réinventé, on donne juste une porte plus large à ce qui était
+   derrière « Plus ». */
+const RACCOURCIS_AUTOUR = [
+  {id:"activites", emoji:"🏃", label:"Activités", teinte:"#2E9E4F", besoin:"bouger"},
+  {id:"culture",   emoji:"🏛️", label:"Culture",   teinte:"#6D3BEB", besoin:"culture"},
+  {id:"musique",   emoji:"🎵", label:"Musique",   teinte:"#E0316E", besoin:"culture",
+   sous:"Concerts et spectacles"},
+  {id:"lieux",     emoji:"☕", label:"Lieux",     teinte:"#8A5A2B", besoin:"chiller"},
+  {id:"sports",    emoji:"⚽", label:"Sports",    teinte:"#2673E8", besoin:"bouger",
+   sous:"Terrains et équipements"},
+  {id:"plus",      emoji:"⋯",  label:"Plus",      teinte:"#5D6B63", besoin:"plus"},
+];
+
+function grilleRaccourcisAutour(){
+  return '<section class="adt" data-testid="autour-de-toi">'+
+    '<div class="adt-grille">'+
+      RACCOURCIS_AUTOUR.map(r=>
+        '<button class="adt-b" data-adt="'+esc(r.id)+'">'+
+          '<span class="adt-rond" style="background:'+r.teinte+'">'+r.emoji+'</span>'+
+          '<span class="adt-lab">'+esc(r.label)+'</span></button>').join("")+
+    '</div></section>';
+}
+
+/* Ouvrir un raccourci, c'est ouvrir la famille correspondante — et, quand le
+   raccourci vise plus précis que la famille, sa sous-catégorie. On cherche
+   celle-ci par son LIBELLÉ : un indice se décale dès qu'on ajoute une entrée
+   à la liste, un libellé non. */
+function ouvrirRaccourciAutour(id){
+  const r = RACCOURCIS_AUTOUR.find(x=>x.id === id);
+  if(!r) return;
+  if(modeAide) basculerAide();
+  ouvrirFeuille2(r.besoin);
+  if(!r.sous) return;
+  const b = BESOIN_DE(r.besoin);
+  const i = b && b.sous ? b.sous.findIndex(x=>x.label === r.sous) : -1;
+  /* `ouvrirFeuille2` a déjà demandé les catégories de toute la famille : la
+     sous-catégorie n'est qu'un filtre sur ce qui arrive, pas une requête de
+     plus. */
+  if(i >= 0){ sousChoisi = i; majFeuille2(); rendre(); }
+}
+
 function blocTransports(){
   if(!coucheTransport) return "";
   return '<div class="tr-bloc">'+
@@ -9622,8 +10065,10 @@ function brancherFeuille2(){
           ? PLAF.limiteMaintenant() : PLAF.limiteExplorer(connus.length))
       : connus;
     pileEcrans = [];
+    /* « Voir tout » ouvre la même section en grand : elle porte donc le même
+       nom que celle qu'on vient de quitter. */
     pousserEcran(()=>afficherListe("✨",
-      creneau === "maintenant" ? "Pour toi, maintenant" : groupe.label,
+      creneau === "maintenant" ? "Autour de toi" : groupe.label,
       tout, false, ()=>b.click(), connus.length));
   });
 
@@ -9633,16 +10078,21 @@ function brancherFeuille2(){
   // flottant : une seule porte pour revenir à sa zone, comme convenu
   corps.querySelectorAll("[data-retour-moi]").forEach(b=>b.onclick=revenirAutourDeMoi);
 
-  corps.querySelectorAll("[data-br]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.br;
-    if(id === "aide"){ if(!modeAide) basculerAide(); ouvrirFeuille2("aide"); return; }
-    if(id === "maintenant"){
-      creneau = "maintenant"; filtreMaintenant = true;
-      majFeuille2(); rendre(); majFiltres(); return;
-    }
-    if(modeAide) basculerAide();
-    ouvrirFeuille2(id);
+  brancherBesoinsRapides(corps);
+
+  /* Ouvrir depuis ce bloc, c'est l'avoir lu : il disparaît, et la carte
+     correspondante passe en « vu » à droite. Une seule notion de « lu ». */
+  corps.querySelectorAll("[data-npt]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.npt;
+    marquerVu([id]);
+    pileEcrans = [];
+    pousserEcran(()=>ouvrirDetail(id));
   });
+
+  corps.querySelectorAll("[data-adt]").forEach(b=>b.onclick=()=>
+    ouvrirRaccourciAutour(b.dataset.adt));
+  corps.querySelectorAll("[data-adt-tout]").forEach(b=>b.onclick=()=>
+    ouvrirFeuille2("plus"));
 
   corps.querySelectorAll("[data-aide-accueil]").forEach(b=>b.onclick=()=>{
     if(!modeAide) basculerAide();
@@ -10751,6 +11201,41 @@ function synchroniserRechercheDesktop(){
 }
 responsiveLayout.subscribe(()=>synchroniserRechercheDesktop());
 $("#btnLoupe").onclick = ouvrirRecherche;
+
+/* ---- Pour toi : la cloche l'ouvre, la taille d'écran décide de sa forme --
+   Sur grand écran c'est une colonne du décor ; sur mobile un tiroir. Le même
+   panneau dans les deux cas — il n'y a pas deux écrans à maintenir. */
+if($("#btnNotifs")) $("#btnNotifs").onclick = basculerPourToi;
+if($("#ptFermer")) $("#ptFermer").onclick = fermerPourToi;
+
+function accorderPourToiALEcran(){
+  poserBesoinsRapides();
+  const p = $("#pourToi");
+  if(!p) return;
+  if(NAV_FLOTTANTE.matches){
+    /* La colonne fait partie de la composition : elle est là d'emblée. */
+    p.hidden = false;
+    document.body.classList.add("pourtoi-ouvert");
+    const x = $("#ptFermer"); if(x) x.hidden = true;
+  }else{
+    p.hidden = true;
+    document.body.classList.remove("pourtoi-ouvert");
+    const x = $("#ptFermer"); if(x) x.hidden = false;
+  }
+  majPourToi();
+}
+
+if(NAV_FLOTTANTE.addEventListener) NAV_FLOTTANTE.addEventListener("change", accorderPourToiALEcran);
+else if(NAV_FLOTTANTE.addListener) NAV_FLOTTANTE.addListener(accorderPourToiALEcran);
+
+/* Le panneau est une information SECONDAIRE : il attend que le chemin
+   critique ait rendu la main. Il ne déclenche aucune requête — il relit les
+   événements déjà chargés — donc l'attendre ne coûte rien à personne. */
+function amorcerPourToi(){
+  const poser = ()=>accorderPourToiALEcran();
+  if(ORDO) ORDO.differer(poser, {timeout:1200});
+  else setTimeout(poser, 400);
+}
 $("#btnFermerRech").onclick=()=>{
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
   fermerRecherche(); rendre(); majAccueil();

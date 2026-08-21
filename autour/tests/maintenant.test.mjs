@@ -404,14 +404,46 @@ test("un lieu ouvert est une réponse valable", () => {
   assert.equal(v.nature, M.NATURES.OUVERT);
 });
 
-test("un lieu d'activité ouvert vaut mieux qu'une simple commodité", () => {
+test("un lieu d'activité ouvert est une sortie", () => {
   // un musée ouvert est une sortie ; une supérette ouverte est une commodité
   for (const cat of ["cinema", "musee", "biblio", "parc", "piscine"]) {
     assert.equal(M.disponible(lieu({ categorie: cat }), ctx()).nature,
       M.NATURES.ACTIVITE, cat);
   }
-  assert.equal(M.disponible(lieu({ categorie: "commerce" }), ctx()).nature,
+  // un restaurant ou un café ouvert reste une proposition : on y va
+  assert.equal(M.disponible(lieu({ categorie: "resto" }), ctx()).nature,
     M.NATURES.OUVERT);
+});
+
+test("une commodité ouverte n'est PAS une proposition", () => {
+  /* « Maintenant » possède trois places. Ouvert + assez proche décrit, dans
+     n'importe quel centre-ville, d'abord Carrefour, Zara, la pharmacie et la
+     bouche de métro : les trois places étaient prises avant qu'un concert
+     n'arrive. Ces lieux restent sur la carte et dans « Autour de toi » ; ils
+     ne se proposent plus d'eux-mêmes. */
+  for (const cat of M.COMMODITES) {
+    const v = M.disponible(lieu({ categorie: cat }), ctx());
+    assert.equal(v.retenu, false, cat + " ne doit pas se proposer seul");
+    assert.equal(v.raison, M.RAISONS.COMMODITE, cat);
+  }
+  // les catégories nommées par le mot « commodité » sont bien celles-là
+  ["commerce", "sante", "metro", "bus", "tram", "train", "velo"]
+    .forEach((c) => assert.ok(M.estCommodite(c), c));
+  ["cinema", "musee", "concert", "resto", "cafe", "bar", "parc"]
+    .forEach((c) => assert.ok(!M.estCommodite(c), c + " n'est pas une commodité"));
+});
+
+test("une commodité DEMANDÉE revient aussitôt", () => {
+  /* « pharmacie ouverte maintenant » est une demande, pas une suggestion :
+     c'est exactement ce qu'il faut montrer. La liste des catégories demandées
+     vient de l'interface ou d'une phrase comprise — jamais d'une devinette. */
+  const demande = ctx({ categoriesDemandees: ["sante"] });
+  const v = M.disponible(lieu({ categorie: "sante" }), demande);
+  assert.equal(v.retenu, true, "une pharmacie demandée doit entrer");
+  assert.equal(v.nature, M.NATURES.OUVERT);
+  // demander la pharmacie ne fait pas rentrer le supermarché avec elle
+  assert.equal(M.disponible(lieu({ categorie: "commerce" }), demande).raison,
+    M.RAISONS.COMMODITE);
 });
 
 test("un lieu FERMÉ n'entre jamais, même s'il reste une place libre", () => {

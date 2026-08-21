@@ -474,40 +474,93 @@ function urlItineraireExterne(fournisseur, mode, depart, destination){
   return "https://www.waze.com/ul?ll="+encodeURIComponent(arrivee)+"&navigate=yes";
 }
 
+/* ---- Les pictogrammes du mode itinéraire --------------------------------
+   Même vocabulaire que le reste de l'application : un trait de 24 sur 24,
+   sans remplissage, qui prend la couleur du texte. Aucune police d'icônes,
+   aucun fichier à télécharger — quatre chemins écrits ici. */
+const TRAITS_MODE = {
+  pied: '<circle cx="12" cy="5" r="1"/><path d="m9 20 3-6 3 6"/>'+
+        '<path d="m6 8 6 2 6-2"/><path d="M12 10v4"/>',
+  velo: '<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/>'+
+        '<circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>',
+  voiture: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10'+
+           's-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9'+
+           'A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/>'+
+           '<path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+  transports: '<path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>'+
+              '<path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5'+
+              'C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/>'+
+              '<path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>',
+};
+
+function traitSvg(chemins, taille, epaisseur){
+  return '<svg viewBox="0 0 24 24" width="'+taille+'" height="'+taille+'" fill="none" '+
+    'stroke="currentColor" stroke-width="'+epaisseur+'" stroke-linecap="round" '+
+    'stroke-linejoin="round" aria-hidden="true">'+chemins+'</svg>';
+}
+
+const iconeMode = (mode)=>traitSvg(TRAITS_MODE[mode] || "", 23, 1.8);
+const CHEVRON_ITIN = '<path d="m9 18 6-6-6-6"/>';
+const FLECHE_RETOUR = '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>';
+/* Une flèche qui sort d'un cadre : ces boutons quittent Autour. Les logos des
+   marques ne sont pas reproduits — aucun fichier de marque n'existe dans le
+   dépôt, et une approximation dessinée à la main serait un faux logo. */
+const SORTIE_APPLI = '<path d="M14 4h6v6"/><path d="M20 4 11 13"/>'+
+  '<path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>';
+
+/* Une carte du panneau : cercle de couleur très légère, nom du mode bien
+   lisible, détail secondaire dessous. La cible tactile fait toute la carte
+   quand le mode est routé par Autour. */
+function carteMode(opts){
+  const detail = opts.detail
+    ? '<span class="itin-detail">'+esc(opts.detail)+'</span>' : '';
+  const dedans =
+    '<span class="itin-rond itin-rond-'+opts.cle+'">'+iconeMode(opts.cle)+'</span>'+
+    '<span class="itin-txt"><b>'+opts.titre+'</b>'+detail+'</span>'+
+    (opts.fin || "");
+  return opts.action
+    ? '<button type="button" class="itin-mode itin-mode-interne" '+opts.action+'>'+dedans+'</button>'
+    : '<div class="itin-mode itin-mode-ext" data-mode-externe="'+opts.cle+'">'+dedans+'</div>';
+}
+
 /* Voiture et transports ne sont pas routés par Autour — ils partent chez les
    applications qui le font pour de vrai. Chaque carte porte donc ses
-   fournisseurs, et rien d'autre : une durée inventée pour remplir la ligne
-   serait un chiffre que personne ne peut vérifier. */
+   fournisseurs, et rien d'autre : une durée inventée pour ressembler à une
+   maquette serait un chiffre que personne ne peut vérifier. */
 function liensItinerairesExternes(depart, destination){
   const lien = (label, fournisseur, mode)=>
     '<a class="itin-lien" target="_blank" rel="noopener" data-provider="'+fournisseur+'" href="'+
-      esc(urlItineraireExterne(fournisseur, mode, depart, destination))+'">'+label+'</a>';
-  const carte = (cle, emoji, titre, sous, liens)=>
-    '<div class="itin-mode itin-mode-ext" data-mode-externe="'+cle+'">'+
-      '<span class="itin-rond itin-rond-'+cle+'" aria-hidden="true">'+emoji+'</span>'+
-      '<span class="itin-txt"><b>'+titre+'</b><span>'+sous+'</span></span>'+
-      '<span class="itin-liens">'+liens+'</span>'+
-    '</div>';
-  return carte("voiture", "🚗", "Voiture", "Ouvrir l’itinéraire",
-      lien("Google Maps", "google", "driving")+
-      lien("Apple Plans", "apple", "driving")+
-      lien("Waze", "waze", "driving"))+
-    carte("transports", "🚌", "Transports", "Voir en transports",
-      lien("Google Maps", "google", "transit")+
-      lien("Apple Plans", "apple", "transit"));
+      esc(urlItineraireExterne(fournisseur, mode, depart, destination))+'">'+
+      '<span class="itin-lien-marque" aria-hidden="true">'+traitSvg(SORTIE_APPLI, 15, 1.9)+'</span>'+
+      '<span>'+label+'</span></a>';
+  return carteMode({
+      cle:"voiture", titre:"Voiture", detail:"Ouvrir l’itinéraire",
+      fin:'<span class="itin-liens">'+
+        lien("Google Maps", "google", "driving")+
+        lien("Apple Plans", "apple", "driving")+
+        lien("Waze", "waze", "driving")+'</span>',
+    })+
+    carteMode({
+      cle:"transports", titre:"Transports", detail:"Voir en transports",
+      fin:'<span class="itin-liens">'+
+        lien("Google Maps", "google", "transit")+
+        lien("Apple Plans", "apple", "transit")+'</span>',
+    });
 }
 
 /* Une carte de mode interne : le seul endroit où Autour route lui-même. Elle
    est cliquable en entier — c'est un choix, pas une ligne de tableau. */
 function carteModeInterne(indice, option){
-  const detail = [option.min+" min", option.m != null ? formatDist(option.m) : null]
-    .filter(Boolean).join(" · ");
-  return '<button type="button" class="itin-mode itin-mode-interne" data-opt="'+indice+'">'+
-    '<span class="itin-rond itin-rond-'+option.mode+'" aria-hidden="true">'+
-      EMOJI_MODE[option.mode]+'</span>'+
-    '<span class="itin-txt"><b>'+LABEL_MODE[option.mode]+'</b><span>'+esc(detail)+'</span></span>'+
-    '<span class="itin-chevron" aria-hidden="true">›</span>'+
-  '</button>';
+  return carteMode({
+    cle:option.mode, titre:LABEL_MODE[option.mode],
+    /* Durée et distance viennent du routage réel, ou de l'estimation à vol
+       d'oiseau que le bas du panneau annonce alors comme telle. Rien n'est
+       affiché qui ne soit calculé. */
+    detail:[option.min+" min", option.m != null ? formatDist(option.m) : null]
+      .filter(Boolean).join(" · "),
+    action:'data-opt="'+indice+'"',
+    fin:'<span class="itin-chevron">'+traitSvg(CHEVRON_ITIN, 19, 2)+'</span>',
+  });
 }
 
 /* ---- Le mode itinéraire -------------------------------------------------
@@ -543,16 +596,20 @@ async function afficherTrajet(l){
     {mode:"velo", min:droit("velo").min, m:dVol, segments:[droit("velo")]},
   ];
 
-  const adresse = [l.adresse, l.cp].filter(Boolean).join(" · ");
+  const adresse = [l.adresse, l.cp].filter(Boolean).join(", ");
   panneau.innerHTML =
-    '<button type="button" class="retour itin-retour" id="btnRetourItin">‹ Retour</button>'+
+    '<div class="itin-tete">'+
+      '<button type="button" class="itin-retour" id="btnRetourItin">'+
+        traitSvg(FLECHE_RETOUR, 19, 2)+'<span>Retour</span></button>'+
+    '</div>'+
     '<h2 class="titre itin-titre">'+esc(l.titre)+'</h2>'+
     (adresse ? '<p class="itin-adresse">'+esc(adresse)+'</p>' : '')+
     '<h3 class="itin-question">Comment y aller ?</h3>'+
     '<div class="itin-modes" id="itinModes"></div>'+
     liensItinerairesExternes(depart, dest)+
-    '<p class="itin-note" id="itinNote">Les temps sont donnés à titre indicatif '+
-      'et peuvent varier.</p>';
+    '<p class="itin-note" id="itinNote">'+traitSvg('<circle cx="12" cy="12" r="9"/>'+
+      '<path d="M12 16v-4"/><path d="M12 8h.01"/>', 16, 1.8)+
+      '<span>Les temps sont donnés à titre indicatif et peuvent varier.</span></p>';
 
   const peindre = ()=>{
     if(numeroDemande !== afficherTrajet.numeroDemande) return false;
