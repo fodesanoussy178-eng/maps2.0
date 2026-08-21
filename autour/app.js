@@ -6389,13 +6389,39 @@ async function calqueVerifie(cles){
 
 async function demanderVerification(lieu, raisons){
   const cle = ENR && ENR.cleLieu(lieu.titre, lieu.lat, lieu.lng);
-  if(!cle || !ENR._reserver(cle)) return null;
+  if(!cle) return null;
+
+  /* LE JETON DE LA PERSONNE, PAS LA CLÉ PUBLIABLE.
+
+     `enrichir-lieu` garde `verify_jwt: true`, et c'est bien ce qu'on veut :
+     elle veut savoir QUI demande. La clé publiable ne dit rien là-dessus —
+     elle est dans la page, donc tout le monde l'a — et l'envoyer en
+     `authorization` revenait à frapper à la porte sans se nommer.
+
+     C'est `sb` qui porte la session. `sbLecture` est délibérément sans session
+     (`persistSession:false`, stockage séparé) pour que les lectures publiques
+     n'héritent jamais d'un vieux JWT : lui demander un jeton ne rendrait
+     jamais rien.
+
+     Personne de connectée : on ne demande rien, et on ne baisse surtout pas la
+     garde côté serveur. Le lieu s'affiche avec ce qu'Autour sait déjà. */
+  let session = null;
+  try{
+    if(!(await connecter())) return null;
+    ({ data:{ session } } = await sb.auth.getSession());
+  }catch(e){ return null; }
+  if(!session || !session.access_token) return null;
+
+  /* La réservation vient APRÈS le jeton : un candidat écarté faute de session
+     ne doit pas rester marqué « déjà demandé », sinon il ne serait plus jamais
+     vérifié une fois la personne connectée. */
+  if(!ENR._reserver(cle)) return null;
   const fini = PERF.requete("enrichir_lieu");
   try{
     const r = await fetch(SUPABASE_URL+"/functions/v1/enrichir-lieu", {
       method:"POST",
       headers:{"content-type":"application/json",
-        apikey:SUPABASE_CLE, authorization:"Bearer "+SUPABASE_CLE},
+        apikey:SUPABASE_CLE, authorization:"Bearer "+session.access_token},
       body:JSON.stringify({
         nom:lieu.titre, lat:lieu.lat, lng:lieu.lng,
         commune:lieu.cp || "", adresse:lieu.adresse || "",

@@ -15,10 +15,13 @@
 #     il ne sort jamais d'un serveur.
 #
 #   · `enrichir-lieu` est appelée DEPUIS LE NAVIGATEUR, pour un lieu que la
-#     personne regarde. Elle garde `verify_jwt = true` : l'appelant s'authentifie
-#     avec la clé PUBLIABLE, celle qui est déjà dans la page et qui est publique
-#     par construction. Aucun secret privé ne descend donc dans le navigateur —
-#     et surtout pas `GEMINI_API_KEY`, qui ne quitte jamais Supabase.
+#     personne regarde. Elle garde `verify_jwt = true`, et l'appelant présente
+#     le JWT de sa propre session Supabase — la clé publiable ne voyage qu'en
+#     `apikey`, car elle ouvre la porte de l'API sans dire qui frappe. Une
+#     personne non connectée ne demande donc rien : le client s'arrête avant
+#     l'appel plutôt que d'abaisser la garde côté serveur. Aucun secret privé
+#     ne descend dans le navigateur — et surtout pas `GEMINI_API_KEY`, qui ne
+#     quitte jamais Supabase.
 #
 #     Lui donner à la place un `x-sync-secret` serait un recul : il faudrait
 #     soit poser un secret privé dans la page — c'est-à-dire le publier — soit
