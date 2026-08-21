@@ -150,7 +150,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=b1cf2e3a"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=fd0c0a83"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -6361,8 +6361,64 @@ async function enrichirGoogle(idGoogle){
   catch(e){ journal.warn("Enrichissement Google indisponible"); return null; }
 }
 const MAX_ENRICHIS = 5;
+
+/* ---- Le calque vérifié : lire, puis demander -----------------------------
+
+   `enrichir-lieu` est une fonction Edge protégée par `verify_jwt`. On l'appelle
+   avec la clé PUBLIABLE — la même que pour toutes les autres lectures Supabase,
+   publique par construction. Aucun secret privé ne descend dans la page, et
+   `GEMINI_API_KEY` ne quitte jamais Supabase.
+
+   Rien de ceci n'est attendu : l'écran a déjà été peint quand ça part. */
+const ENR = window.AutourEnrichissements || null;
+
+async function calqueVerifie(cles){
+  if(!ENR || !cles.length || !(await connecter()) || !sbLecture) return new Map();
+  const fini = PERF.requete("supabase_enrichissements");
+  try{
+    /* Une seule requête pour toute la vague : on ne demande pas lieu par lieu.
+       Le cache est lisible par tous — c'est une lecture ordinaire, pas un
+       appel de modèle, et elle ne coûte rien. */
+    const { data, error } = await sbLecture
+      .from("place_enrichments").select("*").in("place_key", cles.slice(0,50));
+    if(error) return new Map();
+    return new Map((data||[]).map(e=>[e.place_key, e]));
+  }catch(e){ return new Map(); }
+  finally{ fini(); }
+}
+
+async function demanderVerification(lieu, raisons){
+  const cle = ENR && ENR.cleLieu(lieu.titre, lieu.lat, lieu.lng);
+  if(!cle || !ENR._reserver(cle)) return null;
+  const fini = PERF.requete("enrichir_lieu");
+  try{
+    const r = await fetch(SUPABASE_URL+"/functions/v1/enrichir-lieu", {
+      method:"POST",
+      headers:{"content-type":"application/json",
+        apikey:SUPABASE_CLE, authorization:"Bearer "+SUPABASE_CLE},
+      body:JSON.stringify({
+        nom:lieu.titre, lat:lieu.lat, lng:lieu.lng,
+        commune:lieu.cp || "", adresse:lieu.adresse || "",
+        categorie:lieu.cat || "", horaires:lieu.quand || "",
+      }),
+      signal:AbortSignal.timeout(20000),
+    });
+    if(!r.ok) return null;
+    const json = await r.json();
+    journal.info("enrichissement", lieu.titre, raisons.join(","), json.origine || "?");
+    return json && json.enrichissement ? json.enrichissement : null;
+  }catch(e){
+    /* Une panne du modèle, un délai, un réseau coupé : Autour garde ce qu'il
+       montrait. C'est la seule propriété qui compte ici. */
+    return null;
+  }finally{ ENR._liberer(); fini(); }
+}
+
 function enrichirCandidats(classement, intention, redessiner){
   if(!DONNEES || !Array.isArray(classement)) return;
+  const rendre1 = ()=>{ if(typeof redessiner === "function") redessiner(); };
+
+  /* ---- Google : ce qui existait déjà, inchangé ---- */
   const aDemander = classement.filter(l=>l.idGoogle &&
     DONNEES.manque(l, intention, {disponibilite:(x,t)=>dispoDe(x, null, t)}).length).slice(0,MAX_ENRICHIS);
   Promise.all(aDemander.map(async l=>{
@@ -6370,7 +6426,33 @@ function enrichirCandidats(classement, intention, redessiner){
     ["prixN","horaires","ouvert","tel","url","note","avis","image"].forEach(cle=>{
       if(f[cle] != null && f[cle] !== "") l[cle] = f[cle];
     });
-  })).then(()=>{ if(typeof redessiner === "function") redessiner(); });
+  })).then(rendre1);
+
+  /* ---- Le calque vérifié : cache d'abord, appel ensuite ---- */
+  if(!ENR) return;
+  const candidats = classement.slice(0, ENR.MAX_CANDIDATS)
+    .map(l=>({l, cle:ENR.cleLieu(l.titre, l.lat, l.lng), raisons:ENR.manques(l)}))
+    .filter(x=>x.cle && x.raisons.length);
+  if(!candidats.length) return;
+
+  calqueVerifie(candidats.map(x=>x.cle)).then(async connus=>{
+    let change = false;
+    const aVerifier = [];
+    candidats.forEach(x=>{
+      const e = connus.get(x.cle);
+      /* LE CACHE AVANT TOUT NOUVEL APPEL. Une entrée encore fraîche répond
+         sans rien dépenser ; une entrée périmée s'affiche quand même — elle
+         reste vraie plus souvent que rien — et déclenche une revérification. */
+      if(e && ENR.appliquer(x.l, e)) change = true;
+      const frais = e && e.expires_at && Date.parse(e.expires_at) > Date.now();
+      if(!frais) aVerifier.push(x);
+    });
+    if(change) rendre1();
+    for(const x of aVerifier){
+      const e = await demanderVerification(x.l, x.raisons);
+      if(e && ENR.appliquer(x.l, e)) rendre1();
+    }
+  });
 }
 async function chercherGoogle(q, lat, lng, opts){
   const o = opts || {};
@@ -9060,6 +9142,11 @@ function carteProposition(x){
    La carte, elle, ne bouge pas. */
 function actionsProposition(l){
   return '<p class="pt-actions">'+
+    /* Même règle qu'en fiche : le lien n'existe que si une source vérifiée
+       l'a réellement trouvé. Rien n'est affiché « au cas où ». */
+    (l.ticket_url
+      ? '<a class="pt-billet" href="'+esc(l.ticket_url)+'" target="_blank" rel="noopener">'+
+        'Billetterie</a>' : '')+
     '<button class="pt-voir" data-pt-voir="'+esc(l.id)+'">Voir →</button>'+
   '</p>';
 }
@@ -9319,6 +9406,16 @@ function poserRecommandations(jeton, titre){
      on les rebranche sur la zone qu'on vient de remplir, et sur elle seule. */
   brancherGestesRecommandations(zone);
   PERF.jalon("recommandations_posees");
+  /* HORS DU CHEMIN CRITIQUE, ET APRÈS LA PEINTURE.
+
+     Les cartes sont posées, l'écran est utile. C'est seulement maintenant
+     qu'on va voir s'il manque quelque chose aux meilleurs candidats — et ce
+     qui reviendra ne remplacera rien : ça complétera, ou ça n'arrivera pas.
+     `enrichirCandidats` existait déjà pour Google et n'était appelée nulle
+     part ; elle l'est enfin, et elle porte maintenant les deux sources. */
+  if(ORDO) ORDO.differer(()=>enrichirCandidats(pourToi, intentionCourante,
+      ()=>{ if(jeton === generationAccueil) planifierRendu({accueil:true, feuille:true}); }),
+    {timeout:1500, valide:()=>jeton === generationAccueil});
   } finally {
     PERF.travail("recommandations", debutCpu);
   }
@@ -9379,6 +9476,12 @@ function versItemMaintenant(l, t){
     debutLe:l.debutLe, finLe:l.finLe, lat:l.lat, lng:l.lng,
     ferme:estFerme(l),
     categorie:l.cat, ouvert, ouvertALArrivee,
+    /* Le calque vérifié, transmis tel quel. Le moteur en fait ce qu'il veut —
+       exclure une fermeture confirmée, remonter une programmation en cours —
+       et c'est lui seul qui décide : ce fichier ne fait que porter. */
+    current_status:l.current_status || null,
+    temporary_closed:l.temporary_closed == null ? null : l.temporary_closed,
+    programme_now:Array.isArray(l.programme_now) ? l.programme_now : null,
   };
 }
 
