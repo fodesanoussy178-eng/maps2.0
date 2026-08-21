@@ -211,6 +211,19 @@ function sourcesAncrage(candidat: unknown): {url: string; titre: string}[] {
   return sorties;
 }
 
+/* LES REQUÊTES RÉELLEMENT TAPÉES.
+
+   `groundingChunks` dit quelles pages ont été citées ; `webSearchQueries` dit
+   si le modèle est seulement allé chercher. Les deux vides ne se lisent pas
+   pareil : rien cherché est un défaut d'invite, cherché sans rien trouver est
+   un lieu dont le web ne parle pas. On les compte séparément. */
+function requetesRecherche(candidat: unknown): string[] {
+  const meta = (candidat as {groundingMetadata?: {webSearchQueries?: unknown[]}})
+    ?.groundingMetadata ?? {};
+  const brutes = Array.isArray(meta.webSearchQueries) ? meta.webSearchQueries : [];
+  return brutes.map((q) => String(q ?? "").trim()).filter(Boolean);
+}
+
 function texteDe(candidat: unknown): string {
   const parties = (candidat as {content?: {parts?: {text?: string}[]}})
     ?.content?.parts ?? [];
@@ -236,7 +249,11 @@ async function interroger(lieu: Record<string, unknown>, maintenant: number) {
   if (!r.ok) throw new Error(`modèle : HTTP ${r.status}`);
   const json = await r.json();
   const candidat = (json.candidates ?? [])[0];
-  return {sources: sourcesAncrage(candidat), texte: texteDe(candidat)};
+  return {
+    sources: sourcesAncrage(candidat),
+    requetes: requetesRecherche(candidat),
+    texte: texteDe(candidat),
+  };
 }
 
 /* ---- Le travail de fond ---------------------------------------------------
@@ -302,24 +319,51 @@ function trace(etape: string, details: Record<string, unknown> = {}, grave = fal
   if (grave) console.error(ligne); else console.log(ligne);
 }
 
+/* De quoi reconnaître une source dans un journal, et rien de plus : le domaine
+   et le titre de la page, borné. Ce sont des métadonnées publiques — pas le
+   contenu lu, pas l'URL complète avec ses paramètres. */
+function domainesSources(sources: {url: string; titre: string}[]): string[] {
+  return sources.slice(0, 5).map((source) => {
+    let hote = "?";
+    try { hote = new URL(source.url).hostname.replace(/^www\./, ""); } catch { /* garde ? */ }
+    const titre = String(source.titre ?? "").slice(0, 60);
+    return titre ? `${hote} — ${titre}` : hote;
+  });
+}
+
 async function verifier(lieu: Lieu) {
   const debut = Date.now();
   try {
     trace("gemini_start", {place_key: lieu.cle, modele: MODELE});
-    const {sources, texte} = await interroger(lieu, debut);
-    /* La longueur du texte, pas le texte : elle sépare « le modèle n'a rien
-       dit » de « il a parlé mais sans citer une seule page ». */
+    const {sources, requetes, texte} = await interroger(lieu, debut);
+    /* La longueur du texte, pas le texte. Et les deux compteurs séparément :
+       `search_queries` dit si le modèle est allé chercher, `sources` dit s'il a
+       trouvé. Confondre les deux, c'est confondre un défaut d'invite avec un
+       lieu dont le web ne parle pas. */
     trace("gemini_response", {place_key: lieu.cle, duree_ms: Date.now() - debut,
-                              sources: sources.length, texte_len: texte.length});
+                              search_queries: requetes.length,
+                              sources: sources.length, texte_len: texte.length,
+                              domaines: domainesSources(sources)});
+
+    /* AUCUNE RECHERCHE LANCÉE. Le modèle a répondu de mémoire, et une
+       information locale et actuelle ne se connaît pas : elle se lit. On
+       n'écrit rien — pas même un « inconnu », qui laisserait croire qu'on a
+       cherché. Le lieu sera redemandé, et l'invite dit maintenant en toutes
+       lettres qu'il faut chercher d'abord. */
+    if (!requetes.length) {
+      trace("no_search", {place_key: lieu.cle, texte_len: texte.length});
+      return;
+    }
 
     const fait = construireFait(extraireObjet(texte),
       {sources, nom: lieu.nom, commune: lieu.commune, maintenant: debut});
 
-    /* Aucune page citée : le modèle a parlé sans avoir lu. On n'écrit rien —
-       pas même un « inconnu » — parce qu'une réponse non ancrée ne prouve pas
-       que le lieu est muet, seulement que la recherche a échoué cette fois. */
+    /* Cherché, mais aucune page citée : le web ne dit rien d'exploitable sur ce
+       lieu, ou la recherche n'a rien ramené cette fois. On n'écrit rien non
+       plus — une réponse non ancrée ne prouve pas que le lieu est muet. */
     if (!fait) {
-      trace("no_fact", {place_key: lieu.cle, sources: sources.length});
+      trace("no_fact", {place_key: lieu.cle, search_queries: requetes.length,
+                        sources: sources.length});
       return;
     }
 

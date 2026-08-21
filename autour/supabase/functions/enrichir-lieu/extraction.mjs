@@ -246,16 +246,44 @@ export function peutEcraserOsm(priorite, confiance) {
 
 /* Elle est écrite ici, en entier. Les seules valeurs interpolées sont celles
    du lieu, déjà bornées et nettoyées par l'appelant : un modèle qu'on
-   interroge sur un lieu ne doit jamais recevoir de consigne venue du client. */
+   interroge sur un lieu ne doit jamais recevoir de consigne venue du client.
+
+   ELLE COMMENCE PAR DIRE QUE C'EST UNE TÂCHE DE RECHERCHE, et ce n'est pas un
+   ornement. Interrogé sans cette consigne, le modèle répond de mémoire : il
+   sait qu'un vélodrome existe à Roubaix, il en parle avec aplomb, et l'API ne
+   cite aucune page — `webSearchQueries` vide, `groundingChunks` vide. La
+   réponse est alors jetée par `construireFait`, ce qui est la bonne règle, mais
+   l'appel a coûté trente secondes pour rien.
+
+   Une information locale et actuelle ne se connaît pas : elle se lit. On le
+   lui dit, et on lui dit quoi taper. */
 export function invite(lieu, options) {
   const l = lieu || {};
   const o = options || {};
   const aujourdhui = new Date(o.maintenant ?? Date.now());
   const jour = aujourdhui.toISOString().slice(0, 10);
   const situe = [l.adresse, l.commune].filter(Boolean).join(", ");
+  /* Ce qu'on lui demande de taper : le nom exact, et la commune quand on la
+     connaît. Les deux viennent du client, donc déjà nettoyés par `propre`. */
+  const recherche = [l.nom, l.commune].filter(Boolean).join(" ");
 
   const lignes = [
     `Nous sommes le ${jour}.`,
+    "",
+    "TÂCHE DE RECHERCHE — ce n'est pas une question de culture générale.",
+    "",
+    "Les informations demandées sont LOCALES et ACTUELLES : elles changent, et",
+    "tu ne peux pas les connaître de mémoire. Tu DOIS utiliser l'outil de",
+    "recherche Google AVANT de répondre. Une réponse fondée sur tes seules",
+    "connaissances internes est une réponse fausse, même si elle te paraît",
+    "juste — et elle sera rejetée, parce qu'elle ne cite aucune page.",
+    "",
+    "COMMENCE PAR CHERCHER. Interroge au minimum :",
+    `- « ${recherche} » — le nom exact du lieu, avec sa commune ;`,
+    `- « ${recherche} horaires ouverture » ;`,
+    `- « ${recherche} programme » ou « ${recherche} site officiel ».`,
+    "",
+    "Puis lis les pages trouvées, et ne réponds qu'à partir d'elles.",
     "",
     `Vérifie les informations pratiques du lieu suivant, en France :`,
     `- nom : ${l.nom}`,
@@ -298,6 +326,8 @@ export function invite(lieu, options) {
     "`programme_now` ne contient que ce qui se déroule AUJOURD'HUI ou en ce moment.",
     "`programme_soon` ne contient que les quatorze prochains jours, au maximum cinq entrées.",
     "Si tu n'as rien trouvé de sûr, réponds l'objet avec `statut` = \"inconnu\" et des null.",
+    "Mais cherche d'abord : répondre \"inconnu\" sans avoir lancé une recherche",
+    "n'est pas une réponse prudente, c'est une réponse non faite.",
   ];
   return lignes.filter((ligne) => ligne !== "").join("\n");
 }
