@@ -255,8 +255,10 @@ function requetesDesEtapes(etapes: Record<string, unknown>[]): string[] {
   const sorties: string[] = [];
   for (const etape of etapes) {
     if (typeEtape(etape) !== "google_search_call") continue;
-    const args = (etape.args ?? {}) as Record<string, unknown>;
-    for (const valeur of [etape.queries, etape.query, args.queries, args.query]) {
+    /* `arguments.queries` : c'est là qu'elles sont, la mesure l'a dit. Les
+       autres noms restent en repli, ils ne coûtent rien. */
+    const args = (etape.arguments ?? etape.args ?? {}) as Record<string, unknown>;
+    for (const valeur of [args.queries, args.query, etape.queries, etape.query]) {
       if (typeof valeur === "string" && valeur.trim()) sorties.push(valeur.trim());
       else if (Array.isArray(valeur)) {
         for (const q of valeur) {
@@ -320,21 +322,29 @@ function sourcesDesEtapes(etapes: Record<string, unknown>[]) {
    de deviner une fois de plus, on fait dire à la réponse comment elle est
    faite. Des NOMS, jamais des valeurs — aucune page, aucun extrait, aucun mot
    du modèle ne passe par là. */
-function clesDesEtapes(etapes: Record<string, unknown>[]): string[] {
-  const sorties: string[] = [];
-  for (const etape of etapes.slice(0, 12)) {
-    if (!ETAPES_OUTIL.has(typeEtape(etape))) continue;
-    const niveaux = [`${typeEtape(etape)}{${Object.keys(etape).sort().join("|")}}`];
-    for (const [nom, valeur] of Object.entries(etape)) {
-      const echantillon = Array.isArray(valeur) ? valeur[0] : valeur;
-      if (echantillon && typeof echantillon === "object") {
-        const cles = Object.keys(echantillon as object).sort().join("|");
-        niveaux.push(`${nom}${Array.isArray(valeur) ? "[]" : ""}{${cles}}`);
-      }
-    }
-    sorties.push(niveaux.join(" "));
+function formeDe(valeur: unknown, chemin: string, sorties: Set<string>,
+                 profondeur = 0): void {
+  if (sorties.size >= 40 || profondeur > 3) return;
+  if (!valeur || typeof valeur !== "object") return;
+  if (Array.isArray(valeur)) {
+    /* TOUS les éléments, pas seulement le premier : un tableau peut mêler des
+       formes, et c'est précisément celle qu'on ne voit pas qui nous manque. */
+    for (const v of valeur.slice(0, 6)) formeDe(v, `${chemin}[]`, sorties, profondeur);
+    return;
   }
-  return [...new Set(sorties)].slice(0, 6);
+  const o = valeur as Record<string, unknown>;
+  sorties.add(`${chemin}{${Object.keys(o).sort().join("|")}}`);
+  for (const [nom, v] of Object.entries(o)) {
+    formeDe(v, `${chemin}.${nom}`, sorties, profondeur + 1);
+  }
+}
+
+function clesDesEtapes(etapes: Record<string, unknown>[]): string[] {
+  const sorties = new Set<string>();
+  for (const etape of etapes.slice(0, 12)) {
+    formeDe(etape, typeEtape(etape) || "?", sorties);
+  }
+  return [...sorties].slice(0, 30);
 }
 
 async function interroger(lieu: Record<string, unknown>, maintenant: number) {

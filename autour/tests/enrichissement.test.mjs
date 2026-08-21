@@ -443,16 +443,26 @@ test("le modèle ne fabrique pas ses propres citations", () => {
 });
 
 test("la forme reçue se journalise en noms de clés, jamais en valeurs", () => {
-  const bloc = /function clesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  const bloc = /function formeDe\([\s\S]*?\n\}/.exec(fonction);
   assert.ok(bloc);
   const code = bloc[0].replace(/\/\*[\s\S]*?\*\//g, "");
-  /* Que des `Object.keys`. Aucune valeur ne sort d'ici. */
-  assert.match(code, /Object\.keys\(etape\)\.sort\(\)/);
-  assert.match(code, /Object\.keys\(echantillon as object\)\.sort\(\)/);
-  assert.doesNotMatch(code, /Object\.values|JSON\.stringify|\.text|snippet/);
-  /* Et c'est borné. */
-  assert.match(code, /etapes\.slice\(0, 12\)/);
-  assert.match(code, /\.slice\(0, 6\)/);
+  /* Que des noms de clés. Aucune valeur ne sort d'ici. */
+  assert.match(code, /Object\.keys\(o\)\.sort\(\)\.join\("\|"\)/);
+  assert.doesNotMatch(code, /JSON\.stringify|\.text|snippet|String\(v\)/);
+  /* Et c'est borné, en largeur comme en profondeur. */
+  assert.match(code, /sorties\.size >= 40 \|\| profondeur > 3/);
+  assert.match(code, /valeur\.slice\(0, 6\)/);
+  assert.match(fonction, /etapes\.slice\(0, 12\)/);
+});
+
+test("les requêtes se lisent sous arguments.queries", () => {
+  /* La mesure a donné le chemin : `google_search_call{arguments|id|search_type|
+     signature|type}` puis `arguments{queries}`. Les autres noms restent en
+     repli, ils ne coûtent rien. */
+  const bloc = /function requetesDesEtapes\([\s\S]*?\n\}/.exec(fonction);
+  assert.ok(bloc);
+  assert.match(bloc[0], /etape\.arguments \?\? etape\.args/);
+  assert.match(bloc[0], /\[args\.queries, args\.query, etape\.queries, etape\.query\]/);
 });
 
 test("les lecteurs de la réponse n'acceptent jamais une source sans URL", () => {
