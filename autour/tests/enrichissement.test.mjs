@@ -412,6 +412,25 @@ test("le travail de fond n'écrit jamais un fait sans source", () => {
     "le garde-fou « aucune source citée » doit passer avant l'écriture");
 });
 
+test("rien dans generationConfig ne peut étouffer la recherche", () => {
+  /* Les jetons de réflexion se paient sur le budget de sortie : un plafond
+     serré n'abrège pas la réponse, il ampute le raisonnement — dont la
+     décision d'aller chercher. Et une température écrasée pousse au chemin le
+     plus probable, qui est de répondre de mémoire. */
+  /* Le commentaire nomme les réglages retirés pour expliquer pourquoi : c'est
+     le code qu'on interroge, pas la prose. */
+  const appel = fonction.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(appel, /temperature:|top_p|topP|top_k|topK/);
+  assert.match(appel, /thinkingConfig: \{thinkingLevel: "low"\}/);
+  const plafond = /maxOutputTokens: (\d+)/.exec(appel);
+  assert.ok(plafond && Number(plafond[1]) >= 8192,
+    "le plafond doit laisser de la place à la réflexion ET à la réponse");
+  /* L'outil, lui, ne bouge pas d'un caractère. */
+  assert.match(fonction, /tools: \[\{google_search: \{\}\}\]/);
+  /* Et le garde-fou de coût reste le budget du jour, pas la longueur. */
+  assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
+});
+
 test("le délai serveur borne un travail de fond, pas une attente", () => {
   /* Soixante secondes que plus personne ne passe à regarder un écran. */
   assert.match(fonction, /const DELAI_MS = 60_000;/);

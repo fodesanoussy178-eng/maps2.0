@@ -242,7 +242,24 @@ async function interroger(lieu: Record<string, unknown>, maintenant: number) {
       contents: [{role: "user", parts: [{text: invite(lieu, {maintenant})}]}],
       // l'ancrage : c'est lui qui transforme une génération en lecture
       tools: [{google_search: {}}],
-      generationConfig: {temperature: 0.1, maxOutputTokens: 1400},
+      /* CE QU'ON NE RÈGLE PLUS.
+
+         `temperature: 0.1` et `maxOutputTokens: 1400` étaient les réglages
+         d'une extraction courte : on voulait une réponse sobre et brève. Mais
+         ce modèle raisonne avant de répondre, et ses jetons de réflexion se
+         paient sur le même budget de sortie. Un plafond serré ne raccourcit
+         alors pas la réponse : il ampute le raisonnement — dont la décision
+         d'aller chercher. Et une température écrasée pousse au chemin le plus
+         probable, qui est de répondre de mémoire.
+
+         On ne demande donc plus rien de tout cela. Le seul garde-fou de coût
+         qui compte ici est le budget quotidien, pas la longueur d'une réponse.
+         `thinkingLevel: "low"` dit ce qu'est vraiment la tâche : chercher,
+         lire, extraire — pas méditer. */
+      generationConfig: {
+        maxOutputTokens: 8192,
+        thinkingConfig: {thinkingLevel: "low"},
+      },
     }),
     signal: AbortSignal.timeout(DELAI_MS),
   });
