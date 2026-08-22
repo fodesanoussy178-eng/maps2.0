@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import "../comprendre.js";
+/* Le moteur d’Aide est désormais en quatre pièces : la taxonomie décrit,
+   le classement décide. `aide.js` délègue à la seconde — sans elle il
+   retombe sur la catégorie seule, ce qui est un repli, pas le moteur. */
+import "../aide-taxonomie.js";
+import "../aide-classement.js";
 import "../aide.js";
 import "../donnees.js";
 import "../signaux.js";
@@ -110,7 +115,9 @@ test("chaque besoin conduit à plusieurs types de solutions attestées", () => {
     ],
     securite: [
       {titre:"France Victimes",cat:"asso"},
-      {titre:"Commissariat",cat:"mairie"},
+      /* `securite` est la catégorie de lieu créée avec cette correction :
+         avant elle, un commissariat n'avait aucune case où atterrir. */
+      {titre:"Commissariat",cat:"securite"},
       {titre:"Planning Familial",cat:"sante"},
     ],
     autre: [
@@ -261,9 +268,19 @@ test("un besoin mène à plusieurs types de structures", () => {
 });
 
 test("une correspondance de réseau est sûre, une parenté de catégorie ne l'est pas", () => {
+  /* CE QUI A CHANGÉ, ET POURQUOI. `poids` valait 1 dès qu'un réseau était
+     reconnu DANS LE NOM — c'est très exactement la règle qui faisait de
+     « VIENNOISERIE ROYALE CROIX ROUGE » une aide alimentaire certaine.
+     `poids` est désormais la confiance du classement, ramenée entre 0 et 1, et
+     la certitude (`sur`) vient d'une preuve STRUCTURELLE : ici la catégorie
+     `emploi`, qui atteste un service d'emploi. Le nom ne fait que corroborer. */
   const ml = A.pertinence({titre: "Mission Locale de Tourcoing", cat: "emploi"}, "travail");
-  assert.equal(ml.poids, 1);
-  assert.equal(ml.sur, true);
+  assert.ok(ml.poids >= .5 && ml.poids <= 1, "poids = confiance normalisée : " + ml.poids);
+  assert.equal(ml.direct, true);
+  assert.equal(ml.sur, true, "la catégorie emploi atteste, le nom corrobore");
+
+  const nomSeul = A.pertinence({titre: "Mission Locale"}, "travail");
+  assert.equal(nomSeul.direct, false, "le nom seul n’a jamais suffi et ne suffit plus");
 
   const asso = A.pertinence({titre: "Association du quartier", cat: "asso",
     categories: ["asso"]}, "travail");

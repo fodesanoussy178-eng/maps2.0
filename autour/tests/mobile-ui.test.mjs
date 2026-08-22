@@ -78,7 +78,9 @@ test("le parcours de publication couvre les six familles annoncées",()=>{
 
 test("l’entrée dans Aide laisse peindre la feuille, privilégie les sources sociales et enrichit sans cache Places",()=>{
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
-  assert.match(html,/vraisLieux\(lat,lng,null,\{cats:catsContexte\.length \? catsContexte : CATS_AIDE,/);
+  /* Le rayon est progressif : `cats` se calcule avant la boucle des paliers. */
+  assert.match(html,/const cats = catsContexte\.length \? catsContexte : CATS_AIDE;/);
+  assert.match(html,/await vraisLieux\(lat,lng,null,\s*\n?\s*\{cats, rayon:palier, limite:180, signal:generation\.signal\}\)/);
   assert.match(html,/lieuxDatatourisme\(lat,lng,generation\.signal\)/);
   assert.match(html,/const reseaux = reseauxPourContexteAide\(contexte\);/);
   assert.doesNotMatch(html,/const cleAide/);

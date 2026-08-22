@@ -112,7 +112,12 @@ test("la recherche Aide lance OSM, DATAtourisme et Google en parallèle",()=>{
   const fin = html.indexOf("/* « restaurant à Lille »,",debut);
   const aide = html.slice(debut,fin);
   assert.match(aide,/coordonnerSourcesVersionnees\(\[/);
-  assert.match(aide,/charger:\(\)=>vraisLieux/);
+  /* La source OpenStreetMap est devenue PROGRESSIVE — elle boucle sur les
+     paliers de rayon — mais elle reste une source parmi les trois, lancée en
+     parallèle des deux autres. C'est cette propriété-là que ce test garde. */
+  assert.match(aide,/charger:async\(\)=>\{[\s\S]*?await vraisLieux\(lat,lng,null,/);
+  assert.match(aide,/RAYON_AIDE\.evaluer\(retenus, palier\)/,
+    "le palier suivant se décide sur ce que l’écran retiendrait vraiment");
   assert.match(aide,/charger:\(\)=>lieuxDatatourisme/);
   assert.match(aide,/charger:async\(\)=>\{/);
   assert.match(aide,/chercherGoogle\(r\.q/);
