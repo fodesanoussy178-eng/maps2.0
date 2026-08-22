@@ -19,6 +19,24 @@
    démarrage — pour que le premier appui ne paie jamais l'attente — et à la
    demande, si le geste arrive avant. */
 
+/* ---- Renvoyer le code : un nouvel OTP, jamais l'ancien -------------------
+
+   Chaque envoi génère un jeton neuf côté serveur ; l'ancien n'est plus jamais
+   présenté. Le renvoi n'est donc pas un cas à part : c'est le MÊME appel
+   (`envoyerLienCompte`), qui repasse par la même manœuvre — `updateUser` pour
+   une session anonyme, `signInWithOtp` pour une session neuve — et régénère
+   donc un jeton du MÊME type que celui qu'on vérifiera. Passer par une autre
+   porte au renvoi (ex. toujours `signInWithOtp`) changerait le type du jeton
+   entre l'envoi et la vérification : c'est exactement le mélange à éviter.
+
+   Le délai n'est pas cosmétique. Supabase limite l'envoi à une adresse à un
+   courrier par minute : sans garde-fou, un second clic part dans le vide et
+   ramène « Trop de tentatives », et la personne croit que RIEN ne marche. On
+   bloque donc le bouton une minute, avec un décompte visible. */
+const RENVOI_COMPTE_MS = 60000;
+let renvoiCompteAvant = 0;     // horodatage jusqu'auquel le renvoi est bloqué
+let renvoiCompteMinuteur = null;
+
 async function enregistrerProfilCompte(champs){
   if(!sb || !moiId) return false;
   const { error } = await sb.from("profiles").update(champs).eq("id", moiId);
@@ -1066,6 +1084,7 @@ function rendreEcranCompte(erreur){
       '<input class="cpt-champ" id="cptCode" type="text" inputmode="numeric" '+
         'autocomplete="one-time-code" maxlength="6" placeholder="123456">'+
       '<button class="cpt-cta" id="cptValider">Valider</button>'+
+      '<button class="cpt-lien" id="cptRenvoyer">Renvoyer le code</button>'+
       '<button class="cpt-lien" id="cptAutre">Changer d’adresse</button>'
     : '<label class="cpt-lab" for="cptEmail">Adresse e-mail</label>'+
       '<input class="cpt-champ" id="cptEmail" type="email" inputmode="email" '+
@@ -1092,8 +1111,46 @@ function rendreEcranCompte(erreur){
     if(!r.ok){ rendreEcranCompte(r.message); return; }
     compteEnCours.envoye = true;
     compteEnCours.typeOtp = r.typeOtp;
+    /* Le compteur du renvoi démarre AU PREMIER envoi, pas seulement aux
+       suivants : le serveur, lui, compte déjà cette minute. */
+    renvoiCompteAvant = Date.now() + RENVOI_COMPTE_MS;
     rendreEcranCompte();
   };
+
+  /* Le renvoi partage tout avec l'envoi — même fonction, même manœuvre, même
+     type de jeton — et n'existe que pour régénérer un OTP frais. Il est bloqué
+     tant que la minute n'est pas écoulée, et le décompte le dit. */
+  const renvoyer = $("#cptRenvoyer");
+  if(renvoyer){
+    const rythmerRenvoi = ()=>{
+      if(renvoiCompteMinuteur){ clearInterval(renvoiCompteMinuteur); renvoiCompteMinuteur = null; }
+      const tic = ()=>{
+        const reste = Math.ceil((renvoiCompteAvant - Date.now())/1000);
+        if(reste > 0){
+          renvoyer.disabled = true;
+          renvoyer.textContent = "Renvoyer dans "+reste+" s";
+        }else{
+          renvoyer.disabled = false;
+          renvoyer.textContent = "Renvoyer le code";
+          if(renvoiCompteMinuteur){ clearInterval(renvoiCompteMinuteur); renvoiCompteMinuteur = null; }
+        }
+      };
+      tic();
+      if(renvoiCompteAvant > Date.now()) renvoiCompteMinuteur = setInterval(tic, 1000);
+    };
+    rythmerRenvoi();
+    renvoyer.onclick = async()=>{
+      if(Date.now() < renvoiCompteAvant) return;      // la garde, pas seulement l'apparence
+      renvoyer.disabled = true;
+      renvoyer.textContent = "Envoi…";
+      const r = await envoyerLienCompte(compteEnCours.email);
+      if(!r.ok){ rendreEcranCompte(r.message); return; }
+      compteEnCours.typeOtp = r.typeOtp;              // le type suit la manœuvre, comme au premier envoi
+      renvoiCompteAvant = Date.now() + RENVOI_COMPTE_MS;
+      toast("Nouveau code envoyé à "+compteEnCours.email);
+      rendreEcranCompte();
+    };
+  }
 
   const valider = $("#cptValider");
   if(valider) valider.onclick = async()=>{
@@ -1111,7 +1168,14 @@ function rendreEcranCompte(erreur){
   };
 
   const autre = $("#cptAutre");
-  if(autre) autre.onclick = ()=>{ compteEnCours.envoye = false; rendreEcranCompte(); };
+  if(autre) autre.onclick = ()=>{
+    /* On change d'adresse : le décompte de l'ancienne n'a plus de sens, et son
+       minuteur ne doit pas continuer à battre sur un bouton disparu. */
+    if(renvoiCompteMinuteur){ clearInterval(renvoiCompteMinuteur); renvoiCompteMinuteur = null; }
+    renvoiCompteAvant = 0;
+    compteEnCours.envoye = false;
+    rendreEcranCompte();
+  };
 }
 
 /* Sans compte, cet écran ne dit pas « connectez-vous » : il montre ce qu'un
