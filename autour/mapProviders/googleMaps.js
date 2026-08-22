@@ -60,6 +60,8 @@
   let chargement = null;
   let actif = false;
   let synchronisation = false;
+  let rafPlanifie = 0;        // l'image où la synchro Leaflet est regroupée
+  let enGeste = false;        // vrai entre le premier bounds_changed et l'idle
   let conteneur = null;
   let authRefusee = false;
   let surveillanceAuthInstallee = false;
@@ -175,16 +177,48 @@
        couche Leaflet suit Google en continu, les marqueurs restent collés à
        leur rue. `idle` reste branché comme filet — il ferme les écarts
        d'arrondi en fin de geste. */
-    const suivre = () => {
-      if (synchronisation) return;
+    /* UN SEUL SETVIEW PAR IMAGE, ET RIEN DE PLUS PENDANT LE GESTE.
+
+       `bounds_changed` part PLUSIEURS FOIS par image chez Google. Y répondre
+       par un `setView` synchrone à chaque fois, c'était reprojeter tout Leaflet
+       — panes et marqueurs — deux ou trois fois pour une seule image affichée,
+       et déclencher à chaque fois la cascade d'Autour (épaisseurs, étiquettes,
+       collisions). Mesuré : 181 `setView` et 182 `resoudreCollisions` pour un
+       déplacement de trois secondes, avec des images espacées de plus de
+       400 ms en zone dense — la saccade décrite.
+
+       On regroupe donc : les `bounds_changed` d'une même image ne planifient
+       qu'UN `setView`, sur la prochaine image. L'alignement des marqueurs est
+       intact — c'est `setView` qui les recolle, et il a toujours lieu, une fois
+       par image au plus.
+
+       Et pendant le geste, Autour ne recompose PAS le reste. `enGeste` le dit à
+       la couche application, qui saute étiquettes/épaisseurs/collisions tant
+       qu'on bouge et les réconcilie une seule fois à `idle`. */
+    const appliquerVue = () => {
+      rafPlanifie = 0;
+      if (!carte || !leaflet) return;
       const centre = carte.getCenter();
       if (!centre) return;
       synchronisation = true;
       leaflet.setView([centre.lat(), centre.lng()], carte.getZoom(), {animate:false});
-      root.setTimeout(() => { synchronisation = false; }, 0);
+      synchronisation = false;
+    };
+    const suivre = () => {
+      if (synchronisation) return;
+      enGeste = true;
+      if (!rafPlanifie) rafPlanifie = root.requestAnimationFrame(appliquerVue);
+    };
+    /* Fin du geste : on annule l'image en attente, on rend la main à Autour
+       AVANT la dernière synchro — pour que la cascade complète s'exécute une
+       fois sur ce dernier `setView` —, puis on réconcilie exactement. */
+    const reconcilier = () => {
+      if (rafPlanifie) { root.cancelAnimationFrame(rafPlanifie); rafPlanifie = 0; }
+      enGeste = false;
+      appliquerVue();
     };
     carte.addListener("bounds_changed", suivre);
-    carte.addListener("idle", suivre);
+    carte.addListener("idle", reconcilier);
     carte.addListener("click", () => root.dispatchEvent(new Event("autour:google-map-click")));
   }
 
@@ -198,7 +232,10 @@
   }
 
   function estActif() { return actif; }
+  /* La couche application demande « suis-je en train de bouger la carte ? »
+     pour sauter la recomposition coûteuse tant que le geste dure. */
+  function enGesteGoogle() { return actif && enGeste; }
   root.AutourMapProviders = Object.assign(root.AutourMapProviders || {}, {
-    googleMaps:Object.freeze({activer, lierLeaflet, synchroniserDepuisLeaflet, estActif, charger}),
+    googleMaps:Object.freeze({activer, lierLeaflet, synchroniserDepuisLeaflet, estActif, enGeste:enGesteGoogle, charger}),
   });
 })(window);

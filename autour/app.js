@@ -3446,9 +3446,36 @@ let dernierClassement = [];
 const MARGE_ECRAN = 6;
 const CELLULE_COLLISION = 128;
 let collisionPlanifiee = 0;
+/* Bumpée à chaque reconstruction des marqueurs. Elle entre dans la signature
+   de collision : sans elle, deux vues identiques avec des marqueurs différents
+   partageraient une signature et l'une ne serait jamais recalculée. */
+let revisionMarqueurs = 0;
+let derniereSignatureCollision = null;
+/* Bumpée à chaque reconstruction de `lieux`. Elle entre dans la clé du cache de
+   classement : une donnée nouvelle invalide le cache, un simple ré-appel non. */
+let revisionLieux = 0;
+/* Le classement réutilisé le temps d'une tâche synchrone (voir
+   `recommandationsAccueil`). Vidé à la microtâche suivante. */
+let recoBurstCache = null;
 
 function resoudreCollisions(){
   if(!map) return;
+  /* NE PAS RECALCULER POUR UNE VUE IDENTIQUE.
+
+     Le placement des étiquettes ne dépend que du zoom, du centre, de la taille
+     de la carte et de l'ensemble des marqueurs. Tant que rien de cela n'a
+     changé « de manière pertinente », le résultat serait identique au pixel
+     près. Sur un déplacement, plusieurs `moveend` peuvent viser le même point
+     final ; sans ce garde-fou, on refaisait la passe — 120 `getBoundingClientRect`
+     et le placement — pour rien. */
+  const centre = map.getCenter();
+  const taille0 = map.getSize ? map.getSize() : {x:innerWidth, y:innerHeight};
+  const signature = map.getZoom()+"@"+centre.lat.toFixed(5)+","+centre.lng.toFixed(5)+
+    "#"+marqueurs.size+"~"+revisionMarqueurs+"|"+derniereSelection.length+
+    ":"+taille0.x+"x"+taille0.y;
+  if(signature === derniereSignatureCollision) return;
+  derniereSignatureCollision = signature;
+
   const assezPres = map.getZoom() >= 15;
   /* Priorité d'étiquette : l'ordre de la sélection de la CARTE, pas celui des
      recommandations de la feuille. Les deux divergent dès qu'on regarde une
@@ -3511,17 +3538,23 @@ function resoudreCollisions(){
      devenait à la fois illisible et intouchable. On réserve la place des
      pastilles AVANT de placer le moindre texte — un marqueur doit rester
      désignable même quand son nom disparaît. */
-  entrees.forEach(({rond})=>{
-    const rr = rond.getBoundingClientRect();
+  /* UNE SEULE PASSE DE LECTURE. Étiquette ET pastille sont mesurées d'affilée,
+     une fois chacune. La version précédente lisait la pastille DEUX fois — une
+     fois pour réserver sa place, une fois pour placer l'étiquette — soit 3n
+     `getBoundingClientRect` là où 2n suffisent. Toutes les écritures viennent
+     après, sans jamais forcer un recalcul de mise en page entre deux lectures. */
+  const boites = entrees.map(({eti,rond})=>({
+    eti, r:eti.getBoundingClientRect(), rr:rond.getBoundingClientRect(),
+  }));
+
+  boites.forEach(({rr})=>{
     if(rr.width > 0 && rr.height > 0)
       enregistrer({x:rr.left-cadre.left, y:rr.top-cadre.top, w:rr.width, h:rr.height});
   });
 
   const decisions=[];
-  entrees.forEach(({eti,rond})=>{
+  boites.forEach(({eti,r,rr})=>{
       if(!assezPres){ decisions.push({eti,masquee:true,gauche:false}); return; }
-      const r = eti.getBoundingClientRect();
-      const rr = rond.getBoundingClientRect();
       const droite = {x:r.left-cadre.left,y:r.top-cadre.top,w:r.width,h:r.height};
       const recouvrement = Math.min(10,Math.max(6,rr.width*.3));
       const gauche = {x:rr.left-cadre.left+recouvrement-r.width,
@@ -3667,6 +3700,7 @@ function reconstruireLieux(){
   ], distanceM));
   publies = userPublications;
   indexPerime = true;
+  revisionLieux++;
 }
 
 /* ---- Index mémoire par catégorie -----------------------------------------
@@ -4664,6 +4698,17 @@ function installerCarte(){
     const fournisseurGoogleActif = window.AutourMapProviders && AutourMapProviders.googleMaps;
     if(fournisseurGoogleActif) fournisseurGoogleActif.synchroniserDepuisLeaflet(map);
     document.body.classList.toggle("loin", map.getZoom() < 15);
+    /* PENDANT UN GESTE GOOGLE, ON NE RECOMPOSE PAS À CHAQUE IMAGE.
+
+       Chaque image du geste appelle `setView` pour garder les marqueurs collés
+       à leur rue — ça, on le garde. Mais recomposer épaisseurs, étiquettes,
+       boutons et collisions à chaque image, c'est la saccade elle-même : mesuré
+       à 182 `resoudreCollisions` pour un déplacement de trois secondes. Le
+       fournisseur réconcilie tout à `idle` (un dernier `setView` hors geste),
+       et c'est là que cette cascade s'exécute — une fois. L'alignement ne
+       bouge pas ; seul le travail redondant disparaît. */
+    if(fournisseurGoogleActif && fournisseurGoogleActif.enGeste && fournisseurGoogleActif.enGeste())
+      return;
     majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions();
     // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
     // faisait saccader la carte sur téléphone
@@ -5791,6 +5836,9 @@ function rendre(){
     marqueurs.set(id,m);
   });
   marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
+  /* L'ensemble des marqueurs vient d'être reconstruit : la résolution de
+     collisions ne peut plus se fier à sa signature de vue précédente. */
+  revisionMarqueurs++;
   // un redessin ne doit pas effacer la mise en avant du lieu regardé
   if(lieuEnAvant) mettreEnAvant(lieuEnAvant);
   // les étiquettes se départagent une fois les marqueurs réellement posés ; un
@@ -8728,31 +8776,50 @@ function recommandationsAccueil(limite, options){
      pas de « ce week-end », il a des horaires. On ne classe donc que les
      éphémères hors de « maintenant », et on les range par date réelle. */
   const groupe = creneau === "maintenant";
-  const candidats = groupe
-    ? lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l))
-    : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l));
 
-  const classement = rankResults(candidats,{
-    intent:groupe ? "explorer" : "sortir",
-    intention:intentionCourante,
-    /* Une recherche qui a posé des catégories les impose ici aussi : sans ça,
-       « un endroit calme où travailler » reposait le filtre puis affichait les
-       recommandations génériques, catégories comprises. À défaut, toutes les
-       catégories des besoins principaux — l'accueil ne présélectionne pas une
-       intention, il montre ce qui est réellement faisable. */
-    categories: catsActives && catsActives.size ? [...catsActives] : CATS_ACCUEIL(),
-    position:centre,
-    now:Date.now(),
-    // le filtre « maintenant » n'a de sens que dans le groupe « maintenant » :
-    // ailleurs c'est la section temporelle qui trie
-    nowOnly:!toutMontrer && groupe && filtreMaintenant && !montrerFermes,
-    radius:rayonDeLaZone(),
-    distanceBetween:distanceM,
-    horsService,
-    saison:contexteSaison(),
-    diversite:diversiteDemandee(),
-    territorial:contexteTerritorialClassement(),
-  });
+  /* UNE MÊME LISTE CLASSÉE UNE FOIS, PAS TROIS.
+
+     Ouvrir un panneau enchaîne, dans la MÊME tâche synchrone, le classement de
+     la carte, celui de l'accueil et celui du panneau — souvent avec des
+     paramètres identiques. Chaque appel refaisait tout `rankResults` (mesuré à
+     ~280 ms sur 120 lieux). Comme aucun état ne change entre deux appels d'une
+     même tâche, on garde le classement le temps de cette tâche et on le
+     réutilise. Le cache meurt à la microtâche suivante : au prochain état, tout
+     est recalculé. C'est sans risque de péremption — rien ne peut changer entre
+     deux instructions synchrones. */
+  const cleBurst = (groupe?"g":"s")+"|"+creneau+"|"+(toutMontrer?"1":"0")+"|"+
+    (catsActives&&catsActives.size?[...catsActives].sort().join(","):"")+"|"+
+    (filtreMaintenant?"1":"0")+"|"+(montrerFermes?"1":"0")+"|"+(modeAide?"1":"0")+"|"+
+    centre[0].toFixed(4)+","+centre[1].toFixed(4)+"|r"+revisionLieux;
+  if(!recoBurstCache){ recoBurstCache = new Map(); queueMicrotask(()=>{ recoBurstCache = null; }); }
+  let classement = recoBurstCache.get(cleBurst);
+  if(!classement){
+    const candidats = groupe
+      ? lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l))
+      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l));
+    classement = rankResults(candidats,{
+      intent:groupe ? "explorer" : "sortir",
+      intention:intentionCourante,
+      /* Une recherche qui a posé des catégories les impose ici aussi : sans ça,
+         « un endroit calme où travailler » reposait le filtre puis affichait les
+         recommandations génériques, catégories comprises. À défaut, toutes les
+         catégories des besoins principaux — l'accueil ne présélectionne pas une
+         intention, il montre ce qui est réellement faisable. */
+      categories: catsActives && catsActives.size ? [...catsActives] : CATS_ACCUEIL(),
+      position:centre,
+      now:Date.now(),
+      // le filtre « maintenant » n'a de sens que dans le groupe « maintenant » :
+      // ailleurs c'est la section temporelle qui trie
+      nowOnly:!toutMontrer && groupe && filtreMaintenant && !montrerFermes,
+      radius:rayonDeLaZone(),
+      distanceBetween:distanceM,
+      horsService,
+      saison:contexteSaison(),
+      diversite:diversiteDemandee(),
+      territorial:contexteTerritorialClassement(),
+    });
+    recoBurstCache.set(cleBurst, classement);
+  }
 
   if(!groupe){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];

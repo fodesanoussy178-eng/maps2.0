@@ -350,20 +350,46 @@ test("la pastille s'efface là où la carte appartient à autre chose", () => {
 /*  Les marqueurs restent collés à la carte pendant qu'on la déplace        */
 /* ======================================================================== */
 
-test("la couche Leaflet suit Google en continu, pas seulement en fin de geste", () => {
+test("la couche Leaflet suit Google en continu, mais regroupée par image", () => {
   const g = readFileSync(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
-  assert.match(g, /carte\.addListener\("bounds_changed", suivre\);/,
-    "sans suivi continu, les marqueurs restent figés pendant le déplacement");
-  assert.match(g, /carte\.addListener\("idle", suivre\);/,
-    "`idle` reste le filet de fin de geste");
+  /* Chaque `bounds_changed` déclenche un suivi — les marqueurs restent collés —
+     mais `suivre` ne fait PLUS un setView synchrone : il ne planifie qu'UNE
+     image. `bounds_changed` part plusieurs fois par image chez Google ;
+     répondre à chacune reprojetait tout Leaflet deux ou trois fois pour rien. */
+  assert.match(g, /carte\.addListener\("bounds_changed", suivre\);/);
+  assert.match(g, /carte\.addListener\("idle", reconcilier\);/,
+    "`idle` réconcilie exactement, une fois le geste fini");
+  const suivre = /const suivre = \(\) => \{[\s\S]*?\n {4}\};/.exec(g);
+  assert.ok(suivre, "le suivi est une fonction unique");
+  assert.match(suivre[0], /requestAnimationFrame\(appliquerVue\)/,
+    "un seul setView par image : le suivi est regroupé sur la prochaine image");
+  assert.doesNotMatch(suivre[0], /setView/,
+    "le suivi ne fait plus lui-même le setView — c'est l'image regroupée qui l'exécute");
 });
 
 test("le garde-fou de synchronisation empêche la boucle Google ↔ Leaflet", () => {
   const g = readFileSync(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
-  const bloc = /const suivre = \(\) => \{[\s\S]*?\n {4}\};/.exec(g);
-  assert.ok(bloc, "le suivi doit être une fonction unique, partagée par les deux écouteurs");
-  assert.match(bloc[0], /if \(synchronisation\) return;/);
-  assert.match(bloc[0], /synchronisation = true;/);
+  const suivre = /const suivre = \(\) => \{[\s\S]*?\n {4}\};/.exec(g);
+  assert.match(suivre[0], /if \(synchronisation\) return;/,
+    "un mouvement venu de Leaflet ne doit pas relancer un suivi");
+  const appliquer = /const appliquerVue = \(\) => \{[\s\S]*?\n {4}\};/.exec(g);
+  assert.ok(appliquer, "la synchro réelle vit dans appliquerVue");
+  assert.match(appliquer[0], /synchronisation = true;[\s\S]*setView[\s\S]*synchronisation = false;/,
+    "le garde-fou entoure le setView, pas l'écouteur");
+});
+
+test("pendant un geste Google, Autour ne recompose pas à chaque image", () => {
+  const g = readFileSync(new URL("../mapProviders/googleMaps.js", import.meta.url), "utf8");
+  /* Le fournisseur expose l'état du geste ; `idle` le referme AVANT la synchro
+     finale, pour que la cascade complète s'exécute une fois sur ce setView. */
+  assert.match(g, /enGeste:enGesteGoogle/, "l'état du geste est exposé à l'application");
+  const rec = /const reconcilier = \(\) => \{[\s\S]*?\n {4}\};/.exec(g);
+  assert.match(rec[0], /enGeste = false;[\s\S]*appliquerVue\(\);/,
+    "hors geste avant la dernière synchro : sa cascade doit s'exécuter");
+  /* Côté application : la cascade coûteuse est sautée tant que le geste dure. */
+  assert.match(html, /if\(fournisseurGoogleActif && fournisseurGoogleActif\.enGeste && fournisseurGoogleActif\.enGeste\(\)\)\s*\n?\s*return;/);
+  const moveend = /map\.on\("moveend zoomend"[\s\S]*?majEpaisseurs\(\); majEtiquettes\(\); majBoutons\(\); planifierCollisions\(\);/.exec(html);
+  assert.ok(moveend, "la cascade existe toujours — pour le hors-geste et le natif Leaflet");
 });
 
 /* ======================================================================== */
@@ -604,11 +630,25 @@ test("les cartes d'événement sont vues par le résolveur de collisions", () =>
 });
 
 test("les pastilles réservent leur place avant tout placement d'étiquette", () => {
-  const bloc = /entrees\.forEach\(\(\{rond\}\)=>\{[\s\S]*?\}\);/.exec(html);
+  /* La mesure se fait maintenant en UNE passe (étiquette + pastille lues
+     d'affilée, 2n getBoundingClientRect au lieu de 3n) ; les pastilles sont
+     ensuite enregistrées AVANT la boucle de décision, comme avant. */
+  const bloc = /boites\.forEach\(\(\{rr\}\)=>\{[\s\S]*?\}\);/.exec(html);
   assert.ok(bloc, "les pastilles doivent être enregistrées dans la grille");
   assert.match(bloc[0], /enregistrer\(\{x:rr\.left-cadre\.left/);
-  // et cet enregistrement précède la boucle de décision
-  assert.ok(html.indexOf("entrees.forEach(({rond})=>{") < html.indexOf("const decisions=[];"));
+  assert.ok(html.indexOf("boites.forEach(({rr})=>{") < html.indexOf("const decisions=[];"));
+  // la passe de lecture unique : étiquette ET pastille, une fois chacune
+  assert.match(html, /const boites = entrees\.map\(\(\{eti,rond\}\)=>\(\{[\s\S]*?r:eti\.getBoundingClientRect\(\),[\s\S]*?rr:rond\.getBoundingClientRect\(\),/);
+});
+
+test("la résolution de collisions ne se rejoue pas pour une vue identique", () => {
+  /* Plusieurs `moveend` peuvent viser le même point : sans garde-fou, on
+     refaisait 120 getBoundingClientRect pour un résultat identique. */
+  assert.match(html, /let derniereSignatureCollision = null;/);
+  assert.match(html, /if\(signature === derniereSignatureCollision\) return;/);
+  // la signature bouge quand les marqueurs sont reconstruits
+  assert.match(html, /revisionMarqueurs\+\+;/);
+  assert.match(html, /"~"\+revisionMarqueurs/);
 });
 
 /* ======================================================================== */
@@ -695,4 +735,24 @@ test("les deux flux Supabase ne reconstruisent la collection qu'une fois", () =>
   assert.match(html, /function fusionnerLots\(lots, opts\)/);
   assert.match(html, /differerReconstruction:true/);
   assert.match(html, /if\(modifie\) finaliserFusion\(opts\);/);
+});
+
+/* ======================================================================== */
+/*  Le classement d'accueil n'est calculé qu'une fois par état              */
+/* ======================================================================== */
+
+test("un même état ne reclasse pas la liste pour la carte, l'accueil et le panneau", () => {
+  /* Ouvrir un panneau enchaîne, dans la même tâche synchrone, le classement de
+     la carte, de l'accueil et du panneau — souvent identiques. On garde le
+     résultat le temps de la tâche et on le réutilise ; le cache meurt à la
+     microtâche suivante, donc au prochain état tout est recalculé. Aucun risque
+     de péremption : rien ne change entre deux instructions synchrones. */
+  assert.match(html, /let recoBurstCache = null;/);
+  assert.match(html, /let classement = recoBurstCache\.get\(cleBurst\);/);
+  assert.match(html, /queueMicrotask\(\(\)=>\{ recoBurstCache = null; \}\)/,
+    "le cache ne survit pas à la tâche : pas de résultat périmé");
+  // la clé porte l'état dont dépend le classement, dont la révision des lieux
+  assert.match(html, /const cleBurst = /);
+  assert.match(html, /"\|r"\+revisionLieux/);
+  assert.match(html, /revisionLieux\+\+;/, "une donnée nouvelle invalide le cache");
 });

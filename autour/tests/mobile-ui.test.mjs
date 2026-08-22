@@ -528,9 +528,10 @@ test("« Maintenant » masque les lieux fermés, les filtres les rendent",()=>{
 
 test("les étiquettes ne sortent pas de l'écran et ne se recouvrent pas",()=>{
   assert.match(html,/const MARGE_ECRAN = 6;/);
-  // mesure réelle : le marqueur est centré par une transformée CSS, une boîte
-  // calculée à la main donnait une position fausse
-  assert.match(html,/const r = eti\.getBoundingClientRect\(\);/);
+  // mesure réelle, en une passe groupée : le marqueur est centré par une
+  // transformée CSS, une boîte calculée à la main donnait une position fausse.
+  assert.match(html,/r:eti\.getBoundingClientRect\(\)/);
+  assert.match(html,/boites\.forEach\(\(\{eti,r,rr\}\)=>\{/);
   assert.match(html,/b\.x >= MARGE_ECRAN && b\.x \+ b\.w <= taille\.x - MARGE_ECRAN/);
   assert.match(html,/b\.y >= MARGE_ECRAN && b\.y \+ b\.h <= taille\.y - MARGE_ECRAN/);
   // seconde chance de l'autre côté de la pastille avant de s'effacer
