@@ -487,3 +487,68 @@ test("la redirection du lien est explicite, jamais laissée au hasard", () => {
   const occurrences = (html.match(/emailRedirectTo/g) || []).length;
   assert.equal(occurrences, 1, "une seule redirection, pour n'en oublier aucune");
 });
+
+/* ==========================================================================
+   12. RENVOYER LE CODE — UN OTP NEUF, DU MÊME TYPE, APRÈS UN DÉLAI
+
+   Le flux e-mail n'avait aucun moyen de renvoyer un code : si le premier
+   courrier n'arrivait pas, la seule issue était de tout recommencer. Ces tests
+   fixent le renvoi, et surtout la propriété qui l'empêche de rejouer le bug de
+   mélange : le renvoi passe par la MÊME fonction que l'envoi, donc par la même
+   manœuvre, donc par le même type de jeton que celui qu'on vérifiera.
+   ======================================================================== */
+
+test("l'écran « code envoyé » propose de renvoyer le code", () => {
+  const rendu = html.slice(html.indexOf("function rendreEcranCompte"),
+                           html.indexOf("function ouvrirProfil"));
+  assert.match(rendu, /id="cptRenvoyer"/, "un bouton de renvoi existe");
+  /* Il ne s'affiche QUE sur l'écran d'après-envoi, aux côtés de « Valider ». */
+  assert.match(rendu, /id="cptValider"[\s\S]{0,120}id="cptRenvoyer"/);
+});
+
+test("le renvoi régénère un jeton neuf, du même type — jamais un autre chemin", () => {
+  const rendu = html.slice(html.indexOf("function rendreEcranCompte"),
+                           html.indexOf("function ouvrirProfil"));
+  const bloc = rendu.slice(rendu.indexOf('$("#cptRenvoyer")'),
+                           rendu.indexOf('const autre ='));
+  /* Le renvoi appelle la MÊME fonction d'envoi : c'est ce qui garantit qu'il
+     repasse par updateUser/signInWithOtp selon la même manœuvre, et régénère
+     un jeton du même type. */
+  assert.match(bloc, /await envoyerLienCompte\(compteEnCours\.email\)/);
+  assert.match(bloc, /compteEnCours\.typeOtp = r\.typeOtp/,
+    "le type suit la manœuvre, comme au premier envoi");
+  /* Il n'ouvre AUCUN second chemin d'authentification de son côté. */
+  assert.doesNotMatch(bloc, /sb\.auth\.(signInWithOtp|updateUser|verifyOtp)/,
+    "le renvoi ne parle jamais à sb.auth directement : il réutilise l'envoi");
+});
+
+test("le renvoi est bloqué une minute, avec un décompte visible", () => {
+  assert.match(html, /const RENVOI_COMPTE_MS = 60000;/,
+    "le délai raisonnable est une minute — la limite du serveur par adresse");
+  const rendu = html.slice(html.indexOf("function rendreEcranCompte"),
+                           html.indexOf("function ouvrirProfil"));
+  /* La garde est réelle, pas seulement une apparence de bouton grisé. */
+  assert.match(rendu, /if\(Date\.now\(\) < renvoiCompteAvant\) return;/);
+  /* Le décompte descend en secondes, et le premier envoi arme déjà le délai —
+     le serveur, lui, compte déjà cette minute. */
+  assert.match(rendu, /Renvoyer dans "\+reste\+" s"/);
+  assert.match(rendu, /renvoiCompteAvant = Date\.now\(\) \+ RENVOI_COMPTE_MS/);
+});
+
+test("l'écran d'après-envoi ne s'affiche qu'après un envoi réellement réussi", () => {
+  const rendu = html.slice(html.indexOf('$("#cptEnvoyer")'),
+                           html.indexOf('$("#cptRenvoyer")'));
+  /* La règle qui manquait à l'analyse : un envoi qui échoue REVIENT au
+     formulaire avec l'erreur ; il ne passe jamais `envoye = true`. */
+  assert.match(rendu, /if\(!r\.ok\)\{ rendreEcranCompte\(r\.message\); return; \}/);
+  assert.match(rendu, /compteEnCours\.envoye = true;\s*\n\s*compteEnCours\.typeOtp = r\.typeOtp;/,
+    "envoye ne passe à true qu'APRÈS le contrôle de r.ok");
+});
+
+test("changer d'adresse arrête le décompte de l'ancienne", () => {
+  const rendu = html.slice(html.indexOf("function rendreEcranCompte"),
+                           html.indexOf("function ouvrirProfil"));
+  const bloc = rendu.slice(rendu.indexOf('const autre ='));
+  assert.match(bloc, /clearInterval\(renvoiCompteMinuteur\)/);
+  assert.match(bloc, /renvoiCompteAvant = 0;/);
+});
