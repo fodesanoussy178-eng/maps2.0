@@ -32,6 +32,50 @@
 
 project_id = "sxnzyvcgwbwnpjnqmpkp"
 
+# ===========================================================================
+# LES E-MAILS D'AUTHENTIFICATION — UN CODE, PAS UN MOT DE PASSE
+#
+# Autour n'a ni mot de passe ni compte classique : pour publier un événement,
+# on saisit une adresse et on reçoit un CODE À SIX CHIFFRES. Ce code, c'est
+# `{{ .Token }}` dans le gabarit — la même valeur que celle vérifiée par
+# `verifyOtp`. Sans `{{ .Token }}` dans le gabarit, l'e-mail arrivait sans code
+# et le champ « tape le code reçu » ne pouvait rien vérifier : le seul recours
+# était le lien, qui reste offert ici en second.
+#
+# POURQUOI TROIS GABARITS, ET PAS UN SEUL
+#
+# Le gabarit réellement utilisé dépend de la session au moment du geste :
+#
+#   · session anonyme héritée (les comptes déjà en base) → `updateUser({email})`
+#     déclenche l'e-mail de CHANGEMENT d'adresse → gabarit `email_change`,
+#     vérifié par `verifyOtp({ type: "email_change" })` ;
+#
+#   · aucune session — le cas par défaut d'un nouveau visiteur, puisque Autour
+#     ne crée plus de session anonyme → `signInWithOtp` envoie, selon que
+#     l'adresse a déjà un compte ou non, le `magic_link` ou la `confirmation`,
+#     tous deux vérifiés par `verifyOtp({ type: "email" })`.
+#
+# Les trois portent donc le MÊME code et le MÊME sujet. En régler un seul
+# laisserait l'autre chemin muet — exactement le genre de réglage « qu'aucun
+# fichier ne disait » que ce fichier existe pour empêcher.
+#
+# APPLIQUER : ces gabarits sont la source de vérité, mais ils ne partent en
+# production qu'avec `supabase config push` (le Dashboard ne se lit pas tout
+# seul dans ce fichier). Le contenu vit dans ./templates/*.html.
+# ===========================================================================
+
+[auth.email.template.email_change]
+subject = "Ton code Autour"
+content_path = "./templates/email_change.html"
+
+[auth.email.template.magic_link]
+subject = "Ton code Autour"
+content_path = "./templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Ton code Autour"
+content_path = "./templates/confirmation.html"
+
 # ---- Enrichissement : appelée depuis le navigateur -------------------------
 [functions.enrichir-lieu]
 enabled = true
