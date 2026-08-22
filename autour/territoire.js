@@ -296,11 +296,22 @@
     if (!p || !contexte) return null;
     const dedans = contexte.zones.filter((z) => dansZone(p, z));
     if (!dedans.length) return null;
-    /* Les zones sont déjà triées par priorité à la lecture ; à priorité égale
-       la plus proche, pour qu'un recouvrement de deux quartiers ne dépende pas
-       de l'ordre d'insertion en base. */
-    return dedans.sort((a, b) => (a.priorite - b.priorite) ||
-      (distanceM(p[0], p[1], a.lat, a.lng) - distanceM(p[0], p[1], b.lat, b.lng)))[0];
+    /* LA PLUS PROCHE GAGNE, PAS LA PLUS IMPORTANTE.
+
+       Une première version triait par priorité. Sur la configuration réelle,
+       ça donnait ceci : quelqu'un rue de la Monnaie, en plein Vieux-Lille,
+       s'entendait répondre « Lille-Centre » — parce que le secteur du centre
+       est déclaré plus important et que son rayon mordait de sept cents
+       mètres sur le Vieux-Lille. Même chose au Palais des Beaux-Arts, avalé
+       par le centre alors qu'il est le secteur de la braderie de la BD.
+
+       La priorité dit l'IMPORTANCE d'un secteur ; elle ne dit pas où l'on se
+       trouve. À la question « dans quelle zone suis-je ? », la seule réponse
+       juste est la plus proche — et la priorité ne sert plus qu'à départager
+       deux secteurs à distance égale. */
+    return dedans.sort((a, b) =>
+      (distanceM(p[0], p[1], a.lat, a.lng) - distanceM(p[0], p[1], b.lat, b.lng)) ||
+      (a.priorite - b.priorite))[0];
   }
 
   function dansPerimetre(position, contexte) {

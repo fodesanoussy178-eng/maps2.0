@@ -220,6 +220,27 @@ test("la zone se lit dans la configuration, jamais dans une liste de quartiers",
     "aucun nom de quartier ne doit vivre dans le programme");
 });
 
+test("dans deux secteurs qui se recouvrent, c’est le plus PROCHE qui répond", () => {
+  /* Trouvé sur la configuration réelle : le secteur du centre a un rayon qui
+     mord sur le Vieux-Lille. Trié par priorité, quelqu’un rue de la Monnaie
+     s’entendait répondre « Lille-Centre ». La priorité dit l’importance d’un
+     secteur, pas où l’on se trouve. */
+  const c = T.normaliserContexte({
+    slug: "recouvrement", name: "Recouvrement",
+    starts_at: DEBUT, ends_at: FIN,
+    zones: [
+      { slug: "grand-secteur", name: "Grand secteur", lat: CENTRE[0], lng: CENTRE[1],
+        rayon_m: 900, priorite: 10 },
+      { slug: "petit-secteur", name: "Petit secteur", lat: CENTRE[0] + 0.0065,
+        lng: CENTRE[1], rayon_m: 400, priorite: 80 },
+    ],
+  });
+  /* Au cœur du petit secteur, et pourtant dans les deux. */
+  assert.equal(T.zoneDe([CENTRE[0] + 0.0065, CENTRE[1]], c).slug, "petit-secteur");
+  /* Au cœur du grand, le grand répond. */
+  assert.equal(T.zoneDe(CENTRE, c).slug, "grand-secteur");
+});
+
 test("un contour officiel l’emporte sur le cercle d’approximation", () => {
   const c = T.normaliserContexte({
     slug: "avec-contour", name: "Avec contour",
