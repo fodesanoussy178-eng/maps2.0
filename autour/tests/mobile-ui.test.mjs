@@ -2431,3 +2431,79 @@ test("une ville cherchée dit qu'elle est cherchée, pas qu'on y est", () => {
   // et « Voir tout » garde sa place à droite, quoi qu'il arrive au titre
   assert.match(html, /\.rc-tete \.rc-tout\{margin-left:auto;flex-shrink:0\}/);
 });
+
+/* ---- « Pour toi » : une sortie évidente ----------------------------------
+   Le panneau n'avait qu'une façon d'être refermé — recliquer sur la cloche —
+   et il fallait la deviner. Sur la colonne de bureau, le ✕ était même masqué à
+   dessein : le panneau faisait partie du décor, donc on ne le fermait pas. */
+
+test("le ✕ existe dès l’ouverture, sur les deux tailles d’écran",()=>{
+  assert.match(html,/<button id="ptFermer" aria-label="Fermer Pour toi" title="Fermer">✕<\/button>/,
+    "il n’est plus posé `hidden`");
+  /* Et plus personne ne le recache selon la taille de l’écran. */
+  assert.ok(!/\$\("#ptFermer"\);\s*if\(x\)\s*x\.hidden/.test(html),
+    "aucune ligne ne remet `hidden` sur le bouton de fermeture");
+});
+
+test("il est en haut à droite, aligné avec le titre, et ne défile pas",()=>{
+  /* Le titre pousse les boutons à droite ; le ✕ est le dernier de la rangée. */
+  assert.match(html,/\.pt-tete h2\{flex:1 1 auto/);
+  const tete = html.slice(html.indexOf('<div class="pt-tete">'),
+                          html.indexOf('<div class="pt-corps"'));
+  assert.ok(tete.indexOf('id="ptTitre"') < tete.indexOf('id="ptToutVu"'), "titre d’abord");
+  assert.ok(tete.indexOf('id="ptToutVu"') < tete.indexOf('id="ptFermer"'),
+    "le ✕ est le dernier de la rangée : c’est lui, le coin");
+  /* Sur mobile le tiroir est borné à 86% de l’écran : sans `flex:0 0 auto`, un
+     corps long comprimerait l’en-tête et la sortie passerait sous le pli. */
+  assert.match(html,/\.pt-tete\{flex:0 0 auto;display:flex/);
+  assert.match(html,/\.pt-corps\{flex:1 1 auto;overflow-y:auto/,
+    "seul le corps défile");
+});
+
+test("les quatre sorties disent toutes la même chose",()=>{
+  /* Une seule lecture de « le panneau est-il ouvert ? ». Sur mobile c’est
+     `hidden`, sur bureau c’est la classe du body : deux réponses possibles,
+     une seule fonction pour les donner. */
+  assert.match(html,/function pourToiOuvert\(\)\{/);
+  assert.match(html,/NAV_FLOTTANTE\.matches\s*\n?\s*\?\s*document\.body\.classList\.contains\("pourtoi-ouvert"\)\s*\n?\s*:\s*!p\.hidden/);
+  // ✕
+  assert.match(html,/\$\("#ptFermer"\)\.onclick = fermerPourToi/);
+  // la cloche bascule
+  assert.match(html,/function basculerPourToi\(\)\{[\s\S]{0,200}if\(pourToiOuvert\(\)\) return fermerPourToi\(\)/);
+  // le clic en dehors
+  assert.match(html,/document\.addEventListener\("pointerdown", \(e\)=>\{[\s\S]{0,400}fermerPourToi\(\);/);
+  // Escape
+  assert.match(html,/if\(pourToiOuvert\(\)\)\{ e\.preventDefault\(\); fermerPourToi\(\); return; \}/);
+});
+
+test("la cloche est exclue du « clic en dehors »",()=>{
+  /* Sans cette exception, un appui sur la cloche fermerait au `pointerdown`
+     puis rouvrirait au `click` : le panneau clignoterait au lieu de basculer. */
+  assert.match(html,/const cloche = \$\("#btnNotifs"\);\s*\n\s*if\(cloche && cloche\.contains\(e\.target\)\) return;/);
+  /* Et un clic DANS le panneau ne le referme évidemment pas. */
+  assert.match(html,/if\(!p \|\| p\.contains\(e\.target\)\) return;/);
+});
+
+test("Escape ferme le panneau avant la feuille, parce qu’il est au-dessus",()=>{
+  /* L’ordre n’est pas une préférence : `#pourToi` est à z-index 900,
+     `#feuilleBesoins` à 640. Placé après, le test ne s’exécutait jamais — la
+     feuille d’accueil est ouverte presque tout le temps. */
+  assert.match(html,/#pourToi\{position:absolute;z-index:900/);
+  assert.match(html,/#feuilleBesoins\{position:absolute;left:8px;right:8px;bottom:0;z-index:640/);
+  const chaine = html.slice(html.indexOf('if(e.key === "Escape")'),
+                            html.indexOf('if(e.key !== "Tab"'));
+  assert.ok(chaine.indexOf("pourToiOuvert()") < chaine.indexOf("feuilleNiveau !== null"),
+    "le panneau passe avant la feuille de besoins");
+  assert.ok(chaine.indexOf("feuilleOuverte") < chaine.indexOf("pourToiOuvert()"),
+    "mais après le dialogue modal, qui est plus haut encore");
+});
+
+test("« Gérer » ne ferme rien : il ouvre les surveillances",()=>{
+  /* C’était la seule chose qui ressemblait à une sortie sur la colonne de
+     bureau. Elle n’en est pas une, et elle ne le devient pas. */
+  assert.match(html,/const gerer = \(\)=>ouvrirEnvies\(\);\s*\n\s*if\(\$\("#ptGerer"\)\) \$\("#ptGerer"\)\.onclick = gerer;/);
+  const bloc = html.slice(html.indexOf("function brancherPourToi"),
+                          html.indexOf("function marquerVu"));
+  assert.ok(!/ptGerer[\s\S]{0,80}fermerPourToi/.test(bloc),
+    "aucun chemin ne fait de « Gérer » un bouton de fermeture");
+});

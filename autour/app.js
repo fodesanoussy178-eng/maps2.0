@@ -5996,6 +5996,12 @@ document.addEventListener("keydown", e=>{
       return;
     }
     if(modeNav){ e.preventDefault(); quitterNav(); return; }
+    /* AVANT la feuille de besoins, et la raison est dans le CSS, pas dans une
+       préférence : `#pourToi` est à z-index 900, `#feuilleBesoins` à 640. Le
+       panneau est donc littéralement par-dessus, et Escape ferme ce qu'on voit
+       au-dessus. Placé après, il ne s'exécutait jamais — la feuille d'accueil
+       est ouverte quasiment tout le temps, et elle interceptait la touche. */
+    if(pourToiOuvert()){ e.preventDefault(); fermerPourToi(); return; }
     if(feuilleNiveau !== null){ e.preventDefault(); fermerFeuille2(); return; }
     if(modePose){ e.preventDefault(); fermerModePose(); return; }
     if($("#rech") && $("#rech").value){ e.preventDefault(); $("#btnFermerRech").click(); }
@@ -10132,8 +10138,6 @@ function ouvrirPourToi(){
   p.hidden = false;
   document.body.classList.add("pourtoi-ouvert");
   majPourToi();
-  const x = $("#ptFermer");
-  if(x) x.hidden = NAV_FLOTTANTE.matches;
 }
 
 function fermerPourToi(){
@@ -10144,12 +10148,22 @@ function fermerPourToi(){
   if(!NAV_FLOTTANTE.matches) p.hidden = true;
 }
 
-function basculerPourToi(){
+/* Le panneau est-il visible ? La question a deux réponses selon l'écran — sur
+   mobile c'est `hidden`, sur bureau c'est la classe du body qui commande le
+   `display:none` de la colonne — et les trois sorties (✕, dehors, Escape) ont
+   besoin de la MÊME réponse. L'écrire une fois est ce qui garantit qu'elles ne
+   divergeront pas. */
+function pourToiOuvert(){
   const p = $("#pourToi");
-  if(!p) return;
-  if(!p.hidden && !NAV_FLOTTANTE.matches) return fermerPourToi();
-  if(NAV_FLOTTANTE.matches && document.body.classList.contains("pourtoi-ouvert"))
-    return fermerPourToi();
+  if(!p) return false;
+  return NAV_FLOTTANTE.matches
+    ? document.body.classList.contains("pourtoi-ouvert")
+    : !p.hidden;
+}
+
+function basculerPourToi(){
+  if(!$("#pourToi")) return;
+  if(pourToiOuvert()) return fermerPourToi();
   ouvrirPourToi();
 }
 
@@ -12226,6 +12240,30 @@ $("#btnLoupe").onclick = ouvrirRecherche;
 if($("#btnNotifs")) $("#btnNotifs").onclick = basculerPourToi;
 if($("#ptFermer")) $("#ptFermer").onclick = fermerPourToi;
 
+/* ---- Sortir du panneau : trois gestes, un seul comportement --------------
+
+   Il n'y en avait qu'un et il était caché : la cloche, qu'il fallait deviner.
+   Sur la colonne de bureau, le ✕ était même masqué à dessein — le panneau
+   faisait partie du décor, donc on ne le fermait pas. Sauf qu'on veut le
+   fermer, et que « Gérer » n'est pas une sortie : il ouvre les surveillances,
+   c'est tout ce qu'il a jamais fait, et ce n'est pas à lui de porter ça.
+
+   LE CLIC EN DEHORS SE LIT AU `pointerdown`, PAS AU `click`. Un `click` sur la
+   carte arrive après que Leaflet a déjà réagi ; le `pointerdown` ferme avant,
+   et c'est ce qu'on attend d'un panneau posé par-dessus.
+
+   LA CLOCHE EST EXPLICITEMENT EXCLUE. Elle est « en dehors » du panneau : sans
+   cette exception, un appui dessus fermerait au `pointerdown` puis rouvrirait
+   au `click`, et le panneau clignoterait au lieu de basculer. */
+document.addEventListener("pointerdown", (e)=>{
+  if(!pourToiOuvert()) return;
+  const p = $("#pourToi");
+  if(!p || p.contains(e.target)) return;
+  const cloche = $("#btnNotifs");
+  if(cloche && cloche.contains(e.target)) return;   // c'est la bascule, pas un dehors
+  fermerPourToi();
+});
+
 function accorderPourToiALEcran(){
   poserBesoinsRapides();
   const p = $("#pourToi");
@@ -12234,11 +12272,9 @@ function accorderPourToiALEcran(){
     /* La colonne fait partie de la composition : elle est là d'emblée. */
     p.hidden = false;
     document.body.classList.add("pourtoi-ouvert");
-    const x = $("#ptFermer"); if(x) x.hidden = true;
   }else{
     p.hidden = true;
     document.body.classList.remove("pourtoi-ouvert");
-    const x = $("#ptFermer"); if(x) x.hidden = false;
   }
   majPourToi();
 }
