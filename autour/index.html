@@ -1720,7 +1720,10 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
     border-radius:20px 20px 0 0;border-bottom:0;
     animation:monte .28s cubic-bezier(.2,.9,.3,1)}
 }
-.pt-tete{display:flex;align-items:center;gap:10px;padding:16px 18px 12px;
+/* `flex:0 0 auto` n'est pas décoratif : sans lui, un corps long comprime
+   l'en-tête d'un tiroir borné à 86% de l'écran, et la sortie part sous le
+   pli — exactement ce qu'on corrige ici. */
+.pt-tete{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:16px 18px 12px;
   border-bottom:1px solid rgba(20,30,25,.08)}
 .pt-tete h2{flex:1 1 auto;font-size:17px;font-weight:750;line-height:1.2}
 .pt-tete button{flex:0 0 auto;border:0;background:transparent;color:var(--violet,#6D3BEB);
@@ -2130,7 +2133,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <div class="pt-tete">
     <h2 id="ptTitre"><span aria-hidden="true">🔔</span> Pour toi</h2>
     <button id="ptToutVu" hidden>Tout marquer comme vu</button>
-    <button id="ptFermer" aria-label="Fermer" hidden>✕</button>
+    <!-- La sortie. Elle n'est plus conditionnée à la taille d'écran : sur la
+         colonne de bureau comme sur le tiroir mobile, on doit pouvoir refermer
+         ce panneau sans deviner que la cloche le rebascule. « Gérer » ne sert
+         qu'aux surveillances et n'a jamais fermé quoi que ce soit. -->
+    <button id="ptFermer" aria-label="Fermer Pour toi" title="Fermer">✕</button>
   </div>
   <div class="pt-corps" id="ptCorps"></div>
 </aside>
@@ -2240,6 +2247,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/decouvertes.js?v=e089f93c" defer></script>
 <script src="providers/osm.js?v=ce966e3f" defer></script>
 <script src="mapProviders/googleMaps.js?v=8748aa8a" defer></script>
-<script src="app.js?v=d9370308" defer></script>
+<script src="app.js?v=5dbd10b8" defer></script>
 </body>
 </html>
