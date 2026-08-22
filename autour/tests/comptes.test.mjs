@@ -552,3 +552,106 @@ test("changer d'adresse arrête le décompte de l'ancienne", () => {
   assert.match(bloc, /clearInterval\(renvoiCompteMinuteur\)/);
   assert.match(bloc, /renvoiCompteAvant = 0;/);
 });
+
+/* ==========================================================================
+   13. LES E-MAILS PORTENT UN CODE, DU BON TYPE
+
+   Le flux « saisir son e-mail → recevoir le code → entrer les six chiffres »
+   n'a de sens que si l'e-mail contient RÉELLEMENT le code. Le code, c'est
+   `{{ .Token }}` ; sans lui, le champ « tape le code reçu » ne peut rien
+   vérifier. Et il faut le poser sur le BON gabarit : celui dépend de la
+   session, donc du type passé à `verifyOtp`.
+   ======================================================================== */
+
+const GABARITS = {
+  email_change: lire("supabase/templates/email_change.html"),
+  magic_link:   lire("supabase/templates/magic_link.html"),
+  confirmation: lire("supabase/templates/confirmation.html"),
+};
+const configAuth = lire("supabase/config.toml");
+
+test("chaque gabarit d'authentification porte le code à six chiffres", () => {
+  for (const [nom, corps] of Object.entries(GABARITS)) {
+    assert.ok(corps.includes("{{ .Token }}"),
+      nom + " doit afficher {{ .Token }} — le code que verifyOtp attend");
+    /* Le code est le cœur du message : il est dans le grand titre. */
+    assert.match(corps, /<h1>\s*\{\{ \.Token \}\}\s*<\/h1>/,
+      nom + " met le code en évidence");
+    /* Le lien reste offert en second — jamais le seul recours. */
+    assert.ok(corps.includes("{{ .ConfirmationURL }}"),
+      nom + " garde le lien comme second chemin");
+  }
+});
+
+test("les trois gabarits sont câblés dans config.toml, sujet « Ton code Autour »", () => {
+  for (const nom of ["email_change", "magic_link", "confirmation"]) {
+    assert.match(configAuth,
+      new RegExp("\\[auth\\.email\\.template\\." + nom + "\\][\\s\\S]{0,120}?" +
+                 'subject = "Ton code Autour"'),
+      nom + " : sujet manquant ou différent");
+    assert.match(configAuth,
+      new RegExp("\\[auth\\.email\\.template\\." + nom +
+                 "\\][\\s\\S]{0,160}?content_path = \"\\./templates/" + nom + "\\.html\""),
+      nom + " : content_path manquant");
+  }
+});
+
+test("le gabarit posé correspond au type que verifyOtp vérifiera", () => {
+  /* La correspondance qui fait tout marcher, écrite noir sur blanc :
+
+       session anonyme → updateUser → e-mail `email_change` → verifyOtp("email_change")
+       pas de session  → signInWithOtp → `magic_link`/`confirmation` → verifyOtp("email")
+
+     Ce sont les deux seules manœuvres, et chacune a son gabarit. */
+  assert.deepEqual(C.manoeuvre(C.ANONYME),  { methode: "lier",   typeOtp: "email_change" });
+  assert.deepEqual(C.manoeuvre(C.VISITEUR), { methode: "ouvrir", typeOtp: "email" });
+  // le type stocké à l'envoi est celui rejoué à la vérification
+  assert.match(html, /compteEnCours\.typeOtp = r\.typeOtp/);
+  assert.match(html, /verifyOtp\(\{\s*email:adresse, token:String\(code\)\.trim\(\), type:typeOtp/);
+});
+
+test("code validé → publication immédiate → confirmation claire", () => {
+  /* Rien n'est laissé « pour plus tard » : dès que la session s'ouvre, la
+     reprise rejoue le geste exact — publier — et la publication le dit. */
+  assert.match(html, /enregistrerReprise\("publier", \(\)=>\{[\s\S]{0,400}return publier\(\)/);
+  assert.match(html, /appliquerSession\(s\)[\s\S]{0,240}reprendreActionEnAttente\(\)/);
+  assert.match(html, /toast\("Publié · visible par tous"\)/);
+  // et on ne publie pas deux fois : la reprise vit dans onAuthStateChange, pas
+  // aussi dans le bouton Valider
+  const valider = html.slice(html.indexOf('const valider = $("#cptValider")'),
+                             html.indexOf('const autre = $("#cptAutre")'));
+  assert.doesNotMatch(valider, /reprendreActionEnAttente|publier\(\)/,
+    "la validation ne rejoue pas la publication : onAuthStateChange s'en charge");
+});
+
+test("toujours un code, jamais un mot de passe", () => {
+  for (const corps of Object.values(GABARITS)) {
+    assert.ok(!/mot de passe|password/i.test(corps),
+      "un e-mail d'Autour ne parle jamais de mot de passe");
+  }
+  assert.doesNotMatch(html, /signInWithPassword|signUp\(\{/,
+    "aucun compte classique n'est créé");
+});
+
+test("l'applicateur d'e-mails lit les gabarits du dépôt, pas une copie", () => {
+  /* Le pont config.toml → production hébergée : un seul outil, qui lit les
+     fichiers versionnés et les pousse. Il ne redéfinit pas le contenu — sinon
+     le dépôt et la production pourraient diverger sans que rien ne le dise. */
+  const applier = lire("outils/appliquer-emails.mjs");
+  assert.match(applier, /readFileSync\(new URL\("\.\.\/supabase\/templates\//,
+    "il lit les mêmes fichiers que config.toml");
+  for (const [nom, champ] of [
+    ["email_change", "mailer_templates_email_change_content"],
+    ["magic_link", "mailer_templates_magic_link_content"],
+    ["confirmation", "mailer_templates_confirmation_content"]]) {
+    assert.ok(applier.includes(champ), nom + " → " + champ + " manquant");
+  }
+  assert.match(applier, /const SUJET = "Ton code Autour";/);
+  // il n'écrit QUE des champs mailer_* : aucun réglage SMTP/expéditeur/DNS
+  // n'entre dans la charge envoyée à l'API.
+  assert.doesNotMatch(applier, /mailer_(host|port|user|pass)|smtp_[a-z]/i,
+    "aucun champ SMTP n'est écrit");
+  const champs = [...applier.matchAll(/champ(?:Sujet|Contenu): "([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(champs.length === 6 && champs.every((c) => /^mailer_(subjects|templates)_/.test(c)),
+    "seuls des champs mailer_* sont écrits : " + champs.join(", "));
+});
