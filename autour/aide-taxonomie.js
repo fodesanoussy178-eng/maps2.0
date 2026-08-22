@@ -287,10 +287,21 @@
               "maison_des_adolescents", "crous", "foyer_jeunes_travailleurs"],
       tags: [
         t("amenity", ["youth_centre"], PREUVE.CERTAINE),
-        t("social_facility:for", ["juvenile", "child", "student"], PREUVE.FORTE),
+        /* `child` est volontairement ABSENT. Le test terrain de Tourcoing
+           rendait une PMI et un DITEP sous « Jeunes / études » : ces structures
+           portent `social_facility:for=child`, qui désigne le petit enfant et
+           ses parents, pas l'adolescent ou le jeune adulte qui cherche une
+           orientation. Elles relèvent de FAMILLE — qui demande justement
+           `child|family|parent` — et y restent. Quelqu'un de 19 ans qui cherche
+           du travail n'a rien à faire dans une protection maternelle. */
+        t("social_facility:for", ["juvenile", "student"], PREUVE.FORTE),
         t("office", ["employment_agency"], PREUVE.FAIBLE,
           "une mission locale est tagguée ainsi, mais France Travail aussi"),
         t("social_facility", ["outreach", "day_centre"], PREUVE.FAIBLE),
+        /* Un équipement social qui déclare s'adresser aux jeunes : les deux
+           tags ensemble disent une structure jeunesse — c'est la Maison des
+           Jeunes et de la Culture, que `juvenile` seul laissait sous le seuil. */
+        t("amenity", ["social_facility"], PREUVE.FAIBLE),
       ],
       services: ["youth_counselling", "orientation", "student_support",
                  "job_seeking", "tutoring"],

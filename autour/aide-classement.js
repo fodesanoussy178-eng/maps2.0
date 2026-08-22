@@ -76,7 +76,18 @@
        Corroborer n'est pas contredire : une structure dont le type CONTREDIT
        le besoin est écartée bien avant, par les exclusions. */
     reseauNom:       12,
-    reseauNomCorrobore: 30,
+    /* 35 et non 30 : la valeur avait été calibrée quand une catégorie déduite
+       des tags ajoutait encore ses points par-dessus le tag dont elle sortait.
+       En supprimant cet écho, on a retiré une vingtaine de points à TOUS les
+       lieux OpenStreetMap — et une Mission locale tagguée `office=employment_agency`
+       tombait à 48 sur « Jeunes / études », deux points sous le seuil, alors
+       que le réseau est par définition celui des 16-25 ans.
+
+       Relever ce poids ne rouvre pas la porte à la viennoiserie : ce qui
+       interdit à un nom de classer seul n'est pas son poids, c'est
+       `structurelle` — sans une preuve venue d'ailleurs, le verdict est
+       REFUS.NOM_SEUL quel que soit le barème. */
+    reseauNomCorrobore: 35,
     motNom:           8,
   });
 
@@ -238,9 +249,40 @@
       ajouter("tag", poidsDeTag(preuve), tag.cle + "=" + tag.valeurs.join("|"));
     });
 
-    /* 2. les catégories d'Autour — structurelles, jamais nominales. */
+    /* 2. les catégories d'Autour — structurelles, jamais nominales.
+
+       UNE CATÉGORIE N'EST PAS UNE SECONDE PREUVE : C'EST LA PREMIÈRE, RELUE.
+
+       La catégorie d'un lieu OpenStreetMap n'est pas observée, elle est
+       DÉDUITE de ses tags par `REQUETES` dans `app.js`. `social_facility=outreach`
+       donne `asso` ; `amenity=townhall` donne `mairie`. Additionner le tag et la
+       catégorie, c'est donc compter le même fait deux fois, et le premier test
+       terrain autour de Tourcoing a montré exactement où ça mène :
+
+         « Point information jeunesse »  →  AIDE ALIMENTAIRE, confiance 56
+           social_facility=outreach (18) + amenity=social_facility (18)
+           + catégorie asso (20) = 56 ≥ 50
+
+       Trois indices faibles franchissent le seuil sans qu'aucune donnée ne
+       parle jamais de nourriture. Un point information jeunesse n'est pas une
+       distribution alimentaire, et envoyer quelqu'un qui n'a rien à manger
+       vers un point information jeunesse, c'est le même échec que la
+       viennoiserie — par un autre chemin.
+
+       La règle : quand un TAG a déjà parlé pour ce besoin, la catégorie qui en
+       découle n'ajoute rien. Elle reste consignée dans les preuves, à zéro,
+       pour qu'on voie qu'elle a été lue et écartée en connaissance de cause.
+       Elle ne compte, et ne peut rendre le verdict CERTAIN, que lorsqu'aucun
+       tag n'a parlé — un lieu venu de Google ou d'une publication n'a pas de
+       tags, et sa catégorie est alors la seule chose qu'on sache de lui. */
+    const tagAParle = preuves.length > 0;
     b.categories.forEach((k) => {
       if (!cats.has(k.id)) return;
+      if (tagAParle) {
+        preuves.push({ genre: "categorie", poids: 0, quoi: k.id,
+                       echo: "déduite des tags déjà comptés" });
+        return;
+      }
       if (k.preuve === TAXO.PREUVE.CERTAINE) certaine = true;
       ajouter("categorie", poidsDeCategorie(k.preuve), k.id);
     });

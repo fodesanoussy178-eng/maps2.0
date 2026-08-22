@@ -452,3 +452,71 @@ test("« manger » dans Aide ne renvoie pas ce que « manger » renvoie dans Exp
     "une boulangerie n’est pas une aide alimentaire");
   assert.equal(A.estSolution(distribution, ["manger"]), true);
 });
+
+/* ===================================================================
+   CE QUE LE TERRAIN DE TOURCOING A APPRIS
+
+   Les cas ci-dessous ne sont pas inventés : ce sont des objets
+   OpenStreetMap réellement présents autour de Tourcoing, avec leurs tags
+   tels qu'ils sont cartographiés, et qui étaient mal classés.
+   =================================================================== */
+
+test("une catégorie déduite des tags ne compte pas une seconde fois", () => {
+  /* « Point information jeunesse », rue de Tourcoing. Trois indices faibles
+     — dont deux disent la même chose et le troisième en découle — le
+     franchissaient le seuil de l’AIDE ALIMENTAIRE. Rien, dans ces données,
+     ne parle de nourriture. */
+  const pij = { titre: "Point information jeunesse", cat: "asso",
+                tags: { amenity: "social_facility", social_facility: "outreach",
+                        "social_facility:for": "juvenile" } };
+  const v = C.evaluer(pij, "manger");
+  assert.equal(v.accorde, false,
+    "un point information jeunesse n’est pas une distribution alimentaire");
+  assert.equal(v.refus, C.REFUS.SOUS_SEUIL);
+
+  const echo = v.preuves.find((p) => p.genre === "categorie");
+  assert.ok(echo, "la catégorie reste consignée…");
+  assert.equal(echo.poids, 0, "…mais à zéro, parce qu’elle sort des tags déjà comptés");
+});
+
+test("sans tags, la catégorie reste une preuve à part entière", () => {
+  /* Un lieu venu de Google ou d’une publication n’a pas de tags OSM : sa
+     catégorie n’est l’écho de rien, et c’est la seule chose qu’on sache. */
+  const sansTags = { titre: "Distribution du mardi", cat: "alimentaire" };
+  const v = C.evaluer(sansTags, "manger");
+  assert.equal(v.accorde, true);
+  assert.ok(v.preuves.some((p) => p.genre === "categorie" && p.poids > 0));
+});
+
+test("une PMI relève de la famille, pas de « jeunes et études »", () => {
+  /* PMI de Wattrelos, DITEP de Tourcoing : `social_facility:for=child` désigne
+     le petit enfant et ses parents. Quelqu’un de 19 ans qui cherche du travail
+     n’a rien à y faire. */
+  const pmi = { titre: "PMI", cat: "asso",
+                tags: { amenity: "social_facility", social_facility: "ambulatory_care",
+                        "social_facility:for": "child" } };
+  assert.equal(C.evaluer(pmi, "jeunes").accorde, false);
+  assert.equal(C.evaluer(pmi, "famille").accorde, true);
+});
+
+test("une maison des jeunes est bien une structure jeunesse", () => {
+  /* MJC La Fabrique, Tourcoing : équipement social qui déclare s’adresser aux
+     jeunes. Les deux tags ensemble suffisent ; aucun n’y arrive seul. */
+  const mjc = { titre: "Maison des Jeunes et de la Culture - Centre social La Fabrique",
+                cat: "asso",
+                tags: { amenity: "social_facility", "social_facility:for": "juvenile" } };
+  assert.equal(C.evaluer(mjc, "jeunes").accorde, true);
+});
+
+test("le nom d’un réseau ne classe toujours rien à lui seul", () => {
+  /* Le garde-fou après le relèvement de `reseauNomCorrobore` : ce qui interdit
+     à un nom de classer n’est pas son barème, c’est l’absence de preuve
+     structurelle. */
+  assert.ok(C.POIDS.reseauNomCorrobore > C.POIDS.reseauNom);
+  const seulLeNom = { titre: "Mission Locale", cat: null, tags: {} };
+  const v = C.evaluer(seulLeNom, "jeunes");
+  assert.equal(v.accorde, false);
+  assert.equal(v.refus, C.REFUS.NOM_SEUL);
+  assert.ok(C.POIDS.reseauNomCorrobore < C.SEUIL,
+    "un nom corroboré ne peut jamais franchir le seuil à lui seul");
+});
