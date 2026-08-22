@@ -454,30 +454,127 @@
   }
 
   /* ---- Un lieu répond-il à un besoin ? -----------------------------------
-     Retourne un poids de 0 à 1 et la raison. Le nom qui désigne un réseau
-     connu vaut plus qu'une simple appartenance de catégorie : une Mission
-     locale pour « travail », c'est sûr ; une association pour « travail »,
-     c'est possible. */
+
+     CE QUE CETTE FONCTION FAISAIT, ET POURQUOI C'ÉTAIT FAUX
+
+     Elle testait ses expressions de réseaux — dont `/croix[-\s]rouge/` — sur un
+     texte dont le NOM était le premier élément, et rendait alors
+     `poids: 1, sur: true`. Le nom, seul, suffisait donc à faire d'une
+     boulangerie une structure d'aide alimentaire :
+
+       VIENNOISERIE ROYALE CROIX ROUGE → aide alimentaire certaine
+
+     Les deux règles suivantes avaient le même défaut en plus discret : une
+     catégorie large valait `.72`, et un mot du besoin trouvé dans le nom
+     valait `.8` — au-dessus du seuil, sans qu'aucune donnée n'atteste rien.
+
+     CE QU'ELLE FAIT MAINTENANT
+
+     Rien. Elle DÉLÈGUE à `aide-classement.js`, qui examine le type réel, les
+     catégories, les tags, les services, la description, la source — et le nom
+     en dernier, pour peu. Cette fonction ne fait plus que traduire son verdict
+     dans la forme que le reste d'Autour attend déjà.
+
+     Le repli sans le classement chargé n'est PAS l'ancienne règle : c'est la
+     catégorie seule. Mieux vaut ne rien proposer que reproduire le défaut
+     qu'on corrige. */
   function pertinence(lieu, besoinId) {
     const b = BESOIN_DE(besoinId);
-    if (!b || !lieu) return { poids: 0, raison: "" };
-    const texte = texteLieu(lieu);
-    const cats = categoriesLieu(lieu);
+    /* Une seule forme de retour, quelle que soit la branche : un appelant qui
+       lit `direct` ne doit jamais tomber sur `undefined` selon le chemin pris. */
+    if (!b || !lieu) return { poids: 0, raison: "", sur: false, direct: false };
 
-    if (b.reseaux.some((re) => re.test(texte)))
-      return { poids: 1, raison: b.pourquoi, sur: true, direct: true };
+    const CLASSEMENT = root.AutourAideClassement;
+    if (!CLASSEMENT) return pertinenceSansClassement(lieu, b);
+
+    const v = CLASSEMENT.repond(lieu, besoinId);
+    if (v && v.accorde) {
+      return {
+        /* La confiance du classement, ramenée entre 0 et 1. Un lieu accepté
+           est au moins au seuil, donc au moins à 0,5 : `pourquoi()` qui exige
+           0,6 reste servi par les preuves solides et pas par les limites. */
+        poids: Math.min(1, v.confiance / 100),
+        raison: b.pourquoi,
+        sur: v.certaine === true,
+        direct: true,
+        preuves: v.preuves,
+      };
+    }
+
+    /* L'association généraliste reste un recours dans « Autre aide » et dans
+       les listes élargies — jamais une réponse à « Travail » ou « Santé ».
+       `direct:false` est ce qui l'écarte de toute sélection précise. */
+    if (categoriesLieu(lieu).has("asso"))
+      return { poids: .25, raison: b.pourquoi, sur: false, direct: false };
+
+    return { poids: 0, raison: "", sur: false, direct: false,
+             refus: v ? v.refus : null };
+  }
+
+  /* Le repli, volontairement pauvre : la catégorie, et rien d'autre. Aucune
+     lecture de nom, jamais — c'est la règle du produit, pas une optimisation
+     du chemin nominal. */
+  function pertinenceSansClassement(lieu, b) {
     const directes = CATEGORIES_DIRECTES[b.id] || (b.id === "autre" ? b.cats : []);
+    const cats = categoriesLieu(lieu);
     if (directes.some((c) => cats.has(c)))
       return { poids: .72, raison: b.pourquoi, sur: false, direct: true };
-    // un service précisé par le nom (« vestiaire », « douches ») compte aussi
-    if (b.mots.some((m) => m.length > 4 && contient(sansAccents(texte), m)))
-      return { poids: .8, raison: b.pourquoi, sur: false, direct: true };
-    // L'association générique reste un recours dans « Autre aide » ou une
-    // liste élargie, mais n'est jamais une fausse réponse à « Travail » ou
-    // « Santé ». `direct:false` permet au panneau et à la carte de l'écarter.
     if (cats.has("asso"))
       return { poids: .25, raison: b.pourquoi, sur: false, direct: false };
-    return { poids: 0, raison: "" };
+    return { poids: 0, raison: "", sur: false, direct: false };
+  }
+
+  /* ---- Une phrase, plusieurs intentions ---------------------------------
+
+     « mon copain me frappe » ne demande pas une chose mais trois : se mettre
+     en sécurité, parler à quelqu'un, et peut-être dormir ailleurs ce soir.
+     Répondre par une seule case, c'est répondre à côté.
+
+     Le besoin PRINCIPAL vient de la phrase ; les SECONDAIRES viennent de la
+     taxonomie, qui dit pour chaque besoin ceux qui l'accompagnent
+     habituellement. Rien n'est deviné : la liste est écrite, relisible, et se
+     corrige à un seul endroit.
+
+     La forme rendue est celle que le modèle rendrait s'il était branché —
+     `{primaryNeed, secondaryNeeds}`. C'est voulu : le mode doit répondre
+     pareil avec ou sans lui, et le jour où il arrive, il complète au lieu de
+     remplacer. */
+  const MAX_SECONDAIRES = 3;
+
+  function intentions(phrase) {
+    const trouves = besoinsDepuisPhrase(phrase).map((x) => x.id);
+    if (!trouves.length) return { primaryNeed: null, secondaryNeeds: [], besoins: [] };
+
+    const principal = trouves[0];
+    const TAXO = root.AutourAideTaxonomie;
+    const b = TAXO ? TAXO.besoin(principal) : null;
+    const habituels = b ? b.secondaires : [];
+
+    /* Ce que la phrase a dit elle-même passe devant ce que la taxonomie
+       suppose : quelqu'un qui a nommé deux besoins en a nommé deux. */
+    const secondaires = [];
+    trouves.slice(1).forEach((id) => {
+      if (secondaires.indexOf(id) < 0) secondaires.push(id);
+    });
+    habituels.forEach((id) => {
+      if (id !== principal && secondaires.indexOf(id) < 0) secondaires.push(id);
+    });
+
+    return {
+      primaryNeed: principal,
+      secondaryNeeds: secondaires.slice(0, MAX_SECONDAIRES),
+      /* Les identifiants Autour, pour l'appelant qui préfère sa propre forme. */
+      besoins: trouves,
+    };
+  }
+
+  /* Toutes les capacités d'une structure, dans les mots du modèle de données.
+     C'est par elle qu'une mission locale apparaît à la fois dans « Travail »
+     et dans « Jeunes » : une structure a des capacités, pas une case. */
+  function capacitesDe(lieu) {
+    const CLASSEMENT = root.AutourAideClassement;
+    if (!CLASSEMENT) return null;
+    return CLASSEMENT.capacites(lieu);
   }
 
   function estSolution(lieu, besoins, options) {
@@ -747,7 +844,8 @@
   root.AutourAide = Object.freeze({
     BESOINS, BESOINS_GRILLE, BESOIN_DE, CONDITIONS, CATEGORIES_DIRECTES,
     SOUS_INTENTIONS_SANTE, besoinsDepuisPhrase, intentionsSanteDepuisPhrase,
-    ageDepuisPhrase, pertinence, pertinenceSante, pourquoi,
+    ageDepuisPhrase, pertinence, pertinenceSante, pourquoi, capacitesDe,
+    intentions, MAX_SECONDAIRES,
     conditionDe, convient, estSolution, estSolutionSante, accesAdapteSante,
     rendezVousDe, estUrgent, PERIMETRE,
     OBJETS_REPARABLES, SERVICES_EXPLORER, domaineDeLaPhrase,
