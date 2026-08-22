@@ -520,3 +520,79 @@ test("le nom d’un réseau ne classe toujours rien à lui seul", () => {
   assert.ok(C.POIDS.reseauNomCorrobore < C.SEUIL,
     "un nom corroboré ne peut jamais franchir le seuil à lui seul");
 });
+
+/* ==========================================================================
+   LE MODÈLE, BRANCHÉ SUR L'APPEL QUI EXISTE DÉJÀ
+
+   Le contexte était préparé mais personne ne l'appelait. Ces tests fixent le
+   branchement : un seul appel de modèle dans Autour, et un garde-fou qui tient
+   des deux côtés.
+   ======================================================================== */
+
+test("Aide passe par `enrichir-lieu`, pas par une seconde route", () => {
+  assert.match(html, /body:JSON\.stringify\(\{mode:"aide", contexte\}\)/,
+    "le mode voyage dans le corps de l’appel existant");
+  /* La seule route de modèle du client, et elle est unique. */
+  const routes = [...html.matchAll(/functions\/v1\/([a-z-]+)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(routes)], ["enrichir-lieu"],
+    "aucune seconde fonction Edge n’est appelée : " + routes.join(", "));
+});
+
+test("le modèle reçoit les neuf champs demandés, et rien de plus", () => {
+  const attendus = ["userLat", "userLng", "selectedCity", "currentRadius",
+    "requestedHelpCategory", "userFreeText", "candidatePlaces",
+    "allowedPlaceIds", "allowedCategories"];
+  const ctx = IA.contexte({
+    userLat: 50.72, userLng: 3.16, selectedCity: "Tourcoing", currentRadius: 5000,
+    requestedHelpCategory: "manger", userFreeText: "j’ai rien à manger",
+    candidatePlaces: [{ id: "a", titre: "Croix-Rouge", cat: "alimentaire",
+                        lat: 50.73, lng: 3.17, tags: { social_facility: "food_bank" } }],
+  });
+  attendus.forEach((k) => assert.ok(k in ctx, k + " doit être transmis"));
+  assert.ok(Array.isArray(ctx.rules) && ctx.rules.length,
+    "les règles anti-invention voyagent avec le contexte");
+  /* Ce qui ne part JAMAIS : rien qui identifie qui regarde. */
+  const json = JSON.stringify(ctx);
+  ["userId", "session", "token", "email", "deviceId"].forEach((interdit) =>
+    assert.ok(!json.includes(interdit), interdit + " ne doit pas être transmis"));
+});
+
+test("un lieu que le modèle n’a pas reçu ne peut pas sortir de lui", () => {
+  const ctx = IA.contexte({
+    userLat: 50.72, userLng: 3.16, currentRadius: 3000,
+    candidatePlaces: [{ id: "reel", titre: "CCAS", cat: "asso", lat: 50.72, lng: 3.16 }],
+  });
+  const v = IA.valider({
+    primaryNeed: "manger",
+    rankedPlaceIds: ["reel", "structure-inventee"],
+    explanations: { "reel": "ok", "autre-invention": "sert des repas tous les soirs" },
+  }, ctx);
+  assert.deepEqual([...v.rankedPlaceIds], ["reel"]);
+  assert.deepEqual(Object.keys(v.explanations), ["reel"]);
+  assert.equal(v.aInvente, true, "l’écart est compté, pas seulement corrigé");
+});
+
+test("un ordre qui arrive en retard ne s’applique pas à une autre liste", () => {
+  /* La clé voyage avec le verdict : c’est ce qui empêche un classement calculé
+     pour une position ou une phrase d’appliquer son ordre à la suivante. */
+  assert.match(html, /ordreModeleAide = Object\.assign\(\{cle\}, valide\)/);
+  assert.match(html, /ordreModeleAide\.cle === cleOrdreAide\(ordonnes\)/);
+});
+
+test("une panne du modèle laisse l’écran tel qu’il est", () => {
+  /* Aucun `throw`, aucun écran vide : le classement d’Autour est déjà posé et
+     reste la réponse par défaut. */
+  assert.match(html, /return ordonnes\.slice\(0, limite \|\| 5\);/,
+    "sans réponse du modèle, c’est l’ordre d’Autour qui sort");
+  assert.match(html, /const ordonnes = notes\.map\(/,
+    "et il est calculé avant, pas à la place");
+});
+
+test("la phrase privée ne survit pas à l’écran", () => {
+  assert.match(html, /function oublierPhraseAide\(\)/);
+  assert.match(html, /phraseAideCourante = null;/);
+  /* Elle n’est écrite nulle part : ni stockage local, ni métrique, ni journal. */
+  assert.ok(!/localStorage\.[a-zA-Z]+\([^)]*phraseAide/.test(html));
+  assert.ok(!/compterTerritorial\([^)]*phraseAide/.test(html));
+  assert.ok(!/journal\.(info|warn|error)\([^)]*phraseAideCourante/.test(html));
+});

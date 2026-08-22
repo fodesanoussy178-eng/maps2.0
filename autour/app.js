@@ -7176,6 +7176,39 @@ const POIDS_BESOIN_SECONDAIRE = .6;
 let rayonAideAtteint = RAYON_AIDE ? RAYON_AIDE.premier() : 3000;
 let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
 
+/* ---- Le modèle, branché sur l'appel qui existe déjà -----------------------
+
+   `aide-contexte-ia.js` préparait le contexte et vérifiait ce qui revient,
+   mais personne ne l'appelait. Le voici branché — sur `enrichir-lieu`, la
+   fonction Edge qu'Autour utilise déjà, avec un `mode: "aide"`. Pas une
+   seconde route, pas une seconde clé, pas un second budget : la clé Gemini
+   reste où elle est, le plafond du jour reste le même, et une panne du modèle
+   reste ce qu'elle a toujours été — l'écran garde ce qu'il montrait.
+
+   LE MODÈLE NE VIENT JAMAIS EN PREMIER. Autour classe, l'écran s'affiche, et
+   c'est SEULEMENT ensuite qu'on demande un second regard. Ce qui revient est
+   un ORDRE sur des lieux déjà là ; tout identifiant qu'Autour n'a pas envoyé
+   est jeté par `valider()` avant même d'être lu.
+
+   LA PHRASE NE SURVIT PAS À LA DEMANDE. Elle vit dans cette variable le temps
+   de l'appel, et nulle part ailleurs : ni journal, ni base, ni métrique. */
+const IA_AIDE = window.AutourAideContexteIA || null;
+let phraseAideCourante = null;   // en mémoire, le temps de l'écran
+let ordreModeleAide = null;      // le verdict validé, ou null
+let cleOrdreModeleAide = null;   // l'état pour lequel il a été demandé
+let demandeOrdreAideEnCours = false;
+
+/* Choisir une catégorie au bouton, reformuler, revenir en arrière : dans tous
+   ces cas la phrase d'avant ne décrit plus la demande. On l'oublie — et avec
+   elle l'ordre qu'elle avait produit. Une phrase privée qui survit à l'écran
+   sur lequel elle a été tapée est une phrase qu'on n'a plus de raison de
+   garder. */
+function oublierPhraseAide(){
+  phraseAideCourante = null;
+  ordreModeleAide = null;
+  cleOrdreModeleAide = null;
+}
+
 function contexteAideChargement(){
   const besoins = typeof besoinsSelectionnesAide === "function"
     ? besoinsSelectionnesAide().slice() : [];
@@ -8756,6 +8789,12 @@ function avecEpingles(classement){
    « j'ai plus assez pour manger ». */
 function lancerBesoinAide(phrase){
   if(!AIDE) return;
+  /* La phrase telle qu'elle a été tapée, gardée en mémoire vive le temps de
+     l'écran : le modèle en a besoin pour comprendre « je dors dehors ». Elle
+     n'entre dans aucune table, aucun journal, aucune métrique, et le prochain
+     besoin choisi l'efface. */
+  phraseAideCourante = String(phrase || "").slice(0, 300) || null;
+  ordreModeleAide = null; cleOrdreModeleAide = null;
 
   /* « Mon vélo est cassé » n'est pas une demande d'aide sociale.
      Avant, cette phrase tombait dans « autre » et l'écran répondait par les
@@ -8995,6 +9034,81 @@ function enteteBesoinAide(titre){
     (puces ? '<div class="cps"><span class="cps-titre">Compris&nbsp;:</span>'+puces+'</div>' : "");
 }
 
+/* CE QU'ON DEMANDE AU MODÈLE, ET CE QU'ON EN ACCEPTE.
+
+   L'état exact pour lequel un ordre a été demandé. Sans cette clé, chaque
+   repeint de l'écran — un onglet, un défilement, une carte qui reçoit sa photo
+   — relancerait un appel de modèle pour un résultat identique. */
+function cleOrdreAide(candidats){
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  return [
+    besoinsSelectionnesAide().join("+"),
+    phraseAideCourante || "",
+    rayonAideAtteint,
+    centre[0].toFixed(3), centre[1].toFixed(3),
+    candidats.length,
+  ].join("|");
+}
+
+function demanderOrdreAide(candidats){
+  if(!IA_AIDE || demandeOrdreAideEnCours || budgetVerificationEpuise) return;
+  const cle = cleOrdreAide(candidats);
+  if(cle === cleOrdreModeleAide) return;      // déjà demandé pour cet état
+  /* L'état a changé : l'ordre d'avant ne vaut plus. Le garder « en attendant »
+     appliquerait à cette liste-ci un classement calculé pour une autre — la
+     panne la plus discrète possible, et la plus fausse. */
+  ordreModeleAide = null;
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!centre) return;
+
+  const contexte = IA_AIDE.contexte({
+    userLat: centre[0], userLng: centre[1],
+    selectedCity: villeDetectee || null,
+    currentRadius: rayonAideAtteint,
+    requestedHelpCategory: sousAideChoisi() ? sousAideChoisi().id : null,
+    userFreeText: phraseAideCourante,
+    candidatePlaces: candidats,
+  });
+
+  demandeOrdreAideEnCours = true;
+  cleOrdreModeleAide = cle;                   // même en cas d'échec : on ne réessaie pas en boucle
+  const fini = PERF.requete("aide_ordre_modele");
+  (async ()=>{
+    try{
+      if(!(await connecter())) return;
+      const { data:{ session } } = await sb.auth.getSession();
+      if(!session || !session.access_token) return;
+      const r = await fetch(SUPABASE_URL+"/functions/v1/enrichir-lieu", {
+        method:"POST",
+        headers:{"content-type":"application/json",
+          apikey:SUPABASE_CLE, authorization:"Bearer "+session.access_token},
+        body:JSON.stringify({mode:"aide", contexte}),
+        signal:AbortSignal.timeout(18000),
+      });
+      if(!r.ok) return;
+      const json = await r.json();
+      if(json && json.raison === "budget du jour atteint"){ budgetVerificationEpuise = true; return; }
+      if(!json || !json.ordre) return;
+
+      /* LA GARANTIE EST ICI, PAS DANS L'INVITE. Le serveur a déjà filtré ; on
+         refait le travail, parce que ne pas le refaire reviendrait à faire
+         confiance à une réponse pour se protéger d'elle-même. */
+      const valide = IA_AIDE.valider(json.ordre, contexte);
+      if(valide.aInvente) journal.warn("aide : le modèle a proposé "+
+        valide.rejets.length+" élément(s) hors données — écartés");
+      if(!valide.rankedPlaceIds.length) return;
+      /* La clé voyage AVEC le verdict : c'est ce qui garantit qu'un ordre
+         arrivé en retard ne s'applique pas à une liste qui a changé entre-temps. */
+      ordreModeleAide = Object.assign({cle}, valide);
+      /* L'écran se repeint avec le même design : seul l'ordre a changé. */
+      if(feuilleNiveau === "aide" && sousAide) majFeuille2();
+    }catch(e){
+      /* Modèle indisponible, réseau coupé, délai dépassé : Autour garde son
+         propre ordre, qui est déjà à l'écran. */
+    }finally{ demandeOrdreAideEnCours = false; fini(); }
+  })();
+}
+
 /* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
    contraintes dures, distance — plus la pertinence du besoin. */
 function solutionsAide(limite){
@@ -9069,8 +9183,20 @@ function solutionsAide(limite){
     (CLASSEMENT ? CLASSEMENT.comparer(a.l, b.l) : 0) ||
     (a.l.rankDistance||0) - (b.l.rankDistance||0));
 
-  return notes.slice(0, limite || 5)
-    .map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
+  /* L'ORDRE D'AUTOUR EST COMPLET ICI. Ce qui suit ne le remplace pas : le
+     modèle réordonne une liste déjà juste, et s'il n'a rien dit — pas encore
+     répondu, indisponible, ou budget atteint — c'est cet ordre-là qui sort.
+
+     Le second regard est demandé sur la liste ENTIÈRE, pas sur les cinq
+     premiers : un modèle qui ne verrait que le haut du classement ne pourrait
+     jamais remonter la structure qui répond vraiment. */
+  const ordonnes = notes.map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
+  if(IA_AIDE){
+    demanderOrdreAide(ordonnes);
+    if(ordreModeleAide && ordreModeleAide.cle === cleOrdreAide(ordonnes))
+      return IA_AIDE.appliquer(ordonnes, ordreModeleAide).slice(0, limite || 5);
+  }
+  return ordonnes.slice(0, limite || 5);
 }
 
 /* Une aide ponctuelle n'a de valeur que si l'on peut encore s'y présenter :
@@ -10953,6 +11079,7 @@ function brancherFeuille2(){
     sousAide = b.dataset.sa;
     besoinsAide = sousAide === "urgence" ? [] : [sousAide];
     intentionsSanteAide = sousAide === "parler" ? ["mentale"] : [];
+    oublierPhraseAide();
     chargerAideSiBesoin();
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
@@ -11022,26 +11149,26 @@ function brancherFeuille2(){
   // reformuler : on revient à la question, champ vide
   corps.querySelectorAll("[data-aide-reformuler]").forEach(b=>b.onclick=()=>{
     redirectionExplorer = null;
-    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    besoinsAide = []; sousAide = null; intentionsSanteAide = []; oublierPhraseAide();
     majFeuille2(); reinitialiserScrollFeuille();
   });
   // « montre-moi quand même les structures » : le choix reste à la personne
   corps.querySelectorAll("[data-aide-general]").forEach(b=>b.onclick=()=>{
     redirectionExplorer = null;
-    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; oublierPhraseAide();
     majFeuille2();
   });
   // « non, j'ai bien besoin d'aide » : on s'est trompé, on revient à la question
   corps.querySelectorAll("[data-aide-rester]").forEach(b=>b.onclick=()=>{
     redirectionExplorer = null;
-    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; oublierPhraseAide();
     majFeuille2();
   });
   corps.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{
     const quoi = b.dataset.as;
     if(quoi === "ville"){ ouvrirRecherche(); const c=$("#rech"); if(c) c.placeholder = "Dans quelle ville ?"; return; }
-    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; majFeuille2(); return; }
-    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; intentionsSanteAide = []; majFeuille2(); return; }
+    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; oublierPhraseAide(); majFeuille2(); return; }
+    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; intentionsSanteAide = []; oublierPhraseAide(); majFeuille2(); return; }
   });
 
   /* Une ligne de « Maintenant » ouvre son événement. Un geste, pas un menu. */

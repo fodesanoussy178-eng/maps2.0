@@ -47,7 +47,8 @@
 --------------------------------------------------------------------------- */
 
 import {
-  cleLieu, construireFait, extraireObjet, invite, ligneEnrichissement,
+  cleLieu, construireFait, extraireObjet, invite, inviteAide,
+  ligneEnrichissement, lireOrdreAide,
 } from "./extraction.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -619,6 +620,139 @@ async function verifier(lieu: Lieu) {
 
 /* ------------------------------------------------------------------------ */
 
+/* ===========================================================================
+   MODE AIDE — LE MÊME APPEL, UNE AUTRE QUESTION
+
+   Le mode par défaut de cette fonction VÉRIFIE un lieu : il cherche sur le
+   web, et il répond plus tard, en tâche de fond, parce que lire trois pages
+   officielles prend des dizaines de secondes.
+
+   Le mode Aide ne cherche rien. Il reçoit une liste fermée de structures que
+   la taxonomie a déjà retenues, et il la remet dans l'ordre. C'est pour ça
+   qu'il répond, lui, TOUT DE SUITE : il n'y a rien à aller lire, et un
+   classement qui arriverait demain ne classerait plus rien.
+
+   Il partage tout le reste avec l'autre mode : la clé qui ne quitte jamais
+   Supabase, la réservation, le plafond du jour, la trace. C'est la raison
+   d'être de ce mode plutôt que d'une seconde fonction.
+
+   AUCUN OUTIL N'EST DONNÉ AU MODÈLE ICI. Pas de `google_search` : ce mode lui
+   interdit d'inventer une structure ou une adresse, et lui tendre une porte
+   sur le web serait lui donner de quoi le faire.
+
+   RIEN DE CE QUE LA PERSONNE A ÉCRIT N'EST CONSERVÉ. La phrase libre sert à
+   construire l'invite, et disparaît avec l'isolat : elle n'entre dans aucune
+   table, aucune trace, aucune métrique. Ce qu'on compte, ce sont des nombres.
+   =========================================================================== */
+
+/* Le navigateur, lui, attend cette réponse — l'écran est déjà peint, mais
+   l'ordre qu'on renvoie doit arriver pendant qu'on regarde encore. */
+const DELAI_AIDE_MS = 15_000;
+
+/* Des bornes, pas des vœux : tout ce qui suit vient du client. */
+const MAX_CANDIDATS_AIDE = 40;
+
+function candidatPropre(brut: Record<string, unknown>) {
+  const id = propre(brut.id, 64);
+  if (!id) return null;
+  const osm: Record<string, string> = {};
+  const tags = (brut.osm ?? {}) as Record<string, unknown>;
+  Object.keys(tags).slice(0, 10).forEach((k) => {
+    const cle = propre(k, 40), valeur = propre(tags[k], 40);
+    if (cle && valeur) osm[cle] = valeur;
+  });
+  const capabilities: Record<string, boolean> = {};
+  const caps = (brut.capabilities ?? {}) as Record<string, unknown>;
+  Object.keys(caps).slice(0, 20).forEach((k) => {
+    if (caps[k]) capabilities[propre(k, 40)] = true;
+  });
+  return {
+    id,
+    name: propre(brut.name, 80),
+    category: propre(brut.category, 40) || null,
+    distanceM: nombre(brut.distanceM, 1_000_000),
+    confidence: nombre(brut.confidence, 1000) ?? 0,
+    openingHours: propre(brut.openingHours, 60) || null,
+    osm, capabilities,
+  };
+}
+
+function contexteAidePropre(brut: unknown) {
+  const c = (brut ?? {}) as Record<string, unknown>;
+  const candidats = (Array.isArray(c.candidatePlaces) ? c.candidatePlaces : [])
+    .slice(0, MAX_CANDIDATS_AIDE)
+    .map((x) => candidatPropre((x ?? {}) as Record<string, unknown>))
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const permis = new Set(candidats.map((x) => x.id));
+  return {
+    userLat: nombre(c.userLat, 90),
+    userLng: nombre(c.userLng, 180),
+    selectedCity: propre(c.selectedCity, 80) || null,
+    currentRadius: nombre(c.currentRadius, 200_000),
+    requestedHelpCategory: propre(c.requestedHelpCategory, 40) || null,
+    userFreeText: propre(c.userFreeText, 300) || null,
+    candidatePlaces: candidats,
+    /* Les identifiants autorisés sont RECALCULÉS depuis les candidats retenus,
+       jamais repris du client : lui laisser fournir sa propre liste de permis
+       reviendrait à lui laisser ouvrir la porte qu'elle est censée fermer. */
+    allowedPlaceIds: [...permis],
+    allowedCategories: (Array.isArray(c.allowedCategories) ? c.allowedCategories : [])
+      .slice(0, 30).map((x) => propre(x, 40)).filter(Boolean),
+    rules: (Array.isArray(c.rules) ? c.rules : [])
+      .slice(0, 12).map((x) => propre(x, 200)).filter(Boolean),
+  };
+}
+
+async function repondreAide(corps: Record<string, unknown>) {
+  const contexte = contexteAidePropre(corps.contexte);
+  /* Rien à classer : on le dit, et on ne dépense rien. */
+  if (contexte.candidatePlaces.length < 2) {
+    return reponse({ordre: null, actif: false, raison: "trop peu de candidats"});
+  }
+  if (!CLE_GEMINI) {
+    return reponse({ordre: null, actif: false, raison: "source non configurée"});
+  }
+
+  const reservation = await reserverAppel();
+  if (!reservation.accorde) {
+    trace("budget_atteint", {mode: "aide", lances: reservation.lances,
+                            plafond: reservation.plafond});
+    return reponse({ordre: null, actif: false, raison: "budget du jour atteint"});
+  }
+
+  const depart = Date.now();
+  try {
+    const r = await fetch(POINT_DE_TERMINAISON, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "x-goog-api-key": CLE_GEMINI},
+      body: JSON.stringify({model: MODELE, input: inviteAide(contexte)}),
+      signal: AbortSignal.timeout(DELAI_AIDE_MS),
+    });
+    if (!r.ok) throw new Error(`modèle : HTTP ${r.status}`);
+    const texte = texteDesEtapes(etapesDe(await r.json()));
+    const ordre = lireOrdreAide(texte, contexte);
+    await cloturerAppel(true);
+    /* Ce qu'on consigne : des nombres. Combien de candidats, combien retenus,
+       combien d'identifiants inventés — jamais un nom, jamais la phrase. */
+    trace("aide_classee", {
+      candidats: contexte.candidatePlaces.length,
+      retenus: ordre.rankedPlaceIds.length,
+      ecartes: ordre.ecartes,
+      duree: Date.now() - depart,
+    }, ordre.ecartes > 0);
+    return reponse({ordre, origine: "modele", actif: true});
+  } catch (erreur) {
+    await cloturerAppel(false);
+    trace("aide_echec", {
+      message: erreur instanceof Error ? erreur.message : "inconnue",
+      duree: Date.now() - depart,
+    }, true);
+    /* Une panne du modèle n'est pas une panne d'Aide : le navigateur garde son
+       propre ordre, qui est déjà à l'écran. */
+    return reponse({ordre: null, actif: false, raison: "modele indisponible"});
+  }
+}
+
 Deno.serve(async (requete: Request) => {
   if (requete.method === "OPTIONS") return new Response(null, {headers: ENTETES});
   if (requete.method !== "POST") return reponse({error: "méthode non permise"}, 405);
@@ -629,6 +763,11 @@ Deno.serve(async (requete: Request) => {
   } catch {
     return reponse({error: "corps illisible"}, 400);
   }
+
+  /* Aide passe par ici, et pas par une seconde fonction : voir la note du mode
+     ci-dessus. Le reste du corps ne le concerne pas — il n'a pas de lieu, il a
+     une liste. */
+  if (corps.mode === "aide") return await repondreAide(corps);
 
   const nom = propre(corps.nom, 120);
   const lat = nombre(corps.lat, 90);

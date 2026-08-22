@@ -153,10 +153,34 @@
               "pension_de_famille", "abri_de_nuit", "foyer", "accueil_de_nuit",
               "service_logement"],
       tags: [
-        t("social_facility", ["shelter", "homeless_shelter", "emergency_shelter",
-                              "group_home", "assisted_living"], PREUVE.CERTAINE),
+        /* DORMIR CE SOIR N'EST PAS ÊTRE LOGÉ QUELQUE PART.
+
+           Ces cinq valeurs étaient sur une même ligne, toutes CERTAINES. Sur
+           les données réelles de Tourcoing, « je dors dehors » répondait
+           alors, dans l'ordre :
+
+             1. Senioriales de Tourcoing - Résidences Seniors   567 m
+             2. Résidence Les Erables                           602 m
+             3. Résidence Gabriel Lecorne                       716 m
+
+           Trois résidences, aucune place ce soir. Elles ne sont pas des
+           erreurs de données — ce SONT des hébergements — mais les mettre au
+           même niveau qu'un abri de nuit, c'est envoyer sonner à la porte d'un
+           foyer pour personnes âgées quelqu'un qui n'a nulle part où aller.
+
+           On sépare donc ce qui héberge EN URGENCE de ce qui héberge AU LONG
+           COURS. `group_home` reste demandé — en France, un CHRS ou un foyer
+           de jeunes travailleurs est souvent tagué ainsi, et les retirer
+           reviendrait à perdre le parc social — mais il ne passe plus devant
+           l'abri de nuit. */
+        t("social_facility", ["shelter", "homeless_shelter", "emergency_shelter"],
+          PREUVE.CERTAINE, "ceux-là hébergent ce soir"),
         t("amenity", ["refugee_site", "dormitory"], PREUVE.CERTAINE),
-        t("social_facility", ["nursing_home"], PREUVE.FORTE),
+        t("social_facility", ["group_home", "assisted_living"], PREUVE.FORTE,
+          "foyer, résidence, CHRS : un vrai hébergement, mais pas une place ce soir"),
+        /* Un EHPAD n'est une réponse pour personne qui dort dehors. Il reste
+           trouvable — c'est un hébergement — au dernier rang de la preuve. */
+        t("social_facility", ["nursing_home"], PREUVE.FAIBLE),
         t("amenity", ["social_facility"], PREUVE.FAIBLE),
       ],
       services: ["shelter", "housing", "accommodation", "night_shelter"],
