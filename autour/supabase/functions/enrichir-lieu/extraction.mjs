@@ -549,12 +549,30 @@ export function construireFait(brut, contexte) {
   });
 
   /* Un statut affirmé sans qu'aucune source ne l'appuie assez pour écraser
-     OpenStreetMap ne doit pas fermer un lieu. On garde ce qui informe — la
-     programmation, la billetterie, le site officiel — et on abandonne ce qui
-     déciderait à la place de sources plus fiables. */
+     OpenStreetMap ne doit pas décider du déplacement de quelqu'un. On garde ce
+     qui informe — la programmation, la billetterie, le site officiel — et on
+     abandonne ce qui déciderait à la place de sources plus fiables.
+
+     CE QUI MANQUAIT : SEULE LA FERMETURE DÉFINITIVE ÉTAIT RETIRÉE.
+
+     Un agrégateur — priorité « tiers », confiance 0,5 — pouvait donc encore
+     écrire `current_status: "open"`. Et « open » n'est pas un détail : c'est
+     le seul mot qui fait entrer dans « Maintenant » un lieu dont Autour ne
+     connaît aucun horaire (`ouvertVerifie` dans maintenant.js). Une source
+     tierce obtenait ainsi, seule, le pouvoir de faire passer une information
+     de « inconnu » à « ouvert maintenant » — exactement la bascule qu'aucune
+     source tierce ne doit pouvoir provoquer seule, parce qu'elle envoie
+     quelqu'un marcher vingt minutes.
+
+     Les trois bascules critiques sont donc traitées ensemble :
+
+       inconnu → ouvert      envoie devant une porte peut-être close
+       ouvert  → fermé       empêche d'y aller pour rien
+       ouvert  → définitif   retire le lieu de la carte
+
+     Aucune ne survit à une provenance insuffisante ; tout le reste, si. */
   if (!peutEcraserOsm(priorite, confiance)) {
-    fait.current_status = fait.current_status === "permanently_closed"
-      ? "unknown" : fait.current_status;
+    fait.current_status = "unknown";
     fait.opening_hours = null;
     fait.temporary_closed = fait.temporary_closed === true ? null : fait.temporary_closed;
   }

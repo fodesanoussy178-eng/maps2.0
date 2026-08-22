@@ -442,6 +442,27 @@ Deno.serve(async (requete: Request) => {
      faux, ou que la fonction n'en ait pas reçu du tout. */
   const fourni = requete.headers.get("x-sync-secret") ?? "";
   if (!await memeSecret(fourni, SYNC_SECRET)) {
+    /* LE 401 RESTE MUET POUR L'APPELANT, ET BAVARD POUR LE PROPRIÉTAIRE.
+
+       Un 401 récurrent sur cette route a exactement trois causes, et elles
+       demandent trois gestes différents :
+
+         · la fonction n'a pas de secret        → poser EVENT_SYNC_SECRET
+         · l'appelant n'en présente pas         → la fonction a été déployée
+                                                  avec verify_jwt, ou l'en-tête
+                                                  s'est perdu en route
+         · les deux existent et diffèrent       → les faire correspondre
+
+       Le corps de la réponse ne les distingue surtout pas : ce serait
+       renseigner qui frappe à la porte. Le journal de la fonction, lui, n'est
+       lisible que par le projet — et c'est précisément là qu'on cherche quand
+       une synchronisation ne passe plus. Aucune valeur de secret n'y figure,
+       seulement leur présence. */
+    console.error(JSON.stringify({
+      fonction: "sync-datatourisme", etape: "refus",
+      secret_configure: SYNC_SECRET.length > 0,
+      entete_presente: fourni.length > 0,
+    }));
     return new Response(JSON.stringify({error: "non autorisé"}),
       {status: 401, headers: {"Content-Type": "application/json"}});
   }

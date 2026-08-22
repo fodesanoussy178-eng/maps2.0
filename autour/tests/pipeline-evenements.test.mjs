@@ -107,7 +107,32 @@ test("la réponse d'un refus ne dit rien de plus que « non »", () => {
   assert.match(fonction, /\{error: "non autoris/);
   const handler = fonction.slice(fonction.indexOf("Deno.serve("));
   const refus = handler.slice(0, handler.indexOf("CLE_DATATOURISME"));
-  assert.doesNotMatch(refus, /SYNC_SECRET\.length|attendu\.length/);
+  /* CE QUI PART VERS L'APPELANT, ET RIEN D'AUTRE. La garantie porte sur la
+     RÉPONSE : elle est identique que le secret soit absent, faux, ou jamais
+     reçu. On la lit donc là où elle est construite, plutôt qu'en interdisant
+     un mot dans tout le bloc. */
+  const reponse = /return new Response\([\s\S]*?\);/.exec(refus)[0];
+  assert.match(reponse, /JSON\.stringify\(\{error: "non autorisé"\}\)/);
+  assert.match(reponse, /status: 401/);
+  assert.doesNotMatch(reponse, /SYNC_SECRET|fourni|attendu|secret_configure|entete_presente/,
+    "le corps du 401 ne renseigne jamais celui qui frappe à la porte");
+});
+
+test("un refus reste diagnosticable par le propriétaire du projet", () => {
+  /* Un 401 récurrent a trois causes qui demandent trois gestes différents :
+     secret absent côté fonction, en-tête jamais reçu (fonction déployée avec
+     verify_jwt), ou deux secrets qui diffèrent. Sans cette ligne, la seule
+     information disponible est « 401 », et les trois se ressemblent.
+
+     Elle va dans le journal de la fonction — lisible par le projet seul — et
+     ne porte que des booléens de présence, jamais une valeur de secret. */
+  const handler = fonction.slice(fonction.indexOf("Deno.serve("));
+  const refus = handler.slice(0, handler.indexOf("CLE_DATATOURISME"));
+  assert.match(refus, /console\.error\(JSON\.stringify\(\{/);
+  assert.match(refus, /secret_configure: SYNC_SECRET\.length > 0/);
+  assert.match(refus, /entete_presente: fourni\.length > 0/);
+  /* Aucune valeur, jamais : ni le secret attendu, ni celui qui a été présenté. */
+  assert.doesNotMatch(refus, /secret: SYNC_SECRET[,}]|valeur: fourni/);
 });
 
 /* ====================================================================== */
