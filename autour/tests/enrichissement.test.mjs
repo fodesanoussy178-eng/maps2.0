@@ -339,8 +339,33 @@ test("au plus cinq candidats, au plus trois vérifications en vol", () => {
 });
 
 test("le cache est consulté AVANT tout nouvel appel", () => {
-  assert.match(html, /calqueVerifie\(candidats\.map\(x=>x\.cle\)\)[\s\S]{0,900}demanderVerification/);
+  /* L'ordre est la garantie, pas la distance entre deux lignes. */
+  const posCache = html.indexOf("calqueVerifie(candidats.map(x=>x.cle))");
+  const posAppel = html.indexOf("await demanderVerification(x.l", posCache);
+  assert.ok(posCache > 0 && posAppel > posCache,
+    "aucune vérification ne part avant que le cache ait répondu");
   assert.match(html, /if\(!frais\) aVerifier\.push\(x\)/);
+});
+
+test("ce que le cache vient de remplir n'est pas redemandé", () => {
+  /* `manques` avait été calculé sur le lieu NU. Le calque y pose ensuite des
+     horaires, une programmation, une URL officielle — et l'ancienne version
+     partait quand même vérifier ce qui venait d'être répondu. */
+  const posApplique = html.indexOf("if(e && ENR.appliquer(x.l, e)) change = true;");
+  const posRecalcul = html.indexOf("const restants = ENR.manques(x.l);", posApplique);
+  const posAppel = html.indexOf("await demanderVerification(x.l", posRecalcul);
+  assert.ok(posApplique > 0 && posRecalcul > posApplique && posAppel > posRecalcul,
+    "le reste se recalcule après le calque, et c'est lui qui décide");
+});
+
+test("les quatre portes du modèle sont tenues par un seul module", () => {
+  /* Budget, cache frais, rien ne manque, source officielle : la décision vit
+     dans `territoire.js`, et l'application ne fait que lui passer ce qu'elle
+     sait. Deux endroits qui décident finiraient par ne plus être d'accord. */
+  assert.match(html, /const decision = TERR\.enrichissementAutorise\(lieu, \{/);
+  assert.match(html, /budgetRestant: budgetVerificationEpuise \? 0 : 1,/);
+  /* Et quand le serveur dit que le plafond est atteint, on cesse de frapper. */
+  assert.match(html, /if\(json && json\.raison === "budget du jour atteint"\) budgetVerificationEpuise = true;/);
 });
 
 test("une commodité ne déclenche jamais un appel", () => {
@@ -410,13 +435,45 @@ test("le cache frais court-circuite tout, et rien ne part en fond", () => {
 });
 
 test("le budget du jour garde sa place avant le lancement", () => {
-  const posBudget = traitant.indexOf("consommeAujourdhui()");
+  const posBudget = traitant.indexOf("await reserverAppel()");
   const posLancement = traitant.indexOf("enTacheDeFond(");
   assert.ok(posBudget > 0 && posLancement > posBudget,
     "un travail de fond gratuit resterait un travail de fond illimité");
   assert.match(fonction, /const BUDGET_JOUR = Number\(Deno\.env\.get\("ENRICHISSEMENT_BUDGET_JOUR"\)/);
   /* Et le plafond de candidats du client ne bouge pas. */
   assert.match(client, /const MAX_CANDIDATS = 5;/);
+});
+
+test("le budget est RÉSERVÉ, pas compté après coup", () => {
+  /* CE QUI N'ALLAIT PAS. On comptait les lignes écrites dans
+     `place_enrichments` depuis minuit. Trois façons de ne rien borner :
+
+       · un appel qui échoue n'écrit rien, donc ne comptait pas ;
+       · un appel qui ne trouve rien pour un lieu connu réécrit la même ligne,
+         donc n'avançait pas le compteur ;
+       · lire puis décider n'est pas atomique — dix requêtes simultanées
+         lisaient toutes « 399 » et partaient toutes les dix.
+
+     La réservation se fait donc côté base, en une seule instruction. */
+  assert.doesNotMatch(fonction, /consommeAujourdhui/,
+    "compter des lignes écrites ne borne pas des appels");
+  assert.match(fonction, /rest\("rpc\/reserver_enrichissement"/);
+  assert.match(fonction, /p_plafond: BUDGET_JOUR/);
+  /* Un compteur injoignable ne devient jamais une autorisation : le pire cas
+     doit rester une journée sans enrichissement, jamais une facture. */
+  const reservation = /async function reserverAppel\(\)[\s\S]*?\n\}/.exec(fonction)[0];
+  assert.match(reservation, /if \(!r\.ok\) \{[\s\S]*?accorde: false/);
+});
+
+test("un appel qui ne trouve rien, ou qui échoue, compte quand même", () => {
+  /* C'est la condition pour que le plafond borne réellement le coût. Les
+     quatre sorties du travail de fond passent par la clôture. */
+  const sorties = [...fond.matchAll(/await cloturerAppel\((true|false)\)/g)]
+    .map((m) => m[1]);
+  assert.equal(sorties.length, 4,
+    "aucune trouvaille, aucun fait, une écriture réussie, une panne");
+  assert.deepEqual(sorties.filter((x) => x === "true").length, 1,
+    "un seul de ces quatre chemins a réellement amélioré une information");
 });
 
 test("le travail de fond n'écrit jamais un fait sans source", () => {
@@ -649,11 +706,20 @@ test("background_error ne rend que le message, tronqué", () => {
 });
 
 test("le diagnostic ne crée aucune table", () => {
-  /* Une table de plus serait une table à purger, migrer et surveiller. */
+  /* Une table de plus serait une table à purger, migrer et surveiller. La
+     règle vaut toujours pour le DIAGNOSTIC : la trace part dans les journaux
+     de la fonction, pas dans une table de logs.
+
+     Le budget, lui, est un compteur — pas un diagnostic — et il vit dans la
+     seule table qui puisse le rendre atomique, écrite par une RPC. La fonction
+     ne touche donc que deux surfaces, et aucune n'est un journal. */
   const code = fonction.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   assert.doesNotMatch(code, /create table|enrichissement_logs|diagnostic/i);
   const tables = [...code.matchAll(/rest\("([a-z_]+)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(tables)], ["place_enrichments"]);
+  assert.deepEqual([...new Set(tables)].sort(), ["place_enrichments", "rpc"]);
+  const rpc = [...code.matchAll(/rest\("rpc\/([a-z_]+)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(rpc)].sort(),
+    ["cloturer_enrichissement", "reserver_enrichissement"]);
 });
 
 /* ======================================================================== */

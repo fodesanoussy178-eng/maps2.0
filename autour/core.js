@@ -309,10 +309,21 @@
     return item.cat === category || (item.categories || []).includes(category);
   }
 
-  /* L'identité Autour reste souveraine. Pour un même commerce, Google est
+  /* LAQUELLE DES DESCRIPTIONS REPRÉSENTE LE LIEU ?
+
+     L'identité Autour reste souveraine. Pour un même commerce, Google est
      ensuite la source la plus précise (nom, coordonnées, horaires, photo),
-     puis viennent les catalogues et OSM. */
-  const SOURCE_RANK = Object.freeze({autour:4, google_places:3, datatourisme:2, openstreetmap:1});
+     puis viennent les catalogues et OSM.
+
+     Les trois rangs ajoutés au-dessus sont ceux d'une manifestation : quand la
+     même brocante est décrite par le flux officiel, par l'agenda de la Ville
+     et par DATAtourisme, la déduplication n'en garde qu'UNE — mais laquelle
+     survit n'est pas indifférent. Un horaire officiel vaut mieux qu'un horaire
+     recopié. */
+  const SOURCE_RANK = Object.freeze({
+    contexte_officiel:7, institutionnel:6, organisateur:5,
+    autour:4, google_places:3, openagenda:2, datatourisme:2, openstreetmap:1,
+  });
 
   /* Des horaires « fiables » sont des horaires qu'on peut lire : une grille
      publiée, ou au minimum un état ouvert/fermé affirmé. « Voir sur place »
@@ -1745,6 +1756,31 @@
           if (v == null) return;                  // inconnu : aucun effet
           score += v * poids * 90;
         });
+      }
+
+      /* ---- LE CONTEXTE TERRITORIAL TEMPORAIRE --------------------------
+
+         Pas un second score : des POINTS DE PLUS, dans le même score, calculés
+         par `territoire.js`. C'est la seule façon d'obtenir ce qu'on veut sans
+         obtenir ce qu'on ne veut pas.
+
+         Ce que ça change : pendant la manifestation, une activité en cours, un
+         événement officiellement lié, une chose qui commence dans vingt
+         minutes ou un lieu à l'intérieur du périmètre passent devant leurs
+         semblables.
+
+         Ce que ça NE PEUT PAS changer, et c'est délibéré : le tri regarde
+         d'abord la faisabilité, puis la fenêtre temporelle. Un bonus de score
+         n'y touche pas. Un événement terminé, un lieu fermé, un résultat hors
+         sujet ne remontent donc jamais — et le bonus est borné, pour qu'aucune
+         accumulation de signaux ne renverse l'adéquation à ce qui a été
+         demandé. */
+      if (ctx.territorial && root.AutourTerritoire) {
+        score += root.AutourTerritoire.bonus(
+          Object.assign({}, item, {isTemporary: temporary, startsAt, endsAt}),
+          ctx.territorial.contexte,
+          {maintenant: now, zone: ctx.territorial.zone || null,
+           statut: etat ? etat.statut : null});
       }
 
       // le nombre d'avis conforte la note au lieu de la remplacer

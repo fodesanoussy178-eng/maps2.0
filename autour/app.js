@@ -4670,6 +4670,11 @@ function installerCarte(){
          se redessinait, et le bloc continuait d'afficher « rien en cours près
          de toi » au-dessus d'une carte pleine d'événements en cours. */
       planifierRendu({accueil:true, feuille:true});
+      /* Le contexte territorial suit le point regardé — et il décide LUI-MÊME
+         s'il faut réévaluer. Un déplacement de trente mètres ne déclenche
+         rien ; quatre cents mètres ou un changement de zone, oui. Et
+         réévaluer ne veut jamais dire rappeler une source. */
+      reevaluerTerritorial();
     }, 350);
   });
   // toucher la carte referme la feuille : la carte reprend tout l'écran
@@ -4827,6 +4832,20 @@ async function demarrer(coords){
      seule requête de plus, et n'a donc aucune raison de passer avant la
      carte. */
   amorcerPourToi();
+
+  /* ÉTAPE 5 — le contexte territorial temporaire. Il arrive en DERNIER, et
+     c'est la place qui lui revient : sans lui, Autour est exactement Autour.
+     Le cache long répond en général sans réseau — un périmètre ne change pas
+     de la semaine — et une panne de la lecture ne fait rien apparaître, ce qui
+     est le bon comportement.
+
+     Le mode ne s'ouvre pas tout seul pour autant : le bouton apparaît, et
+     c'est une personne qui décide. */
+  if(TERR) apresPeinture(()=>{
+    chargerContextesTerritoriaux().then(()=>{
+      if(majContexteTerritorial() || boutonTerritorial()) planifierRendu({accueil:true, feuille:true});
+    }).catch(()=>{});
+  });
 }
 
 /* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
@@ -6558,6 +6577,10 @@ async function demanderVerification(lieu, raisons){
     });
     if(!r.ok) return null;
     const json = await r.json();
+    /* Le serveur vient de dire que le plafond du jour est atteint. Insister
+       lieu après lieu ne changera rien : on arrête d'ouvrir cette porte pour
+       le reste de la session. */
+    if(json && json.raison === "budget du jour atteint") budgetVerificationEpuise = true;
     journal.info("enrichissement", lieu.titre, raisons.join(","), json.origine || "?");
     return json && json.enrichissement ? json.enrichissement : null;
   }catch(e){
@@ -6616,10 +6639,50 @@ function enrichirCandidats(classement, intention, redessiner){
     });
     if(change) rendre1();
     for(const x of aVerifier){
-      const e = await demanderVerification(x.l, x.raisons);
+      /* CE QUI MANQUE ENCORE, APRÈS LE CALQUE — pas ce qui manquait avant.
+
+         `manques` avait été calculé sur le lieu NU. Le cache vient d'y poser
+         des horaires, une programmation, une URL officielle : redemander une
+         vérification pour ce qui vient d'être répondu est la dépense la plus
+         inutile du système. On recalcule donc, et c'est le nouveau reste qui
+         décide. */
+      const restants = ENR.manques(x.l);
+      const decision = deciderVerification(x.l, restants, connus.get(x.cle));
+      if(!decision.autorise) continue;
+      const e = await demanderVerification(x.l, decision.manques.length
+        ? [...decision.manques] : x.raisons);
       if(e && ENR.appliquer(x.l, e)) rendre1();
     }
   });
+}
+
+/* LE BUDGET DU SERVEUR, VU DEPUIS LE NAVIGATEUR.
+
+   Le plafond réel est côté base — c'est lui qui borne le coût, et lui seul.
+   Mais quand il est atteint, continuer à frapper à la porte pour chaque lieu
+   de chaque vague ne sert rien : le serveur répondra la même chose. La réponse
+   le dit ; on l'écoute, et on cesse pour cette session. */
+let budgetVerificationEpuise = false;
+
+/* Les quatre portes, dans l'ordre. `territoire.js` les tient, et il est le
+   seul à les tenir : ce fichier ne fait que lui donner ce qu'il sait. */
+function deciderVerification(lieu, restants, entree){
+  if(!TERR) return {autorise:restants.length > 0, manques:restants};
+  const decision = TERR.enrichissementAutorise(lieu, {
+    maintenant: Date.now(),
+    manques: restants,
+    cacheExpireLe: entree && entree.expires_at,
+    budgetRestant: budgetVerificationEpuise ? 0 : 1,
+    /* Une entrée produite par une source officielle a déjà répondu : ce qui
+       ne figure plus dans `restants` a été rempli par elle. */
+    sourceOfficielle: !!(entree && entree.source_priority &&
+      entree.source_priority !== "tiers"),
+  });
+  if(decision.autorise){ compterTerritorial("territorial_gemini_requested"); return decision; }
+  compterTerritorial(decision.raison === TERR.REFUS.BUDGET
+    ? "territorial_gemini_budget_blocked"
+    : "territorial_gemini_skipped_fresh_data");
+  return decision;
 }
 async function chercherGoogle(q, lat, lng, opts){
   const o = opts || {};
@@ -7976,6 +8039,11 @@ function classementFeuille(){
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
+    /* Le contexte territorial entre ici comme la saison : un signal de plus
+       dans le MÊME score. Aide y compris — il n'existe pas d'« Aide Braderie »,
+       seulement l'Aide d'Autour, où les structures temporaires du moment
+       remontent par la même ontologie et les mêmes règles. */
+    territorial:contexteTerritorialClassement(),
   });
   return classement;
 }
@@ -8584,6 +8652,7 @@ function recommandationsAccueil(limite, options){
     horsService,
     saison:contexteSaison(),
     diversite:diversiteDemandee(),
+    territorial:contexteTerritorialClassement(),
   });
 
   if(!groupe){
@@ -8855,6 +8924,7 @@ function solutionsAide(limite){
     nowOnly:false,
     radius:Math.max(rayonRecherche, 6000),
     distanceBetween:distanceM,
+    territorial:contexteTerritorialClassement(),
   });
 
   // pertinence du besoin : elle passe devant tout le reste du tri
@@ -9041,11 +9111,376 @@ function retirerChip(id){
   dessinerFiltres(); majFiltres(); rendre(); majFeuille2();
 }
 
+/* ==================================================================== */
+/*  LE CONTEXTE TERRITORIAL TEMPORAIRE — 🧺                              */
+/* ==================================================================== */
+/* CE QUE CE BLOC BRANCHE, ET CE QU'IL NE BRANCHE PAS.
+
+   Il ne branche PAS une seconde carte, ni un second moteur, ni un second
+   système d'événements. Il pose une couche de contexte sur celui qui existe :
+   pendant une manifestation qui transforme temporairement une ville, le même
+   moteur reçoit un renseignement de plus, et rien d'autre ne change.
+
+   La règle du produit ne bouge pas non plus : QUOI + QUAND + OÙ. Le mode ne
+   raconte rien, il classe autrement.
+
+   Toute la logique vit dans `territoire.js`, qui ne connaît ni le DOM ni la
+   carte et se teste seul. Ici il n'y a que du câblage : lire la configuration,
+   savoir où l'on regarde, décider quand réévaluer, et dessiner. */
+const TERR = window.AutourTerritoire || null;
+
+/* La configuration lue en base, telle quelle. Elle ne contient aucun
+   événement : un nom, une emoji, une fenêtre de temps, des zones, des sources
+   officielles. Les événements, eux, restent là où ils ont toujours été. */
+let contextesTerritoriaux = [];
+let contexteTerritorial = null;
+let zoneTerritoriale = null;
+let modeTerritorial = false;
+/* La mémoire de la dernière évaluation : c'est elle qui permet de ne PAS
+   recalculer parce que le GPS a varié de huit mètres. */
+let etatTerritorial = null;
+let contextesEnVol = null;
+
+const CLE_CACHE_CONTEXTES = "autour:contextes-territoriaux:v1";
+
+/* UN PÉRIMÈTRE NE CHANGE PAS DE LA SEMAINE.
+
+   C'est exactement le genre d'information qui mérite un cache long, et le mode
+   doit pouvoir démarrer sans réseau : à 14 h 30 le samedi, personne ne doit
+   attendre qu'une API redécouvre la ville. Le TTL vient de `territoire.js`,
+   par nature d'information — pas d'un nombre écrit ici. */
+function lireCacheContextes(){
+  try{
+    const brut = JSON.parse(localStorage.getItem(CLE_CACHE_CONTEXTES) || "null");
+    if(!brut || !Array.isArray(brut.lignes)) return null;
+    return brut;
+  }catch(e){ return null; }
+}
+
+function ecrireCacheContextes(lignes){
+  try{
+    localStorage.setItem(CLE_CACHE_CONTEXTES,
+      JSON.stringify({t:Date.now(), lignes:lignes.slice(0, 200)}));
+  }catch(e){}
+}
+
+/* La lecture. Elle ne déclenche aucune collecte, n'écrit rien, et ne bloque
+   jamais un rendu : ce qui est en cache sert immédiatement, la mise à jour
+   arrive derrière. Une panne de Supabase laisse donc le mode fonctionner sur
+   le dernier périmètre connu. */
+function chargerContextesTerritoriaux(){
+  if(!TERR) return Promise.resolve([]);
+  const cache = lireCacheContextes();
+  if(cache){
+    contextesTerritoriaux = TERR.depuisLignes(cache.lignes);
+    PERF.touche("contextes_territoriaux", true);
+    compterTerritorial("territorial_cache_hit");
+    if(!TERR.perime(cache.t, TERR.NATURES.PERIMETRE)) return Promise.resolve(contextesTerritoriaux);
+  }else{
+    PERF.touche("contextes_territoriaux", false);
+    compterTerritorial("territorial_cache_miss");
+  }
+  if(contextesEnVol) return contextesEnVol;
+  contextesEnVol = (async()=>{
+    if(!(await connecter()) || !sbLecture) return contextesTerritoriaux;
+    const ref = pointDeReference();
+    const fini = PERF.requete("supabase_contextes");
+    try{
+      const { data, error } = await sbLecture.rpc("contextes_territoriaux", {
+        p_lat: Array.isArray(ref) ? Number(ref[0]) : null,
+        p_lng: Array.isArray(ref) ? Number(ref[1]) : null,
+      });
+      if(error){
+        /* Une configuration illisible n'est pas une panne d'Autour : le mode
+           n'apparaît pas, et tout le reste continue exactement comme avant. */
+        console.error("Contextes territoriaux :", error.message);
+        return contextesTerritoriaux;
+      }
+      const lignes = data || [];
+      ecrireCacheContextes(lignes);
+      contextesTerritoriaux = TERR.depuisLignes(lignes);
+      majContexteTerritorial();
+      return contextesTerritoriaux;
+    } finally { fini(); contextesEnVol = null; }
+  })();
+  return contextesEnVol;
+}
+
+/* Quel contexte, et dans quelle zone ? La réponse suit LE POINT REGARDÉ, pas
+   la position physique : quelqu'un à Tourcoing qui regarde volontairement
+   Wazemmes doit obtenir Wazemmes. C'est la règle d'Autour depuis `contexte.js`,
+   et elle ne change pas parce qu'une manifestation a lieu. */
+function majContexteTerritorial(){
+  if(!TERR) return false;
+  const ref = pointDeReference();
+  const avant = contexteTerritorial && contexteTerritorial.slug;
+  const avantZone = zoneTerritoriale && zoneTerritoriale.slug;
+  contexteTerritorial = TERR.contexteActif(contextesTerritoriaux, Date.now(), ref);
+  zoneTerritoriale = contexteTerritorial ? TERR.zoneDe(ref, contexteTerritorial) : null;
+  /* Le contexte a pu disparaître pendant que l'application était ouverte —
+     la manifestation se termine, il est minuit. Le mode se referme tout seul :
+     aucun code à retirer après le week-end. */
+  if(!contexteTerritorial && modeTerritorial){
+    modeTerritorial = false;
+    reglerBattementTerritorial();
+  }
+  /* On ne compte PAS le changement de zone ici : `reevaluerTerritorial` le
+     fait déjà, et c'est lui qui sait si le changement mérite une réévaluation.
+     Deux compteurs pour un même fait donneraient un chiffre faux. */
+  return avant !== (contexteTerritorial && contexteTerritorial.slug) ||
+    avantZone !== (zoneTerritoriale && zoneTerritoriale.slug);
+}
+
+/* Le bouton, ou rien. `territoire.js` décide des trois états — annonce,
+   actif, disparu — et il n'y a rien à retirer à la main le lundi. */
+function boutonTerritorial(){
+  return TERR && contexteTerritorial ? TERR.bouton(contexteTerritorial, Date.now()) : null;
+}
+
+/* Les entrées rapides du moment : les quatre habituelles, et le contexte
+   temporaire juste à côté de « ⚡ Maintenant » quand il existe. C'est le seul
+   endroit où le mode s'affiche : pas de carte spéciale, pas d'écran différent,
+   pas de thème graphique — Autour reste Autour. */
+function besoinsDuMoment(){
+  const b = boutonTerritorial();
+  if(!b) return BESOINS_RAPIDES;
+  const rapides = BESOINS_RAPIDES.slice();
+  const apresMaintenant = rapides.findIndex(x=>x.id === "maintenant");
+  const entree = {id:"territorial", emoji:b.emoji, label:b.libelle,
+                  annonce:!b.actif};
+  rapides.splice(apresMaintenant < 0 ? rapides.length : apresMaintenant + 1, 0, entree);
+  return rapides;
+}
+
+/* Ce que le moteur de classement reçoit — et c'est TOUT ce qu'il reçoit. Le
+   contexte et la zone, rien de plus : les points sont calculés par
+   `territoire.js`, et ils s'ajoutent au score existant. */
+function contexteTerritorialClassement(){
+  if(!TERR || !contexteTerritorial) return null;
+  if(TERR.phase(contexteTerritorial, Date.now()) !== TERR.PHASES.PENDANT) return null;
+  return {contexte:contexteTerritorial, zone:zoneTerritoriale};
+}
+
+/* ---- QUAND RÉÉVALUER ------------------------------------------------------
+
+   Deux choses que ce code ne confond pas :
+
+     RECALCULER    distance, temps d'accès, classement — depuis ce qu'on a
+                   déjà. Gratuit, local, aucune requête.
+     RESYNCHRONISER rappeler OpenAgenda, DATAtourisme, Overpass ou le modèle.
+                   Ne dépend QUE de l'âge des données, jamais d'un déplacement.
+
+   Un GPS qui varie de huit mètres ne déclenche rien. Quatre cents mètres, un
+   changement de zone, une information expirée ou un retour au premier plan
+   après une longue absence, oui. */
+function reevaluerTerritorial(options){
+  if(!TERR || !contexteTerritorial) return null;
+  const o = options || {};
+  const zoneAvant = zoneTerritoriale && zoneTerritoriale.slug;
+  majContexteTerritorial();
+  const courant = {
+    maintenant: Date.now(),
+    position: positionMoi,
+    centre: pointDeReference(),
+    zone: zoneTerritoriale ? zoneTerritoriale.slug : null,
+    ouverture: !!o.ouverture,
+    retourPremierPlan: !!o.retourPremierPlan,
+    donnees: {
+      [TERR.NATURES.PERIMETRE]: (lireCacheContextes() || {}).t || null,
+    },
+  };
+  const verdict = TERR.doitReevaluer(etatTerritorial, courant);
+  if(verdict.recalculer){
+    compterTerritorial("territorial_recompute");
+    etatTerritorial = Object.assign({}, courant, {expireLe: Date.now() + TERR.TTL[TERR.NATURES.TEMPOREL]});
+    /* Recalculer, c'est repartir de ce qu'on a. Aucune requête ne part d'ici,
+       et c'est exactement ce qu'on veut le jour où cent mille personnes sont
+       au même endroit. */
+    oublierItemsMaintenant();
+    planifierRendu({accueil:true, feuille:true});
+  }
+  if(verdict.resynchroniser) void chargerContextesTerritoriaux();
+  if(zoneAvant !== courant.zone) compterTerritorial("territorial_zone_changed");
+  return verdict;
+}
+
+/* ---- LE TEMPS QUI PASSE PENDANT QU'ON REGARDE -----------------------------
+
+   « Se termine à 15 h » devient faux à 15 h, que la carte ait bougé ou non.
+   Rien dans Autour ne rafraîchit périodiquement — c'est un choix, et il tient
+   tant qu'on regarde des lieux dont les horaires ne changent pas dans la
+   minute. Une manifestation, elle, se joue à l'heure près : une activité
+   terminée doit sortir du classement tout de suite, pas au prochain
+   déplacement de carte.
+
+   Le battement n'existe donc QUE pendant que le mode est ouvert et que
+   quelqu'un regarde, et il ne fait que recalculer : aucune requête ne part de
+   là. Sa période est celle de l'information la plus périssable — elle vient de
+   `territoire.js`, pas d'un nombre écrit ici. */
+let battementTerritorial = null;
+
+function reglerBattementTerritorial(){
+  const doitBattre = modeTerritorial && !!contexteTerritorial &&
+    (typeof document === "undefined" || document.visibilityState !== "hidden");
+  if(doitBattre === (battementTerritorial !== null)) return;
+  if(!doitBattre){
+    clearInterval(battementTerritorial);
+    battementTerritorial = null;
+    return;
+  }
+  battementTerritorial = setInterval(()=>{
+    if(!modeTerritorial || !contexteTerritorial){ reglerBattementTerritorial(); return; }
+    reevaluerTerritorial();
+  }, TERR.TTL[TERR.NATURES.TEMPOREL]);
+}
+
+/* ---- OUVRIR LE MODE -------------------------------------------------------
+   Le même écran, la même feuille, le même créneau « maintenant ». Ce qui
+   change est le classement, pas l'interface. */
+function ouvrirModeTerritorial(){
+  if(!contexteTerritorial) return;
+  if(modeAide) basculerAide();
+  modeTerritorial = true;
+  creneau = "maintenant";
+  filtreMaintenant = true;
+  ongletCourant = "explorer";
+  marquerNavigation("explorer");
+  contexteExplorer = null;
+  compterTerritorial("territorial_mode_opened");
+  reevaluerTerritorial({ouverture:true});
+  ouvrirFeuille2("racine");
+  reinitialiserScrollFeuille();
+  rendre();
+  majFeuille2();
+  reglerBattementTerritorial();
+}
+
+function fermerModeTerritorial(){
+  if(!modeTerritorial) return;
+  modeTerritorial = false;
+  reglerBattementTerritorial();
+  planifierRendu({accueil:true, feuille:true});
+}
+
+/* ---- « UTILE AUTOUR DE TOI » ---------------------------------------------
+
+   Un bloc court, APRÈS les propositions, jamais à leur place. Ces objets ne
+   deviennent pas des événements pour autant : des toilettes restent un
+   service, une station reste une station, et un poste de secours passe par le
+   système Aide existant — même ontologie, mêmes règles.
+
+   `estFerme` est déjà l'autorité d'Autour sur « c'est fermé » : un service
+   fermé n'aide personne, et on ne le propose pas. */
+function servicesTerritoriaux(){
+  if(!TERR || !modeTerritorial || !contexteTerritorial) return [];
+  const ref = pointDeReference();
+  if(!Array.isArray(ref)) return [];
+  return TERR.services(lieux.filter(dansZoneActive).map(l=>({
+    id:l.id, cat:l.cat, titre:l.titre, lat:l.lat, lng:l.lng,
+    ouvert: estFerme(l) ? false : (l.ouvert == null ? null : l.ouvert),
+  })), {position:ref, rayonMax:Math.min(1500, rayonRegarde())});
+}
+
+function blocServicesTerritoriaux(){
+  const services = servicesTerritoriaux();
+  if(!services.length) return "";
+  return '<section class="tsv" data-testid="services-territoriaux">'+
+    '<p class="tsv-tete">UTILE AUTOUR DE TOI</p>'+
+    '<ul class="tsv-l">'+services.map(s=>
+      '<li><button data-tsv="'+esc(s.item.id)+'">'+
+        '<em aria-hidden="true">'+s.emoji+'</em>'+
+        '<b>'+esc(s.label)+'</b>'+
+        '<u>'+esc(formatDist(s.distance))+'</u></button></li>').join("")+
+    '</ul></section>';
+}
+
+/* ---- L'EN-TÊTE DU MODE ----------------------------------------------------
+
+   À Tourcoing pendant la Braderie, le bouton peut exister — mais ouvrir le
+   mode ne doit JAMAIS laisser croire qu'on est dans le périmètre. On dit la
+   distance, et on propose de recentrer. C'est une phrase et un bouton, pas un
+   écran de plus. */
+function enTeteTerritoriale(){
+  if(!TERR || !modeTerritorial || !contexteTerritorial) return "";
+  const b = boutonTerritorial();
+  if(!b) return "";
+  const ref = pointDeReference();
+  const dedans = TERR.dansPerimetre(ref, contexteTerritorial);
+  const loin = dedans ? null : TERR.distanceAuPerimetre(ref, contexteTerritorial);
+  const sous = b.phase === TERR.PHASES.AVANT
+    ? "Le programme, avant que ça commence"
+    : dedans
+      ? (zoneTerritoriale ? zoneTerritoriale.nom : "Autour de toi")
+      : (loin != null ? "À "+formatDist(loin)+" du périmètre" : "Hors du périmètre");
+  return '<section class="tterr" data-testid="entete-territoriale" '+
+    'data-tterr-phase="'+esc(b.phase)+'">'+
+    '<p class="tterr-tete"><em aria-hidden="true">'+esc(b.emoji)+'</em>'+
+      '<b>'+esc(b.libelle.toUpperCase())+'</b></p>'+
+    '<p class="tterr-sous">'+esc(sous)+'</p>'+
+    (dedans ? "" :
+      '<button class="tterr-recentrer" data-tterr-recentrer="1">Recentrer sur '+
+        esc(contexteTerritorial.zones.length ? contexteTerritorial.nom : "le périmètre")+
+      '</button>')+
+    '</section>';
+}
+
+/* ---- CE QU'ON MESURE, ET CE QU'ON N'ÉCRIT JAMAIS --------------------------
+
+   Des compteurs. Aucune phrase saisie dans Aide, aucun identifiant, aucune
+   position : `territoire.js` refuse tout nom hors de sa liste gelée, et la
+   fonction Postgres refuse une deuxième fois. Ce qui remonte est un slug de
+   zone — « wazemmes » — et un entier.
+
+   L'envoi est différé et grouppé : il ne doit jamais peser sur un rendu, et il
+   n'a aucune importance s'il n'arrive pas. */
+function compterTerritorial(nom, valeur, zone){
+  if(!TERR) return;
+  if(!TERR.compter(nom, valeur == null ? 1 : valeur,
+      zone || (zoneTerritoriale && zoneTerritoriale.slug) || null)) return;
+  /* Groupé, différé, et sans importance s'il n'arrive pas. Le garde-fou de
+     `planifierEnvoiMetriques` fait qu'appeler ceci cent fois en une seconde
+     ne produit qu'un seul envoi. */
+  planifierEnvoiMetriques();
+}
+
+let envoiMetriquesPlanifie = false;
+function envoyerMetriquesTerritoriales(){
+  if(!TERR || !contexteTerritorial || !sbLecture) return;
+  const rapport = TERR.rapport();
+  const noms = Object.keys(rapport.compteurs);
+  if(!noms.length) return;
+  TERR.oublier();
+  const slug = contexteTerritorial.slug;
+  noms.forEach(nom=>{
+    void Promise.resolve(sbLecture.rpc("compter_metrique_territoriale", {
+      p_context:slug, p_metrique:nom, p_valeur:rapport.compteurs[nom], p_zone:null,
+    })).catch(()=>{});
+  });
+  Object.entries(rapport.zones).forEach(([zone, lignes])=>{
+    Object.entries(lignes).forEach(([nom, valeur])=>{
+      void Promise.resolve(sbLecture.rpc("compter_metrique_territoriale", {
+        p_context:slug, p_metrique:nom, p_valeur:valeur, p_zone:zone,
+      })).catch(()=>{});
+    });
+  });
+}
+
+function planifierEnvoiMetriques(){
+  if(envoiMetriquesPlanifie || !TERR) return;
+  envoiMetriquesPlanifie = true;
+  const envoyer = ()=>{ envoiMetriquesPlanifie = false; envoyerMetriquesTerritoriales(); };
+  if(ORDO) ORDO.differer(envoyer, {timeout:4000});
+  else setTimeout(envoyer, 4000);
+}
+
 /* ---- Les besoins rapides ------------------------------------------------
    Quatre entrées, pas dix : les trois envies les plus fréquentes et l'aide.
    Elles vivaient dans la loupe, c'est-à-dire nulle part pour qui n'ouvre pas
    la recherche. Ici, elles disent en une ligne ce que l'application sait
-   faire — ce qui est la première chose à comprendre. */
+   faire — ce qui est la première chose à comprendre.
+
+   Une cinquième peut s'ajouter, temporairement : le contexte territorial, à
+   côté de « ⚡ Maintenant », pendant la seule période où il existe. */
 const BESOINS_RAPIDES = [
   {id:"manger", emoji:"🍜", label:"Manger"},
   {id:"sortir", emoji:"🎉", label:"Sortir"},
@@ -9060,7 +9495,15 @@ function brancherBesoinsRapides(racine){
   racine.querySelectorAll("[data-br]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.br;
     if(id === "aide"){ if(!modeAide) basculerAide(); ouvrirFeuille2("aide"); return; }
+    /* Le contexte temporaire : le même écran, le même créneau, la même
+       feuille. Rouvrir le bouton quand le mode est déjà ouvert le referme —
+       c'est une bascule, comme Aide. */
+    if(id === "territorial"){
+      if(modeTerritorial){ fermerModeTerritorial(); majFeuille2(); rendre(); return; }
+      ouvrirModeTerritorial(); return;
+    }
     if(id === "maintenant"){
+      modeTerritorial = false;
       creneau = "maintenant"; filtreMaintenant = true;
       majFeuille2(); rendre(); majFiltres(); return;
     }
@@ -9071,11 +9514,15 @@ function brancherBesoinsRapides(racine){
 
 function besoinsRapidesHTML(){
   return '<div class="br" data-testid="besoins-rapides">'+
-    BESOINS_RAPIDES.map(b=>{
-      const actif = b.id === "maintenant" ? creneau === "maintenant"
+    besoinsDuMoment().map(b=>{
+      const actif = b.id === "territorial" ? modeTerritorial
+        : b.id === "maintenant" ? (creneau === "maintenant" && !modeTerritorial)
         : b.id === "aide" ? modeAide
         : !!(catsActives && feuilleNiveau === b.id);
-      return '<button class="br-b'+(actif?" actif":"")+'" data-br="'+b.id+'">'+
+      /* L'annonce se lit comme une annonce : le bouton existe, il n'est pas
+         encore la commande principale. Une nuance, pas un thème. */
+      return '<button class="br-b'+(actif?" actif":"")+
+        (b.annonce?" br-annonce":"")+'" data-br="'+b.id+'">'+
         '<em>'+b.emoji+'</em>'+esc(b.label)+'</button>';
     }).join("")+'</div>';
 }
@@ -9984,9 +10431,20 @@ function blocMaintenantAccueil(){
       '</div>';
   }
 
-  return '<section class="mn" data-testid="maintenant-liste" '+
+  /* Combien de propositions le mode a réellement servies. C'est un nombre,
+     pas un contenu : aucune trace de ce qui a été proposé à qui. */
+  if(modeTerritorial && etat === M.ETATS.READY)
+    compterTerritorial("territorial_results_count", liste.length);
+
+  /* L'en-tête du contexte AVANT, les services APRÈS. Le bloc « Maintenant »
+     lui-même ne change pas d'une ligne : c'est le même moteur, la même
+     sélection, les mêmes trois places. Ce qui l'entoure dit seulement dans
+     quel contexte on le lit. */
+  return (modeTerritorial ? enTeteTerritoriale() : "")+
+    '<section class="mn" data-testid="maintenant-liste" '+
     'data-mn-etat="'+esc(etat)+'" aria-busy="'+(etat === M.ETATS.LOADING)+'">'+
-    tete+'<div class="mn-corps">'+corps+'</div></section>';
+    tete+'<div class="mn-corps">'+corps+'</div></section>'+
+    (modeTerritorial ? blocServicesTerritoriaux() : "");
 }
 
 function ongletsTemps(){
@@ -10475,6 +10933,26 @@ function brancherFeuille2(){
     if(!l) return;
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(l.id));
+  });
+  /* Un service du bloc « utile autour de toi » s'ouvre comme n'importe quel
+     autre lieu : c'est un lieu, il l'est resté. */
+  corps.querySelectorAll("[data-tsv]").forEach(b=>b.onclick=()=>{
+    const l = lieux.find(x=>x.id === b.dataset.tsv);
+    if(!l) return;
+    pileEcrans = [];
+    pousserEcran(()=>ouvrirDetail(l.id));
+  });
+  /* Regarder le périmètre depuis Tourcoing est légitime — s'y croire ne l'est
+     pas. Le bouton déplace explicitement le regard, par le chemin de cadrage
+     qui existe déjà. */
+  corps.querySelectorAll("[data-tterr-recentrer]").forEach(b=>b.onclick=()=>{
+    if(!contexteTerritorial || !contexteTerritorial.zones.length) return;
+    const z = contexteTerritorial.zones[0];
+    if(CTX) definirZoneActive(CTX.zoneRecherche(contexteTerritorial.nom, [z.lat, z.lng], null));
+    allerVers([z.lat, z.lng], 15);
+    reevaluerTerritorial({ouverture:true});
+    chargerAutourDuPoint(z.lat, z.lng, {force:true});
+    majFeuille2();
   });
   corps.querySelectorAll("[data-mn-tout]").forEach(b=>b.onclick=()=>{
     /* Ce qui a lieu, par le chemin qui existe déjà — et pas plus de dix.
@@ -11331,6 +11809,28 @@ document.addEventListener("visibilitychange", ()=>{
      personne a pu faire dix kilomètres, et le premier relevé de la veille peut
      tarder. On redemande donc tout de suite. */
   if(geoDejaAutorisee()){ veillerSurLaPosition(); suivreMaPosition({silencieux:true}); }
+});
+
+/* LA BATTERIE ET LES COMPTEURS NE SONT PAS LA MÊME QUESTION, ET N'ONT DONC PAS
+   LE MÊME ÉCOUTEUR. Celui du dessus décide de suivre ou non quelqu'un ; celui
+   ci-dessous ne fait que rendre des entiers avant que l'onglet ne parte, et
+   réévaluer au retour. Les mêler ferait dépendre l'un des priorités de
+   l'autre. */
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "hidden"){
+    /* Partir est le bon moment : ce sont des entiers, ils ne pèsent rien, et
+       ils n'ont jamais eu le droit de peser sur un rendu. */
+    envoyerMetriquesTerritoriales();
+    /* Et recalculer pour un écran que personne ne regarde coûterait une
+       batterie pour rien. */
+    reglerBattementTerritorial();
+    return;
+  }
+  /* Le retour au premier plan APRÈS UNE ABSENCE SUFFISANTE réévalue : « en
+     cours » a pu devenir « terminé » pendant qu'on regardait ailleurs. Cinq
+     minutes est le seuil ; en deçà, rien ne bouge. */
+  reevaluerTerritorial({retourPremierPlan:true});
+  reglerBattementTerritorial();
 });
 
 let localisationEnCours = false;

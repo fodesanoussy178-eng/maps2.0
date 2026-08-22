@@ -781,7 +781,16 @@ async function runOrchestrator() {
 }
 
 Deno.serve(async (request: Request) => {
-  if (!await sameSecret(request.headers.get("x-sync-secret") ?? "", SYNC_SECRET)) {
+  const fourni = request.headers.get("x-sync-secret") ?? "";
+  if (!await sameSecret(fourni, SYNC_SECRET)) {
+    /* Muet pour l'appelant, lisible pour le projet : voir la même note dans
+       `sync-datatourisme`. Une source en panne ne doit pas empêcher les autres
+       de fonctionner — mais encore faut-il pouvoir dire POURQUOI elle l'est. */
+    console.error(JSON.stringify({
+      fonction: "sync-openagenda", etape: "refus",
+      secret_configure: SYNC_SECRET.length > 0,
+      entete_presente: fourni.length > 0,
+    }));
     return Response.json({error: "non autorisé"}, {status: 401});
   }
   const url = new URL(request.url);

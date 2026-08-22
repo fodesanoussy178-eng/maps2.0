@@ -185,18 +185,62 @@ async function enCache(cle: string): Promise<Record<string, unknown> | null> {
   return lignes?.[0] ?? null;
 }
 
-/* Combien d'appels réels aujourd'hui ? `checked_at` est réécrit à chaque
-   passage : compter les lignes fraîches compte donc les appels, sans table de
-   plus et sans compteur à maintenir. */
-async function consommeAujourdhui(): Promise<number> {
-  const debutDuJour = new Date();
-  debutDuJour.setUTCHours(0, 0, 0, 0);
-  const r = await rest(
-    `place_enrichments?select=id&checked_at=gte.${debutDuJour.toISOString()}`,
-    {headers: {Prefer: "count=exact", Range: "0-0"}});
-  const plage = r.headers.get("content-range") ?? "";
-  const total = Number(plage.split("/")[1]);
-  return Number.isFinite(total) ? total : 0;
+/* ---- LE BUDGET, RÉSERVÉ AVANT L'APPEL -------------------------------------
+
+   CE QUI N'ALLAIT PAS. On comptait les LIGNES écrites dans `place_enrichments`
+   depuis minuit. Trois façons de ne rien borner du tout :
+
+     · un appel qui ÉCHOUE n'écrit rien, donc ne comptait pas — alors qu'il a
+       été payé ;
+     · un appel qui NE TROUVE RIEN pour un lieu déjà connu réécrit la même
+       ligne : le compteur n'avançait pas, l'appel avait pourtant eu lieu ;
+     · lire puis décider n'est pas atomique. Dix requêtes simultanées lisaient
+       toutes « 399 » et partaient toutes les dix.
+
+   LA RÈGLE VOULUE, ET CELLE QUI EST APPLIQUÉE ICI :
+
+       réserver 1 appel
+       ↓
+       si budget disponible → Gemini
+       si plafond atteint   → aucun appel
+
+   La réservation est un seul UPDATE conditionnel côté base
+   (`reserver_enrichissement`) : c'est le verrou de ligne qui rend l'opération
+   atomique, pas une politesse entre isolats. Ce qui est réservé est consommé :
+   un appel qui ne trouve rien compte, un appel qui échoue compte. Le budget ne
+   se rend jamais — un appel payé reste payé. */
+type Reservation = {accorde: boolean; lances: number; plafond: number};
+
+async function reserverAppel(): Promise<Reservation> {
+  const r = await rest("rpc/reserver_enrichissement", {
+    method: "POST",
+    body: JSON.stringify({p_plafond: BUDGET_JOUR}),
+  });
+  if (!r.ok) {
+    /* Le compteur est injoignable. On ne lance PAS : un plafond qu'on ne sait
+       pas lire n'est pas un plafond, et le pire cas doit rester une journée
+       sans enrichissement, jamais une facture. */
+    trace("budget_indisponible", {statut: r.status}, true);
+    return {accorde: false, lances: 0, plafond: BUDGET_JOUR};
+  }
+  const lignes = await r.json();
+  const ligne = Array.isArray(lignes) ? lignes[0] : lignes;
+  return {
+    accorde: !!(ligne && ligne.accorde),
+    lances: Number(ligne?.lances ?? 0),
+    plafond: Number(ligne?.plafond ?? BUDGET_JOUR),
+  };
+}
+
+/* L'issue d'un appel déjà réservé. « Rien trouvé » est un succès d'exécution :
+   il a coûté, il est déjà compté dans `lances`, et il est consigné comme tel. */
+async function cloturerAppel(succes: boolean): Promise<void> {
+  try {
+    await rest("rpc/cloturer_enrichissement", {
+      method: "POST",
+      body: JSON.stringify({p_succes: succes}),
+    });
+  } catch { /* une statistique manquante ne casse rien */ }
 }
 
 async function ecrire(ligne: Record<string, unknown>) {
@@ -532,6 +576,10 @@ async function verifier(lieu: Lieu) {
        maquillée en fait. */
     if (!appels && !requetes.length) {
       trace("no_search", {place_key: lieu.cle, texte_len: texte.length, formes});
+      /* L'appel a eu lieu, il a coûté, et il n'a rien amélioré. Il est déjà
+         compté dans `lances` ; ce qui se joue ici est seulement de savoir
+         combien d'appels ont réellement servi. */
+      await cloturerAppel(false);
       return;
     }
 
@@ -544,6 +592,7 @@ async function verifier(lieu: Lieu) {
     if (!fait) {
       trace("no_fact", {place_key: lieu.cle, search_queries: requetes.length,
                         sources: sources.length});
+      await cloturerAppel(false);
       return;
     }
 
@@ -551,6 +600,9 @@ async function verifier(lieu: Lieu) {
     await ecrire(ligneEnrichissement(fait, lieu,
       {maintenant: debut, modele: MODELE, duree: Date.now() - debut}));
     trace("write_success", {place_key: lieu.cle, duree_ms: Date.now() - debut});
+    /* Le seul cas où un appel a réellement amélioré une information. C'est ce
+       nombre-là qu'on veut pouvoir lire après la manifestation. */
+    await cloturerAppel(true);
   } catch (erreur) {
     /* Plus personne n'attend : une panne du modèle ne peut plus rien casser en
        aval. On la note — le message seul, tronqué — et le lieu sera redemandé
@@ -559,6 +611,9 @@ async function verifier(lieu: Lieu) {
     trace("background_error", {place_key: lieu.cle,
       message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 300),
     }, true);
+    /* Un appel qui échoue compte quand même : il a été réservé, il a été
+       payé, et le budget ne se rend pas. */
+    await cloturerAppel(false);
   }
 }
 
@@ -621,7 +676,13 @@ Deno.serve(async (requete: Request) => {
                     raison: "source non configurée"});
   }
 
-  if (await consommeAujourdhui() >= BUDGET_JOUR) {
+  /* La réservation, avant tout le reste. Si elle est refusée, aucun appel ne
+     part — et le client reçoit ce qu'on a, comme dans tous les autres cas où
+     la vérification n'a pas lieu. Le mode territorial, lui, continue de
+     fonctionner sans elle : c'est la condition posée dès le départ. */
+  const reservation = await reserverAppel();
+  if (!reservation.accorde) {
+    trace("budget_atteint", {lances: reservation.lances, plafond: reservation.plafond});
     return reponse({enrichissement: cache, origine: "cache", actif: false,
                     raison: "budget du jour atteint"});
   }
