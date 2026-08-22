@@ -1107,7 +1107,7 @@ const COULEURS_CAT = {
   cinema:"#7C3AED", musee:"#0FA3A3", biblio:"#0FA3A3", popup:"#B14FE0",
   parc:"#2E9E4F", terrain:"#2E9E4F", sport:"#2E9E4F", velo:"#2E9E4F",
   alimentaire:"#B82A3A", hebergement:"#B82A3A", sante:"#B82A3A", asso:"#B82A3A",
-  emploi:"#B82A3A", collecte:"#B82A3A",
+  emploi:"#B82A3A", collecte:"#B82A3A", securite:"#B82A3A",
   metro:"#2673E8", bus:"#2673E8", tram:"#2673E8", train:"#2673E8",
   mairie:"#5D6B63", ecole:"#5D6B63",
   toilettes:"#5D6B63", recharge:"#5D6B63", friperie:"#B14FE0", commerce:"#B14FE0",
@@ -1142,6 +1142,10 @@ const CATS = {
   hebergement:{label:"Hébergement",      emoji:"🏠", eph:false},
   sante:      {label:"Santé",            emoji:"🩺", eph:false},
   emploi:     {label:"Emploi & droits",  emoji:"💼", eph:false},
+  /* LA CATÉGORIE QUI N'EXISTAIT PAS, ET C'EST POURQUOI « SÉCURITÉ » NE RENDAIT
+     RIEN. Un commissariat n'avait aucune case où atterrir : même posé à la
+     main dans les données, il n'aurait pu être reconnu que par son nom. */
+  securite:   {label:"Sécurité & protection", emoji:"🛡️", eph:false},
 
   biblio:   {label:"Bibliothèques", emoji:"📚", eph:false},
   coworking:{label:"Espaces de travail", emoji:"💻", eph:false},
@@ -1677,6 +1681,19 @@ const REQUETES = [
   // government=* plutôt que office=government, trop large : il ramenait les
   // impôts et les annexes administratives dans les services d'aide à l'emploi
   ["government","employment_agency","emploi"], ["government","social_welfare","emploi"],
+  ["government","public_service","mairie"], ["government","register_office","mairie"],
+  // une maison des jeunes est un lieu d'aide, pas un équipement de loisir
+  ["amenity","youth_centre","asso"],
+  ["social_facility","food_sharing","alimentaire"],
+
+  /* -- SÉCURITÉ ET PROTECTION -------------------------------------------
+     LE TAG QUI N'ÉTAIT DEMANDÉ NULLE PART. Ni ici, ni dans l'outil de
+     pré-calcul des zones. Aucun commissariat, aucune gendarmerie n'entrait
+     donc jamais dans les données d'Autour — et « Sécurité » ne pouvait pas
+     rendre un résultat qu'elle n'avait jamais reçu.
+     `police=*` (national, municipal, gendarmerie) voyage avec l'objet et dit
+     lequel des trois on a trouvé ; il n'a pas besoin d'être demandé. */
+  ["amenity","police","securite"],
 
   // -- santé
   ["amenity","hospital","sante"], ["amenity","clinic","sante"],
@@ -1721,6 +1738,7 @@ const REQUETES = [
   ["amenity","school","ecole"], ["amenity","college","ecole"], ["amenity","university","ecole"],
   ["amenity","townhall","mairie"], ["amenity","post_office","mairie"],
   ["amenity","toilets","toilettes"],
+  ["amenity","shower","toilettes"], ["amenity","public_bath","toilettes"],
   ["amenity","charging_station","recharge"],
   ["amenity","bicycle_rental","velo"], ["amenity","bicycle_parking","velo"],
 
@@ -7148,7 +7166,48 @@ const RESEAUX_AIDE = [
 const zonesAideChargees = new Map();
 const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
+const RAYON_AIDE = window.AutourAideRayon || null;
+/* Les besoins que la phrase n'a pas nommés mais qu'elle implique. Ils entrent
+   dans la recherche, à poids réduit : élargir n'est pas détourner. */
+let besoinsSecondairesAide = [];
+const POIDS_BESOIN_SECONDAIRE = .6;
+/* Le palier réellement atteint. L'écran doit pouvoir dire « ces aides sont
+   plus loin » plutôt que laisser croire au coin de la rue. */
+let rayonAideAtteint = RAYON_AIDE ? RAYON_AIDE.premier() : 3000;
 let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
+
+/* ---- Le modèle, branché sur l'appel qui existe déjà -----------------------
+
+   `aide-contexte-ia.js` préparait le contexte et vérifiait ce qui revient,
+   mais personne ne l'appelait. Le voici branché — sur `enrichir-lieu`, la
+   fonction Edge qu'Autour utilise déjà, avec un `mode: "aide"`. Pas une
+   seconde route, pas une seconde clé, pas un second budget : la clé Gemini
+   reste où elle est, le plafond du jour reste le même, et une panne du modèle
+   reste ce qu'elle a toujours été — l'écran garde ce qu'il montrait.
+
+   LE MODÈLE NE VIENT JAMAIS EN PREMIER. Autour classe, l'écran s'affiche, et
+   c'est SEULEMENT ensuite qu'on demande un second regard. Ce qui revient est
+   un ORDRE sur des lieux déjà là ; tout identifiant qu'Autour n'a pas envoyé
+   est jeté par `valider()` avant même d'être lu.
+
+   LA PHRASE NE SURVIT PAS À LA DEMANDE. Elle vit dans cette variable le temps
+   de l'appel, et nulle part ailleurs : ni journal, ni base, ni métrique. */
+const IA_AIDE = window.AutourAideContexteIA || null;
+let phraseAideCourante = null;   // en mémoire, le temps de l'écran
+let ordreModeleAide = null;      // le verdict validé, ou null
+let cleOrdreModeleAide = null;   // l'état pour lequel il a été demandé
+let demandeOrdreAideEnCours = false;
+
+/* Choisir une catégorie au bouton, reformuler, revenir en arrière : dans tous
+   ces cas la phrase d'avant ne décrit plus la demande. On l'oublie — et avec
+   elle l'ordre qu'elle avait produit. Une phrase privée qui survit à l'écran
+   sur lequel elle a été tapée est une phrase qu'on n'a plus de raison de
+   garder. */
+function oublierPhraseAide(){
+  phraseAideCourante = null;
+  ordreModeleAide = null;
+  cleOrdreModeleAide = null;
+}
 
 function contexteAideChargement(){
   const besoins = typeof besoinsSelectionnesAide === "function"
@@ -7239,13 +7298,46 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
   const reseaux = reseauxPourContexteAide(contexte);
   const exploitable = await coordonnerSourcesVersionnees([
     {
-      charger:()=>vraisLieux(lat,lng,null,{cats:catsContexte.length ? catsContexte : CATS_AIDE,
-        rayon:9000,limite:180,signal:generation.signal}),
+      /* ---- LE RAYON PROGRESSIF ------------------------------------------
+
+         On demandait neuf kilomètres, une fois, et personne ne savait à quelle
+         distance les résultats avaient été trouvés. En centre-ville c'était la
+         moitié de la métropole ; à la campagne, une permanence à douze
+         kilomètres n'existait pas.
+
+         On cherche donc d'abord très localement, et on n'élargit QUE si l'on
+         n'a pas assez de structures fiables. On ne complète jamais une liste
+         courte pour atteindre un chiffre : deux structures fiables valent
+         mieux que dix douteuses.
+
+         Chaque palier interroge OpenStreetMap et fusionne ; le compte se fait
+         ensuite sur ce que l'écran retiendrait vraiment — `estSolutionAideLiee`,
+         c'est-à-dire le classement complet, pas le nombre d'objets ramenés. */
+      charger:async()=>{
+        const cats = catsContexte.length ? catsContexte : CATS_AIDE;
+        let palier = RAYON_AIDE ? RAYON_AIDE.premier() : 3000;
+        let dernierResultat = null;
+        for(;;){
+          const r = await vraisLieux(lat,lng,null,
+            {cats, rayon:palier, limite:180, signal:generation.signal});
+          if(!generationCourante(generation)) return r;
+          dernierResultat = r;
+          if(r && r.ok && r.lieux.length) fusionner(r.lieux,"permanent");
+          if(!RAYON_AIDE) break;
+          const retenus = lieux.filter(estSolutionAideLiee);
+          const verdict = RAYON_AIDE.evaluer(retenus, palier);
+          rayonAideAtteint = palier;
+          if(!verdict.elargir) break;
+          palier = verdict.prochain;
+        }
+        return dernierResultat;
+      },
       publier:r=>{
         const osm = r && r.ok ? r.lieux : [];
         definirEtatRechercheVersionne("overpass",r && r.ok
           ? SEARCH_STATES.SUCCESS : SEARCH_STATES.OVERPASS_UNAVAILABLE,generation);
-        if(osm.length) fusionner(osm,"permanent");
+        /* La fusion a déjà eu lieu, palier par palier : republier ici
+           écraserait le travail des paliers précédents. */
         return osm.length > 0;
       },
       echec:()=>definirEtatRechercheVersionne("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE,generation),
@@ -7661,7 +7753,8 @@ let montrerFermes = false;
    compte énormément, et l'urgence du besoin passe devant la découverte. */
 let modeAide = false;
 
-const CATS_AIDE = ["alimentaire","hebergement","asso","emploi","sante","toilettes","collecte"];
+const CATS_AIDE = ["alimentaire","hebergement","asso","emploi","sante","toilettes",
+  "collecte","securite","mairie"];
 const SET_AIDE  = new Set(CATS_AIDE);
 
 /* Six besoins écrits comme on les dit, pas comme la base les nomme. « Aide
@@ -8696,6 +8789,12 @@ function avecEpingles(classement){
    « j'ai plus assez pour manger ». */
 function lancerBesoinAide(phrase){
   if(!AIDE) return;
+  /* La phrase telle qu'elle a été tapée, gardée en mémoire vive le temps de
+     l'écran : le modèle en a besoin pour comprendre « je dors dehors ». Elle
+     n'entre dans aucune table, aucun journal, aucune métrique, et le prochain
+     besoin choisi l'efface. */
+  phraseAideCourante = String(phrase || "").slice(0, 300) || null;
+  ordreModeleAide = null; cleOrdreModeleAide = null;
 
   /* « Mon vélo est cassé » n'est pas une demande d'aide sociale.
      Avant, cette phrase tombait dans « autre » et l'écran répondait par les
@@ -8705,12 +8804,25 @@ function lancerBesoinAide(phrase){
   const domaine = AIDE.domaineDeLaPhrase ? AIDE.domaineDeLaPhrase(phrase) : {domaine:"aide"};
   if(domaine.domaine === "explorer"){
     redirectionExplorer = domaine;
-    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    besoinsAide = []; besoinsSecondairesAide = []; sousAide = null;
+    intentionsSanteAide = [];
     majFeuille2(); reinitialiserScrollFeuille();
     return;
   }
   redirectionExplorer = null;
 
+  /* UNE PHRASE PEUT DEMANDER PLUSIEURS CHOSES.
+
+     « mon copain me frappe » ne demande pas une chose mais trois : se mettre
+     en sécurité, parler à quelqu'un, et peut-être dormir ailleurs ce soir.
+     `intentions()` rend le besoin principal ET les besoins qui l'accompagnent
+     habituellement — la liste vient de la taxonomie, elle n'est pas devinée.
+
+     Les secondaires ÉLARGISSENT la recherche ; ils ne la détournent pas. Leur
+     poids est réduit au classement (voir `POIDS_BESOIN_SECONDAIRE`), pour
+     qu'une écoute ne passe jamais devant une mise à l'abri quand c'est un
+     hébergement qu'on cherche. */
+  const lecture = AIDE.intentions ? AIDE.intentions(phrase) : null;
   const trouves = AIDE.besoinsDepuisPhrase(phrase);
   const santeTrouvee = trouves.some(x=>x.id === "sante" || x.id === "parler");
   intentionsSanteAide = santeTrouvee && AIDE.intentionsSanteDepuisPhrase
@@ -8720,7 +8832,11 @@ function lancerBesoinAide(phrase){
   if(AIDE.estUrgent(phrase) && !trouves.length){
     sousAide = "urgence"; besoinsAide = [];
   }else if(trouves.length){
-    besoinsAide = trouves.slice(0,3).map(x=>x.id);
+    const dits = trouves.slice(0,3).map(x=>x.id);
+    const secondaires = lecture
+      ? lecture.secondaryNeeds.filter(id=>dits.indexOf(id) < 0) : [];
+    besoinsAide = dits.concat(secondaires);
+    besoinsSecondairesAide = secondaires;
     sousAide = besoinsAide[0];
   }else{
     /* Rien de reconnu, et ce n'est pas une réparation non plus.
@@ -8729,7 +8845,8 @@ function lancerBesoinAide(phrase){
        n'importe quoi, et proposait un CCAS pour une question qui n'a rien de
        social. Il vaut mieux dire ce qu'on sait faire — c'est plus court, plus
        honnête, et ça évite un déplacement inutile. */
-    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    besoinsAide = []; besoinsSecondairesAide = []; sousAide = null;
+    intentionsSanteAide = [];
     /* Mais on ne renvoie pas la personne à un mur. Le routeur d'intentions
        rend au plus trois lectures possibles de sa phrase — jamais six, un
        menu long est une façon polie de lui rendre le problème. On les
@@ -8884,9 +9001,25 @@ function ecranSolutionsAide(){
   const titre = besoin ? besoin.emoji+" "+besoin.label : "Aide";
   if(!liste.length) return enteteBesoinAide(titre)+aucuneSolutionHTML();
   return enteteBesoinAide(titre)+
+    annonceRayonAideHTML(liste)+
     '<div class="as-liste" data-testid="primary-results">'+
       liste.map(carteAide).join("")+'</div>'+
     (liste.length >= 3 ? '<button class="as-plus" data-as-plus="1">Voir plus loin</button>' : "");
+}
+
+/* QUAND LE RAYON A ÉTÉ ÉLARGI, ON LE DIT.
+
+   Sans cette ligne, quelqu'un part pour ce qu'il croit être le coin de la rue
+   et marche une heure. Elle n'apparaît que lorsqu'il y a quelque chose à
+   annoncer — au premier palier, le silence est la bonne réponse — et elle
+   annonce la distance RÉELLE des résultats, pas le palier interrogé.
+
+   Une phrase, dans le style de statut qui existe déjà. Le design de l'écran
+   Aide ne bouge pas. */
+function annonceRayonAideHTML(liste){
+  if(!RAYON_AIDE) return "";
+  const a = RAYON_AIDE.annonce(liste, rayonAideAtteint);
+  return a ? '<p class="fb-statut" data-testid="aide-rayon-elargi">'+esc(a.texte)+'</p>' : "";
 }
 
 function enteteBesoinAide(titre){
@@ -8901,6 +9034,81 @@ function enteteBesoinAide(titre){
     (puces ? '<div class="cps"><span class="cps-titre">Compris&nbsp;:</span>'+puces+'</div>' : "");
 }
 
+/* CE QU'ON DEMANDE AU MODÈLE, ET CE QU'ON EN ACCEPTE.
+
+   L'état exact pour lequel un ordre a été demandé. Sans cette clé, chaque
+   repeint de l'écran — un onglet, un défilement, une carte qui reçoit sa photo
+   — relancerait un appel de modèle pour un résultat identique. */
+function cleOrdreAide(candidats){
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  return [
+    besoinsSelectionnesAide().join("+"),
+    phraseAideCourante || "",
+    rayonAideAtteint,
+    centre[0].toFixed(3), centre[1].toFixed(3),
+    candidats.length,
+  ].join("|");
+}
+
+function demanderOrdreAide(candidats){
+  if(!IA_AIDE || demandeOrdreAideEnCours || budgetVerificationEpuise) return;
+  const cle = cleOrdreAide(candidats);
+  if(cle === cleOrdreModeleAide) return;      // déjà demandé pour cet état
+  /* L'état a changé : l'ordre d'avant ne vaut plus. Le garder « en attendant »
+     appliquerait à cette liste-ci un classement calculé pour une autre — la
+     panne la plus discrète possible, et la plus fausse. */
+  ordreModeleAide = null;
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!centre) return;
+
+  const contexte = IA_AIDE.contexte({
+    userLat: centre[0], userLng: centre[1],
+    selectedCity: villeDetectee || null,
+    currentRadius: rayonAideAtteint,
+    requestedHelpCategory: sousAideChoisi() ? sousAideChoisi().id : null,
+    userFreeText: phraseAideCourante,
+    candidatePlaces: candidats,
+  });
+
+  demandeOrdreAideEnCours = true;
+  cleOrdreModeleAide = cle;                   // même en cas d'échec : on ne réessaie pas en boucle
+  const fini = PERF.requete("aide_ordre_modele");
+  (async ()=>{
+    try{
+      if(!(await connecter())) return;
+      const { data:{ session } } = await sb.auth.getSession();
+      if(!session || !session.access_token) return;
+      const r = await fetch(SUPABASE_URL+"/functions/v1/enrichir-lieu", {
+        method:"POST",
+        headers:{"content-type":"application/json",
+          apikey:SUPABASE_CLE, authorization:"Bearer "+session.access_token},
+        body:JSON.stringify({mode:"aide", contexte}),
+        signal:AbortSignal.timeout(18000),
+      });
+      if(!r.ok) return;
+      const json = await r.json();
+      if(json && json.raison === "budget du jour atteint"){ budgetVerificationEpuise = true; return; }
+      if(!json || !json.ordre) return;
+
+      /* LA GARANTIE EST ICI, PAS DANS L'INVITE. Le serveur a déjà filtré ; on
+         refait le travail, parce que ne pas le refaire reviendrait à faire
+         confiance à une réponse pour se protéger d'elle-même. */
+      const valide = IA_AIDE.valider(json.ordre, contexte);
+      if(valide.aInvente) journal.warn("aide : le modèle a proposé "+
+        valide.rejets.length+" élément(s) hors données — écartés");
+      if(!valide.rankedPlaceIds.length) return;
+      /* La clé voyage AVEC le verdict : c'est ce qui garantit qu'un ordre
+         arrivé en retard ne s'applique pas à une liste qui a changé entre-temps. */
+      ordreModeleAide = Object.assign({cle}, valide);
+      /* L'écran se repeint avec le même design : seul l'ordre a changé. */
+      if(feuilleNiveau === "aide" && sousAide) majFeuille2();
+    }catch(e){
+      /* Modèle indisponible, réseau coupé, délai dépassé : Autour garde son
+         propre ordre, qui est déjà à l'écran. */
+    }finally{ demandeOrdreAideEnCours = false; fini(); }
+  })();
+}
+
 /* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
    contraintes dures, distance — plus la pertinence du besoin. */
 function solutionsAide(limite){
@@ -8909,6 +9117,19 @@ function solutionsAide(limite){
   const besoins = besoinsSelectionnesAide();
   const choix = sousAideChoisi();
   let candidats = lieux.filter(l=>nomExploitable(l) && estSolutionAideLiee(l));
+
+  /* LES CAPACITÉS VOYAGENT AVEC LE LIEU. Le classement en a besoin — une
+     structure spécialisée passe devant une association qui « peut aussi » —
+     et l'écran s'en sert pour dire pourquoi elle est là. On les calcule une
+     fois, ici, plutôt que dans chaque comparaison. */
+  const CLASSEMENT = window.AutourAideClassement || null;
+  if(CLASSEMENT) candidats = candidats.map(l=>{
+    const v = CLASSEMENT.capacites(l);
+    return Object.assign({}, l, {capacitesAide:v.capacites, confianceAide:v.confiance,
+                                 verdictAide:{confiance:v.confiance,
+                                              certaine:Object.keys(v.detail)
+                                                .some(k=>v.detail[k].accorde && v.detail[k].certaine)}});
+  });
 
   const classement = rankResults(candidats, {
     intent:"aide",
@@ -8935,7 +9156,13 @@ function solutionsAide(limite){
        (poids, précision). */
     const vus = besoins.map(id=>{
       const p = AIDE.pertinence(l, id, {large:true});
-      return {poids:p.poids, raison:p.raison, sur:!!p.sur, direct:!!p.direct,
+      /* Un besoin que la phrase n'a pas nommé compte, mais moins : une écoute
+         ne doit pas passer devant une mise à l'abri quand on cherche où
+         dormir. */
+      const facteur = besoinsSecondairesAide.indexOf(id) >= 0
+        ? POIDS_BESOIN_SECONDAIRE : 1;
+      return {poids:p.poids * facteur, raison:p.raison, sur:!!p.sur,
+              direct:!!p.direct,
               precis: p.sur || (id !== "jeunes" && id !== "autre")};
     }).filter(x=>x.poids > 0 && x.direct)
       .sort((a,b)=> b.poids - a.poids || (b.precis?1:0) - (a.precis?1:0));
@@ -8950,10 +9177,26 @@ function solutionsAide(limite){
     // association voisine ne gagne jamais sur une permanence adaptée.
     b.poids - a.poids ||
     prioriteDisponibiliteAide(b.l) - prioriteDisponibiliteAide(a.l) ||
+    /* L'ordre du produit, écrit une seule fois dans `aide-classement.js` :
+       preuve certaine, confiance, spécialisation réelle, disponibilité,
+       distance, fraîcheur. Pour Aide, la pertinence passe avant la quantité. */
+    (CLASSEMENT ? CLASSEMENT.comparer(a.l, b.l) : 0) ||
     (a.l.rankDistance||0) - (b.l.rankDistance||0));
 
-  return notes.slice(0, limite || 5)
-    .map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
+  /* L'ORDRE D'AUTOUR EST COMPLET ICI. Ce qui suit ne le remplace pas : le
+     modèle réordonne une liste déjà juste, et s'il n'a rien dit — pas encore
+     répondu, indisponible, ou budget atteint — c'est cet ordre-là qui sort.
+
+     Le second regard est demandé sur la liste ENTIÈRE, pas sur les cinq
+     premiers : un modèle qui ne verrait que le haut du classement ne pourrait
+     jamais remonter la structure qui répond vraiment. */
+  const ordonnes = notes.map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
+  if(IA_AIDE){
+    demanderOrdreAide(ordonnes);
+    if(ordreModeleAide && ordreModeleAide.cle === cleOrdreAide(ordonnes))
+      return IA_AIDE.appliquer(ordonnes, ordreModeleAide).slice(0, limite || 5);
+  }
+  return ordonnes.slice(0, limite || 5);
 }
 
 /* Une aide ponctuelle n'a de valeur que si l'on peut encore s'y présenter :
@@ -10836,6 +11079,7 @@ function brancherFeuille2(){
     sousAide = b.dataset.sa;
     besoinsAide = sousAide === "urgence" ? [] : [sousAide];
     intentionsSanteAide = sousAide === "parler" ? ["mentale"] : [];
+    oublierPhraseAide();
     chargerAideSiBesoin();
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
@@ -10905,26 +11149,26 @@ function brancherFeuille2(){
   // reformuler : on revient à la question, champ vide
   corps.querySelectorAll("[data-aide-reformuler]").forEach(b=>b.onclick=()=>{
     redirectionExplorer = null;
-    besoinsAide = []; sousAide = null; intentionsSanteAide = [];
+    besoinsAide = []; sousAide = null; intentionsSanteAide = []; oublierPhraseAide();
     majFeuille2(); reinitialiserScrollFeuille();
   });
   // « montre-moi quand même les structures » : le choix reste à la personne
   corps.querySelectorAll("[data-aide-general]").forEach(b=>b.onclick=()=>{
     redirectionExplorer = null;
-    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; oublierPhraseAide();
     majFeuille2();
   });
   // « non, j'ai bien besoin d'aide » : on s'est trompé, on revient à la question
   corps.querySelectorAll("[data-aide-rester]").forEach(b=>b.onclick=()=>{
     redirectionExplorer = null;
-    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = [];
+    besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; oublierPhraseAide();
     majFeuille2();
   });
   corps.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{
     const quoi = b.dataset.as;
     if(quoi === "ville"){ ouvrirRecherche(); const c=$("#rech"); if(c) c.placeholder = "Dans quelle ville ?"; return; }
-    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; majFeuille2(); return; }
-    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; intentionsSanteAide = []; majFeuille2(); return; }
+    if(quoi === "general"){ besoinsAide = []; sousAide = "autre"; intentionsSanteAide = []; oublierPhraseAide(); majFeuille2(); return; }
+    if(quoi === "reformuler"){ besoinsAide = []; sousAide = null; intentionsSanteAide = []; oublierPhraseAide(); majFeuille2(); return; }
   });
 
   /* Une ligne de « Maintenant » ouvre son événement. Un geste, pas un menu. */

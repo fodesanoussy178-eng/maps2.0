@@ -14,6 +14,7 @@ import { sourceApplication } from "./source.mjs";
 import {
   cleLieu, normaliserNom, prioriteSource, classerSources, peutEcraserOsm,
   extraireObjet, construireFait, expiration, ligneEnrichissement, DUREES, invite,
+  inviteAide, lireOrdreAide,
 } from "../supabase/functions/enrichir-lieu/extraction.mjs";
 
 const html = await sourceApplication(import.meta.url);
@@ -777,4 +778,99 @@ test("les liens sortants sont sûrs", () => {
   const billets = html.match(/<a class="(?:act|pt-billet)"[^>]*ticket_url[^>]*>/g) || [];
   assert.ok(html.includes('target="_blank" rel="noopener">Billetterie</a>')
     || html.includes('rel="noopener">'), "rel=noopener sur les liens sortants");
+});
+
+/* ==========================================================================
+   LE MODE AIDE — LE MÊME APPEL, UNE AUTRE QUESTION
+
+   Un seul appel de modèle dans Autour. Le mode Aide en est un mode, pas une
+   seconde fonction : même clé, même réservation, même plafond, même trace.
+   ======================================================================== */
+
+const index = await readFile(
+  new URL("../supabase/functions/enrichir-lieu/index.ts", import.meta.url), "utf8");
+
+const CONTEXTE = Object.freeze({
+  userLat: 50.7236, userLng: 3.1614, selectedCity: "Tourcoing",
+  currentRadius: 5000, requestedHelpCategory: "manger",
+  userFreeText: "j’ai rien à manger",
+  candidatePlaces: [
+    { id: "osmnode1", name: "Croix-Rouge Française - Unité Locale de Tourcoing",
+      category: "alimentaire", distanceM: 1425, confidence: 188,
+      osm: { social_facility: "food_bank" }, capabilities: { food_assistance: true } },
+    { id: "osmnode2", name: "CCAS", category: "asso", distanceM: 288,
+      confidence: 68, osm: { social_facility: "outreach" }, capabilities: {} },
+  ],
+  allowedPlaceIds: ["osmnode1", "osmnode2"],
+  allowedCategories: ["manger", "logement", "securite"],
+  rules: ["Ne jamais inventer une structure, une adresse, un horaire ou un téléphone."],
+});
+
+test("le mode Aide est un mode de l’appel existant, pas une seconde fonction", () => {
+  assert.match(index, /if \(corps\.mode === "aide"\) return await repondreAide\(corps\);/);
+  /* Il réutilise la réservation et le plafond : c’est toute la raison de ne
+     pas avoir ouvert une seconde porte. */
+  assert.match(index, /async function repondreAide[\s\S]{0,2000}reserverAppel\(\)/);
+  assert.match(index, /async function repondreAide[\s\S]{0,3000}cloturerAppel\(true\)/);
+  /* Une seule déclaration de la clé Gemini dans tout le fichier. */
+  assert.equal((index.match(/Deno\.env\.get\("GEMINI_API_KEY"\)/g) || []).length, 1);
+});
+
+test("aucun outil de recherche n’est donné au modèle en mode Aide", () => {
+  /* Lui tendre une porte sur le web serait lui donner de quoi inventer une
+     adresse — très exactement ce que ce mode lui interdit. */
+  const bloc = index.slice(index.indexOf("async function repondreAide"),
+                           index.indexOf("Deno.serve("));
+  assert.ok(!bloc.includes("google_search"),
+    "le mode Aide ne déclare aucun outil de recherche");
+  assert.match(bloc, /body: JSON\.stringify\(\{model: MODELE, input: inviteAide\(contexte\)\}\)/);
+});
+
+test("l’invite dit la liste fermée, et ne dit qu’elle", () => {
+  const texte = inviteAide(CONTEXTE);
+  assert.ok(texte.includes("Croix-Rouge Française"), "les candidats y sont");
+  assert.ok(texte.includes("osmnode1") && texte.includes("osmnode2"));
+  assert.ok(texte.includes("Tourcoing"), "la commune situe la demande");
+  assert.ok(texte.includes("5000"), "le rayon aussi");
+  assert.ok(texte.includes("j’ai rien à manger"), "et les mots de la personne");
+  assert.ok(texte.includes("Ne jamais inventer"), "les règles sont dans l’invite");
+  assert.ok(/liste FERMÉE/.test(texte));
+});
+
+test("un identifiant que le serveur n’a pas envoyé ne ressort pas de lui", () => {
+  const lu = lireOrdreAide(JSON.stringify({
+    primaryNeed: "manger",
+    secondaryNeeds: ["logement", "categorie-inventee"],
+    rankedPlaceIds: ["osmnode1", "structure-fantome"],
+    rejectedPlaceIds: ["osmnode2"],
+    explanations: { osmnode1: "banque alimentaire", fantome: "ouvre à 9h" },
+  }), CONTEXTE);
+  assert.deepEqual(lu.rankedPlaceIds, ["osmnode1"]);
+  assert.deepEqual(lu.rejectedPlaceIds, ["osmnode2"]);
+  assert.deepEqual(lu.secondaryNeeds, ["logement"]);
+  assert.deepEqual(Object.keys(lu.explanations), ["osmnode1"]);
+  assert.equal(lu.ecartes, 3, "trois tentatives hors cadre, comptées");
+});
+
+test("une réponse illisible ne renverse rien", () => {
+  const lu = lireOrdreAide("je ne sais pas répondre en JSON", CONTEXTE);
+  assert.deepEqual(lu.rankedPlaceIds, []);
+  assert.equal(lu.primaryNeed, null);
+});
+
+test("les identifiants permis sont recalculés côté serveur", () => {
+  /* Laisser le client fournir sa propre liste de permis reviendrait à le
+     laisser ouvrir la porte qu’elle est censée fermer. */
+  assert.match(index, /allowedPlaceIds: \[\.\.\.permis\]/);
+  assert.match(index, /const permis = new Set\(candidats\.map\(\(x\) => x\.id\)\)/);
+});
+
+test("ce qu’on consigne du mode Aide, ce sont des nombres", () => {
+  const bloc = index.slice(index.indexOf("async function repondreAide"),
+                           index.indexOf("Deno.serve("));
+  assert.match(bloc, /trace\("aide_classee", \{[\s\S]{0,200}candidats:/);
+  assert.ok(!/trace\([^)]*userFreeText/.test(bloc),
+    "la phrase de la personne n’entre dans aucune trace");
+  assert.ok(!bloc.includes("ecrire("),
+    "rien du mode Aide n’est écrit en base : la demande est privée et éphémère");
 });

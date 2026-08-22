@@ -634,3 +634,165 @@ export function ligneEnrichissement(fait, lieu, meta) {
     run_ms: Number.isFinite(Number(m.duree)) ? Math.round(Number(m.duree)) : null,
   };
 }
+
+/* ======================================================================
+   MODE AIDE — CHOISIR ET ORDONNER, JAMAIS PRODUIRE
+
+   POURQUOI ICI, ET PAS DANS UNE SECONDE FONCTION
+
+   Autour a un seul appel de modèle : celui-ci. Il porte la clé — qui ne
+   quitte jamais Supabase —, la réservation de budget, le plafond du jour et
+   la trace. Ouvrir une deuxième porte pour Aide, ce serait dupliquer ces
+   quatre choses, donc en oublier une. Le mode Aide est donc un MODE de
+   l'appel existant : même secret, même budget, même plafond, même trace.
+
+   CE QUI CHANGE PAR RAPPORT À L'AUTRE MODE
+
+   L'enrichissement fait chercher le modèle sur le web : c'est son métier là-bas,
+   et les citations sont la preuve. Ici, c'est exactement l'inverse. Le modèle
+   reçoit une liste fermée de structures déjà récupérées et vérifiées par la
+   taxonomie, et il n'a le droit que de la RÉORDONNER. Aucun outil de recherche
+   ne lui est donné : lui en donner un serait lui tendre le moyen d'inventer
+   une adresse ou un service, très exactement ce qu'on lui interdit.
+
+   ET LA GARANTIE N'EST PAS DANS CE TEXTE
+
+   Une invite bien écrite n'est pas un contrôle. Le contrôle est
+   `lireOrdreAide`, qui jette tout identifiant qu'on ne lui a pas donné — puis
+   `AutourAideContexteIA.valider` côté navigateur, qui refait le même travail.
+   Le texte ci-dessous dit la règle ; le code la tient.
+   ====================================================================== */
+
+/* Ce qu'on montre du candidat au modèle. Assez pour juger, jamais assez pour
+   identifier qui regarde : pas de photo, pas d'historique, pas d'identifiant
+   de session. */
+function ligneCandidat(c) {
+  const parts = [
+    `id=${c.id}`,
+    `nom="${String(c.name ?? "").slice(0, 80)}"`,
+    c.category ? `categorie=${c.category}` : "",
+    Number.isFinite(Number(c.distanceM)) ? `distance=${Math.round(c.distanceM)}m` : "",
+    Number(c.confidence) ? `confiance=${Math.round(Number(c.confidence))}` : "",
+  ];
+  const tags = Object.entries(c.osm || {}).slice(0, 8)
+    .map(([k, v]) => `${k}=${String(v).slice(0, 40)}`);
+  if (tags.length) parts.push(`tags[${tags.join(" ")}]`);
+  const capacites = Object.entries(c.capabilities || {})
+    .filter(([, oui]) => oui).map(([k]) => k);
+  if (capacites.length) parts.push(`capacites[${capacites.join(" ")}]`);
+  if (c.openingHours) parts.push(`horaires="${String(c.openingHours).slice(0, 60)}"`);
+  return "- " + parts.filter(Boolean).join(" ");
+}
+
+export function inviteAide(contexte) {
+  const c = contexte || {};
+  const candidats = Array.isArray(c.candidatePlaces) ? c.candidatePlaces : [];
+  const regles = Array.isArray(c.rules) ? c.rules : [];
+
+  const lignes = [
+    "Tu aides une personne qui cherche de l'aide sociale en France.",
+    "",
+    "TA TÂCHE EST UN TRI, PAS UNE RECHERCHE.",
+    "",
+    "On te donne une liste FERMÉE de structures déjà récupérées et déjà",
+    "vérifiées. Tu ne peux rien y ajouter. Tu choisis lesquelles répondent",
+    "vraiment à la demande, et dans quel ordre les montrer.",
+    "",
+    "OÙ ELLE SE TROUVE :",
+    `- position : ${c.userLat}, ${c.userLng}`,
+    c.selectedCity ? `- commune : ${c.selectedCity}` : "",
+    c.currentRadius ? `- rayon déjà exploré : ${Math.round(c.currentRadius)} m` : "",
+    "",
+    "CE QU'ELLE DEMANDE :",
+    c.requestedHelpCategory
+      ? `- catégorie choisie : ${c.requestedHelpCategory}`
+      : "- aucune catégorie choisie.",
+    /* La phrase telle qu'elle a été tapée. Elle sert ici, et nulle part
+       ailleurs : elle n'est écrite dans aucune table, aucun journal, aucune
+       métrique. */
+    c.userFreeText ? `- ses mots : « ${c.userFreeText} »` : "",
+    "",
+    `LES ${candidats.length} STRUCTURES DISPONIBLES — la liste complète, et la seule :`,
+    ...candidats.map(ligneCandidat),
+    "",
+    "CATÉGORIES AUTORISÉES, et aucune autre :",
+    (Array.isArray(c.allowedCategories) ? c.allowedCategories : []).join(", "),
+    "",
+    "RÈGLES ABSOLUES :",
+    ...regles.map((r) => `- ${r}`),
+    "- Ne réponds JAMAIS avec un id qui n'est pas dans la liste ci-dessus.",
+    "- Si une structure ne répond pas à la demande, mets-la dans `rejectedPlaceIds`",
+    "  plutôt que de l'ordonner en dernier : dire non est une réponse utile.",
+    "- Si rien ne convient, rends `rankedPlaceIds` vide. C'est une réponse valable.",
+    "",
+    "L'ORDRE QUE TU RENDS, dans cet esprit :",
+    "1. ce qui répond exactement au besoin exprimé, avant ce qui « peut aussi » ;",
+    "2. une structure spécialisée avant une association généraliste ;",
+    "3. ce qui est ouvert ou ouvre bientôt, quand on le sait ;",
+    "4. le plus proche, en dernier critère seulement.",
+    "",
+    "RÉPONDS UNIQUEMENT PAR CET OBJET JSON, sans balises de code, sans phrase :",
+    '{"primaryNeed": string | null,          // une des catégories autorisées',
+    ' "secondaryNeeds": [string],            // au plus 3, catégories autorisées',
+    ' "rankedPlaceIds": [string],            // des ids de la liste, dans ton ordre',
+    ' "rejectedPlaceIds": [string],          // des ids de la liste, écartés',
+    ' "explanations": {"<id>": "une phrase courte, en français"}}',
+    "",
+    "`explanations` ne décrit que ce que les données montrent. N'y affirme",
+    "jamais un horaire, un service, un téléphone ou une adresse : tu n'en as pas.",
+  ];
+  return lignes.filter((ligne) => ligne !== "").join("\n");
+}
+
+/* La lecture de ce qui revient — et le filtre qui rend le mode sûr.
+
+   Le même travail est refait côté navigateur par `AutourAideContexteIA.valider`.
+   Ce n'est pas de la redondance décorative : le serveur ne doit pas laisser
+   sortir un identifiant inventé, et le client ne doit pas faire confiance au
+   serveur pour ça. Chacun tient sa propre porte. */
+export function lireOrdreAide(texte, contexte) {
+  const c = contexte || {};
+  const brut = extraireObjet(texte);
+  const permis = new Set((Array.isArray(c.allowedPlaceIds) ? c.allowedPlaceIds : [])
+    .map(String));
+  const categories = new Set((Array.isArray(c.allowedCategories) ? c.allowedCategories : [])
+    .map(String));
+  const vide = {
+    primaryNeed: null, secondaryNeeds: [], rankedPlaceIds: [],
+    rejectedPlaceIds: [], explanations: {}, ecartes: 0,
+  };
+  if (!brut || typeof brut !== "object") return vide;
+
+  let ecartes = 0;
+  const idsPermis = (liste) => (Array.isArray(liste) ? liste : [])
+    .map(String)
+    .filter((id) => { if (permis.has(id)) return true; ecartes++; return false; });
+
+  const categorie = (v) => {
+    const s = v == null ? "" : String(v);
+    if (categories.has(s)) return s;
+    if (s) ecartes++;
+    return null;
+  };
+
+  const primaire = categorie(brut.primaryNeed);
+  const secondaires = (Array.isArray(brut.secondaryNeeds) ? brut.secondaryNeeds : [])
+    .map(categorie).filter((s) => s && s !== primaire).slice(0, 3);
+
+  const explications = {};
+  Object.entries(brut.explanations || {}).forEach(([id, phrase]) => {
+    if (!permis.has(String(id))) { ecartes++; return; }
+    explications[String(id)] = String(phrase).replace(/\s+/g, " ").trim().slice(0, 200);
+  });
+
+  return {
+    primaryNeed: primaire,
+    secondaryNeeds: secondaires,
+    rankedPlaceIds: idsPermis(brut.rankedPlaceIds),
+    rejectedPlaceIds: idsPermis(brut.rejectedPlaceIds),
+    explanations: explications,
+    /* Combien de fois le modèle a tenté de sortir du cadre. Un nombre, pas un
+       texte : il se compte sans rien révéler de la demande. */
+    ecartes,
+  };
+}

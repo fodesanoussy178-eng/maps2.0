@@ -74,6 +74,10 @@ const REQUETES_AIDE = [
   ["office", "employment_agency|association|ngo|charity"],
   ["healthcare", "centre"],
   ["amenity", "social_centre|hospital|clinic|doctors|pharmacy|townhall"],
+  /* La sécurité n'était demandée nulle part — ni ici, ni dans le navigateur.
+     Aucun commissariat, aucune gendarmerie n'entrait donc dans les jeux de
+     démarrage, et « Sécurité » ne pouvait rendre que le vide. */
+  ["amenity", "police|youth_centre|shower|public_bath"],
 ];
 const REQUETES_RESTE = [
   ["amenity", "restaurant|fast_food|cafe|bar|pub|ice_cream|marketplace|cinema|theatre|library|arts_centre|community_centre"],
@@ -92,7 +96,8 @@ const CATEGORIE = {
   outreach:"asso", day_centre:"asso", clothing_bank:"asso", social_centre:"asso",
   employment_agency:"emploi", association:"asso", ngo:"asso", charity:"asso",
   hospital:"sante", clinic:"sante", doctors:"sante", pharmacy:"sante", centre:"sante",
-  townhall:"mairie",
+  townhall:"mairie", police:"securite", youth_centre:"asso",
+  shower:"toilettes", public_bath:"toilettes",
   // -- le reste
   restaurant:"resto", fast_food:"fastfood", cafe:"cafe", bar:"bar", pub:"bar",
   ice_cream:"cafe", marketplace:"marche", cinema:"cinema", theatre:"spectacle",
