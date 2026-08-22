@@ -1561,7 +1561,20 @@
     const position = Array.isArray(ctx.position) ? ctx.position : [0, 0];
     const categories = Array.isArray(ctx.categories) && ctx.categories.length ? ctx.categories : profile.categories;
     const radius = Number.isFinite(Number(ctx.radius)) ? Number(ctx.radius) : Infinity;
-    const deduped = dedupeItems(results || [], distanceBetween);
+    /* NE PAS DÉDOUBLONNER CE QUI L'EST DÉJÀ.
+
+       `dedupeItems` est le seul travail QUADRATIQUE du classement en zone
+       dense : sa grille (mailles de ~450 m) se sature quand des centaines de
+       lieux tiennent dans un pâté de maisons, et le voisinage borné redevient
+       la collection entière. Mesuré à Paris : un seul appel de classement
+       atteignait 1,9 s, et c'est là qu'il partait.
+
+       Or l'accueil lui passe `lieux`, DÉJÀ dédupliqué par `reconstruireLieux`.
+       Le re-dédoublonner ne change rien au résultat — il n'y a plus de doublon
+       à fusionner — et coûte tout. Quand l'appelant le garantit (`dejaDedupe`),
+       on saute cette passe. Les autres appels (recherche libre, listes) la
+       gardent : leur entrée, elle, n'est pas garantie propre. */
+    const deduped = ctx.dejaDedupe ? (results || []) : dedupeItems(results || [], distanceBetween);
 
     /* ---- Filtrage temporel, AVANT toute notion de pertinence --------------
        La proximité et les centres d'intérêt ne doivent jamais faire remonter

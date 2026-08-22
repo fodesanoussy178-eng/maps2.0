@@ -718,12 +718,21 @@ const PERF = {
   reseau: {total:0, demarrage:0, parSource:Object.create(null)},
   demarrageTermine: false,
   expositionPlanifiee: false,
+  /* Des JAUGES : combien d'objets une phase a réellement traités. Le temps dit
+     « c'est lent » ; la jauge dit « sur combien », et c'est leur rapport qui
+     révèle une croissance anormale avec la densité. Purement descriptif —
+     aucune décision d'affichage n'en dépend. */
+  jauges: Object.create(null),
+  jauge(nom, n){
+    this.jauges[nom] = n;
+    this.exposerBientot();
+  },
   exposer(){
     try{
       document.documentElement.dataset.autourPerf = JSON.stringify({
         temps:this.temps, reseau:this.reseau, rendus:this.rendus,
-        cpu:this.cpu, erreurs:this.erreurs, demarrageTermine:this.demarrageTermine,
-        cache:this.cache,
+        cpu:this.cpu, jauges:this.jauges, erreurs:this.erreurs,
+        demarrageTermine:this.demarrageTermine, cache:this.cache,
       });
     }catch(e){}
   },
@@ -8797,9 +8806,13 @@ function recommandationsAccueil(limite, options){
     const candidats = groupe
       ? lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l))
       : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l));
+    PERF.jauge("recommandations:candidats", candidats.length);
     classement = rankResults(candidats,{
       intent:groupe ? "explorer" : "sortir",
       intention:intentionCourante,
+      // `candidats` sort de `lieux`, déjà dédupliqué : on épargne au classement
+      // sa seule passe quadratique (voir `dejaDedupe` dans core.js).
+      dejaDedupe:true,
       /* Une recherche qui a posé des catégories les impose ici aussi : sans ça,
          « un endroit calme où travailler » reposait le filtre puis affichait les
          recommandations génériques, catégories comprises. À défaut, toutes les
@@ -11868,10 +11881,13 @@ function majAccueil(){
   let debutEtape = performance.now();
   const visiblesAccueil = visibles();
   PERF.travail("accueil:visibles", debutEtape);
+  PERF.jauge("accueil:visibles", visiblesAccueil.length);
+  PERF.jauge("lieux:total", lieux.length);
   debutEtape = performance.now();
   let notes = visiblesAccueil
     .filter(l=>nomExploitable(l) && proposableAuto(l, ctx));
   PERF.travail("accueil:filtrage", debutEtape);
+  PERF.jauge("accueil:filtres", notes.length);
   debutEtape = performance.now();
   notes = notes
     .map(l=>Object.assign({}, l, {dist:distanceM(lat,lng,l.lat,l.lng)}))
@@ -11879,6 +11895,9 @@ function majAccueil(){
     .map(l=>{ const r = scoreLieu(l, ctx); return Object.assign(l, {score:r.score, raison:r.raison}); })
     .sort((a,b)=>b.score - a.score);
   PERF.travail("accueil:classement", debutEtape);
+  // combien de lieux ont RÉELLEMENT été scorés (dans le rayon) : c'est le
+  // dénominateur qui dit si une phase grossit anormalement avec la densité
+  PERF.jauge("accueil:scores", notes.length);
   if(modeAide && !montrerFermes)
     notes = ecarterFermesSiAlternative(notes.map(l=>({l}))).map(x=>x.l);
   /* La réserve du jeu rapide : les meilleurs candidats du quartier, seuil

@@ -2508,3 +2508,30 @@ test("« Gérer » ne ferme rien : il ouvre les surveillances",()=>{
   assert.ok(!/ptGerer[\s\S]{0,80}fermerPourToi/.test(bloc),
     "aucun chemin ne fait de « Gérer » un bouton de fermeture");
 });
+
+/* ======================================================================== */
+/*  Densité : le classement ne redédoublonne pas ce qui l'est déjà          */
+/* ======================================================================== */
+
+test("le classement saute la passe quadratique de dédoublonnage sur une entrée propre",()=>{
+  /* Mesuré à Paris : `dedupeItems`, relancé à l'intérieur de `rankResults` sur
+     des lieux DÉJÀ dédupliqués, était la seule opération quadratique du
+     classement — un seul appel atteignait ~1,9 s en zone dense. L'accueil
+     garantit une entrée propre ; le classement ne la redédoublonne plus. */
+  assert.match(core,/const deduped = ctx\.dejaDedupe \? \(results \|\| \[\]\) : dedupeItems\(results \|\| \[\], distanceBetween\);/);
+  // et l'accueil pose bien la garantie
+  assert.match(html,/dejaDedupe:true,/);
+  // les autres appels (recherche libre) gardent le dédoublonnage : leur entrée
+  // n'est pas garantie propre
+  assert.doesNotMatch(core,/const deduped = \(results \|\| \[\]\);/,
+    "le dédoublonnage reste le défaut : seul `dejaDedupe` le saute");
+});
+
+test("les jauges de densité exposent le nombre d'objets par phase",()=>{
+  /* Le temps dit « c'est lent » ; la jauge dit « sur combien ». Leur rapport
+     révèle une croissance anormale avec la densité — c'est l'outil de mesure. */
+  assert.match(html,/jauge\(nom, n\)\{/);
+  assert.match(html,/PERF\.jauge\("accueil:scores", notes\.length\);/);
+  assert.match(html,/PERF\.jauge\("recommandations:candidats", candidats\.length\);/);
+  assert.match(html,/jauges:this\.jauges/);
+});
