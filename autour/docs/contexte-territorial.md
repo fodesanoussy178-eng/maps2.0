@@ -42,6 +42,33 @@ identifiant, aucune chaîne de caractères du programme ne la nomme : elle vit
 dans une ligne de `territorial_contexts`. La Fête de la Musique, un carnaval,
 un festival, un marché de Noël, un marathon s'ajouteront par un `INSERT`.
 
+## L'activation : Braderie de Lille 2026
+
+| | |
+|---|---|
+| fenêtre | **samedi 5 septembre 2026 8h → dimanche 6 septembre 2026 18h** (34 heures) |
+| aperçu | lundi 31 août 2026, 00h — cinq jours avant |
+| secteurs | 8, repris de la découpe officielle |
+| source | [lille.fr — dates](https://www.lille.fr/Braderie-de-Lille/Actualites/Dates-de-la-Braderie-de-Lille-2026) · [lille.fr — plan](https://www.lille.fr/Braderie-de-Lille/Plan-de-la-Braderie-de-Lille-2026) |
+
+| secteur | rôle officiel |
+|---|---|
+| Lille-Centre — Grand'Place | cœur du périmètre |
+| Vieux-Lille | riverains et commerçants |
+| Wazemmes — Gambetta | cœur du périmètre |
+| Boulevard de la Liberté | brocanteurs professionnels |
+| Champ-de-Mars — Président Kennedy | extension brocanteurs |
+| Gare Saint-Sauveur | braderie des enfants |
+| République — Palais des Beaux-Arts | braderie de la BD |
+| Boulevard Louis XIV — Porte de Paris | brocanteurs professionnels |
+
+**Ce qui reste une approximation, et il faut le dire : la géométrie.** La Ville
+publie son plan en image, pas en données ouvertes — rien de lisible par une
+machine n'existe pour ce périmètre. Chaque secteur est donc posé par un centre
+et un rayon, et `metadata.geometrie = 'approximation_centre_rayon'` le déclare.
+Le jour où le contour est publié, il se pose dans `contour` et remplace le
+cercle sans toucher à une ligne de code.
+
 ## Les trois états du bouton
 
 Il se pose à côté de `⚡ Maintenant`, dans les entrées rapides — le langage
@@ -58,6 +85,15 @@ La disparition est **automatique**. Aucun code n'est à retirer après le
 week-end : `ends_at` est une donnée, la politique RLS la lit, et hors fenêtre
 la table est muette — le bouton ne peut même pas être fabriqué depuis le
 navigateur.
+
+### Deux secteurs qui se recouvrent
+
+C'est **le plus proche** qui répond, jamais le plus important. Trié par
+priorité, quelqu'un rue de la Monnaie — en plein Vieux-Lille — s'entendait
+répondre « Lille-Centre », parce que le secteur du centre est déclaré plus
+important et que son rayon mord de sept cents mètres sur le Vieux-Lille. La
+priorité dit l'importance d'un secteur ; elle ne dit pas où l'on se trouve.
+Elle ne sert donc plus qu'à départager deux secteurs à distance égale.
 
 ## Recalculer n'est pas resynchroniser
 
