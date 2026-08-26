@@ -577,9 +577,90 @@
     return CLASSEMENT.capacites(lieu);
   }
 
+  /* Une catégorie de recherche n'est pas, à elle seule, une preuve sociale.
+     Google peut répondre « hôtel » à la requête « hébergement d'urgence » et
+     le chemin historique lui donnait alors la catégorie `hebergement` par
+     défaut. Ces garde-fous restent légers : ils ne remplacent pas la
+     taxonomie, ils empêchent seulement un POI touristique ou un événement de
+     franchir la frontière Aide par son libellé. */
+  const TYPES_TOURISTIQUES = Object.freeze([
+    "hotel", "lodging", "hostel", "motel", "guest_house", "tourist_attraction",
+    "museum", "musee", "art_gallery", "historic_site", "monument", "tourism",
+    "event", "festival", "concert", "theatre", "theater",
+  ]);
+  const RESEAUX_LOGEMENT_RECONNUS =
+    /\b(?:ccas|samu\s*social|115|adil|action\s+logement|chrs|maison\s+relais|pension\s+de\s+famille|hebergement\s+d.?urgence)\b/i;
+  const ALIAS_CATEGORIES_AIDE = Object.freeze({
+    manger: ["manger", "food_aid", "food_assistance", "alimentaire", "collecte"],
+    logement: ["logement", "housing_aid", "housing_assistance", "hebergement", "shelter"],
+    travail: ["travail", "employment_aid", "employment_assistance", "financial_assistance", "emploi"],
+    papiers: ["papiers", "administrative_aid", "administrative_help", "administrative_assistance", "mairie"],
+    sante: ["sante", "health_aid", "health_assistance", "soins"],
+    jeunes: ["jeunes", "youth_aid", "youth_support"],
+    parler: ["parler", "listening_support", "emotional_support"],
+    famille: ["famille", "family_support"],
+    securite: ["securite", "safety", "safety_support"],
+    autre: ["autre", "other_aid", "help"],
+  });
+
+  function normaliserCategorieAide(valeur) {
+    return sansAccents(String(valeur || "")).trim().replace(/[\s-]+/g, "_");
+  }
+
+  function texteTypeLieu(lieu) {
+    const l = lieu || {};
+    const tags = l.tags || {};
+    return [l.primaryType, l.type, l.placeType, l.category, l.cat,
+      ...(l.categories || []), tags.tourism, tags.historic, tags.amenity,
+      tags.leisure].filter(Boolean).map(sansAccents).join(" ");
+  }
+
+  function categoriesAideDocumentees(lieu) {
+    const l = lieu || {};
+    return new Set([...(Array.isArray(l.aidCategories) ? l.aidCategories : []),
+      ...(Array.isArray(l.aid_categories) ? l.aid_categories : []),
+      ...(Array.isArray(l.categoriesAide) ? l.categoriesAide : []),
+      ...(Array.isArray(l.categories_aide) ? l.categories_aide : [])]
+      .map(normaliserCategorieAide).filter(Boolean));
+  }
+
+  function estFournisseurAide(lieu, besoins) {
+    const l = lieu || {};
+    const ids = (besoins || []).filter(Boolean);
+    const documentees = categoriesAideDocumentees(l);
+    const fournisseurExplicite = l.isAidProvider === true || l.is_aid_provider === true;
+    if (l.isAidProvider === false || l.is_aid_provider === false) return false;
+    if (fournisseurExplicite || documentees.size) {
+      if (!documentees.size) return fournisseurExplicite;
+      return ids.some((id) => {
+        const besoin = normaliserCategorieAide(id);
+        const aliases = ALIAS_CATEGORIES_AIDE[besoin] || [besoin];
+        return aliases.some((alias) => documentees.has(normaliserCategorieAide(alias)));
+      });
+    }
+
+    const tags = l.tags || {};
+    const type = texteTypeLieu(lieu);
+    const source = String(l.source || "").toLowerCase();
+    if (TYPES_TOURISTIQUES.some((motif) => type.split(/\s+/).includes(sansAccents(motif))) ||
+        tags.tourism || tags.historic || tags.heritage) return false;
+    /* Les événements restent admis uniquement lorsqu'une source les a
+       explicitement marqués comme aide (aidCategories/isAidProvider). */
+    if (l.isTemporary === true || l.temporaire === true) return false;
+    if (["google_places", "datatourisme"].includes(source)) return false;
+
+    if (ids.includes("logement")) {
+      const nom = String(l.titre || l.title || l.name || "");
+      if (/\b(?:maison|h[ôo]tel|logement)\b/i.test(nom) &&
+          !RESEAUX_LOGEMENT_RECONNUS.test(nom)) return false;
+    }
+    return true;
+  }
+
   function estSolution(lieu, besoins, options) {
     const ids = (besoins || []).filter((id) => !!BESOIN_DE(id));
     if (!ids.length) return false;
+    if (!estFournisseurAide(lieu, ids)) return false;
     const o = options || {};
     return ids.some((id) => {
       const p = pertinence(lieu, id, { large: o.large === true });
@@ -847,6 +928,7 @@
     ageDepuisPhrase, pertinence, pertinenceSante, pourquoi, capacitesDe,
     intentions, MAX_SECONDAIRES,
     conditionDe, convient, estSolution, estSolutionSante, accesAdapteSante,
+    estFournisseurAide, categoriesAideDocumentees,
     rendezVousDe, estUrgent, PERIMETRE,
     OBJETS_REPARABLES, SERVICES_EXPLORER, domaineDeLaPhrase,
   });

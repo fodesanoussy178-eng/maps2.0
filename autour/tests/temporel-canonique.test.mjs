@@ -31,6 +31,42 @@ test("« now » est repris tel quel", () => {
     STATUTS.EN_COURS);
 });
 
+test("un événement canonique court reste maintenant sans horaire d'ouverture", () => {
+  const etat = T.statutTemporel(canonique("now", {
+    debutLe: MAINTENANT - H,
+    finLe: MAINTENANT + H,
+  }), MAINTENANT);
+  assert.equal(etat.statut, STATUTS.EN_COURS);
+  assert.equal(etat.periodeLongue, undefined);
+});
+
+test("une période canonique longue ouverte peut apparaître maintenant", () => {
+  const etat = T.statutTemporel(canonique("now", {
+    debutLe: MAINTENANT - 10 * J,
+    finLe: MAINTENANT + 10 * J,
+  }), MAINTENANT, {disponibilite: () => ({status: "open", isOpenNow: true})});
+  assert.equal(etat.statut, STATUTS.EN_COURS);
+  assert.equal(etat.periodeLongue, true);
+});
+
+test("une période canonique longue fermée est rejetée de maintenant", () => {
+  const etat = T.statutTemporel(canonique("now", {
+    debutLe: MAINTENANT - 10 * J,
+    finLe: MAINTENANT + 10 * J,
+  }), MAINTENANT, {disponibilite: () => ({status: "closed", isOpenNow: false})});
+  assert.equal(T.estMaintenant(etat.statut), false);
+  assert.equal(etat.statut, STATUTS.PLUS_TARD);
+});
+
+test("une période canonique longue aux horaires inconnus est rejetée de maintenant", () => {
+  const etat = T.statutTemporel(canonique("now", {
+    debutLe: MAINTENANT - 10 * J,
+    finLe: MAINTENANT + 10 * J,
+  }), MAINTENANT, {disponibilite: () => ({status: "unknown"})});
+  assert.equal(T.estMaintenant(etat.statut), false);
+  assert.equal(etat.statut, STATUTS.INCONNU);
+});
+
 test("« past » est repris tel quel", () => {
   assert.equal(statut(canonique("past", {debutLe: MAINTENANT - 3 * H, finLe: MAINTENANT - H})),
     STATUTS.PASSE);
@@ -96,6 +132,38 @@ test("« soon » et « upcoming » sont rangés par la date, dans le fuseau du l
     canonique("upcoming", {debutLe: Date.parse("2025-08-16T16:00:00+02:00")}), MAINTENANT);
   assert.equal(samedi.statut, STATUTS.A_VENIR);
   assert.equal(T.sectionTemporelle(samedi, MAINTENANT), "ce_week_end");
+});
+
+test("« ce week-end » désigne le week-end civil courant, jamais le suivant", () => {
+  const samediMidi = Date.parse("2025-08-23T12:00:00+02:00");
+  const courant = T.statutTemporel(canonique("upcoming", {
+    debutLe: Date.parse("2025-08-23T16:00:00+02:00"),
+    finLe: Date.parse("2025-08-23T18:00:00+02:00"),
+  }), samediMidi);
+  const suivant = T.statutTemporel(canonique("upcoming", {
+    debutLe: Date.parse("2025-08-30T16:00:00+02:00"),
+    finLe: Date.parse("2025-08-30T18:00:00+02:00"),
+  }), samediMidi);
+  assert.equal(T.sectionTemporelle(courant, samediMidi), "ce_week_end");
+  assert.equal(T.sectionTemporelle(suivant, samediMidi), "a_venir");
+});
+
+test("un statut canonique incohérent ne fabrique pas « maintenant »", () => {
+  const futur = canonique("now", {
+    debutLe: MAINTENANT + H,
+    finLe: MAINTENANT + 2 * H,
+  });
+  assert.notEqual(statut(futur), STATUTS.EN_COURS);
+  assert.equal(statut(canonique("now", {debutLe: MAINTENANT - H})), STATUTS.INCONNU);
+  assert.equal(statut(canonique("now", {
+    debutLe: MAINTENANT - 2 * H,
+    finLe: MAINTENANT - H,
+  })), STATUTS.PASSE);
+  assert.equal(statut(canonique("now", {
+    debutLe: MAINTENANT - H,
+    finLe: MAINTENANT + H,
+    cancelled: true,
+  })), STATUTS.PASSE);
 });
 
 test("un « soon » sans date exploitable retombe sur inconnu, pas sur à venir", () => {

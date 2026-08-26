@@ -310,6 +310,14 @@ test("les requêtes d’aide visent la zone active", () => {
   assert.doesNotMatch(html, /chargerAide\(positionMoi\[0\], positionMoi\[1\]/);
 });
 
+test("Aide reste en France et dans la zone active, avec un rayon progressif", () => {
+  assert.match(html, /function resultatsAideDansTerritoire\(liste\)\{/);
+  assert.match(html, /pays:"FR"/);
+  assert.match(html, /\(around:\$\{rayon\},\$\{lat\},\$\{lng\}\)\(area\.fr\)/);
+  assert.match(html, /if\(!dansZoneActive\(l\)\) return false;/);
+  assert.match(html, /const centre = centreZoneActive\(\) \|\| positionMoi;/);
+});
+
 /* ======================================================================== */
 /*  Le zoom d'une carte qui vole ne décide pas du chargement                 */
 /* ======================================================================== */

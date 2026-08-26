@@ -46,8 +46,10 @@
 
      La traduction n'est pas totale, et c'est délibéré :
 
-       · `now`, `past`, `unknown_date` sont des verdicts fermes → repris tels
-         quels ;
+       · `past`, `unknown_date` sont des verdicts fermes → repris tels quels ;
+       · `now` est repris pour une séance courte. Pour une période de plus de
+         36 h, les horaires du jour doivent encore confirmer que le lieu est
+         réellement ouvert ;
        · `soon` et `upcoming` disent seulement « pas maintenant ». La base les
          sépare à 24 h, ce qui ne dit pas s'il faut ranger l'événement dans
          « ce soir », « ce week-end » ou « à venir ». C'est une question
@@ -117,7 +119,8 @@
     }
 
     return brutes
-      .filter((p) => p.debut != null || p.fin != null)
+      .filter((p) => (p.debut != null || p.fin != null) &&
+        (p.debut == null || p.fin == null || p.fin > p.debut))
       .sort((a, b) => (a.debut == null ? Infinity : a.debut) - (b.debut == null ? Infinity : b.debut));
   }
 
@@ -174,6 +177,93 @@
     return x.annee === y.annee && x.mois === y.mois && x.jour === y.jour;
   }
 
+  /* Les créneaux de l'interface sont des jours civils, pas des durées de
+     24 heures. Ces petites fonctions convertissent un jour local en borne
+     UTC en tenant compte du décalage du lieu (y compris les changements
+     d'heure). */
+  function jourSemaine(epoch, timeZone) {
+    const nom = new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZone || DEFAULT_TIMEZONE, weekday: "short",
+    }).format(new Date(epoch));
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(nom);
+  }
+
+  function ordinalLocal(p) {
+    return Date.UTC(p.annee, p.mois - 1, p.jour) / 86400000;
+  }
+
+  function partiesOrdinal(ordinal, heure, minute) {
+    const d = new Date(ordinal * 86400000);
+    return { annee: d.getUTCFullYear(), mois: d.getUTCMonth() + 1,
+      jour: d.getUTCDate(), heure: heure || 0, minute: minute || 0 };
+  }
+
+  function epochLocal(p, timeZone) {
+    let suppose = Date.UTC(p.annee, p.mois - 1, p.jour, p.heure || 0, p.minute || 0);
+    for (let i = 0; i < 2; i += 1) {
+      const reel = partsLocales(suppose, timeZone);
+      const ecart = Date.UTC(reel.annee, reel.mois - 1, reel.jour,
+        reel.heure, reel.minute) -
+        Date.UTC(p.annee, p.mois - 1, p.jour, p.heure || 0, p.minute || 0);
+      suppose -= ecart;
+    }
+    return suppose;
+  }
+
+  function fenetreJour(epoch, timeZone) {
+    const p = partsLocales(epoch, timeZone);
+    const debut = epochLocal(Object.assign({}, p, {heure: 0, minute: 0}), timeZone);
+    return { debut, fin: epochLocal(partiesOrdinal(ordinalLocal(p) + 1, 0, 0), timeZone) };
+  }
+
+  function fenetreWeekEnd(epoch, timeZone) {
+    const p = partsLocales(epoch, timeZone);
+    const ordinal = ordinalLocal(p);
+    const semaine = jourSemaine(epoch, timeZone);
+    /* samedi/dimanche : le week-end déjà commencé ; lundi-vendredi : le
+       prochain samedi. Il n'y a jamais de test « samedi dans les 7 jours ». */
+    const decalage = semaine === 6 ? 0 : semaine === 0 ? -1 : 6 - semaine;
+    const samedi = ordinal + decalage;
+    return {
+      debut: epochLocal(partiesOrdinal(samedi, 0, 0), timeZone),
+      fin: epochLocal(partiesOrdinal(samedi + 2, 0, 0), timeZone),
+    };
+  }
+
+  function periodeIntersecte(etat, fenetre) {
+    if (!etat || etat.debut == null || !fenetre) return false;
+    const fin = etat.fin == null ? etat.debut : etat.fin;
+    return etat.debut < fenetre.fin && fin > fenetre.debut;
+  }
+
+  /* Une exposition, une saison ou un musée peut être dans sa période sans
+     être accessible à cet instant. Ce verdict est commun aux données locales
+     et canoniques : la provenance du statut ne change pas les horaires. */
+  function statutPeriodeLongue(source, t, timeZone, commun, options) {
+    const o = options || {};
+    const dispo = typeof o.disponibilite === "function" ? o.disponibilite(source, t) : null;
+    if (!dispo || dispo.status === "unknown")
+      return Object.assign({ statut: STATUTS.INCONNU, periodeLongue: true }, commun);
+    if (dispo.status === "permanently_closed")
+      return Object.assign({ statut: STATUTS.PASSE, periodeLongue: true, dispo }, commun);
+    if (dispo.isOpenNow)
+      return Object.assign({ statut: STATUTS.EN_COURS, periodeLongue: true, dispo }, commun);
+
+    /* Fermée à cette heure : ce qui intéresse n'est pas le début de la
+       période — souvent des semaines en arrière — mais la prochaine
+       ouverture. Sans cette bascule, une expo de juin à septembre
+       s'annonçait « Ce soir · 22:47 », l'heure de son ouverture en juin. */
+    const ouvre = dispo.opensAt ? Date.parse(dispo.opensAt) : NaN;
+    const suivant = Number.isFinite(ouvre) && ouvre > t ? ouvre : null;
+    if (suivant == null)
+      return Object.assign({ statut: STATUTS.PLUS_TARD, periodeLongue: true, dispo }, commun);
+    /* Jamais « imminent » : une exposition qui rouvre dans une heure n'est
+       pas un événement qui commence, c'est un lieu encore fermé. */
+    const statut = memeJour(suivant, t, timeZone) ? STATUTS.PLUS_TARD : STATUTS.A_VENIR;
+    return Object.assign({ statut, periodeLongue: true, dispo }, commun,
+      { debut: suivant, dansMs: suivant - t });
+  }
+
   /* ---- Le statut canonique ----------------------------------------------
      `disponibilite` est injectée par l'appelant : c'est elle qui sait lire les
      horaires d'ouverture. On ne la réimplémente pas ici, et on ne suppose
@@ -185,23 +275,50 @@
     const timeZone = source.timezone || source.timeZone || o.timeZone || DEFAULT_TIMEZONE;
 
     /* La base a déjà répondu : on ne recalcule pas, on traduit. */
-    if (source.temporalStatus) {
-      const ferme = STATUTS_CANONIQUES[source.temporalStatus];
+    const temporalStatus = source.temporalStatus || source.temporal_status;
+    if (temporalStatus) {
+      const ferme = STATUTS_CANONIQUES[temporalStatus];
       const periodes = normaliserPeriodes(source);
       const occurrence = prochaineOccurrence(periodes, t);
       const commun = {
         timeZone,
         debut: occurrence ? occurrence.debut : null,
         fin: occurrence ? finEffective(occurrence) : null,
+        finReelle: occurrence ? occurrence.fin : null,
         occurrence, occurrences: periodes.length,
-        canonique: source.temporalStatus,
+        canonique: temporalStatus,
       };
-      if (source.annule) commun.annule = true;
-      if (ferme) return Object.assign({ statut: ferme }, commun);
+      if (source.annule || source.cancelled || source.status === "cancelled") commun.annule = true;
+      if (commun.annule) return Object.assign({ statut: STATUTS.PASSE }, commun);
+      if (ferme === STATUTS.PASSE || ferme === STATUTS.INCONNU)
+        return Object.assign({ statut: ferme }, commun);
+      if (ferme === STATUTS.EN_COURS) {
+        /* Le cache `temporal_status` est recalculé en base, mais une réponse
+           ancienne, un fuseau invalide ou une date écrasée ne doit jamais
+           transformer un événement futur en événement en cours. Les dates
+           explicites sont le dernier garde-fou de lecture. */
+        if (commun.debut != null && commun.finReelle != null &&
+            commun.debut <= t && commun.finReelle > t) {
+          if (commun.finReelle - commun.debut > SEUIL_PERIODE_LONGUE_MS)
+            return statutPeriodeLongue(source, t, timeZone, commun, o);
+          return Object.assign({ statut: ferme }, commun);
+        }
+        if (commun.debut == null || commun.finReelle == null)
+          return Object.assign({ statut: STATUTS.INCONNU }, commun);
+        return Object.assign({
+          statut: commun.finReelle <= t ? STATUTS.PASSE
+            : (memeJour(commun.debut, t, timeZone) ? STATUTS.PLUS_TARD : STATUTS.A_VENIR),
+          dansMs: commun.debut - t,
+        }, commun);
+      }
 
       // `soon` / `upcoming` : pas maintenant. Reste à savoir où le ranger,
       // ce que seule la date locale peut dire.
       if (commun.debut == null) return Object.assign({ statut: STATUTS.INCONNU }, commun);
+      if (commun.finReelle != null && commun.finReelle <= t)
+        return Object.assign({ statut: STATUTS.PASSE }, commun);
+      if (commun.debut <= t)
+        return Object.assign({ statut: STATUTS.INCONNU }, commun);
       return Object.assign({
         statut: memeJour(commun.debut, t, timeZone) ? STATUTS.PLUS_TARD : STATUTS.A_VENIR,
         dansMs: commun.debut - t,
@@ -217,7 +334,8 @@
     }
 
     // une annulation prime sur toute considération d'horaire
-    if (source.annule) return { statut: STATUTS.PASSE, timeZone, annule: true };
+    if (source.annule || source.cancelled || source.status === "cancelled")
+      return { statut: STATUTS.PASSE, timeZone, annule: true };
 
     const periodes = normaliserPeriodes(source);
     if (!periodes.length) return { statut: STATUTS.INCONNU, timeZone };
@@ -234,28 +352,7 @@
     if (debut <= t) {
       const etendue = (fin == null ? 0 : fin - debut);
       if (etendue > SEUIL_PERIODE_LONGUE_MS) {
-        /* Exposition, saison, musée : la période ne dit pas si on peut y aller
-           à cet instant. Ce sont les horaires du jour qui tranchent, et sans
-           eux on ne prétend pas que c'est ouvert. */
-        const dispo = typeof o.disponibilite === "function" ? o.disponibilite(source, t) : null;
-        if (!dispo || dispo.status === "unknown")
-          return Object.assign({ statut: STATUTS.INCONNU, periodeLongue: true }, commun);
-        if (dispo.isOpenNow)
-          return Object.assign({ statut: STATUTS.EN_COURS, periodeLongue: true, dispo }, commun);
-
-        /* Fermée à cette heure : ce qui intéresse n'est pas le début de la
-           période — souvent des semaines en arrière — mais la prochaine
-           ouverture. Sans cette bascule, une expo de juin à septembre
-           s'annonçait « Ce soir · 22:47 », l'heure de son ouverture en juin. */
-        const ouvre = dispo.opensAt ? Date.parse(dispo.opensAt) : NaN;
-        const suivant = Number.isFinite(ouvre) && ouvre > t ? ouvre : null;
-        if (suivant == null)
-          return Object.assign({ statut: STATUTS.PLUS_TARD, periodeLongue: true, dispo }, commun);
-        /* Jamais « imminent » : une exposition qui rouvre dans une heure n'est
-           pas un événement qui commence, c'est un lieu encore fermé. */
-        const statut = memeJour(suivant, t, timeZone) ? STATUTS.PLUS_TARD : STATUTS.A_VENIR;
-        return Object.assign({ statut, periodeLongue: true, dispo }, commun,
-          { debut: suivant, dansMs: suivant - t });
+        return statutPeriodeLongue(source, t, timeZone, commun, o);
       }
       return Object.assign({ statut: STATUTS.EN_COURS }, commun);
     }
@@ -343,13 +440,16 @@
     const tz = etat.timeZone;
     const p = partsLocales(etat.debut, tz);
 
-    if (etat.statut === STATUTS.PLUS_TARD) return p.heure >= 18 ? "ce_soir" : "aujourdhui";
+    /* Le week-end courant est calculé avant « aujourd'hui » afin qu'un samedi
+       déjà entamé reste bien dans ce week-end, jamais dans celui d'après. */
+    const weekend = fenetreWeekEnd(t, tz);
+    if (periodeIntersecte(etat, weekend)) return "ce_week_end";
 
-    // ce week-end : le samedi et le dimanche qui viennent
-    const jour = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" })
-      .format(new Date(etat.debut));
-    const dansUneSemaine = etat.debut - t < 7 * 24 * 3600 * 1000;
-    if (dansUneSemaine && (jour === "Sat" || jour === "Sun")) return "ce_week_end";
+    /* Un événement plus tard dans la journée reste « aujourd'hui », même si
+       la base l'a rangé `upcoming` parce qu'il est au-delà de sa fenêtre
+       `soon`. */
+    const aujourdHui = fenetreJour(t, tz);
+    if (periodeIntersecte(etat, aujourdHui)) return p.heure >= 18 ? "ce_soir" : "aujourdhui";
     return "a_venir";
   }
 
@@ -367,5 +467,7 @@
     libelleTemporel,
     sectionTemporelle,
     partsLocales,
+    fenetreJour,
+    fenetreWeekEnd,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

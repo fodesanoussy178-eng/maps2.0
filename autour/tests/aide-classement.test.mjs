@@ -183,6 +183,27 @@ test("une association pour victimes peut aussi héberger et écouter", () => {
   assert.equal(v.capacites.housing_assistance, true, "Logement");
 });
 
+test("un POI touristique ne devient pas une aide par sa catégorie ou son nom", () => {
+  const pieges = [
+    { titre: "Maison du Collectionneur", cat: "hebergement", source: "google_places",
+      primaryType: "museum" },
+    { titre: "Hôtel de la Gare", cat: "hebergement", source: "google_places",
+      primaryType: "lodging" },
+    { titre: "Monument aux héros", cat: "hebergement", type: "monument" },
+    { titre: "Distribution du week-end", cat: "event", type: "event" },
+  ];
+  pieges.forEach((lieu) => assert.equal(A.estSolution(lieu, ["logement"]), false,
+    lieu.titre + " ne doit pas franchir la frontière Aide"));
+});
+
+test("un fournisseur d’aide structuré est reconnu par ses catégories déclarées", () => {
+  const chrs = { titre: "CHRS Lille", cat: "hebergement", is_aid_provider: true,
+    aid_categories: ["housing_aid"] };
+  assert.equal(A.estSolution(chrs, ["logement"]), true);
+  assert.equal(A.estSolution(chrs, ["manger"]), false,
+    "une catégorie logement ne doit pas répondre à Manger");
+});
+
 /* ==========================================================================
    3. MANGER N'EST PAS AIDE ALIMENTAIRE
    ======================================================================== */

@@ -11,6 +11,9 @@ const migration = readFileSync(new URL(
 const migrationPerformance = readFileSync(new URL(
   "../supabase/migrations/20260820135233_optimize_evenements_proches.sql", import.meta.url,
 ), "utf8");
+const migrationProvenance = readFileSync(new URL(
+  "../supabase/migrations/20260821120000_provenance_images.sql", import.meta.url,
+), "utf8");
 const app = corpsApplicationSync(import.meta.url);
 
 test("les six territoires demandés sont inscrits dans le registre", () => {
@@ -57,4 +60,14 @@ test("la lecture canonique calcule ses paramètres et candidats une seule fois",
   assert.equal((migrationPerformance.match(/\bst_dwithin\s*\(/gi) || []).length, 1);
   assert.match(migrationPerformance, /limit least\(greatest\(coalesce\(p_limite, 120\), 1\), 300\)/);
   assert.match(migrationPerformance, /when 'now' then 0 when 'soon' then 1 when 'upcoming' then 2 else 3/);
+});
+
+test("la RPC existante renvoie déjà le statut recalculé et la provenance", () => {
+  assert.match(migrationProvenance, /end as statut/);
+  assert.match(migrationProvenance, /e\.statut/);
+  assert.match(migrationProvenance, /temporal_status text/);
+  assert.match(migrationProvenance, /last_source_update timestamptz/);
+  assert.match(migrationProvenance, /last_synced_at timestamptz/);
+  assert.match(migrationProvenance, /security invoker/);
+  assert.match(migrationProvenance, /grant execute on function public\.evenements_proches/);
 });

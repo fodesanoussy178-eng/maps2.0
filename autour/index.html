@@ -2213,11 +2213,10 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <div id="toast" hidden></div>
 <div id="panne" hidden></div>
 
-<!-- Leaflet est chargé en `async` : il ne bloque plus l'analyse du script de
-     l'application, qui fait dix fois sa taille et n'a aucun besoin de lui pour
-     afficher les propositions. Il s'installe quand il arrive (`installerCarte`),
-     et son absence ne coûte que la carte. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" async data-leaflet></script>
+<!-- Leaflet est demandé après la première peinture par `attendreLeaflet()` :
+     c'est un décor, pas une condition pour afficher les propositions. Le
+     téléchargement ne concurrence donc plus le HTML et les scripts utiles au
+     démarrage sur un téléphone. -->
 <script src="availability.js?v=fefb49c1" defer></script>
 <script src="comprendre.js?v=674ea341" defer></script>
 <script src="donnees.js?v=c3559619" defer></script>
@@ -2234,9 +2233,9 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="aide-classement.js?v=57a9baf4" defer></script>
 <script src="aide-rayon.js?v=c36fcbae" defer></script>
 <script src="aide-contexte-ia.js?v=3da4c06f" defer></script>
-<script src="aide.js?v=02f62d22" defer></script>
+<script src="aide.js?v=61be90cf" defer></script>
 <script src="signaux.js?v=319acaa9" defer></script>
-<script src="temporel.js?v=babdb878" defer></script>
+<script src="temporel.js?v=956a7024" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=2a03415f" defer></script>
 <script src="images.js?v=159d48a4" defer></script>
@@ -2247,6 +2246,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/decouvertes.js?v=e089f93c" defer></script>
 <script src="providers/osm.js?v=ce966e3f" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=f6727ee1" defer></script>
+<script src="app.js?v=c461da0c" defer></script>
 </body>
 </html>

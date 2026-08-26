@@ -80,7 +80,7 @@ test("l’entrée dans Aide laisse peindre la feuille, privilégie les sources s
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
   /* Le rayon est progressif : `cats` se calcule avant la boucle des paliers. */
   assert.match(html,/const cats = catsContexte\.length \? catsContexte : CATS_AIDE;/);
-  assert.match(html,/await vraisLieux\(lat,lng,null,\s*\n?\s*\{cats, rayon:palier, limite:180, signal:generation\.signal\}\)/);
+  assert.match(html,/await vraisLieux\(lat,lng,null,\s*\n?\s*\{cats, rayon:palier, limite:180, pays:"FR", signal:generation\.signal\}\)/);
   assert.match(html,/lieuxDatatourisme\(lat,lng,generation\.signal\)/);
   assert.match(html,/const reseaux = reseauxPourContexteAide\(contexte\);/);
   assert.doesNotMatch(html,/const cleAide/);
@@ -1250,7 +1250,7 @@ test("les réseaux d'aide et leurs tags couvrent ce qu'on cherche vraiment",()=>
 test("un complément santé tardif enrichit le panneau sans le réinitialiser",()=>{
   assert.match(html,/parCategorie\.forEach\(\(fiches,cat\)=>ajouterLieuxGoogle\(fiches,cat\)\);/);
   assert.match(html,/coordonnerSourcesVersionnees\([\s\S]*?\(\)=>generationCourante\(generation\)\)/);
-  assert.match(html,/zonesAideChargees\.set\(contexte\.cle,\[lat,lng\]\)/);
+  assert.match(html,/zonesAideChargees\.set\(cleZoneAide,\[lat,lng\]\)/);
   assert.match(html,/if\(canonique && canonique!==dejaPresent\) appliquerFicheGoogle\(canonique,f\);\s+planifierRendu\(\{carte:true,accueil:true,feuille:true\}\);/);
   assert.doesNotMatch(html,/description:f\.description\|\|"",quand:"Voir sur place",gratuit:true/,
     "une fiche Google ne doit jamais devenir gratuite par défaut");
@@ -1275,7 +1275,7 @@ test("un événement annulé ne se lit jamais comme un événement qui a lieu",(
   // dans versLieu, et la carte l'affichait comme normal
   assert.match(html,/annule: p\.status === "cancelled" \|\| !!p\.annule/);
   // « Maintenant » l'écarte : le moteur temporel range une annulation en passé
-  assert.match(temporel,/if \(source\.annule\) return \{ statut: STATUTS\.PASSE/);
+  assert.match(temporel,/if \(source\.annule \|\| source\.cancelled \|\| source\.status === "cancelled"\)\s+return \{ statut: STATUTS\.PASSE/);
   // sur la carte : affiche conservée mais barrée et mentionnée
   assert.match(html,/\(l\.annule\?' annulee':''\)/);
   assert.match(html,/\(l\.annule\?'ANNULÉ':/);
@@ -1382,6 +1382,17 @@ test("une exposition fermée annonce sa réouverture, pas le début de sa pério
   assert.match(temporel,/\{ debut: suivant, dansMs: suivant - t \}/);
   // et elle n'est jamais « imminente » : ce n'est pas un événement qui commence
   assert.doesNotMatch(temporel,/statut: STATUTS\.IMMINENT, periodeLongue/);
+});
+
+test("« Voir tout » recalcule les distances absentes et ne rend jamais NaN km",()=>{
+  assert.match(html,/function distancePourListe\(l\)\{/);
+  assert.match(html,/const calculee = distanceDepuisZone\(l\);/);
+  const debut = html.indexOf("function afficherListe(");
+  const fin = html.indexOf("function ouvrirResultats(", debut);
+  const liste = html.slice(debut, fin);
+  assert.match(liste,/const distance = distancePourListe\(x\);/);
+  assert.match(liste,/Number\.isFinite\(distance\)/);
+  assert.doesNotMatch(liste,/formatDist\(x\.dist\)/);
 });
 
 test("dans l'aide, chaque lieu dit à quoi il sert",()=>{
@@ -1645,7 +1656,7 @@ test("l'aide mélange structures permanentes et opportunités temporaires",()=>{
 test("Aide garde uniquement les solutions liées au besoin et offre une fiche exploitable",()=>{
   assert.match(html,/function estSolutionAideLiee\(l\)\{/);
   assert.match(html,/AIDE\.estSolution\(l, besoins\)/);
-  assert.match(html,/let candidats = lieux\.filter\(l=>nomExploitable\(l\) && estSolutionAideLiee\(l\)\)/);
+  assert.match(html,/let candidats = lieux\.filter\(l=>dansZoneActive\(l\) && nomExploitable\(l\) && estSolutionAideLiee\(l\)\)/);
   assert.match(html,/b\.poids - a\.poids \|\|\s*prioriteDisponibiliteAide/s);
   // photo de source autorisée ou couverture graphique : son absence ne sert
   // pas au classement et n'est jamais remplacée par une image inventée
@@ -1986,7 +1997,14 @@ test("Overpass n'est jamais ce qu'on attend au démarrage",()=>{
 test("la carte est une couche, pas une condition",()=>{
   assert.match(html,/function installerCarte\(\)\{/);
   assert.match(html,/function attendreLeaflet\(\)\{/);
-  assert.match(html,/leaflet\.js" async data-leaflet/);
+  // Leaflet est demandé après la première peinture, pas depuis le HTML : son
+  // téléchargement et son parsing ne doivent pas concurrencer l'écran utile.
+  assert.doesNotMatch(html,/<script src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/leaflet\/1\.9\.4\/leaflet\.js"/);
+  const attente = /function attendreLeaflet\(\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(attente, "le chargeur Leaflet existe");
+  assert.match(attente[0],/document\.createElement\("script"\)/);
+  assert.match(attente[0],/balise\.async = true/);
+  assert.match(attente[0],/balise\.dataset\.leaflet/);
   // sans Leaflet, l'application vit : plus d'écran de panne
   assert.doesNotMatch(html,/panne\("Carte indisponible"/);
   assert.match(html,/Carte indisponible · les propositions restent affichées/);
@@ -1994,6 +2012,15 @@ test("la carte est une couche, pas une condition",()=>{
   assert.match(html,/function majAccueil\(\)\{[\s\S]{0,400}if\(!positionMoi \|\| modeNav\)\{ PERF\.travail\("accueil", debutCpu\); return; \}/);
   // et la feuille de style de Leaflet ne bloque plus la première peinture
   assert.match(html,/<link rel="stylesheet" media="print" data-leaflet-css/);
+});
+
+test("les SDK cartographiques ne retiennent pas la première peinture",()=>{
+  const debut = html.indexOf("async function demarrer(coords)");
+  const fin = html.indexOf("/* Le jeu de zone arrive", debut);
+  assert.ok(debut > 0 && fin > debut);
+  const demarrage = html.slice(debut, fin);
+  assert.match(demarrage,/apresPeinture\(\(\)=>preparerCarteGoogle\(/);
+  assert.doesNotMatch(demarrage,/^\s*preparerCarteGoogle\(/m);
 });
 
 test("la géolocalisation part avec l'interface et se voit à l'arrivée",()=>{
