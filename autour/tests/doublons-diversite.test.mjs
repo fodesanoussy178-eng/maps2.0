@@ -183,7 +183,9 @@ test("la déduplication vaut pour tout ce qui est affiché, liste comme carte", 
   // liste et marqueurs lisent la même collection, construite par une seule
   // déduplication : il n'existe pas de chemin qui contourne la règle
   assert.match(html, /lieux = fusionnerFichesFournisseurs\(dedupeItems\(\[/);
-  assert.match(html, /const dedupliques = dedupeItems\(\[\.\.\.parId\.values\(\)\], distanceM\);/);
+  // la fusion d'un bloc reste une seule déduplication ; le chemin d'origine
+  // sert quand une fiche déjà connue revient enrichie
+  assert.match(html, /dedupliques = dedupeItems\(\[\.\.\.parId\.values\(\)\], distanceM\);/);
 });
 
 /* ====================================================================== */
@@ -453,4 +455,65 @@ test("aucune règle n'est écrite pour une ville en particulier", () => {
     assert.doesNotMatch(sansCommentaires(bloc), new RegExp(ville, "i"));
   // le centre du classement vient de la zone active, pas d'une ville nommée
   assert.match(html, /const centre = centreZoneActive\(\) \|\| \(map \? \[map\.getCenter\(\)\.lat, map\.getCenter\(\)\.lng\] : null\);/);
+});
+
+/* ==========================================================================
+   LE PRÉFIXE PROPRE — MÊME RÉSULTAT, SANS LE QUADRATIQUE
+
+   `dedupeItems({prefixePropre})` saute la comparaison mutuelle d'un préfixe
+   déjà dédupliqué. Ces tests sont le filet : ils prouvent que la sortie est
+   IDENTIQUE à un dédoublonnage complet, doublons entre préfixe et suite
+   compris. Un écart ici = un marqueur en double ou un lieu perdu.
+   ======================================================================== */
+
+/* Un jeu réaliste et dense : beaucoup de lieux distincts très proches, et
+   quelques vrais doublons dispersés (même nom, à quelques mètres). */
+function jeuDense(n) {
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    items.push(lieu({ id: "p" + i, title: "Lieu " + i, cat: "restaurant",
+      latitude: 48.8566 + (i % 20) * 0.0002, longitude: 2.3522 + Math.floor(i / 20) * 0.0003 }));
+    // un doublon franc tous les 7 : même nom, à ~10 m
+    if (i % 7 === 0) items.push(lieu({ id: "p" + i + "b", title: "Lieu " + i, cat: "restaurant",
+      latitude: 48.8566 + (i % 20) * 0.0002 + 0.00008, longitude: 2.3522 + Math.floor(i / 20) * 0.0003 }));
+  }
+  return items;
+}
+
+const memeSortie = (a, b) => {
+  const cle = (l) => (l.title || l.titre) + "@" + l.latitude.toFixed(6) + "," + l.longitude.toFixed(6) +
+    "#" + (l.nbRegroupes || 1);
+  assert.deepEqual(a.map(cle), b.map(cle));
+};
+
+test("un préfixe propre donne exactement le même résultat qu'un dédoublonnage complet", () => {
+  const complet = dedupeItems(jeuDense(140), distance);           // référence
+  // le préfixe propre EST une sortie de dédoublonnage : on la réutilise
+  const suite = jeuDense(60).map((l) => lieu({ ...l, id: l.id + "-2" }));
+  const plein = dedupeItems([...complet, ...suite], distance);
+  const incremental = dedupeItems([...complet, ...suite], distance,
+    { prefixePropre: complet.length });
+  memeSortie(plein, incremental);
+});
+
+test("un doublon entre le préfixe et la suite est bien fusionné", () => {
+  const prefixe = dedupeItems([
+    lieu({ id: "a", title: "Le Comptoir", cat: "restaurant", latitude: 48.86, longitude: 2.35 }),
+    lieu({ id: "b", title: "Autre", cat: "restaurant", latitude: 48.87, longitude: 2.36 }),
+  ], distance);
+  // « Le Comptoir » revient d'une autre source, à quelques mètres : doit fusionner
+  const suite = [lieu({ id: "c", title: "Le Comptoir", cat: "restaurant",
+    latitude: 48.86 + 0.00007, longitude: 2.35 })];
+  const complet = dedupeItems([...prefixe, ...suite], distance);
+  const incremental = dedupeItems([...prefixe, ...suite], distance, { prefixePropre: prefixe.length });
+  memeSortie(complet, incremental);
+  assert.equal(incremental.length, 2, "le doublon inter-source est replié");
+});
+
+test("les deux entrées d'ingestion posent un préfixe propre", () => {
+  // la reconstruction (union des sources) et la fusion (bloc courant + neuf)
+  assert.match(html, /\], distanceM, \{prefixePropre: permanentPlaces\.length\}\)\);/);
+  assert.match(html, /dedupeItems\(\[\.\.\.courant, \.\.\.classes\], distanceM,\s*\n?\s*\{prefixePropre: courant\.length\}\)/);
+  // et le cas « fiche déjà connue qui revient » garde le chemin exact d'origine
+  assert.match(html, /const revientEnrichi = classes\.some\(l=>l\.id!=null && idsCourant\.has\(l\.id\)\);/);
 });

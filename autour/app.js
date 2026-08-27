@@ -3701,12 +3701,18 @@ function visuelPrefere(a, b){
 }
 
 function reconstruireLieux(){
+  /* Chaque bloc est déjà propre en lui-même ; seuls les DOUBLONS ENTRE BLOCS
+     (un lieu OSM qui existe aussi côté Google) restent à fusionner. Le plus
+     gros bloc — les lieux permanents — sert donc de préfixe propre : on ne
+     re-compare pas ses centaines d'entrées entre elles, on vérifie seulement
+     les autres sources contre l'ensemble. L'ordre est inchangé, le résultat
+     identique. */
   lieux = fusionnerFichesFournisseurs(dedupeItems([
     ...permanentPlaces,
     ...datatourismePlaces,
     ...externalEvents,
     ...userPublications
-  ], distanceM));
+  ], distanceM, {prefixePropre: permanentPlaces.length}));
   publies = userPublications;
   indexPerime = true;
   revisionLieux++;
@@ -3744,9 +3750,27 @@ function fusionner(nouveaux, flux, opts){
   const courant = type === "external" ? externalEvents
     : type === "user" ? userPublications
     : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
-  const parId = new Map(courant.map(l=>[l.id,l]));
-  classes.forEach(l=>parId.set(l.id,l));
-  const dedupliques = dedupeItems([...parId.values()], distanceM);
+  /* LE BLOC DÉJÀ PRÉSENT NE SE RE-DÉDUPLIQUE PAS CONTRE LUI-MÊME.
+
+     `courant` est la sortie du dédoublonnage précédent : il est déjà propre.
+     Le cas courant — de nouveaux lieux arrivent, avec des identifiants neufs —
+     n'a donc besoin de vérifier QUE les nouveaux, contre l'existant. On passe
+     `courant` en préfixe propre et on ne paie plus le quadratique de le
+     re-comparer à lui-même à chaque arrivée de données (mesuré : le poste qui
+     explosait à Paris). Quand une fiche DÉJÀ connue revient (enrichie, même
+     identifiant), l'ordre de fusion doit être exactement celui d'avant : on
+     reprend alors le chemin d'origine, à l'identique. */
+  const idsCourant = new Set(courant.map(l=>l.id).filter(x=>x!=null));
+  const revientEnrichi = classes.some(l=>l.id!=null && idsCourant.has(l.id));
+  let dedupliques;
+  if(revientEnrichi){
+    const parId = new Map(courant.map(l=>[l.id,l]));
+    classes.forEach(l=>parId.set(l.id,l));
+    dedupliques = dedupeItems([...parId.values()], distanceM);
+  }else{
+    dedupliques = dedupeItems([...courant, ...classes], distanceM,
+      {prefixePropre: courant.length});
+  }
   if(type === "external") externalEvents = dedupliques;
   else if(type === "user") userPublications = dedupliques;
   else if(type === "datatourisme") datatourismePlaces = dedupliques;
@@ -5275,8 +5299,44 @@ function estVivant(l){
 
    Rien n'est perdu : lieux[] garde tous les objets, et chaque représentant
    porte ses membres dans .regroupes. */
+/* ---- LE TRAVAIL IMMÉDIAT SUIT LA PROXIMITÉ, PAS LA DENSITÉ ----------------
+
+   Le moteur peut RECEVOIR des centaines de lieux — c'est très bien, on les
+   garde tous dans `lieux[]`. Mais le travail cher et immédiat (regroupement,
+   classement, pose des marqueurs) n'a de sens que pour les résultats qu'on
+   va réellement voir. À Paris, cinq cents lieux tiennent dans un pâté de
+   maisons ; en traiter cinq cents à chaque image, alors qu'on en montre une
+   poignée, c'est très exactement ce qui rendait Paris moins fluide que
+   Tourcoing (mesuré : dédoublonnage et classement super-linéaires).
+
+   On borne donc l'ensemble TRAVAILLÉ aux N plus proches du centre regardé.
+   Rien n'est perdu : les autres restent dans `lieux[]` et reviennent dès qu'on
+   se déplace vers eux — le tri par proximité se refait autour du nouveau
+   centre. Le plafond est large (bien au-delà de ce qu'un écran dense montre
+   sans se chevaucher), donc les résultats proches sont identiques.
+
+   IL NE S'APPLIQUE PAS LÀ OÙ LE LOINTAIN COMPTE : ni en Aide (un hébergement à
+   huit kilomètres est la bonne réponse), ni pour une recherche nommée ou une
+   intention dirigée (« où bosser » peut viser une bibliothèque plus loin qu'un
+   bar). Là, on traite tout — ces cas sont rares et ne saturent pas la carte. */
+const PLAFOND_PROXIMITE = 180;
+function plafondProximiteActif(){
+  return !modeAide && !recherche.trim() && !intentionCourante;
+}
+function ensembleProche(items){
+  if(!plafondProximiteActif() || !Array.isArray(items) || items.length <= PLAFOND_PROXIMITE)
+    return items;
+  const c = centreZoneActive() || positionMoi ||
+    (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!c) return items;
+  const [lat,lng] = c, kx = Math.cos(lat * Math.PI / 180);
+  // distance approchée au carré : pas de trigonométrie, un simple tri suffit
+  const d2 = (l)=>{ const dy = l.lat - lat, dx = (l.lng - lng) * kx; return dy*dy + dx*dx; };
+  return items.slice().sort((a,b)=>d2(a) - d2(b)).slice(0, PLAFOND_PROXIMITE);
+}
+
 function visibles(){
-  return groupLogicalPlaces(visiblesBruts(), distanceM);
+  return groupLogicalPlaces(ensembleProche(visiblesBruts()), distanceM);
 }
 
 function visiblesBruts(){
@@ -8803,9 +8863,9 @@ function recommandationsAccueil(limite, options){
   if(!recoBurstCache){ recoBurstCache = new Map(); queueMicrotask(()=>{ recoBurstCache = null; }); }
   let classement = recoBurstCache.get(cleBurst);
   if(!classement){
-    const candidats = groupe
+    const candidats = ensembleProche(groupe
       ? lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l))
-      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l));
+      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l)));
     PERF.jauge("recommandations:candidats", candidats.length);
     classement = rankResults(candidats,{
       intent:groupe ? "explorer" : "sortir",

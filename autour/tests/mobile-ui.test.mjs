@@ -496,7 +496,9 @@ test("les objets qui désignent le même endroit sont repliés en un marqueur",(
   // le repliement vit dans l'unique entonnoir de ce qui peut s'afficher :
   // placé plus loin, la liste de recommandations choisissait cinq membres du
   // même pôle avant que quiconque ne les replie
-  assert.match(html,/function visibles\(\)\{\s*\n\s*return groupLogicalPlaces\(visiblesBruts\(\), distanceM\);\s*\n\}/);
+  // le repliement reste dans l'unique entonnoir ; on ne fait que borner son
+  // entrée aux lieux les plus proches (voir `ensembleProche`)
+  assert.match(html,/function visibles\(\)\{\s*\n\s*return groupLogicalPlaces\(ensembleProche\(visiblesBruts\(\)\), distanceM\);\s*\n\}/);
   assert.match(html,/function visiblesBruts\(\)\{/);
   assert.match(html,/regroupesAuto = brut\.reduce\(\(n,l\)=>n \+ \(\(l\.nbRegroupes\|\|1\) - 1\), 0\);/);
   // le regroupement ne compte pas comme un masquage : sinon le bandeau
@@ -2534,4 +2536,34 @@ test("les jauges de densité exposent le nombre d'objets par phase",()=>{
   assert.match(html,/PERF\.jauge\("accueil:scores", notes\.length\);/);
   assert.match(html,/PERF\.jauge\("recommandations:candidats", candidats\.length\);/);
   assert.match(html,/jauges:this\.jauges/);
+});
+
+/* ======================================================================== */
+/*  Densité : le travail immédiat suit la proximité, pas le nombre reçu      */
+/* ======================================================================== */
+
+test("le travail immédiat est borné aux lieux les plus proches",()=>{
+  /* Le moteur reçoit tout — `lieux[]` garde tout — mais regroupement,
+     classement et marqueurs ne traitent que les N plus proches du centre
+     regardé. C'est ce qui empêche Paris d'être moins fluide que Tourcoing :
+     visibles/reco/rendu deviennent plats avec la densité (mesuré). */
+  assert.match(html,/const PLAFOND_PROXIMITE = 180;/);
+  assert.match(html,/function ensembleProche\(items\)\{/);
+  // les deux entonnoirs coûteux le traversent : l'affichage et le classement
+  assert.match(html,/return groupLogicalPlaces\(ensembleProche\(visiblesBruts\(\)\), distanceM\)/);
+  assert.match(html,/const candidats = ensembleProche\(groupe/);
+});
+
+test("le plafond de proximité ne s'applique pas là où le lointain compte",()=>{
+  /* Ni en Aide (un hébergement à 8 km est la bonne réponse), ni pour une
+     recherche nommée ou une intention dirigée. Là on traite tout. */
+  const bloc = /function plafondProximiteActif\(\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(bloc,/!modeAide/);
+  assert.match(bloc,/!recherche\.trim\(\)/);
+  assert.match(bloc,/!intentionCourante/);
+  // rien n'est perdu : les lieux au-delà restent dans lieux[], le tri se refait
+  // autour du nouveau centre au déplacement
+  const helper = /function ensembleProche\(items\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(helper,/items\.slice\(\)\.sort\(\(a,b\)=>d2\(a\) - d2\(b\)\)\.slice\(0, PLAFOND_PROXIMITE\)/);
+  assert.match(helper,/if\(!plafondProximiteActif\(\) \|\| !Array\.isArray\(items\) \|\| items\.length <= PLAFOND_PROXIMITE\)/);
 });

@@ -700,8 +700,20 @@
     return memeFenetre(existing, item);
   }
 
-  function dedupeItems(items, distanceBetween) {
+  function dedupeItems(items, distanceBetween, options) {
     const result = [];
+    /* UN PRÉFIXE DÉJÀ PROPRE NE SE RE-COMPARE PAS À LUI-MÊME.
+
+       `items[0..prefixePropre)` est la sortie d'un dédoublonnage antérieur :
+       ces éléments sont, par construction, deux à deux distincts. Les
+       re-comparer entre eux ne peut rien fusionner — c'est du travail
+       quadratique pour rien, et c'est précisément ce qui explosait quand des
+       centaines de lieux déjà propres étaient re-dédupliqués à chaque arrivée
+       de données. On les enregistre donc dans la grille sans les vérifier ; les
+       éléments SUIVANTS, eux, sont vérifiés contre TOUT, préfixe compris. Le
+       résultat est identique — vérifié par un test d'équivalence. */
+    const propres = Math.max(0, Math.min(
+      Number(options && options.prefixePropre) || 0, (items || []).length));
     /* Toutes les heuristiques géographiques sont bornées à 500 m. Parcourir
        toute la collection pour chaque fiche rendait pourtant l'ingestion
        quadratique. La grille ne DÉCIDE rien : elle ne fait que fournir les
@@ -745,8 +757,8 @@
       }
       return [...indices].sort((a, b) => a - b);
     };
-    (items || []).forEach((item) => {
-      const found = candidats(item).find((index) =>
+    (items || []).forEach((item, i) => {
+      const found = i < propres ? undefined : candidats(item).find((index) =>
         memeEnregistrement(result[index], item, distanceBetween));
       if (found === undefined) {
         const index = result.length;
