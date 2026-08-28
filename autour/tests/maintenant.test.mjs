@@ -593,5 +593,6 @@ test("la ligne dit le bon temps selon la nature", () => {
   // exactement le contraire de la vérité
   assert.match(html, /function tempsMaintenant\(l\)\{/);
   assert.match(html, /commence dans "\+dans\+" min"/);
-  assert.match(html, /"ouvert jusqu’à "\+d\.closesAtTime/);
+  // et l'heure s'écrit en français — « 20h », pas « 20:00 »
+  assert.match(html, /"ouvert jusqu’à "\+heureFrancaise\(d\.closesAtTime\)/);
 });

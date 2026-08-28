@@ -119,8 +119,8 @@ test("la disponibilité complète est exposée aux écrans", () => {
   const dispo = vus[0].rankAvailability;
   assert.equal(dispo.status, "open");
   assert.equal(dispo.closesAtTime, "23:00");
-  assert.equal(dispo.label, "Ouvert • ferme à 23:00");
-  assert.equal(vus[0].rankReason.startsWith("Ouvert • ferme à 23:00"), true);
+  assert.equal(dispo.label, "Ouvert · ferme à 23h");
+  assert.equal(vus[0].rankReason.startsWith("Ouvert · ferme à 23h"), true);
 });
 
 test("un événement terminé reste exclu, indépendamment des horaires de lieu", () => {

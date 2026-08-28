@@ -345,7 +345,7 @@
         result.status = "closing_soon";
         result.reason = "Ferme dans " + minutesLeft + " min";
       }
-      result.label = "Ouvert • ferme à " + result.closesAtTime;
+      result.label = "Ouvert · ferme à " + heureFr(result.closesAtTime);
     } else if (upcoming) {
       result.opensAt = new Date(upcoming.start).toISOString();
       result.opensAtTime = formatIn(upcoming.start, timeZone);
@@ -353,13 +353,13 @@
       result.status = minutesUntil <= 60 ? "opening_soon" : "closed";
 
       if (upcoming.dayOffset === 0) {
-        result.label = "Fermé • ouvre à " + result.opensAtTime;
+        result.label = "Fermé · ouvre à " + heureFr(result.opensAtTime);
       } else if (upcoming.dayOffset === 1) {
         // ferme pour aujourd'hui, mais rouvre demain
         result.label = "Fermé aujourd’hui";
-        result.reason = "Ouvre demain à " + result.opensAtTime;
+        result.reason = "Ouvre demain à " + heureFr(result.opensAtTime);
       } else {
-        result.label = "Fermé • ouvre " + JOUR_NOM[upcoming.weekday] + " à " + result.opensAtTime;
+        result.label = "Fermé · ouvre " + JOUR_NOM[upcoming.weekday] + " à " + heureFr(result.opensAtTime);
       }
     } else {
       result.status = "closed";
@@ -385,6 +385,84 @@
     return result;
   }
 
+  /* ======================================================================
+     AUCUN FORMAT BRUT NE SORT D'ICI
+
+     `Mo-Fr 08:00-12:00,14:00-18:00; Sa 09:00-12:00` était affiché tel quel
+     dans la liste, dans la fiche et dans le texte de partage. C'est la
+     syntaxe d'une base de données ; personne ne l'a demandée, et personne ne
+     la lit.
+
+     Ce module possédait déjà tout ce qu'il fallait — l'analyseur, les noms de
+     jours en français — mais ne rendait que le STATUT. Il rend maintenant
+     aussi la GRILLE, en français, dans le même vocabulaire. Une seule source
+     de vérité pour les horaires reste une seule source de vérité pour leur
+     écriture.
+
+     Ce qui n'est pas lisible reste non rendu : `null`. Écrire un horaire faux
+     coûte un déplacement pour rien, et c'est exactement ce qu'on refuse.
+     ====================================================================== */
+
+  /* « 19h30 », « 9h » : l'heure telle qu'on l'écrit et telle qu'on la dit.
+     `09:00` est une notation de machine. */
+  function heureFr(hhmm) {
+    const trouve = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+    if (!trouve) return String(hhmm || "");
+    const heures = Number(trouve[1]);
+    return trouve[2] === "00" ? heures + "h" : heures + "h" + trouve[2];
+  }
+
+  function minutesEnHeureFr(minutes) {
+    const total = ((Math.round(minutes) % MINUTES_JOUR) + MINUTES_JOUR) % MINUTES_JOUR;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return m === 0 ? h + "h" : h + "h" + String(m).padStart(2, "0");
+  }
+
+  /* Une journée : « 8h – 12h, 14h – 18h », ou « Fermé », ou « 24h/24 ». */
+  function journeeFr(plages) {
+    if (!plages || !plages.length) return "Fermé";
+    if (plages.length === 1 && plages[0].start === 0 && plages[0].end === MINUTES_JOUR)
+      return "24h/24";
+    return plages.map((p) => minutesEnHeureFr(p.start) + " – " + minutesEnHeureFr(p.end)).join(", ");
+  }
+
+  /* La semaine, du lundi au dimanche, telle qu'un écran peut l'afficher.
+     Les jours consécutifs qui portent le même horaire sont regroupés —
+     « lundi au vendredi » plutôt que cinq lignes identiques. */
+  function semaineFrancaise(place) {
+    const {schedule} = resolveSchedule(place || {});
+    if (!schedule) return null;
+    const lignes = [];
+    for (let jour = 0; jour < 7; jour += 1) {
+      const texte = journeeFr(schedule.days[jour]);
+      const derniere = lignes[lignes.length - 1];
+      if (derniere && derniere.horaire === texte) derniere.fin = jour;
+      else lignes.push({debut: jour, fin: jour, horaire: texte});
+    }
+    return {
+      jours: lignes.map((ligne) => ({
+        jour: ligne.debut === ligne.fin
+          ? JOUR_NOM[ligne.debut]
+          : (ligne.fin === ligne.debut + 1
+            ? JOUR_NOM[ligne.debut] + " et " + JOUR_NOM[ligne.fin]
+            : JOUR_NOM[ligne.debut] + " au " + JOUR_NOM[ligne.fin]),
+        premierJour: ligne.debut,
+        dernierJour: ligne.fin,
+        horaire: ligne.horaire,
+      })),
+      feriesFermes: !!schedule.holidaysClosed,
+    };
+  }
+
+  /* Le jour demandé (0 = lundi), en français. `null` si rien n'est lisible. */
+  function journeeFrancaise(place, weekday) {
+    const {schedule} = resolveSchedule(place || {});
+    if (!schedule) return null;
+    const jour = ((Math.round(Number(weekday)) % 7) + 7) % 7;
+    return journeeFr(schedule.days[jour]);
+  }
+
   root.AutourAvailability = Object.freeze({
     DEFAULT_TIMEZONE,
     MARGES_MINUTES,
@@ -392,5 +470,9 @@
     getPlaceAvailability,
     marginFor,
     isFrenchHoliday,
+    heureFr,
+    semaineFrancaise,
+    journeeFrancaise,
+    JOUR_NOM,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

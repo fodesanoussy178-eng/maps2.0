@@ -5,7 +5,10 @@
   "description": "Autour est servi en statique. Ce fichier existe pour une seule raison : la commande de build de Vercel a besoin d'esbuild, et Vercel installe les dépendances du dossier racine du projet — c'est-à-dire celui-ci. \"type\": \"module\" dit la vérité sur les seuls .js que Node exécute ici — api/*.js et middleware.js sont des modules ES (export default, export const config). Les scripts du navigateur, eux, ne passent jamais par Node.",
   "scripts": {
     "build": "node outils/alleger.mjs",
-    "test": "node --test \"tests/*.test.mjs\""
+    "test": "node --test \"tests/*.test.mjs\"",
+    "banc": "node outils/banc-serveur.mjs",
+    "banc:appareils": "node outils/appareils.mjs complet",
+    "banc:aide": "node outils/aide-progressive.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.12"

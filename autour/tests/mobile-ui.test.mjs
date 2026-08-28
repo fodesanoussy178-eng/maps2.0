@@ -80,8 +80,21 @@ test("l’entrée dans Aide laisse peindre la feuille, privilégie les sources s
   assert.match(html,/await new Promise\(resolve=>requestAnimationFrame\(\(\)=>setTimeout\(resolve,0\)\)\)/);
   /* Le rayon est progressif : `cats` se calcule avant la boucle des paliers. */
   assert.match(html,/const cats = catsContexte\.length \? catsContexte : CATS_AIDE;/);
-  assert.match(html,/await vraisLieux\(lat,lng,null,\s*\n?\s*\{cats, rayon:palier, limite:180, pays:"FR", signal:generation\.signal\}\)/);
+  assert.match(html,/await vraisLieux\(lat,lng,null,\s*\n?\s*\{cats, rayon:palier, limite:180, pays:"FR", delai:budget, signal:generation\.signal\}\)/);
+  /* Chaque palier publie ce qu'il trouve au lieu d'attendre la fin de la
+     boucle : c'est ce qui fait apparaître les premières structures pendant
+     que la recherche s'élargit encore. */
+  assert.match(html,/fusionner\(locaux,"permanent"\);[\s\S]{0,300}?definirEtatRechercheVersionne\("overpass",SEARCH_STATES\.SUCCESS,generation\);\s*\n\s*majFeuille2\(\);/);
+  /* Un transport muet n'est pas une absence de structures : on s'arrête au
+     lieu d'enchaîner trois paliers plus larges voués au même échec. */
+  assert.match(html,/if\(!r \|\| !r\.ok\)\{[\s\S]{0,400}?SEARCH_STATES\.OVERPASS_UNAVAILABLE,generation\);\s*\n\s*break;/);
   assert.match(html,/lieuxDatatourisme\(lat,lng,generation\.signal\)/);
+  /* `fetch` n'a pas de délai par défaut : sur un réseau mobile une socket
+     muette gelait le voile « Recherche des points d'aide… » et bloquait la
+     clé de chargement de la zone. Aucune source secondaire ne peut plus
+     retenir l'écran. */
+  assert.match(html,/avecDelai\(lieuxDatatourisme\(lat,lng,generation\.signal\),\s*\n?\s*AIDE_DELAI_SOURCE_MS/);
+  assert.match(html,/avecDelai\(chercherGoogle\(r\.q, lat, lng,\{signal:generation\.signal\}\),\s*\n?\s*AIDE_DELAI_SOURCE_MS/);
   assert.match(html,/const reseaux = reseauxPourContexteAide\(contexte\);/);
   assert.doesNotMatch(html,/const cleAide/);
 });
@@ -861,9 +874,17 @@ test("la position est veillée, pas seulement demandée",()=>{
   assert.match(html,/navigator\.geolocation\.watchPosition\(/);
   assert.match(html,/function veillerSurLaPosition\(\)\{/);
   assert.match(html,/function arreterLaVeille\(\)\{/);
-  // la veille lit toujours frais ; la demande ponctuelle tolère 30 s, pas 120
+  // la veille lit toujours frais, en haute précision et sans pression de temps
   assert.match(html,/\{enableHighAccuracy:true, maximumAge:0, timeout:20000\}/);
-  assert.match(html,/\{enableHighAccuracy:true, timeout:8000, maximumAge:30000\}/);
+  /* LE PREMIER POINT EST LE POINT RAPIDE, PAS LE MEILLEUR.
+
+     `enableHighAccuracy:true` sur le premier relevé demande le GPS. Sur un
+     ordinateur c'est sans effet — la position vient du réseau. Sur un
+     téléphone, c'est une acquisition satellite de dix à trente secondes en
+     intérieur : huit secondes de délai garantissaient un échec à froid, et
+     l'écran annonçait alors un refus que personne n'avait formulé. La veille
+     ci-dessus affine derrière, elle, en haute précision. */
+  assert.match(html,/\{enableHighAccuracy:false, timeout:15000, maximumAge:60000\}/);
   assert.doesNotMatch(html,/maximumAge:120000/);
 });
 
@@ -2141,8 +2162,14 @@ test("Overpass et Nominatim passent par notre propre origine",()=>{
 });
 
 test("le relais Overpass n'est pas un relais ouvert",()=>{
-  assert.match(apiLieux,/const FORME = \//);
-  assert.match(apiLieux,/if \(!FORME\.test\(q\)\) return refus/);
+  assert.match(apiLieux,/const FORME = new RegExp\(/);
+  assert.match(apiLieux,/if \(!formeAcceptee\(q\)\) return refus/);
+  /* La forme d'Aide — restreinte au territoire français — n'était pas décrite
+     et repartait donc en 400 à chaque appel : aucun lieu OpenStreetMap
+     n'atteignait jamais l'écran Aide. Elle l'est ; et une aire rappelée sans
+     préambule, ou l'inverse, reste refusée. */
+  assert.match(apiLieux,/ISO3166-1/);
+  assert.match(apiLieux,/function formeAcceptee\(q\)/);
   assert.match(apiLieux,/if \(q\.length > LONGUEUR_MAX\)/);
   assert.match(apiLieux,/if \(!sortie \|\| sortie > SORTIE_MAX\)/);
   // et il mutualise : c'est tout l'intérêt
@@ -2286,7 +2313,12 @@ test("la permission décide du démarrage, et Safari n'est pas oublié",()=>{
   assert.match(html,/const CLE_GEO_OK = "autour:geo-autorisee";/);
   assert.match(html,/noterAutorisationGeo\(true\);/);
   // un refus efface la trace et n'est pas redemandé au démarrage
-  assert.match(html,/if\(err && err\.code === 1\) noterAutorisationGeo\(false\);/);
+  assert.match(html,/if\(err && err\.code === 1\)\{\s*\n\s*noterAutorisationGeo\(false\);/);
+  /* Les trois codes d'erreur atterrissaient dans le même état « refusée ».
+     `TIMEOUT` et `POSITION_UNAVAILABLE` ne disent pourtant rien du
+     consentement : la permission peut être accordée et le point simplement
+     absent. On revient à l'état neutre et la veille reprend la main. */
+  assert.match(html,/definirEtatRecherche\("location",SEARCH_STATES\.IDLE\);\s*\n\s*if\(geoDejaAutorisee\(\)\) veillerSurLaPosition\(\);/);
   assert.match(html,/if\(etatPerm === "denied"\)\{ proposerPosition\(\); return; \}/);
   // accordée ou encore à demander : la boîte part dès le démarrage
   assert.match(html,/if\(!positionTest\) demarrerLocalisation\(\);/);
@@ -2309,7 +2341,7 @@ test("l'heure d'arrivée est un temps de trajet, elle obéit à la même règle"
   // approximative c'est aussi faux que « 16 min », et bien plus crédible
   assert.match(html,/const arrivee = l\.rankArrival && !dejaEnCours && positionPrecise\(\)/);
   // l'heure de fermeture, elle, ne dépend pas d'où l'on est
-  assert.match(html,/dispo && dispo\.closesAtTime \? "Ferme à "\+dispo\.closesAtTime/);
+  assert.match(html,/dispo && dispo\.closesAtTime \? "Ferme à "\+heureFrancaise\(dispo\.closesAtTime\)/);
 });
 
 /* ==========================================================================
@@ -2413,8 +2445,12 @@ test("l'état d'ouverture dit jusqu'à quelle heure", () => {
   /* « Ouvert » tout seul ne dit pas si l'on a le temps d'y aller. L'heure
      vivait dans une ligne « Ferme à 22:00 » que la liste compacte n'affiche
      plus : elle rejoint donc l'état lui-même. */
-  assert.match(html, /return \{t: d\.closesAtTime \? "Ouvert · jusqu’à "\+d\.closesAtTime : "Ouvert maintenant",/);
-  assert.match(html, /return \{t:"Ferme bientôt · "\+d\.closesAtTime, c:"tiede"\};/);
+  assert.match(html, /return \{t: d\.closesAtTime \? "Ouvert · jusqu’à "\+heureFrancaise\(d\.closesAtTime\) : "Ouvert maintenant",/);
+  assert.match(html, /return \{t:"Ferme bientôt · "\+heureFrancaise\(d\.closesAtTime\), c:"tiede"\};/);
+  /* Et l'heure s'écrit comme on la dit : « 22h », pas « 22:00 ». La notation
+     à deux points est celle des calculs d'`availability.js`, pas celle d'un
+     écran. */
+  assert.match(html, /function heureFrancaise\(hhmm\)\{/);
 });
 
 test("le cinéma annonce ses horaires d'ouverture, jamais une séance", () => {

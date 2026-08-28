@@ -530,8 +530,12 @@ input{font-family:inherit;font-size:16px}
 .aa-tete{display:flex;align-items:center;gap:9px}
 .aa-emoji{font-size:19px;line-height:1}
 .aa-nom{flex:1;min-width:0;font-size:15.5px;font-weight:750;line-height:1.25}
+/* Même repli que la couverture : sur un iPhone antérieur à iOS 16.2, la
+   vignette d'une carte d'aide sans photo n'avait aucun fond. */
 .aa-visuel{position:relative;display:grid;place-items:center;width:58px;height:48px;flex:0 0 58px;
-  overflow:hidden;border-radius:10px;background:color-mix(in srgb,var(--teinte) 13%,#fff)}
+  overflow:hidden;border-radius:10px;
+  background:#EDF0EE;
+  background:color-mix(in srgb,var(--teinte) 13%,#fff)}
 .aa-visuel i{font-style:normal;font-size:23px;line-height:1;opacity:.82}
 .aa-visuel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .18s ease}
 .aa-visuel img.vue{opacity:1}
@@ -547,10 +551,24 @@ input{font-family:inherit;font-size:16px}
 .aa-hors{margin:7px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
 .aa-bas{margin:8px 0 0;font-size:12.5px;color:var(--ink2)}
 .aa-verif{margin:6px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+/* `color-mix()` demande Safari 16.2. En dessous, la déclaration entière est
+   jetée — et une couverture sans repli n'a alors AUCUN fond : la tuile teintée
+   qui EST la réponse honnête d'une fiche sans photo disparaît, sur les iPhone
+   qui n'ont pas été mis à jour. On déclare donc d'abord une teinte unie que
+   tout le monde comprend ; le mélange la remplace là où il est compris. */
 .aide-couverture{position:relative;display:grid;place-items:center;height:190px;margin:-18px -18px 18px;
-  overflow:hidden;border-radius:18px 18px 13px 13px;background:color-mix(in srgb,var(--teinte) 14%,#fff)}
+  overflow:hidden;border-radius:18px 18px 13px 13px;
+  background:#EDF0EE;
+  background:color-mix(in srgb,var(--teinte) 14%,#fff)}
 .aide-couverture>span{font-size:56px;line-height:1;opacity:.82}
-.aide-couverture.sans-photo>span{font-size:28px}
+/* Sans photo, le pictogramme EST le visuel : il ne peut pas être la moitié
+   de la taille de celui qu'une image recouvre de toute façon. C'était
+   l'inverse — 28 px sur un aplat de 190 px de haut — et une fiche sans photo
+   se lisait comme une fiche cassée. */
+.aide-couverture.sans-photo{background:#E6EAE8;
+  background:radial-gradient(120% 120% at 50% 0%,color-mix(in srgb,var(--teinte) 22%,#fff) 0%,
+                                                 color-mix(in srgb,var(--teinte) 10%,#fff) 100%)}
+.aide-couverture.sans-photo>span{font-size:64px;opacity:.55}
 .aide-couverture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .aide-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:1;max-width:75%;padding:3px 6px;
   border-radius:5px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.2}
@@ -2217,7 +2235,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
      c'est un décor, pas une condition pour afficher les propositions. Le
      téléchargement ne concurrence donc plus le HTML et les scripts utiles au
      démarrage sur un téléphone. -->
-<script src="availability.js?v=fefb49c1" defer></script>
+<script src="availability.js?v=0d18a1b6" defer></script>
 <script src="comprendre.js?v=674ea341" defer></script>
 <script src="donnees.js?v=c3559619" defer></script>
 <script src="intentions.js?v=39e671d2" defer></script>
@@ -2231,11 +2249,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="territoire.js?v=589cf5db" defer></script>
 <script src="aide-taxonomie.js?v=f37b3892" defer></script>
 <script src="aide-classement.js?v=57a9baf4" defer></script>
-<script src="aide-rayon.js?v=c36fcbae" defer></script>
+<script src="aide-rayon.js?v=1914ed49" defer></script>
 <script src="aide-contexte-ia.js?v=3da4c06f" defer></script>
 <script src="aide.js?v=61be90cf" defer></script>
 <script src="signaux.js?v=319acaa9" defer></script>
-<script src="temporel.js?v=956a7024" defer></script>
+<script src="temporel.js?v=e228ff6a" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=2a03415f" defer></script>
 <script src="images.js?v=159d48a4" defer></script>
@@ -2246,6 +2264,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/decouvertes.js?v=e089f93c" defer></script>
 <script src="providers/osm.js?v=ce966e3f" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=c461da0c" defer></script>
+<script src="app.js?v=9ab7bac8" defer></script>
 </body>
 </html>
