@@ -40,6 +40,15 @@
 const ARTICLES = /\b(le|la|les|l|un|une|des|du|de|d|au|aux|the|a)\b/g;
 const DIACRITIQUES = new RegExp("[\\u0300-\\u036f]", "g");
 
+export {
+  extraireTemporaliteTexte,
+  extraireTemporaliteStructuree,
+  extraireTemporaliteAffiche,
+  fusionnerTemporalites,
+  champsTemporelsCritiques,
+  TEMPORAL_SOURCE_RANKS,
+} from "./temporal.mjs";
+
 export function normaliserNom(valeur) {
   return String(valeur ?? "")
     .normalize("NFD").replace(DIACRITIQUES, "")
@@ -346,6 +355,8 @@ export function invite(lieu, options) {
     ' "url_officielle": string | null,',
     ' "date_source": "AAAA-MM-JJ" | null,',
     ' "confiance": nombre entre 0 et 1}',
+    l.estEvenement || l.isEvent ?
+      'Pour un événement, ajoute aussi `temporal_data` avec period_start, period_end, date_unique, weekdays (1=lundi à 7=dimanche), start_time et end_time uniquement quand la page les affirme explicitement.' : "",
     "",
     "`programme_now` ne contient que ce qui se déroule AUJOURD'HUI ou en ce moment.",
     "`programme_soon` ne contient que les quatorze prochains jours, au maximum cinq entrées.",
@@ -627,6 +638,12 @@ export function ligneEnrichissement(fait, lieu, meta) {
     category: l.categorie ? String(l.categorie).slice(0, 40) : null,
     lat: Number.isFinite(Number(l.lat)) ? Number(l.lat) : null,
     lng: Number.isFinite(Number(l.lng)) ? Number(l.lng) : null,
+    /* L'empreinte que le client avait de la source quand il a demandé cette
+       vérification. Elle voyage avec la ligne pour que le client puisse, plus
+       tard, refuser un enrichissement calculé pour une source qui a changé
+       depuis. Absente — un appelant qui ne l'envoie pas — la ligne reste
+       écrite, avec `null` : elle sera simplement revérifiée. */
+    source_fingerprint: l.empreinte ? String(l.empreinte).slice(0, 80) : null,
     ...fait,
     checked_at: new Date(maintenant).toISOString(),
     expires_at: expiration(fait, maintenant).toISOString(),

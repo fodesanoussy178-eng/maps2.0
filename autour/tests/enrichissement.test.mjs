@@ -874,3 +874,103 @@ test("ce qu’on consigne du mode Aide, ce sont des nombres", () => {
   assert.ok(!bloc.includes("ecrire("),
     "rien du mode Aide n’est écrit en base : la demande est privée et éphémère");
 });
+
+/* ==========================================================================
+   10. L'EMPREINTE DE LA SOURCE FAIT L'ALLER-RETOUR
+
+   Le navigateur de production calcule `empreinteSource(lieu)` et l'envoie sous
+   `source_fingerprint`. Quand l'enrichissement lui revient, il ne l'applique
+   que si l'empreinte stockée est encore la sienne — sinon il tient un horaire
+   vérifié pour une source qui a changé, c'est-à-dire un souvenir.
+
+   La règle du client, telle qu'elle tourne en production (elle vit dans
+   `recovery/prod-live-20260827/artefacts/enrichissements.js`, sur la branche
+   d'archive, parce que sa source commentée est perdue) :
+
+       const compatible = !!e.source_fingerprint &&
+                          e.source_fingerprint === empreinteSource(lieu);
+       if (!compatible) return false;
+
+   Rien de tout cela ne marchait : la fonction ne lisait pas le champ, ne
+   l'écrivait pas, et ne le relisait pas. Ce qui suit vérifie les trois
+   maillons dont le serveur est responsable. Le quatrième — juger — appartient
+   au client, et il ne change pas.
+   ======================================================================== */
+
+/* La règle du client, reproduite ici telle quelle. C'est un miroir, pas une
+   réimplémentation : si elle changeait en production, ce test devrait bouger. */
+const compatibleCoteClient = (ligne, empreinteActuelle) =>
+  !!ligne.source_fingerprint && ligne.source_fingerprint === empreinteActuelle;
+
+const LIEU = { cle: "grand-mix@50.7244,3.1618", nom: "Le Grand Mix",
+  commune: "Tourcoing", categorie: "concert", lat: 50.7244, lng: 3.1618 };
+
+/* Un fait valide, bâti comme le fait le test voisin : `expiration()` lit
+   `programme_now` et `programme_soon`, un objet vide la ferait tomber. */
+const FAIT = () => construireFait({ statut: "ouvert", confiance: 0.9 },
+  ctx({ sources: [{ url: "https://legrandmix.com/" }] }));
+
+test("ce que le client envoie, la ligne écrite le porte", () => {
+  const A = "v1-6c721ad4-c02ca698";
+  const ligne = ligneEnrichissement(FAIT(), { ...LIEU, empreinte: A }, { maintenant: T });
+  assert.equal(ligne.source_fingerprint, A,
+    "l’empreinte reçue doit être écrite telle quelle, sans transformation");
+  /* Et elle ne déloge rien : la ligne reste celle qu'elle était. */
+  assert.equal(ligne.place_key, LIEU.cle);
+  assert.equal(ligne.place_name, LIEU.nom);
+});
+
+test("la fonction lit l’empreinte du corps, et ne la recalcule jamais", () => {
+  /* La lire est nécessaire ; la recalculer serait faux. Le serveur ne voit pas
+     ce que le client voit — il n’a ni son écran, ni ses horaires affichés. */
+  assert.match(fonction, /empreinte:\s*propre\(corps\.source_fingerprint,\s*80\)/);
+  assert.ok(!/empreinteSource\s*\(/.test(fonction),
+    "le serveur ne doit jamais fabriquer l’empreinte à la place du client");
+});
+
+test("la relecture rend l’empreinte, sinon le client ne peut pas juger", () => {
+  /* `CHAMPS` est la liste que `enCache` redemande à PostgREST. Une colonne
+     absente de cette liste n’existe pas pour le chemin « cache frais », qui
+     est le plus fréquent des deux. */
+  const champs = /const CHAMPS =([\s\S]*?);/.exec(fonction)[1];
+  assert.match(champs, /source_fingerprint/,
+    "sans elle, une entrée fraîche revient sans empreinte et reste inapplicable");
+});
+
+test("empreinte A stockée, relue, et acceptée par le client", () => {
+  const A = "v1-6c721ad4-c02ca698";
+  const ligne = ligneEnrichissement(FAIT(), { ...LIEU, empreinte: A }, { maintenant: T });
+  assert.equal(compatibleCoteClient(ligne, A), true,
+    "le client doit reconnaître l’enrichissement qu’il a lui-même demandé");
+});
+
+test("la source a changé : l’enrichissement d’avant est refusé", () => {
+  const A = "v1-6c721ad4-c02ca698";
+  const B = "v1-11111111-22222222";
+  const ligne = ligneEnrichissement(FAIT(), { ...LIEU, empreinte: A }, { maintenant: T });
+  assert.equal(compatibleCoteClient(ligne, B), false,
+    "un horaire vérifié pour une autre version de la source ne vaut plus rien");
+});
+
+test("aucune empreinte : rien ne casse, et la ligne sera revérifiée", () => {
+  /* Le cas des lignes déjà en base, écrites avant que l’empreinte existe, et
+     celui d’un appelant qui ne l’envoie pas. Aucune des deux ne doit faire
+     tomber l’écriture : la ligne s’écrit, avec `null`. */
+  for (const lieu of [LIEU, { ...LIEU, empreinte: "" }, { ...LIEU, empreinte: null }]) {
+    const ligne = ligneEnrichissement(FAIT(), lieu, { maintenant: T });
+    assert.equal(ligne.source_fingerprint, null,
+      "l’absence d’empreinte s’écrit `null`, elle n’invente rien");
+    assert.equal(compatibleCoteClient(ligne, "v1-6c721ad4-c02ca698"), false,
+      "et le client refuse d’appliquer : il redemandera, c’est le repli sûr");
+  }
+});
+
+test("la migration ajoute la colonne sans toucher aux données", async () => {
+  const migration = await readFile(new URL(
+    "../supabase/migrations/20260828080303_enrichissement_source_fingerprint.sql",
+    import.meta.url), "utf8");
+  assert.match(migration, /add column if not exists source_fingerprint text/,
+    "additive, idempotente, et nullable pour les lignes déjà écrites");
+  assert.ok(!/\b(drop|delete|truncate|update)\b/i.test(migration.replace(/\/\*[\s\S]*?\*\//g, "")),
+    "aucune donnée existante n’est lue, réécrite ou supprimée");
+});

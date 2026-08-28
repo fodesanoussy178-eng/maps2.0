@@ -25,6 +25,8 @@
    n'existe pas encore dans la table.
    ======================================================================== */
 
+import {normaliserAnnonce, fusionnerAnnonceFields} from "../shared/annonces.mjs";
+
 /* ---- Lecture défensive du JSON-LD ---------------------------------------
    DATAtourisme rend du JSON-LD : une même information s'y présente comme
    chaîne, tableau, objet multilingue ou objet `@value`. On aplatit sans
@@ -325,10 +327,21 @@ export function normaliserEvenement(poi, options = {}) {
   const description = texte(lire(poi, ["hasDescription", "description", "shortDescription"]));
   const ou = analyserAdresse(position.lieu || {});
   const placeName = texte(lire(position.lieu || {}, ["label", "name", "schema:name"]));
+  const annonce = normaliserAnnonce(poi, {
+    source: "datatourisme",
+    externalId,
+    sourceUrl: texte(lire(poi, ["url", "sameAs", "source"])),
+  });
+  const rawEvent = annonce.tagEvidence?.length
+    ? {...poi, announcement_tag_evidence: annonce.tagEvidence}
+    : poi;
 
   return {
     external_id: externalId,
     source: "datatourisme",
+    source_url: annonce.provenance?.source_url || null,
+    raw_event: rawEvent,
+    announcement_provenance: annonce.provenance,
     event: {
       title: title.slice(0, 200),
       description: description || null,
@@ -349,6 +362,7 @@ export function normaliserEvenement(poi, options = {}) {
       cancelled: false,
       last_source_update: analyserDate(
         lire(poi, ["lastUpdate", "lastUpdateDatatourisme", "dc:modified"]))?.iso || null,
+      ...annonce.fields,
     },
   };
 }
@@ -428,28 +442,76 @@ export function memeEvenement(a, b) {
   return Number.isFinite(ecart) && ecart <= SEUIL_HORAIRE_MS;
 }
 
+/* La comparaison heuristique reste exactement la même, mais ses candidats
+   sont indexés spatialement et par mots de titre. Le lot DATAtourisme peut
+   contenir plusieurs milliers de POI : comparer chaque paire faisait croître
+   le coût au carré et épuisait le worker avant l'écriture des tags. Les neuf
+   cases voisines couvrent les événements à moins de 150 m ; la comparaison
+   finale continue de faire foi, donc l'index ne peut pas créer un faux doublon. */
+function clesIndexDedup(event) {
+  if (!event || event.lat == null || event.lng == null) return [];
+  const lat = Number(event.lat), lng = Number(event.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+  const mots = titreNormalise(event.title).split(" ").filter((mot) => mot.length >= 3);
+  const uniques = [...new Set(mots)].slice(0, 8);
+  const celluleLat = Math.floor(lat / 0.002);
+  const celluleLng = Math.floor(lng / 0.002);
+  const cles = [];
+  for (let dLat = -1; dLat <= 1; dLat += 1) {
+    for (let dLng = -1; dLng <= 1; dLng += 1) {
+      for (const mot of uniques) cles.push(`${mot}|${celluleLat + dLat}|${celluleLng + dLng}`);
+    }
+  }
+  return cles;
+}
+
+function indexerDedup(index, garde) {
+  for (const cle of clesIndexDedup(garde && garde.event)) {
+    const bucket = index.get(cle) || [];
+    if (!bucket.includes(garde)) bucket.push(garde);
+    index.set(cle, bucket);
+  }
+}
+
 /* Réduit un lot à des événements distincts. Rend aussi le nombre de
    rapprochements effectués, pour que le journal de synchronisation le dise
    au lieu de laisser deviner. */
 export function dedupliquer(entrees) {
   const gardes = [];
+  const index = new Map();
   let fusionnes = 0;
   for (const entree of entrees || []) {
     if (!entree || !entree.event) continue;
-    const jumeau = gardes.find((g) => memeEvenement(g.event, entree.event));
-    if (!jumeau) { gardes.push(entree); continue; }
+    const candidats = new Set();
+    for (const cle of clesIndexDedup(entree.event)) {
+      for (const candidat of index.get(cle) || []) candidats.add(candidat);
+    }
+    const jumeau = [...candidats].find((g) => memeEvenement(g.event, entree.event));
+    if (!jumeau) {
+      gardes.push(entree);
+      indexerDedup(index, entree);
+      continue;
+    }
     fusionnes += 1;
     // le doublon n'est pas jeté : il devient une provenance de plus du même
     // événement canonique, ce qui est exactement ce que event_sources sert
-    jumeau.provenances = [...(jumeau.provenances || []), {
-      source: entree.source, external_id: entree.external_id,
-    }];
+    const provenance = {source: entree.source, external_id: entree.external_id};
+    if (entree.source_url || entree.event.source_url) {
+      provenance.source_url = entree.source_url || entree.event.source_url;
+    }
+    if (entree.raw_event) provenance.raw_data = entree.raw_event;
+    if (entree.event.last_source_update) {
+      provenance.source_updated_at = entree.event.last_source_update;
+    }
+    jumeau.provenances = [...(jumeau.provenances || []), provenance];
     // on complète les trous sans jamais écraser une valeur déjà connue
     for (const [cle, valeurNouvelle] of Object.entries(entree.event)) {
       if (jumeau.event[cle] == null && valeurNouvelle != null) {
         jumeau.event[cle] = valeurNouvelle;
       }
     }
+    Object.assign(jumeau.event, fusionnerAnnonceFields(jumeau.event, entree.event));
+    indexerDedup(index, jumeau);
   }
   return { gardes, fusionnes };
 }

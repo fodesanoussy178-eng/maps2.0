@@ -16,6 +16,7 @@ import {fetchEventsPage, OpenAgendaConfigurationError} from "./client.mjs";
 import {eventDedupKey} from "./dedup.mjs";
 import {listOpenAgendaEvents} from "./pagination.mjs";
 import {isTargetEvent, normalizeOpenAgendaEvent} from "./normalize.mjs";
+import {fusionnerAnnonceFields} from "../shared/annonces.mjs";
 
 type Json = Record<string, unknown>;
 
@@ -315,6 +316,18 @@ async function findDedupCandidate(normalized: NormalizedEvent): Promise<string |
   return typeof rows[0]?.id === "string" ? rows[0].id : null;
 }
 
+async function readCanonicalAnnouncement(eventId: string): Promise<Json> {
+  try {
+    const path = "events?id=" + encodeURIComponent(eventId) +
+      "&select=primary_source,source_url,announced_at,presale_at,tickets_open_at," +
+      "ticket_url,announcement_tags,performers,organizer,announcement_provenance&limit=1";
+    const rows = await readRows(path);
+    return rows[0] ?? {};
+  } catch {
+    return {};
+  }
+}
+
 function chunks<T>(items: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let index = 0; index < items.length; index += size) {
@@ -327,20 +340,25 @@ async function persistEvent(normalized: NormalizedEvent, state: ExistingState): 
   const syncedAt = new Date().toISOString();
   let eventId = state.sourceEvents.get(normalized.external_id) ?? null;
   let eventInserted = 0, eventUpdated = 0, duplicate = 0;
-  const eventBody = {...normalized.event, area_id: null, last_synced_at: syncedAt};
-
   if (!eventId) {
     eventId = await findDedupCandidate(normalized);
     if (eventId) duplicate = 1;
   }
 
   if (eventId) {
+    const canonical = await readCanonicalAnnouncement(eventId);
+    const eventBody = {
+      ...normalized.event,
+      ...fusionnerAnnonceFields(canonical, normalized.event),
+      area_id: null, last_synced_at: syncedAt,
+    };
     await write(`events?id=eq.${encodeURIComponent(eventId)}`, {
       method: "PATCH",
       body: JSON.stringify(eventBody),
     });
     eventUpdated = 1;
   } else {
+    const eventBody = {...normalized.event, area_id: null, last_synced_at: syncedAt};
     try {
       const rows = await write("events", {
         method: "POST",
@@ -354,8 +372,14 @@ async function persistEvent(normalized: NormalizedEvent, state: ExistingState): 
       // entre la lecture et l'INSERT. La contrainte DB reste l'arbitre.
       eventId = await findDedupCandidate(normalized);
       if (!eventId) throw error;
+      const canonical = await readCanonicalAnnouncement(eventId);
       await write(`events?id=eq.${encodeURIComponent(eventId)}`, {
-        method: "PATCH", body: JSON.stringify(eventBody),
+        method: "PATCH",
+        body: JSON.stringify({
+          ...normalized.event,
+          ...fusionnerAnnonceFields(canonical, normalized.event),
+          area_id: null, last_synced_at: syncedAt,
+        }),
       });
       eventUpdated = 1;
       duplicate = 1;

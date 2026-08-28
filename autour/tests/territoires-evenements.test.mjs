@@ -9,10 +9,10 @@ const migration = readFileSync(new URL(
   "../supabase/migrations/20260820112353_territorial_event_orchestrator.sql", import.meta.url,
 ), "utf8");
 const migrationPerformance = readFileSync(new URL(
-  "../supabase/migrations/20260820135233_optimize_evenements_proches.sql", import.meta.url,
+  "../supabase/migrations/20260820115309_optimize_evenements_proches.sql", import.meta.url,
 ), "utf8");
 const migrationProvenance = readFileSync(new URL(
-  "../supabase/migrations/20260821120000_provenance_images.sql", import.meta.url,
+  "../supabase/migrations/20260821224416_provenance_images.sql", import.meta.url,
 ), "utf8");
 const app = corpsApplicationSync(import.meta.url);
 

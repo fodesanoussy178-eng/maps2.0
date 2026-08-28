@@ -1,6 +1,5 @@
 -- ---------------------------------------------------------------------------
 -- OpenAgenda Lille : planification native Supabase toutes les trois heures
--- Version alignée sur l'historique de migration du projet déployé.
 --
 -- Le secret d'appel n'est jamais stocké dans cette migration. Le job appelle
 -- une fonction privée qui lit `event_sync_secret` dans Supabase Vault au

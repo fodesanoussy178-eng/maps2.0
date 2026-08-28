@@ -1,5 +1,6 @@
 import {imageOpenAgenda} from "./image.mjs";
 import {extractOccurrences} from "./occurrences.mjs";
+import {normaliserAnnonce} from "../shared/annonces.mjs";
 
 function list(value) {
   return Array.isArray(value) ? value : (value == null ? [] : [value]);
@@ -118,6 +119,14 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
     sourceUrl: sourceUrl(event, source, externalId),
     now,
   });
+  const annonce = normaliserAnnonce(event, {
+    source: "openagenda",
+    externalId,
+    sourceUrl: sourceUrl(event, source, externalId),
+  });
+  const rawEvent = annonce.tagEvidence?.length
+    ? {...event, announcement_tag_evidence: annonce.tagEvidence}
+    : event;
   const normalized = {
     source: "openagenda",
     source_agenda: source.sourceAgenda,
@@ -139,7 +148,7 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
     category: category(event),
     last_source_update: text(event.updatedAt) || null,
     occurrences,
-    raw_event: event,
+    raw_event: rawEvent,
   };
   return {
     ...normalized,
@@ -170,6 +179,7 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
       image_updated_at: affiche ? affiche.image_updated_at : null,
       cancelled,
       last_source_update: normalized.last_source_update,
+      ...annonce.fields,
     },
   };
 }
