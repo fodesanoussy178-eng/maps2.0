@@ -1,6 +1,6 @@
 (function(root) {
   "use strict";
-  const PALIERS = Object.freeze([3e3, 5e3, 1e4, 2e4]);
+  const PALIERS = Object.freeze([1200, 3e3, 5e3, 1e4, 2e4]);
   const SUFFISANT = 3;
   const premier = () => PALIERS[0];
   function palierSuivant(courant) {

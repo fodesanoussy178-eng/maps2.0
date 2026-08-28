@@ -564,20 +564,24 @@
     const p = partsLocales(epoch, timeZone);
     return String(p.heure).padStart(2, "0") + ":" + String(p.minute).padStart(2, "0");
   }
+  function heureOuverture(hhmm) {
+    const module = root.AutourAvailability;
+    return module && module.heureFr ? module.heureFr(hhmm) : String(hhmm == null ? "" : hhmm);
+  }
   function libelleTemporel(item, now, options) {
     const t = now == null ? Date.now() : Number(now);
     const etat = options && options.statut || statutTemporel(item, t, options);
     const tz = etat.timeZone;
     switch (etat.statut) {
       case STATUTS.EN_COURS:
-        return etat.periodeLongue && etat.dispo && etat.dispo.closesAtTime ? "En cours \xB7 jusqu\u2019\xE0 " + etat.dispo.closesAtTime : "Maintenant";
+        return etat.periodeLongue && etat.dispo && etat.dispo.closesAtTime ? "En cours \xB7 jusqu\u2019\xE0 " + heureOuverture(etat.dispo.closesAtTime) : "Maintenant";
       case STATUTS.IMMINENT: {
         const minutes = Math.max(1, Math.round(etat.dansMs / 6e4));
         return "Commence dans " + minutes + " min";
       }
       case STATUTS.PLUS_TARD: {
         if (etat.debut == null)
-          return etat.dispo && etat.dispo.opensAtTime ? "Ouvre \xE0 " + etat.dispo.opensAtTime : "Plus tard";
+          return etat.dispo && etat.dispo.opensAtTime ? "Ouvre \xE0 " + heureOuverture(etat.dispo.opensAtTime) : "Plus tard";
         const p = partsLocales(etat.debut, tz);
         return (p.heure >= 18 ? "Ce soir \xB7 " : "Aujourd\u2019hui \xB7 ") + heureLocale(etat.debut, tz);
       }

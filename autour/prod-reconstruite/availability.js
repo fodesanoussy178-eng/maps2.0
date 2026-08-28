@@ -302,19 +302,19 @@
         result.status = "closing_soon";
         result.reason = "Ferme dans " + minutesLeft + " min";
       }
-      result.label = "Ouvert \u2022 ferme \xE0 " + result.closesAtTime;
+      result.label = "Ouvert \xB7 ferme \xE0 " + heureFr(result.closesAtTime);
     } else if (upcoming) {
       result.opensAt = new Date(upcoming.start).toISOString();
       result.opensAtTime = formatIn(upcoming.start, timeZone);
       const minutesUntil = Math.round((upcoming.start - instant) / 6e4);
       result.status = minutesUntil <= 60 ? "opening_soon" : "closed";
       if (upcoming.dayOffset === 0) {
-        result.label = "Ferm\xE9 \u2022 ouvre \xE0 " + result.opensAtTime;
+        result.label = "Ferm\xE9 \xB7 ouvre \xE0 " + heureFr(result.opensAtTime);
       } else if (upcoming.dayOffset === 1) {
         result.label = "Ferm\xE9 aujourd\u2019hui";
-        result.reason = "Ouvre demain \xE0 " + result.opensAtTime;
+        result.reason = "Ouvre demain \xE0 " + heureFr(result.opensAtTime);
       } else {
-        result.label = "Ferm\xE9 \u2022 ouvre " + JOUR_NOM[upcoming.weekday] + " \xE0 " + result.opensAtTime;
+        result.label = "Ferm\xE9 \xB7 ouvre " + JOUR_NOM[upcoming.weekday] + " \xE0 " + heureFr(result.opensAtTime);
       }
     } else {
       result.status = "closed";
@@ -336,12 +336,60 @@
     }
     return result;
   }
+  function heureFr(hhmm) {
+    const trouve = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+    if (!trouve) return String(hhmm || "");
+    const heures = Number(trouve[1]);
+    return trouve[2] === "00" ? heures + "h" : heures + "h" + trouve[2];
+  }
+  function minutesEnHeureFr(minutes) {
+    const total = (Math.round(minutes) % MINUTES_JOUR + MINUTES_JOUR) % MINUTES_JOUR;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return m === 0 ? h + "h" : h + "h" + String(m).padStart(2, "0");
+  }
+  function journeeFr(plages) {
+    if (!plages || !plages.length) return "Ferm\xE9";
+    if (plages.length === 1 && plages[0].start === 0 && plages[0].end === MINUTES_JOUR)
+      return "24h/24";
+    return plages.map((p) => minutesEnHeureFr(p.start) + " \u2013 " + minutesEnHeureFr(p.end)).join(", ");
+  }
+  function semaineFrancaise(place) {
+    const { schedule } = resolveSchedule(place || {});
+    if (!schedule) return null;
+    const lignes = [];
+    for (let jour = 0; jour < 7; jour += 1) {
+      const texte = journeeFr(schedule.days[jour]);
+      const derniere = lignes[lignes.length - 1];
+      if (derniere && derniere.horaire === texte) derniere.fin = jour;
+      else lignes.push({ debut: jour, fin: jour, horaire: texte });
+    }
+    return {
+      jours: lignes.map((ligne) => ({
+        jour: ligne.debut === ligne.fin ? JOUR_NOM[ligne.debut] : ligne.fin === ligne.debut + 1 ? JOUR_NOM[ligne.debut] + " et " + JOUR_NOM[ligne.fin] : JOUR_NOM[ligne.debut] + " au " + JOUR_NOM[ligne.fin],
+        premierJour: ligne.debut,
+        dernierJour: ligne.fin,
+        horaire: ligne.horaire
+      })),
+      feriesFermes: !!schedule.holidaysClosed
+    };
+  }
+  function journeeFrancaise(place, weekday) {
+    const { schedule } = resolveSchedule(place || {});
+    if (!schedule) return null;
+    const jour = (Math.round(Number(weekday)) % 7 + 7) % 7;
+    return journeeFr(schedule.days[jour]);
+  }
   root.AutourAvailability = Object.freeze({
     DEFAULT_TIMEZONE,
     MARGES_MINUTES,
     parseOpeningHours,
     getPlaceAvailability,
     marginFor,
-    isFrenchHoliday
+    isFrenchHoliday,
+    heureFr,
+    semaineFrancaise,
+    journeeFrancaise,
+    JOUR_NOM
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
