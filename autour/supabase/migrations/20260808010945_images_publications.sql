@@ -1,13 +1,6 @@
 -- ---------------------------------------------------------------------------
 -- Images des événements publiés sur Autour
---
--- Constat : la table publications n'avait aucune colonne d'image et le projet
--- ne comptait aucun bucket de stockage. Le client lisait p.image, qui valait
--- donc toujours null — toutes les cartes retombaient sur un visuel de repli.
---
--- On ajoute le strict nécessaire : une colonne d'URL, un bucket public en
--- lecture, et des règles d'écriture qui n'autorisent chacun que dans son
--- propre dossier.
+-- Voir autour/supabase/migrations/20260807160000_images_publications.sql
 -- ---------------------------------------------------------------------------
 
 alter table public.publications
@@ -16,17 +9,10 @@ alter table public.publications
 comment on column public.publications.image_url is
   'URL publique de l''affiche ou photo de l''événement, stockée dans le bucket « evenements ».';
 
--- ---------------------------------------------------------------------------
--- Bucket public en lecture : les événements d'Autour sont publics, leurs
--- affiches le sont donc aussi. Les limites sont posées ici plutôt que dans le
--- client, qui ne fait jamais autorité.
--- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'evenements', 'evenements', true,
-  3 * 1024 * 1024,                                  -- 3 Mo : une affiche, pas un RAW
-  -- le client réencode en JPEG, mais on accepte aussi les formats bruts des
-  -- téléphones : refuser HEIC revenait à interdire l'envoi depuis un iPhone
+  3 * 1024 * 1024,
   array['image/jpeg','image/png','image/webp','image/heic','image/heif']
 )
 on conflict (id) do update
@@ -34,11 +20,6 @@ on conflict (id) do update
       file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
 
--- ---------------------------------------------------------------------------
--- Écriture : chacun dans son dossier, nommé par son identifiant.
--- Le premier segment du chemin doit être l'uid de l'auteur — c'est ce qui
--- empêche de remplacer l'affiche de quelqu'un d'autre.
--- ---------------------------------------------------------------------------
 drop policy if exists "evenements: lecture publique" on storage.objects;
 create policy "evenements: lecture publique"
   on storage.objects for select
@@ -72,10 +53,6 @@ create policy "evenements: supprimer les siennes"
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- ---------------------------------------------------------------------------
--- La fonction de lecture publique doit renvoyer la nouvelle colonne, sinon
--- l'image existe en base sans jamais atteindre la carte.
--- ---------------------------------------------------------------------------
 drop function if exists public.publications_proches(
   double precision, double precision, double precision, double precision, integer
 );

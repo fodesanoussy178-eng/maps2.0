@@ -4,7 +4,8 @@
 -- La couche `events` existante reste l'entrée canonique lue par Autour.
 -- `event_occurrences` lui ajoute une ligne par créneau source afin qu'un
 -- événement récurrent ne soit jamais aplati en une fausse plage continue.
--- Cette migration ne planifie rien : le scheduler est versionné séparément.
+-- La première phase n'active que le test Lille ; aucune importation complète
+-- ni planification n'est créée ici.
 -- ---------------------------------------------------------------------------
 
 alter table public.event_sources

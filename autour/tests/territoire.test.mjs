@@ -386,7 +386,7 @@ test("aucune manifestation n’est nommée dans la logique", () => {
   /* Le seul endroit où le nom a le droit d'exister est la configuration —
      c'est-à-dire des DONNÉES, corrigeables par un UPDATE. */
   const migration = readFileSync(new URL(
-    "../supabase/migrations/20260822090000_contexte_territorial_temporaire.sql",
+    "../supabase/migrations/20260822065901_contexte_territorial_braderie_lille_2026.sql",
     import.meta.url), "utf8");
   assert.match(migration, /'braderie-lille-2026'/,
     "le premier cas réel vit dans la configuration, et nulle part ailleurs");
@@ -693,9 +693,16 @@ test("la lecture du contexte ne bloque jamais un rendu", () => {
    12. LA CONFIGURATION — des données, pas un catalogue
    ======================================================================== */
 
-const migration = readFileSync(new URL(
-  "../supabase/migrations/20260822090000_contexte_territorial_temporaire.sql",
-  import.meta.url), "utf8");
+/* La migration d'origine a été appliquée en production en TROIS temps —
+   le schéma, le premier cas de configuration, puis le budget et les métriques.
+   Le dépôt porte désormais ces trois versions telles qu'elles ont réellement
+   été jouées ; les vérifications ci-dessous portent sur leur somme. */
+const migration = [
+  "20260822065827_contexte_territorial_temporaire_schema",
+  "20260822065901_contexte_territorial_braderie_lille_2026",
+  "20260822065956_contexte_territorial_budget_metriques_sante",
+].map((nom) => readFileSync(
+  new URL("../supabase/migrations/" + nom + ".sql", import.meta.url), "utf8")).join("\n");
 
 test("la configuration porte exactement ce qui a été demandé", () => {
   const contexte = /create table if not exists public\.territorial_contexts \([\s\S]*?\n\);/

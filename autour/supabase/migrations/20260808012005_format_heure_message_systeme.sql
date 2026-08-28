@@ -1,14 +1,3 @@
--- ---------------------------------------------------------------------------
--- Format d'heure des messages système
---
--- `to_char(..., 'HH24h MI')` produisait « Horaire modifié : 07h 00 » : l'espace
--- du masque est littérale, et `h` n'est pas un motif to_char. On l'échappe
--- proprement en `HH24"h"MI`, qui donne « 07h00 ».
---
--- Seule la ligne de format change ; le reste de la fonction est identique à
--- 20260807140000_canaux_evenements.sql.
--- ---------------------------------------------------------------------------
-
 create or replace function public.journaliser_modification_evenement()
 returns trigger
 language plpgsql
@@ -26,7 +15,7 @@ begin
   if new.annule and not old.annule then
     insert into public.event_messages (channel_id, genre, changement, corps)
     values (canal, 'systeme', 'annulation', 'Événement annulé.');
-    return new;   -- une annulation rend les autres changements sans objet
+    return new;
   end if;
 
   if new.debut_le is distinct from old.debut_le and new.debut_le is not null then
@@ -60,6 +49,4 @@ begin
 end;
 $$;
 
--- `create or replace` réattribue EXECUTE à public : on le retire à nouveau,
--- comme dans 20260808120000_privileges_moindre_portee.sql.
 revoke all on function public.journaliser_modification_evenement() from public, anon, authenticated;

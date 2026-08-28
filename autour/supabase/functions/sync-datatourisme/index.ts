@@ -45,6 +45,7 @@
 --------------------------------------------------------------------------- */
 
 import {normaliserLot, cleDedup} from "./normalisation.mjs";
+import {fusionnerAnnonceFields, normaliserAnnonce} from "../shared/annonces.mjs";
 
 /* L'endpoint dédié aux événements plutôt que le catalogue générique filtré :
    c'est la même sélection, demandée à l'API dans les termes où elle la
@@ -123,6 +124,21 @@ function rest(chemin: string, init: RequestInit = {}): Promise<Response> {
       ...(init.headers ?? {}),
     },
   });
+}
+
+async function lireAnnonceCanonique(eventId: string): Promise<Json> {
+  try {
+    const path = "events?id=" + encodeURIComponent(eventId) +
+      "&select=primary_source,source_url,description,announced_at,presale_at," +
+      "tickets_open_at,ticket_url,announcement_tags,performers,organizer," +
+      "announcement_provenance&limit=1";
+    const response = await rest(path);
+    if (!response.ok) return {};
+    const rows = await response.json();
+    return rows?.[0] ?? {};
+  } catch {
+    return {};
+  }
 }
 
 /* Un fournisseur lent ne doit jamais bloquer : délai court, trois tentatives
@@ -283,13 +299,28 @@ async function enregistrer(entree: Json, zone: Zone) {
   let eventId: string | null = lignes?.[0]?.event_id ?? null;
   let cree = false;
 
-  const corps = {
-    ...evenement,
-    area_id: zone.id,
-    last_synced_at: new Date().toISOString(),
-  };
+  const synchroniseLe = new Date().toISOString();
 
   if (eventId) {
+    const canonique = await lireAnnonceCanonique(eventId);
+    /* Les connecteurs ne renvoient pas toujours le texte complet sur chaque
+       page. Quand il existe déjà dans l'événement canonique, il reste une
+       preuve source exploitable pour la cascade (par exemple « rap » dans la
+       description d'un concert DATAtourisme). */
+    const enrichissementCanonique = normaliserAnnonce(canonique, {
+      source: String(canonique.primary_source || source),
+      externalId,
+      sourceUrl: canonique.source_url || null,
+    });
+    const entrant = {
+      ...evenement,
+      ...(evenement.description ? {} : (canonique.description ? {description: canonique.description} : {})),
+      ...enrichissementCanonique.fields,
+    };
+    const corps = {
+      ...entrant, ...fusionnerAnnonceFields(canonique, entrant),
+      area_id: zone.id, last_synced_at: synchroniseLe,
+    };
     const maj = await rest(`events?id=eq.${eventId}`, {
       method: "PATCH",
       headers: {Prefer: "return=representation"},
@@ -308,11 +339,19 @@ async function enregistrer(entree: Json, zone: Zone) {
       eventId = trouves?.[0]?.id ?? null;
     }
     if (eventId) {
+      const canonique = await lireAnnonceCanonique(eventId);
+      const corps = {
+        ...evenement, ...fusionnerAnnonceFields(canonique, evenement),
+        area_id: zone.id, last_synced_at: synchroniseLe,
+      };
       const maj = await rest(`events?id=eq.${eventId}`, {
         method: "PATCH", body: JSON.stringify(corps),
       });
       if (!maj.ok) throw new Error(`fusion ${externalId} : HTTP ${maj.status}`);
     } else {
+      const corps = {
+        ...evenement, area_id: zone.id, last_synced_at: synchroniseLe,
+      };
       const insere = await rest("events", {
         method: "POST",
         headers: {Prefer: "return=representation"},
@@ -341,7 +380,9 @@ async function enregistrer(entree: Json, zone: Zone) {
       event_id: eventId,
       source: p.source,
       external_id: p.external_id,
-      source_updated_at: evenement.last_source_update ?? null,
+      source_url: p.source_url ?? entree.source_url ?? evenement.source_url ?? null,
+      raw_data: p.raw_data ?? entree.raw_event ?? null,
+      source_updated_at: p.source_updated_at ?? evenement.last_source_update ?? null,
       synced_at: new Date().toISOString(),
     }))),
   });

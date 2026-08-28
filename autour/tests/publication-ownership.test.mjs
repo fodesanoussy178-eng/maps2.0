@@ -6,15 +6,15 @@ import { sourceApplication } from "./source.mjs";
 const html = await sourceApplication(import.meta.url);
 const events = await readFile(new URL("../events.js", import.meta.url), "utf8");
 const migration = await readFile(
-  new URL("../supabase/migrations/20260810193000_propriete_publications.sql", import.meta.url),
+  new URL("../supabase/migrations/20260810202555_propriete_publications.sql", import.meta.url),
   "utf8",
 );
 const migrationQuota = await readFile(
-  new URL("../supabase/migrations/20260810194500_quota_publications_prive.sql", import.meta.url),
+  new URL("../supabase/migrations/20260810202638_quota_publications_prive.sql", import.meta.url),
   "utf8",
 );
 const migrationCanaux = await readFile(
-  new URL("../supabase/migrations/20260810203500_mes_canaux_security_invoker.sql", import.meta.url),
+  new URL("../supabase/migrations/20260810203436_mes_canaux_security_invoker.sql", import.meta.url),
   "utf8",
 );
 const migrationCreatedBy = await readFile(

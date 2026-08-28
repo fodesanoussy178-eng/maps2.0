@@ -1,28 +1,14 @@
 -- ---------------------------------------------------------------------------
 -- Canaux d'événement — coordination locale, pas messagerie sociale
---
--- Un canal n'existe jamais seul : il naît avec un événement et meurt avec lui.
--- Il n'y a ni conversation entre inconnus, ni boîte de réception globale, ni
--- fil de discussion ouvert. Le créateur annonce, les participants reçoivent.
---
--- Deux garanties sont posées dans la base plutôt que dans le client :
---   · le canal est créé par déclencheur à la publication, donc il existe
---     toujours, même si un client oublie de le demander ;
---   · les messages système sont écrits par déclencheur à la modification,
---     donc un changement d'horaire ne peut pas passer silencieusement.
+-- Voir autour/supabase/migrations/20260807140000_canaux_evenements.sql
 -- ---------------------------------------------------------------------------
 
--- Une annulation n'est pas une suppression : l'événement doit rester visible
--- avec sa mention « annulé », sinon les gens se déplacent pour rien.
 alter table public.publications
   add column if not exists annule boolean not null default false;
 
 comment on column public.publications.annule is
   'Événement annulé par son créateur. Reste affiché — barré — au lieu de disparaître.';
 
--- ---------------------------------------------------------------------------
--- 1. Canal : un par événement, créé automatiquement
--- ---------------------------------------------------------------------------
 create table if not exists public.event_channels (
   id             uuid primary key default gen_random_uuid(),
   publication_id uuid not null unique
@@ -37,10 +23,6 @@ comment on table public.event_channels is
 
 create index if not exists event_channels_admin_idx on public.event_channels (admin);
 
--- ---------------------------------------------------------------------------
--- 2. Participants : qui reçoit les annonces
---    role = admin (le créateur) | participant (inscrit) | suiveur (enregistré)
--- ---------------------------------------------------------------------------
 create table if not exists public.event_participants (
   channel_id uuid not null references public.event_channels (id) on delete cascade,
   membre     uuid not null,
@@ -54,17 +36,12 @@ create table if not exists public.event_participants (
 
 create index if not exists event_participants_membre_idx on public.event_participants (membre);
 
--- ---------------------------------------------------------------------------
--- 3. Messages : système (générés) et annonces (écrites par l'admin)
--- ---------------------------------------------------------------------------
 create table if not exists public.event_messages (
   id         uuid primary key default gen_random_uuid(),
   channel_id uuid not null references public.event_channels (id) on delete cascade,
-  auteur     uuid,                    -- null = message système
+  auteur     uuid,
   genre      text not null default 'annonce'
                check (genre in ('systeme','annonce')),
-  -- ce qui a changé, pour que la page de l'événement puisse le rendre
-  -- précisément au lieu de réinterpréter une phrase
   changement text check (changement in ('horaire','lieu','retard','places','annulation')),
   corps      text not null check (length(btrim(corps)) between 1 and 500),
   details    jsonb not null default '{}'::jsonb,
@@ -74,9 +51,6 @@ create table if not exists public.event_messages (
 create index if not exists event_messages_canal_idx
   on public.event_messages (channel_id, cree_le desc);
 
--- ---------------------------------------------------------------------------
--- 4. Création automatique du canal
--- ---------------------------------------------------------------------------
 create or replace function public.creer_canal_evenement()
 returns trigger
 language plpgsql
@@ -91,7 +65,6 @@ begin
   on conflict (publication_id) do nothing
   returning id into nouveau;
 
-  -- le créateur est administrateur de son canal, sans action de sa part
   if nouveau is not null then
     insert into public.event_participants (channel_id, membre, role)
     values (nouveau, new.auteur, 'admin')
@@ -106,12 +79,6 @@ create trigger publications_creer_canal
   after insert on public.publications
   for each row execute function public.creer_canal_evenement();
 
--- ---------------------------------------------------------------------------
--- 5. Messages système à chaque modification importante
---
--- Écrit dans la base, pas dans le client : une modification faite depuis
--- n'importe quel outil produit quand même l'annonce.
--- ---------------------------------------------------------------------------
 create or replace function public.journaliser_modification_evenement()
 returns trigger
 language plpgsql
@@ -129,7 +96,7 @@ begin
   if new.annule and not old.annule then
     insert into public.event_messages (channel_id, genre, changement, corps)
     values (canal, 'systeme', 'annulation', 'Événement annulé.');
-    return new;   -- une annulation rend les autres changements sans objet
+    return new;
   end if;
 
   if new.debut_le is distinct from old.debut_le and new.debut_le is not null then
@@ -168,12 +135,6 @@ create trigger publications_journaliser
   after update on public.publications
   for each row execute function public.journaliser_modification_evenement();
 
--- ---------------------------------------------------------------------------
--- 6. Row Level Security
---
--- Les événements d'Autour sont publics : leurs annonces le sont aussi. Ce qui
--- est verrouillé, c'est l'écriture — seul l'administrateur du canal annonce.
--- ---------------------------------------------------------------------------
 alter table public.event_channels     enable row level security;
 alter table public.event_participants enable row level security;
 alter table public.event_messages     enable row level security;
@@ -181,9 +142,6 @@ alter table public.event_messages     enable row level security;
 drop policy if exists "canaux: lecture publique" on public.event_channels;
 create policy "canaux: lecture publique"
   on public.event_channels for select to anon, authenticated using (true);
-
--- personne ne crée un canal à la main : le déclencheur s'en charge
--- (aucune policy INSERT/UPDATE/DELETE)
 
 drop policy if exists "participants: chacun voit sa participation" on public.event_participants;
 create policy "participants: chacun voit sa participation"
@@ -211,8 +169,6 @@ drop policy if exists "messages: lecture publique" on public.event_messages;
 create policy "messages: lecture publique"
   on public.event_messages for select to anon, authenticated using (true);
 
--- seul l'administrateur annonce, et jamais sous le genre « systeme » :
--- un message système ne peut venir que d'un déclencheur
 drop policy if exists "messages: seul l’admin annonce" on public.event_messages;
 create policy "messages: seul l’admin annonce"
   on public.event_messages for insert to authenticated
@@ -227,12 +183,6 @@ grant select on public.event_channels, public.event_messages to anon, authentica
 grant select, insert, update, delete on public.event_participants to authenticated;
 grant insert on public.event_messages to authenticated;
 
--- ---------------------------------------------------------------------------
--- 7. « Ai-je une raison de voir la section Messages ? »
---
--- Une seule requête, pour que le client n'ait pas à en composer trois et à
--- décider lui-même de la règle.
--- ---------------------------------------------------------------------------
 create or replace function public.mes_canaux()
 returns table (
   channel_id     uuid,
