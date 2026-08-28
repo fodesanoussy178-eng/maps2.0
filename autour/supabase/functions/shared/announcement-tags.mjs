@@ -107,6 +107,62 @@ function explicitTags(value, {tier = "official_keywords", field = ""} = {}) {
   }
   if (/\b(?:concert|live music|showcase|gig|performance musicale|musique live)\b/.test(raw)) add("concert");
   if (/\b(?:music|musique)\b/.test(raw)) add("music");
+
+  /* ---- LE GENRE, QUI N'EST PAS LE FORMAT ---------------------------------
+
+     `concert` dit la FORME de l'événement ; `rap`, `pop`, `jazz` disent ce
+     qu'on va y entendre. Les deux se cumulent — un concert de rap porte
+     `concert` ET `rap` — et c'est ce cumul qui rend « Pour toi » utilisable :
+     l'un répond à « je sors ce soir », l'autre à « j'écoute ça ».
+
+     CE QUI MANQUAIT, ET CE QUE ÇA COÛTAIT
+
+     Le vocabulaire `TAGS` déclarait douze genres ; deux seulement étaient
+     posés — `rap` et `hip_hop`. Les dix autres n'avaient aucune règle. Sur les
+     385 concerts de la base, sept portaient un genre, et c'était toujours le
+     même. Un concert pop rendait `["concert"]`, un point c'est tout : le genre
+     retombait dans `music`, qui ne personnalise rien.
+
+     Conséquence à l'écran : Rap était le seul genre qui pouvait jamais
+     correspondre à un intérêt. Ce n'était pas un choix d'affichage, c'était le
+     seul que la chaîne produisait.
+
+     POURQUOI DEUX RÉGIMES DE PREUVE
+
+     Dans un champ `genre`, `genres` ou `performerGenres`, le mot EST la
+     réponse : on le prend tel quel. Dans un titre ou une description, c'est de
+     la prose, et trois mots y sont des pièges :
+
+       · « pop » vit dans « pop-up store » et « pop corn » ;
+       · « classique » qualifie aussi un film ou une voiture ;
+       · « rock » peut nommer un lieu autant qu'un genre.
+
+     Ces trois-là exigent donc un contexte musical explicite quand ils sortent
+     d'un texte libre. Les autres — jazz, reggae, k-pop, afro, électro, R&B —
+     ne désignent rien d'autre en français : ils passent seuls.
+
+     CE QU'ON NE FAIT PAS. Deviner. « soul » sans contexte, « house » qui est
+     une maison, « metal » qui est un matériau : hors de cette liste, on
+     préfère l'absence de genre à un genre faux, parce qu'un faux genre pollue
+     durablement la surveillance de quelqu'un. */
+  const contexteMusical =
+    /\b(?:musique|music|concert|live|artiste|artist|groupe|band|chanteur|chanteuse|chante|dj|album|tournee|scene|festival de musique)\b/
+      .test(raw);
+  const genreEnProse = !textOnly || contexteMusical;
+
+  if (/\bjazz\b/.test(raw)) add("jazz");
+  if (/\b(?:reggae|ragga|dancehall)\b/.test(raw)) add("reggae");
+  if (/\bk[ -]?pop\b/.test(raw)) add("kpop");
+  if (/\b(?:r&b|r and b|rnb)\b/.test(raw)) add("rnb");
+  if (/\bafro(?:beat|jazz|pop)?\b/.test(raw)) add("afro");
+  if (/\b(?:electro|techno|house music|trance)\b/.test(raw)) add("electro");
+  /* « pop » seulement quand ce n'est ni un pop-up ni du pop-corn, et jamais
+     comme résidu de « k-pop », qui a déjà son propre tag. */
+  if (genreEnProse && /\bpop\b/.test(raw) &&
+      !/\bpop[ -]?(?:up|corn|store)\b/.test(raw) && !/\bk[ -]?pop\b/.test(raw)) add("pop");
+  if (genreEnProse && /\brock\b/.test(raw)) add("rock");
+  if (genreEnProse &&
+      /\b(?:classique|classical|opera|symphoni\w*|philharmoni\w*|orchestre)\b/.test(raw)) add("classical");
   if (/\b(?:dj set|djset)\b/.test(raw)) add("dj_set", "nightlife");
   if (/\b(?:club night|nightclub|night club|nightlife|afterparty|after party|rave|dance party|soiree dansante)\b/.test(raw)) add("nightlife");
   if (!textOnly && /\bparty\b/.test(raw)) add("party", "nightlife");
