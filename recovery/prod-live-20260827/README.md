@@ -50,7 +50,7 @@ Contrôle de fidélité : `providers/datatourisme.js` récupéré est **identiqu
 même octet** à la source Git passée dans `alleger.mjs`. La chaîne de
 récupération est donc fidèle.
 
-## Les 33 modules de la production
+## Les 34 modules de la production
 
 | module | `?v=` servi | état vis-à-vis de Git | dans ce dossier |
 |---|---|---|---|
@@ -87,12 +87,33 @@ récupération est donc fidèle.
 | `providers/osm.js` | `9553d989` | prod plus récente | oui |
 | `mapProviders/googleMaps.js` | `2c285b59` | prod plus récente | oui |
 | `app.js` | `1e710a08` | prod plus récente | oui |
+| `differe/ecrans.js` | `b33de0f7` | prod divergente | oui |
 
-Répartition : **20 identiques à Git**, **10 dont la prod est plus récente**,
+Répartition : **20 identiques à Git**, **11 divergents de Git**,
 **3 absents de Git**.
 
 Les 20 modules identiques ne sont pas copiés ici : leur source, commentaires
 compris, vit déjà dans le dépôt et vaut mieux que leur artefact.
+
+### Le 34e module, ajouté le 28/08
+
+`differe/ecrans.js` a échappé au premier inventaire, et la raison mérite d'être
+écrite : **`index.html` ne le mentionne jamais.** `app.js` va le chercher au
+besoin, et son empreinte vit dans `VERSIONS_DIFFEREES`, dans `app.js` —
+c'est-à-dire à l'endroit exact où un inventaire fondé sur les balises
+`<script>` ne regarde pas. Il porte pourtant les fiches de lieu, l'itinéraire,
+la publication et tout l'écran de compte : sans lui, la reconstruction servait
+un code différent de celui de la production sur la moitié des écrans.
+
+La direction de la divergence n'est pas établie — d'où « prod divergente »
+plutôt que « prod plus récente ». Ce qui est établi, c'est qu'il s'agit bien de
+l'artefact servi : il définit les 27 écrans que `ECRANS_DIFFERES` amorce, il
+diffère de ce que le dépôt produit (`79e47a50…` contre `2e511725…`, 963 lignes
+contre 955), et sa proportion de commentaires — 7 lignes contre 76 dans la
+source — porte la signature d'un passage par esbuild.
+
+Avec lui, les 34 modules servis sont vérifiables : 15 par leurs octets
+d'origine, 19 par l'égalité `sha256(source du dépôt) == ?v= servi`. Aucun trou.
 
 ## Fichiers absents de tout Git
 
