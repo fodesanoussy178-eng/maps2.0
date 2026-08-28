@@ -530,8 +530,12 @@ input{font-family:inherit;font-size:16px}
 .aa-tete{display:flex;align-items:center;gap:9px}
 .aa-emoji{font-size:19px;line-height:1}
 .aa-nom{flex:1;min-width:0;font-size:15.5px;font-weight:750;line-height:1.25}
+/* Même repli que la couverture : sur un iPhone antérieur à iOS 16.2, la
+   vignette d'une carte d'aide sans photo n'avait aucun fond. */
 .aa-visuel{position:relative;display:grid;place-items:center;width:58px;height:48px;flex:0 0 58px;
-  overflow:hidden;border-radius:10px;background:color-mix(in srgb,var(--teinte) 13%,#fff)}
+  overflow:hidden;border-radius:10px;
+  background:#EDF0EE;
+  background:color-mix(in srgb,var(--teinte) 13%,#fff)}
 .aa-visuel i{font-style:normal;font-size:23px;line-height:1;opacity:.82}
 .aa-visuel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .18s ease}
 .aa-visuel img.vue{opacity:1}
@@ -547,16 +551,23 @@ input{font-family:inherit;font-size:16px}
 .aa-hors{margin:7px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
 .aa-bas{margin:8px 0 0;font-size:12.5px;color:var(--ink2)}
 .aa-verif{margin:6px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+/* `color-mix()` demande Safari 16.2. En dessous, la déclaration entière est
+   jetée — et une couverture sans repli n'a alors AUCUN fond : la tuile teintée
+   qui EST la réponse honnête d'une fiche sans photo disparaît, sur les iPhone
+   qui n'ont pas été mis à jour. On déclare donc d'abord une teinte unie que
+   tout le monde comprend ; le mélange la remplace là où il est compris. */
 .aide-couverture{position:relative;display:grid;place-items:center;height:190px;margin:-18px -18px 18px;
-  overflow:hidden;border-radius:18px 18px 13px 13px;background:color-mix(in srgb,var(--teinte) 14%,#fff)}
+  overflow:hidden;border-radius:18px 18px 13px 13px;
+  background:#EDF0EE;
+  background:color-mix(in srgb,var(--teinte) 14%,#fff)}
 .aide-couverture>span{font-size:56px;line-height:1;opacity:.82}
 /* Sans photo, le pictogramme EST le visuel : il ne peut pas être la moitié
    de la taille de celui qu'une image recouvre de toute façon. C'était
    l'inverse — 28 px sur un aplat de 190 px de haut — et une fiche sans photo
    se lisait comme une fiche cassée. */
-.aide-couverture.sans-photo{background:
-  radial-gradient(120% 120% at 50% 0%,color-mix(in srgb,var(--teinte) 22%,#fff) 0%,
-                                      color-mix(in srgb,var(--teinte) 10%,#fff) 100%)}
+.aide-couverture.sans-photo{background:#E6EAE8;
+  background:radial-gradient(120% 120% at 50% 0%,color-mix(in srgb,var(--teinte) 22%,#fff) 0%,
+                                                 color-mix(in srgb,var(--teinte) 10%,#fff) 100%)}
 .aide-couverture.sans-photo>span{font-size:64px;opacity:.55}
 .aide-couverture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .aide-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:1;max-width:75%;padding:3px 6px;

@@ -408,7 +408,67 @@ test("la fiche nomme sa source au lieu d’écrire « undefined »", () => {
 });
 
 /* ==========================================================================
-   7. LA PARITÉ ORDINATEUR / TÉLÉPHONE
+   7. CE QUE SAFARI NE SAIT PAS FAIRE
+
+   Le moteur de Safari n'est pas exécutable dans l'environnement de test : ces
+   règles-là se vérifient donc par lecture, pas par rendu. Elles portent sur
+   les seules constructions récentes que l'application emploie.
+   ======================================================================== */
+
+test("chaque fond en color-mix a un repli uni déclaré avant lui", async () => {
+  /* `color-mix()` demande Safari 16.2 / iOS 16.2. En dessous, la déclaration
+     entière est JETÉE — pas dégradée. Une couverture ou une vignette sans
+     repli n'a alors aucun fond, et la tuile teintée qui EST la réponse d'une
+     fiche sans photo disparaît sur les iPhone non mis à jour.
+
+     La cascade fait le travail à condition que le repli soit déclaré AVANT :
+     le navigateur qui comprend le mélange écrase, celui qui ne le comprend
+     pas garde la couleur unie. */
+  const page = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const styles = page.replace(/\/\*[\s\S]*?\*\//g, "");
+  const regles = styles.split("}");
+  for (const regle of regles) {
+    if (!/background\s*:[^;]*color-mix/.test(regle)) continue;
+    const avant = regle.slice(0, regle.search(/background\s*:[^;]*color-mix/));
+    assert.match(avant, /background\s*:\s*(#[0-9A-Fa-f]{3,8}|rgb|var\(|[a-z]+)\s*;/,
+      "un fond color-mix sans repli uni :\n" + regle.trim().slice(0, 160));
+  }
+});
+
+test("le code livré n’emploie aucune construction qui manque à Safari", async () => {
+  /* Les fonctions ajoutées n'utilisent ni regard arrière (`(?<=`), absent de
+     Safari avant 16.4, ni `Array.at`, ni `Object.hasOwn`, ni `structuredClone`,
+     ni `:has()`. Ce test lit les fichiers réellement servis au navigateur. */
+  const livres = ["app.js", "availability.js", "temporel.js", "aide-rayon.js", "differe/ecrans.js"];
+  for (const fichier of livres) {
+    const source = await readFile(new URL("../" + fichier, import.meta.url), "utf8");
+    for (const [nom, motif] of [
+      ["regard arrière", /\(\?<[=!]/],
+      ["Array.prototype.at", /\.at\(\s*-?\d/],
+      ["Object.hasOwn", /Object\.hasOwn\(/],
+      ["structuredClone", /structuredClone\(/],
+      ["Array.prototype.toSorted", /\.toSorted\(/],
+    ]) assert.doesNotMatch(source, motif, nom + " dans " + fichier);
+  }
+});
+
+test("la géolocalisation garde son repli Safari", () => {
+  /* Safari ne répond pas à `permissions.query({name:"geolocation"})`. La trace
+     locale est le seul moyen de savoir qu'une autorisation a déjà été donnée —
+     et c'est elle que le nouveau chemin d'erreur consulte pour relancer la
+     veille au lieu de déclarer un refus. */
+  assert.match(html, /const CLE_GEO_OK = "autour:geo-autorisee";/);
+  assert.match(html, /return geoDejaAutorisee\(\) \? "granted" : "prompt";/);
+  assert.match(html, /if\(geoDejaAutorisee\(\)\) veillerSurLaPosition\(\);/);
+  // et tout accès au stockage reste protégé : Safari en navigation privée jette
+  const cache = html.slice(html.indexOf("function completerCacheLieux"),
+    html.indexOf("function completerCacheLieux") + 900);
+  assert.match(cache, /lireCacheLieux\(lat,lng\)/);
+  assert.match(html, /function lireCacheLieux\(lat,lng\)\{[\s\S]*?catch\(e\)\{ return null; \}/);
+});
+
+/* ==========================================================================
+   8. LA PARITÉ ORDINATEUR / TÉLÉPHONE
    ======================================================================== */
 
 test("rien dans le corps de l’application ne branche sur l’appareil", () => {
