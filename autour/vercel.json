@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node outils/alleger.mjs",
+  "buildCommand": "node outils/banc-overpass.mjs && node outils/alleger.mjs",
   "outputDirectory": "prod-reconstruite",
   "headers": [
     {
