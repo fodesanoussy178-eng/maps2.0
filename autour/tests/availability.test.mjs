@@ -32,7 +32,7 @@ test("lieu ouvert : statut, heure de fermeture et libellé", () => {
   assert.equal(vu.status, "open");
   assert.equal(vu.isOpenNow, true);
   assert.equal(vu.closesAtTime, "23:30");
-  assert.equal(vu.label, "Ouvert • ferme à 23:30");
+  assert.equal(vu.label, "Ouvert · ferme à 23h30");
 });
 
 test("lieu fermé maintenant mais qui ouvre plus tard aujourd’hui", () => {
@@ -40,7 +40,7 @@ test("lieu fermé maintenant mais qui ouvre plus tard aujourd’hui", () => {
   assert.equal(vu.status, "closed");
   assert.equal(vu.isOpenNow, false);
   assert.equal(vu.opensAtTime, "14:00");
-  assert.equal(vu.label, "Fermé • ouvre à 14:00");
+  assert.equal(vu.label, "Fermé · ouvre à 14h");
 });
 
 test("lieu fermé pour la journée mais ouvert demain", () => {
@@ -48,14 +48,14 @@ test("lieu fermé pour la journée mais ouvert demain", () => {
   const vu = getPlaceAvailability({cat: "musee", quand: "Th-Su 10:00-18:00"}, MERCREDI_MIDI);
   assert.equal(vu.status, "closed");
   assert.equal(vu.label, "Fermé aujourd’hui");
-  assert.match(vu.reason, /Ouvre demain à 10:00/);
+  assert.match(vu.reason, /Ouvre demain à 10h/);
 });
 
 test("lieu fermé plusieurs jours : le jour de réouverture est nommé", () => {
   // mercredi midi, ouvert seulement le lundi
   const vu = getPlaceAvailability({cat: "musee", quand: "Mo 09:00-17:00"}, MERCREDI_MIDI);
   assert.equal(vu.status, "closed");
-  assert.equal(vu.label, "Fermé • ouvre lundi à 09:00");
+  assert.equal(vu.label, "Fermé · ouvre lundi à 9h");
 });
 
 test("horaires inconnus : jamais « Ouvert » par défaut", () => {
@@ -74,7 +74,7 @@ test("fermeture à minuit : ouvert à 23:50, fermé à 00:10", () => {
   assert.equal(getPlaceAvailability(lieu, paris(2026, 7, 15, 23, 50)).isOpenNow, true);
   const apres = getPlaceAvailability(lieu, paris(2026, 7, 16, 0, 10));
   assert.equal(apres.isOpenNow, false);
-  assert.equal(apres.label, "Fermé • ouvre à 18:00");
+  assert.equal(apres.label, "Fermé · ouvre à 18h");
 });
 
 test("horaires qui dépassent minuit : la plage de la veille compte", () => {
@@ -95,7 +95,7 @@ test("dimanche : une fermeture dominicale est respectée", () => {
   assert.equal(vu.isOpenNow, false);
   // rouvre lundi, c'est-à-dire demain : le libellé du jour, pas du nom du jour
   assert.equal(vu.label, "Fermé aujourd’hui");
-  assert.match(vu.reason, /Ouvre demain à 09:00/);
+  assert.match(vu.reason, /Ouvre demain à 9h/);
   const ouvertDimanche = getPlaceAvailability({cat: "parc", quand: "Su 10:00-20:00"}, dimanche);
   assert.equal(ouvertDimanche.isOpenNow, true);
 });

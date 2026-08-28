@@ -119,32 +119,191 @@ function coordonnees(poi) {
   return lat == null || lng == null ? null : { latitude:lat, longitude:lng, lieu };
 }
 
-function categorie(poi, label, description) {
-  const types = liste(poi.type || poi["@type"]).map(texteNormalise).join(" ");
-  const mots = texteNormalise([label, description, types].join(" "));
-  if (/entertainmentandevent|culturalevent|event|festival|concert|exhibition|manifestation/.test(types)) {
-    if (/concert|musique/.test(mots)) return "concert";
-    if (/theatre|spectacle|danse/.test(mots)) return "spectacle";
-    if (/sport|match|tournoi/.test(mots)) return "sport";
-    if (/marche|brocante|vide grenier/.test(mots)) return "marche";
-    return "event";
+/* ===========================================================================
+   CE QUE C'EST, PUIS OÙ ÇA SE PASSE
+
+   CE QUI SE PASSAIT, ET CE QUE ÇA COÛTAIT
+
+   Cette fonction collait le libellé, la description et les types dans une
+   seule chaîne, puis y cherchait des motifs en SOUS-CHAÎNE, un par un, dans
+   l'ordre du fichier. Trois conséquences, toutes constatées en production :
+
+     · « pub » vit dans « ouvert au public ». « Visite privée de l'exposition
+       Le Liban de Serge Najjar » sortait donc en BARS ;
+     · « bar » vit dans « Barbieux ». Le parc Barbieux, à Roubaix, sortait
+       en BARS ;
+     · « marche » vit dans « démarches », « parc » dans « parcours », et un
+       seul mot croisé au fond d'une description suffisait à décider — « une
+       halte à la brasserie » faisait d'une visite patrimoniale un
+       RESTAURANT.
+
+   LA RÈGLE, DÉSORMAIS
+
+   1. Aucun mot n'est jamais cherché en sous-chaîne. On lit des MOTS, bornés.
+   2. On détermine d'abord la NATURE DE L'ACTIVITÉ — titre, description et
+      type d'événement pris ensemble. Une visite, une exposition, un parcours
+      patrimonial sont des activités, et c'est leur THÈME qui décide.
+   3. Le type de lieu ne se demande qu'ENSUITE, et seulement s'il n'y a pas
+      d'activité. Un type déclaré par la source fait autorité ; le titre vient
+      après ; la description ne décide jamais seule de ce qu'est un
+      établissement — elle le mentionne, elle ne le définit pas.
+
+   Conséquence directe, et c'est le contrat : « visite de lieux patrimoniaux »
+   reste du patrimoine même si le texte contient « brasserie », et « Visite
+   privée de l'exposition Le Liban de Serge Najjar » est de la culture, jamais
+   un bar.
+   ======================================================================== */
+
+/* Le texte, réduit à des mots séparés par une espace : c'est ce qui rend
+   `\b` fiable et ce qui interdit définitivement la sous-chaîne. */
+function mots(valeur) {
+  return " " + texteNormalise(valeur).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim() + " ";
+}
+
+/* Un terme peut être une expression ; le pluriel français ordinaire est
+   toléré, rien d'autre. Le motif est ancré des deux côtés. */
+function dit(texteMots, termes) {
+  return termes.some((terme) => new RegExp("(?:^| )" + terme + "e?s?(?= |$)").test(texteMots));
+}
+
+/* ---- 1. La nature de l'activité ------------------------------------------
+   Ce qu'on VIENT FAIRE. Une activité n'est pas un établissement : elle a lieu
+   quelque part, et l'endroit qui l'héberge ne la définit pas. */
+const ACTIVITES = ["visite", "visite guidee", "visite libre", "exposition", "expo",
+  "vernissage", "parcours", "circuit", "balade", "promenade guidee", "randonnee",
+  "atelier", "conference", "rencontre", "lecture", "projection", "seance",
+  "spectacle", "representation", "concert", "recital", "festival", "animation",
+  "decouverte", "initiation", "degustation", "stage", "tournoi", "competition",
+  "match", "course", "brocante", "vide grenier", "braderie", "marche de noel",
+  "journee du patrimoine", "journees du patrimoine", "portes ouvertes"];
+
+/* ---- Le thème d'une activité, dans l'ordre où il tranche ------------------
+   Le patrimoine et l'exposition passent en tête : ce sont eux que les mots de
+   décor — une brasserie citée dans un itinéraire, un café mentionné à
+   l'arrivée — faisaient perdre. */
+const THEMES = [
+  ["musee", ["exposition", "expo", "vernissage", "patrimoine", "patrimonial",
+             "monument", "monumental", "musee", "galerie", "collection",
+             "oeuvre", "art", "artistique", "peinture", "sculpture",
+             "photographie", "histoire", "historique", "archeologie",
+             "architecture", "chateau", "abbaye", "cathedrale", "beffroi"]],
+  ["cinema",    ["cinema", "film", "projection", "court metrage", "long metrage"]],
+  ["concert",   ["concert", "musique", "musical", "recital", "chorale",
+                 "orchestre", "fanfare", "dj", "jazz", "rock", "chanson"]],
+  ["spectacle", ["spectacle", "theatre", "danse", "cirque", "humour",
+                 "marionnette", "conte", "opera", "representation"]],
+  ["sport",     ["sport", "sportif", "match", "tournoi", "course", "randonnee",
+                 "trail", "cyclisme", "natation", "competition"]],
+  ["marche",    ["marche", "brocante", "vide grenier", "braderie", "foire",
+                 "puces", "marche de noel"]],
+  ["food",      ["degustation", "gastronomie", "gastronomique", "culinaire",
+                 "food truck", "street food", "banquet", "repas partage"]],
+];
+
+/* ---- 2. Le type de lieu --------------------------------------------------
+   Cherché dans les types déclarés d'abord, dans le NOM ensuite. Un
+   établissement s'annonce par son enseigne ; ce qu'une description raconte
+   de lui n'est pas ce qu'il est. */
+const LIEUX = [
+  ["musee",     ["musee", "museum", "galerie d art", "maison de la culture"]],
+  ["biblio",    ["bibliotheque", "mediatheque", "ludotheque"]],
+  ["cinema",    ["cinema"]],
+  ["spectacle", ["theatre", "salle de spectacle", "opera"]],
+  ["concert",   ["salle de concert", "conservatoire"]],
+  ["parc",      ["parc", "jardin", "square", "arboretum"]],
+  ["marche",    ["marche", "halle", "halles"]],
+  ["fastfood",  ["fast food", "snack", "friterie", "kebab", "sandwicherie"]],
+  ["cafe",      ["cafe", "coffee shop", "salon de the", "brasserie artisanale"]],
+  ["bar",       ["bar", "pub", "taverne", "brasserie bar", "bar a vin", "bar a bieres"]],
+  ["resto",     ["restaurant", "brasserie", "auberge", "bistrot", "creperie",
+                 "pizzeria", "table"]],
+  ["hebergement", ["hotel", "camping", "gite", "chambre d hotes", "auberge de jeunesse",
+                   "hebergement", "residence de tourisme"]],
+  ["commerce",  ["boutique", "magasin", "commerce", "librairie", "epicerie"]],
+];
+
+function themeDe(texteMots) {
+  for (const [cat, termes] of THEMES) if (dit(texteMots, termes)) return cat;
+  return null;
+}
+
+/* LE NOM COMMENCE PAR CE QUE LA CHOSE EST.
+
+   « Brasserie du Théâtre » est une brasserie ; « Théâtre de la Brasserie »
+   est un théâtre. Un ordre de liste ne sait pas faire la différence — il
+   rendrait le même verdict aux deux — alors que la langue, elle, le dit :
+   le nom de tête vient en premier. On retient donc le terme qui apparaît le
+   plus tôt dans l'enseigne, et le plus précis à position égale. */
+function lieuDe(texteMots) {
+  let meilleur = null;
+  for (const [cat, termes] of LIEUX) {
+    for (const terme of termes) {
+      const trouve = new RegExp("(?:^| )" + terme + "e?s?(?= |$)").exec(texteMots);
+      if (!trouve) continue;
+      const position = trouve.index;
+      if (!meilleur || position < meilleur.position ||
+          (position === meilleur.position && terme.length > meilleur.longueur))
+        meilleur = {cat, position, longueur:terme.length};
+    }
   }
-  if (/school|education|educational|lycee|college|university|campus/.test(types) ||
-      /\b(lycee|college|ecole|universite|campus)\b/.test(mots)) return "ecole";
+  return meilleur ? meilleur.cat : null;
+}
+
+function categorie(poi, label, description) {
+  const types = texteNormalise(liste(poi.type || poi["@type"]).join(" "));
+  const typesMots = mots(types);
+  const titreMots = mots(label);
+  const descriptionMots = mots(description);
+  /* Le tout, pour la seule question qui a besoin du tout : de quoi parle-t-on.
+     Aucune décision de type de LIEU ne lit cette chaîne-là. */
+  const toutMots = mots([label, description, types].join(" "));
+
+  /* Les types scolaires font autorité et n'ont pas de thème : un lycée n'est
+     pas une exposition parce qu'il en accueille une. */
+  if (/school|education|educational|university|campus/.test(types) ||
+      dit(titreMots, ["lycee", "college", "ecole", "universite", "campus", "groupe scolaire"]))
+    return "ecole";
+
+  /* --- 1. La nature de l'activité --------------------------------------- */
+  /* Un type d'événement déclaré, ou une activité NOMMÉE DANS LE TITRE. Un mot
+     d'activité croisé dans une description ne suffit pas : « cave et
+     dégustation » décrit ce qu'on fait chez un caviste, ça n'en fait pas une
+     dégustation itinérante. */
+  const typeEvenement = /entertainmentandevent|culturalevent|sportsevent|businessevent|event|festival|exhibition|manifestation|showevent/
+    .test(types);
+  const theme = (texte) => themeDe(texte);
+  if (typeEvenement || dit(titreMots, ACTIVITES)) {
+    /* Le titre décide en premier : c'est lui qui nomme l'activité. La
+       description ne sert qu'à défaut, et les types en dernier recours. */
+    return theme(titreMots) || theme(descriptionMots) || theme(typesMots) || "event";
+  }
+
+  /* --- 2. Le type de lieu ------------------------------------------------ */
+  /* Les types déclarés par le catalogue font autorité : la source a déjà
+     répondu, on ne la corrige pas avec de la prose. */
+  if (/culturalsite|heritage|historic|monument|architectural|touristattraction|museum/.test(types))
+    return "musee";
   if (/sport|leisure|swimming|stadium|golf|hiking|activity/.test(types)) return "sport";
-  if (/culturalsite|heritage|historic|monument|architectural|touristattraction/.test(types)) return "musee";
-  if (/market|marche|localproducts/.test(types)) return "marche";
-  if (/restaurant|brasserie/.test(mots)) return "resto";
-  if (/fast.?food|snack/.test(mots)) return "fastfood";
-  if (/cafe|coffee|salon de the/.test(mots)) return "cafe";
-  if (/bar|pub/.test(mots)) return "bar";
-  if (/cinema/.test(mots)) return "cinema";
-  if (/museum|musee/.test(mots)) return "musee";
-  if (/library|bibliotheque|mediatheque/.test(mots)) return "biblio";
-  if (/park|parc|jardin/.test(mots)) return "parc";
-  if (/market|marche/.test(mots)) return "marche";
-  if (/hotel|camping|accommodation|hebergement/.test(mots)) return "hebergement";
-  if (/shop|boutique|commerce/.test(mots)) return "commerce";
+  if (/market|localproducts/.test(types)) return "marche";
+  if (/foodestablishment|restaurant/.test(types)) return "resto";
+  if (/accommodation|campground|hotel|lodgingbusiness/.test(types)) return "hebergement";
+  if (/store|shop|retail/.test(types)) return "commerce";
+  if (/park|garden/.test(types)) return "parc";
+
+  /* Puis l'enseigne, par son nom de tête. */
+  const lieu = lieuDe(titreMots);
+  if (lieu) return lieu;
+
+  /* L'activité annoncée par la seule description : elle passe APRÈS
+     l'enseigne, jamais avant. */
+  if (dit(descriptionMots, ACTIVITES))
+    return theme(descriptionMots) || theme(toutMots) || "event";
+
+  /* En dernier recours, et uniquement pour un thème net — la description ne
+     peut plus produire « bar » ni « restaurant » à elle seule. */
+  const dernier = theme(toutMots);
+  if (dernier === "musee" || dernier === "parc") return dernier;
+
   return "commerce";
 }
 

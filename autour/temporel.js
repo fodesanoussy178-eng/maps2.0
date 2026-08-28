@@ -385,6 +385,15 @@
     return String(p.heure).padStart(2, "0") + ":" + String(p.minute).padStart(2, "0");
   }
 
+  /* Une heure d'ouverture s'écrit comme partout ailleurs dans Autour :
+     « 23h », « 19h30 ». `availability.js` la calcule en notation machine
+     (`23:00`) parce que c'est ce que ses comparaisons manipulent ; elle ne
+     doit jamais atteindre l'écran sous cette forme. */
+  function heureOuverture(hhmm) {
+    const module = root.AutourAvailability;
+    return module && module.heureFr ? module.heureFr(hhmm) : String(hhmm == null ? "" : hhmm);
+  }
+
   function libelleTemporel(item, now, options) {
     const t = now == null ? Date.now() : Number(now);
     const etat = (options && options.statut) || statutTemporel(item, t, options);
@@ -393,7 +402,7 @@
     switch (etat.statut) {
       case STATUTS.EN_COURS:
         return etat.periodeLongue && etat.dispo && etat.dispo.closesAtTime
-          ? "En cours · jusqu’à " + etat.dispo.closesAtTime
+          ? "En cours · jusqu’à " + heureOuverture(etat.dispo.closesAtTime)
           : "Maintenant";
 
       case STATUTS.IMMINENT: {
@@ -403,7 +412,7 @@
 
       case STATUTS.PLUS_TARD: {
         if (etat.debut == null)
-          return etat.dispo && etat.dispo.opensAtTime ? "Ouvre à " + etat.dispo.opensAtTime : "Plus tard";
+          return etat.dispo && etat.dispo.opensAtTime ? "Ouvre à " + heureOuverture(etat.dispo.opensAtTime) : "Plus tard";
         const p = partsLocales(etat.debut, tz);
         return (p.heure >= 18 ? "Ce soir · " : "Aujourd’hui · ") + heureLocale(etat.debut, tz);
       }

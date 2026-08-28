@@ -271,10 +271,16 @@ function ouvrirDetail(id){
       'La publication reste visible pour éviter un déplacement inutile.</p>' : '')+
     /* L'essentiel d'abord — où, combien de temps, ouvert, quelle réputation —
        puis les quatre gestes utiles. Le détail vit plus bas. */
+    /* La distance et le temps de marche n'existent que si l'on sait d'où l'on
+       part. Sans position — le cas des premières secondes sur un téléphone —
+       la fiche affichait « NaN km » et « NaN min à pied ». On n'écrit rien
+       plutôt que d'écrire un nombre qui n'existe pas. */
     '<p class="resume">'+
-      '<span>'+formatDist(distanceDepuisZone(l))+'</span>'+
-      '<span>'+tempsTrajetMinutes(distanceDepuisZone(l),
-              VITESSES_KMH.pied)+' min à pied</span>'+
+      (Number.isFinite(distanceDepuisZone(l))
+        ? '<span>'+formatDist(distanceDepuisZone(l))+'</span>'+
+          '<span>'+tempsTrajetMinutes(distanceDepuisZone(l),
+                  VITESSES_KMH.pied)+' min à pied</span>'
+        : '')+
       badgeDispo(l)+
       (l.note ? '<span>★ '+l.note.toFixed(1)+(l.avis?' ('+l.avis+')':'')+'</span>' : '')+
       (l.pmr === true ? '<span title="Accessible en fauteuil">♿</span>' : '')+
@@ -310,12 +316,17 @@ function ouvrirDetail(id){
     '<span class="ad-ville">'+esc(l.cp || "")+'</span>'+
     '</address>'+
     (ficheAide ? faitsAide(l) : '<dl class="faits">'+
-      '<div><dt>Quand</dt><dd>'+
-        (l.ouvert === true  ? '<span class="ouvert">Ouvert</span> · ' :
-         l.ouvert === false ? '<span class="ferme">Fermé</span> · '   : '')+
-        esc(libelleHoraires(l))+'</dd></div>'+
+      /* « Quand » portait `l.quand` tel quel : sur un lieu OpenStreetMap,
+         c'est-à-dire la majorité de la carte, la fiche affichait
+         `Mo-Fr 08:00-12:00; Sa 09:00-12:00`. Le statut calculé passe devant —
+         c'est la réponse à la question posée — et la grille complète reste
+         dépliable juste en dessous, en français. */
+      '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
-      '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
+      /* `l.par` est absent des lieux venus d'un catalogue : `esc(undefined)`
+         écrivait « undefined » sous « Posté par ». La provenance se lit avec
+         la même fonction que les fiches d'aide, qui la connaît. */
+      '<div><dt>Source</dt><dd>'+esc(sourceAide(l))+'</dd></div>'+
     '</dl>')+
     horairesSemaine(l)+
     (l.gratuit ? '' :

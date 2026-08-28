@@ -71,7 +71,7 @@ window.addEventListener("unhandledrejection", e=>{
 
 const {
   FAMILY_CATEGORIES,
-  classifyPlace,
+  classifyPlaceWeighted,
   toCommonItem,
   matchesCategory,
   dedupeItems,
@@ -157,7 +157,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=e8bab4dc"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=0f54adbc"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -682,8 +682,16 @@ function dispoDe(l, arrivee, quand){
   return resultat;
 }
 
-/* Le libellé exact demandé par cas : « Ouvert • ferme à 23:30 », « Fermé •
-   ouvre à 14:00 », « Fermé aujourd'hui », « Horaires non renseignés »… */
+/* L'heure telle qu'on l'écrit en français : « 19h30 », « 9h ». `availability.js`
+   rend les heures en notation machine (`19:30`) parce que c'est ce que ses
+   calculs manipulent ; tout ce qui s'affiche passe par ici. */
+function heureFrancaise(hhmm){
+  const module = window.AutourAvailability;
+  return module && module.heureFr ? module.heureFr(hhmm) : String(hhmm || "");
+}
+
+/* Le libellé exact demandé par cas : « Ouvert · ferme à 23h30 », « Fermé ·
+   ouvre à 14h », « Fermé aujourd'hui », « Horaires non renseignés »… */
 function badgeDispo(l){
   const d = dispoDe(l);
   if(!d) return "";
@@ -1244,7 +1252,20 @@ function affinerCategorie(cat, nom, tags){
      rattrape. « Cinéma » dans « Métro Gare Lille Flandres » ne doit pas
      transformer une station en salle obscure. */
   if(CATS_TRANSPORT.has(cat)) return cat;
-  if(classifyPlace({cat, title:nom}).includes("cinema")) return "cinema";
+  /* UN MOT ISOLÉ NE CLASSE PAS.
+
+     Cette ligne lisait `classifyPlace(...).includes("cinema")` : la liste
+     COMPLÈTE des appartenances, pas la principale. Or « ciné », « film » et
+     « projection » entrent dans cette liste au moindre passage — un magasin
+     « Ciné Photo Service », un bar qui « projette les matchs ». Le seul mot
+     rencontré remplaçait alors une catégorie établie par un tag.
+
+     On compare donc les FORCES, comme partout ailleurs dans le moteur :
+     l'affinage n'a lieu que si « cinéma » l'emporte réellement sur ce que la
+     règle OSM avait conclu. Un vrai cinéma passe (son tag `amenity=cinema`
+     lui donne 1) ; une mention en passant ne passe plus. */
+  const poids = classifyPlaceWeighted({cat, title:nom, tags});
+  if((poids.cinema || 0) > 0 && (poids.cinema || 0) > (poids[cat] || 0)) return "cinema";
   if(cat === "resto" || cat === "fastfood" || cat === "cafe"){
     if(CHAINES_CAFE.test(nom))     return "cafe";
     if(CHAINES_FASTFOOD.test(nom)) return "fastfood";
@@ -2791,7 +2812,10 @@ async function overpassRelaye(q, msMax, signal){
   if(relaisLieux === false) return {ok:false, elements:[], raison:"relais_absent"};
   try{
     const stop = new AbortController();
-    const t = setTimeout(()=>stop.abort(), msMax || OVERPASS_DELAI_DEMANDE);
+    /* Le budget passé par l'appelant décrit ce que l'ÉCRAN accepte d'attendre.
+       Le relais, lui, travaille pour tout le quartier : on ne l'interrompt
+       jamais avant qu'il ait eu le temps de répondre et d'être mis en cache. */
+    const t = setTimeout(()=>stop.abort(), Math.max(msMax || 0, RELAIS_DELAI_MS));
     if(signal) signal.addEventListener("abort", ()=>stop.abort(), {once:true});
     PERF.requete("overpass");
     const r = await fetch("/api/lieux?q="+encodeURIComponent(q), {signal:stop.signal});
@@ -2912,6 +2936,32 @@ const OVERPASS_DELAI_BOOT = 4500;
    d'échec, et le prochain déplacement de carte relance la requête. Couper à
    6 s ne perd donc que la requête, jamais les résultats. */
 const OVERPASS_DELAI_DEMANDE = 6000;
+
+/* ---- LE BUDGET DU RELAIS N'EST PAS CELUI DE L'ÉCRAN ----------------------
+
+   LA PANNE, ET POURQUOI ELLE NE SE VOYAIT QUE SUR TÉLÉPHONE.
+
+   `/api/lieux` s'accorde neuf secondes au total et sept et demie par instance
+   Overpass. Le client, lui, coupait à quatre secondes et demie au démarrage,
+   six sur demande. Sur une fibre, la réponse d'une zone déjà chaude revient en
+   deux secondes et personne ne voit rien. Sur un réseau mobile — trois cents
+   millisecondes d'aller-retour, une poignée de main TLS de plus, une file
+   d'attente partagée — la même réponse arrive après la coupure.
+
+   Et couper ne coûte pas seulement CETTE réponse. La fonction Edge écoute
+   `requete.signal` : quand le navigateur abandonne, elle annule ses instances
+   amont. Le CDN n'enregistre donc rien. Chaque téléphone qui renonçait
+   détruisait le travail qui aurait servi à tout le quartier — et la zone
+   restait froide indéfiniment. C'est exactement l'inverse de ce que le relais
+   existe pour faire.
+
+   La correction ne consiste pas à faire attendre l'écran : il n'attend pas,
+   il n'a jamais attendu. Le cache local, les jeux de zone, Supabase et
+   DATAtourisme sont déjà affichés quand cette requête part, et OpenStreetMap
+   ne fait que les ENRICHIR. Rallonger un budget d'arrière-plan ne retarde donc
+   aucun pixel ; ça laisse simplement le relais finir son travail et le mettre
+   en cache pour les suivants. */
+const RELAIS_DELAI_MS = 12000;
 /* Ce qu'on demande à l'ouverture : le quartier immédiat, et de quoi remplir
    cinq recommandations avec de la marge. Le reste vient au premier geste. */
 const RAYON_BOOT = 900;
@@ -2996,8 +3046,16 @@ async function vraisLieux(lat,lng,bornes,opts){
      Quand c'est la personne qui a demandé quelque chose de précis, en
      revanche, mieux vaut attendre que revenir les mains vides. */
   const delai = o.delai || OVERPASS_DELAI_DEMANDE;
+  /* Le `timeout:` écrit DANS la requête est celui qu'Overpass s'accorde côté
+     serveur. Il était calé sur le budget de l'écran — quatre ou six secondes —
+     alors que le relais, lui, attend sept secondes et demie par instance. On
+     demandait donc à Overpass d'abandonner avant que le relais ne renonce, et
+     une requête large (un rayon d'aide de vingt kilomètres) n'avait
+     mathématiquement aucune chance d'aboutir. La forme acceptée par
+     `/api/lieux` borne ce nombre à deux chiffres. */
+  const secondesOverpass = Math.min(25, Math.max(8, Math.round(delai/1000)));
   const resultat = await overpass(
-    `[out:json][timeout:${Math.round(delai/1000)}];${prefixePays}(${bloc});out center ${plafond};`,
+    `[out:json][timeout:${secondesOverpass}];${prefixePays}(${bloc});out center ${plafond};`,
     delai, o.signal, true);
   if(!resultat.ok) return {ok:false, lieux:[], raison:resultat.raison};
   const lieuxOsm = resultat.elements.map(e=>{
@@ -4082,6 +4140,35 @@ function libererCache(combien){
   return libere;
 }
 
+/* COMPLÉTER UNE TUILE, PAS LA REMPLACER.
+
+   `ecrireCacheLieux` écrase l'entrée : c'est ce qu'il faut quand une passe
+   d'exploration redécrit tout le quartier. Ce n'est pas ce qu'il faut quand
+   Aide vient d'y ajouter des structures que l'exploration ne demande jamais
+   — les associations, l'aide alimentaire, l'hébergement d'urgence ne sont pas
+   dans `CATS_DEPART`. Écraser ferait disparaître les unes ou les autres selon
+   qui a écrit en dernier.
+
+   On fusionne donc par identifiant, les nouveaux l'emportant sur les anciens,
+   et on garde les plus proches si le plafond est atteint. */
+const CACHE_TUILE_MAX_LIEUX = 300;
+
+function completerCacheLieux(lat,lng,nouveaux){
+  if(!nouveaux || !nouveaux.length) return false;
+  const existants = lireCacheLieux(lat,lng) || [];
+  const parId = new Map();
+  existants.forEach(l=>{ if(l && l.id) parId.set(l.id, l); });
+  nouveaux.forEach(l=>{ if(l && l.id) parId.set(l.id, l); });
+  let liste = [...parId.values()];
+  if(liste.length > CACHE_TUILE_MAX_LIEUX)
+    liste = liste
+      .map(l=>({l, d:distanceM(lat,lng,l.lat,l.lng)}))
+      .sort((a,b)=>(a.d||0)-(b.d||0))
+      .slice(0, CACHE_TUILE_MAX_LIEUX)
+      .map(x=>x.l);
+  return ecrireCacheLieux(lat,lng,liste);
+}
+
 function ecrireCacheLieux(lat,lng,l){
   const cle = cleCache(lat,lng);
   const charge = JSON.stringify({t:Date.now(), l});
@@ -4105,6 +4192,25 @@ function ecrireCacheLieux(lat,lng,l){
    le cache local évitant de réinterroger ce qu'on a déjà vu. */
 let dernierChargement = null;
 let chargementEnCours = false;
+
+/* CE QU'UNE SOURCE A LE DROIT DE FAIRE ATTENDRE, ET POURQUOI ÇA COMPTE ICI.
+
+   `fetch` n'a pas de délai par défaut. Une requête qui n'aboutit jamais — une
+   socket perdue sans être fermée, le quotidien d'un changement d'antenne —
+   laisse sa promesse en vol indéfiniment.
+
+   Sur cet appel-ci, la conséquence dépasse l'attente : c'est le `finally` de
+   `Promise.allSettled` qui retire la clé de `chargementsZone`, et tant qu'elle
+   y est, `chargerZone` rend la MÊME promesse morte à chaque nouvelle demande.
+   Une seule source muette gelait donc définitivement le rechargement de cette
+   zone — et l'écran restait sur ce qu'il avait sans jamais se mettre à jour.
+   `chargerLeDemarrage` bornait déjà ses sources ; celui-ci ne le faisait pas.
+
+   La requête n'est pas annulée : elle finira peut-être et remplira les caches.
+   Elle ne retient simplement plus personne. Le modèle ancré a droit à plus de
+   temps que les catalogues : il lit des pages avant de répondre. */
+const ZONE_DELAI_SOURCE_MS = 9000;
+const ZONE_DELAI_MODELE_MS = 15000;
 
 const chargementsZone = new Map();
 let numeroGeneration = 0;
@@ -4271,7 +4377,7 @@ function chargerZone(lat, lng, opts){
      La passe générale suffit ; rouvrir une catégorie ne redemande pas les
      mêmes cinquante POI touristiques. */
   if(!o.cats && !o.osmSeulement) travaux.push(
-    lieuxDatatourisme(lat,lng,signal).then(r=>{
+    avecDelai(lieuxDatatourisme(lat,lng,signal), ZONE_DELAI_SOURCE_MS, [], signal).then(r=>{
       if(!generationCourante(generation) || !r || !r.length) return;
       sourceExploitable = true;
       fusionner(r,"datatourisme");
@@ -4282,7 +4388,7 @@ function chargerZone(lat, lng, opts){
      ne comptent pas comme « source exploitable » : l'écran ne doit pas
      dépendre d'elles pour décider s'il a quelque chose à montrer. */
   if(!o.cats && !o.osmSeulement) travaux.push(
-    decouvertesAncrees(lat,lng,signal).then(r=>{
+    avecDelai(decouvertesAncrees(lat,lng,signal), ZONE_DELAI_MODELE_MS, [], signal).then(r=>{
       if(!generationCourante(generation) || !r || !r.length) return;
       fusionner(r,"external");
       PERF.jalon("decouvertes_done");
@@ -4292,7 +4398,7 @@ function chargerZone(lat, lng, opts){
      est réellement active. L'échec reste isolé : OSM, DATAtourisme et les
      publications continuent sans écran vide. */
   if(!o.cats && !o.osmSeulement && large) travaux.push(
-    notesGoogle(lat,lng,{signal}).then(f=>{
+    avecDelai(notesGoogle(lat,lng,{signal}), ZONE_DELAI_SOURCE_MS, [], signal).then(f=>{
       if(!generationCourante(generation) || !f || !f.length) return;
       sourceExploitable = true;
       greffeNotes(lieux,f);
@@ -4301,7 +4407,7 @@ function chargerZone(lat, lng, opts){
     })
   );
   if(!o.cats && !o.osmSeulement) travaux.push(
-    chargerCoucheSupabase(lat,lng).then(couche=>{
+    avecDelai(chargerCoucheSupabase(lat,lng), ZONE_DELAI_SOURCE_MS, null, signal).then(couche=>{
       if(!generationCourante(generation) || !couche) return;
       if((couche.publications || []).length){
         sourceExploitable = true;
@@ -5428,9 +5534,9 @@ function sousTitreMarqueur(l){
 
   const d = dispoDe(l);
   if(d && d.status === "open" && d.closesAtTime)
-    return '<span class="ouvre">Ouvert jusqu’à '+d.closesAtTime+'</span>';
+    return '<span class="ouvre">Ouvert jusqu’à '+heureFrancaise(d.closesAtTime)+'</span>';
   if(d && (d.status === "closed" || d.status === "opening_soon") && d.opensAtTime)
-    return '<span>Ouvre à '+d.opensAtTime+'</span>';
+    return '<span>Ouvre à '+heureFrancaise(d.opensAtTime)+'</span>';
   return trajet ? '<span>'+trajet+'</span>' : '';
 }
 
@@ -6127,27 +6233,121 @@ feuilleDetail.addEventListener("touchcancel", ()=>{ debutBalayageFeuille=null; }
 
 /* Google renvoie les sept lignes d'horaires en commençant par lundi ;
    getDay() commence par dimanche, d'où le décalage. */
+function jourDeLaSemaine(){ return (new Date().getDay() + 6) % 7; }
+
 function horaireDuJour(l){
   if(!l.horaires || !l.horaires.length) return "";
-  const i = (new Date().getDay() + 6) % 7;
-  const ligne = l.horaires[i] || "";
+  const ligne = l.horaires[jourDeLaSemaine()] || "";
   return ligne.replace(/^[^:]*:\s*/, "");        // « Lundi : 9h–18h » → « 9h–18h »
 }
 
+/* AUCUN `opening_hours` BRUT NE SORT D'ICI.
+
+   Cette fonction rendait `l.quand` tel quel dès que Google n'avait pas de
+   grille — c'est-à-dire pour tout ce qui vient d'OpenStreetMap, soit la
+   majorité de la carte. Les listes et les fiches affichaient donc
+   `Mo-Fr 08:00-12:00,14:00-18:00; Sa 09:00-12:00` : la syntaxe d'une base de
+   données, à quelqu'un qui veut savoir si c'est ouvert.
+
+   L'ordre est maintenant celui de l'information utile :
+
+     1. le STATUT CALCULÉ — « Ouvert · ferme à 19h30 ». C'est la réponse à la
+        question qu'on se pose vraiment, et elle vient de `availability.js`,
+        qui est déjà la seule autorité sur les horaires ;
+     2. la ligne du jour publiée par Google, déjà rédigée en français ;
+     3. la journée d'aujourd'hui, rendue en français depuis la grille OSM ;
+     4. « Horaires non renseignés » — une absence, dite comme telle.
+
+   Rien d'autre. Une chaîne qu'`availability.js` ne sait pas lire n'est pas
+   affichée : on ne connaît pas ces horaires, et le prétendre coûterait un
+   déplacement. */
 function libelleHoraires(l){
+  /* UN ÉVÉNEMENT N'A PAS D'HORAIRES D'OUVERTURE, IL A UNE DATE.
+
+     Et sur une publication, `quand` n'est pas une chaîne OpenStreetMap : c'est
+     une phrase écrite par la personne qui a posé l'événement, déjà en
+     français — « Samedi 12 septembre · 20h30 → 23h ». La règle « rien de brut
+     ne sort » vise la syntaxe de base de données, pas le texte de quelqu'un. */
+  if(estTemporaire(l)){
+    const libelle = TEMPS && TEMPS.libelleTemporel
+      ? TEMPS.libelleTemporel(l, Date.now(), {disponibilite:(x,t)=>dispoDe(x, null, t)}) : "";
+    if(libelle) return libelle;
+    return l.quand || "Bientôt";
+  }
+  const d = dispoDe(l);
+  if(d && d.status !== "unknown" && d.label) return d.label;
   const horaire = horaireDuJour(l);
   if(horaire) return horaire;
-  if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/i.test(l.quand)) return l.quand;
-  return "Horaires inconnus";
+  const DISPO = window.AutourAvailability;
+  const jour = DISPO && DISPO.journeeFrancaise ? DISPO.journeeFrancaise(l, jourDeLaSemaine()) : null;
+  if(jour) return jour === "Fermé" ? "Fermé aujourd’hui" : jour;
+  return "Horaires non renseignés";
 }
 
+/* La semaine complète : celle de Google quand elle existe — elle est déjà
+   écrite en français —, sinon celle d'OpenStreetMap rendue en français par
+   `availability.js`. Jamais la chaîne d'origine. */
 function horairesSemaine(l){
-  if(!l.horaires || !l.horaires.length) return "";
-  const aujourdhui = (new Date().getDay() + 6) % 7;
+  const aujourdhui = jourDeLaSemaine();
+  if(l.horaires && l.horaires.length)
+    return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
+      l.horaires.map((h,i)=>
+        '<div class="h-ligne'+(i===aujourdhui?' h-jour':'')+'">'+esc(h)+'</div>').join("")+
+      '</details>';
+  const DISPO = window.AutourAvailability;
+  const semaine = DISPO && DISPO.semaineFrancaise ? DISPO.semaineFrancaise(l) : null;
+  if(!semaine || !semaine.jours.length) return "";
   return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
-    l.horaires.map((h,i)=>
-      '<div class="h-ligne'+(i===aujourdhui?' h-jour':'')+'">'+esc(h)+'</div>').join("")+
+    semaine.jours.map(ligne=>{
+      const actuel = aujourdhui >= ligne.premierJour && aujourdhui <= ligne.dernierJour;
+      return '<div class="h-ligne'+(actuel?' h-jour':'')+'">'+
+        esc(ligne.jour.charAt(0).toUpperCase()+ligne.jour.slice(1))+' : '+esc(ligne.horaire)+'</div>';
+    }).join("")+
+    (semaine.feriesFermes ? '<div class="h-ligne">Fermé les jours fériés</div>' : '')+
     '</details>';
+}
+
+/* Le tag OSM `cuisine` porte des valeurs anglaises, en minuscules, séparées
+   par des points-virgules : `regional;french`. Affiché tel quel — c'est ce
+   que faisait la liste — il donnait « regional french » à des gens qui
+   cherchent où manger. On traduit ce qu'on connaît, et on TAIT le reste :
+   une valeur qu'on ne sait pas dire en français n'apprend rien à personne. */
+const CUISINES_FR = (()=>{
+  const table = new Map();
+  Object.entries(CUISINES).forEach(([mot, tag])=>{ if(!table.has(tag)) table.set(tag, mot); });
+  /* Les libellés qu'on veut vraiment lire, avec leurs accents et leur
+     majuscule. Ils l'emportent sur la traduction automatique ci-dessus. */
+  Object.entries({
+    french:"Française", italian:"Italienne", turkish:"Turque", lebanese:"Libanaise",
+    moroccan:"Marocaine", tunisian:"Tunisienne", algerian:"Algérienne",
+    african:"Africaine", senegalese:"Sénégalaise", ivorian:"Ivoirienne",
+    ethiopian:"Éthiopienne", cameroonian:"Camerounaise", congolese:"Congolaise",
+    malian:"Malienne", syrian:"Syrienne", asian:"Asiatique", japanese:"Japonaise",
+    chinese:"Chinoise", vietnamese:"Vietnamienne", thai:"Thaïlandaise",
+    korean:"Coréenne", indian:"Indienne", pakistani:"Pakistanaise", greek:"Grecque",
+    portuguese:"Portugaise", spanish:"Espagnole", mexican:"Mexicaine",
+    brazilian:"Brésilienne", peruvian:"Péruvienne", caribbean:"Antillaise",
+    american:"Américaine", vegetarian:"Végétarienne", vegan:"Végane",
+    seafood:"Fruits de mer", kebab:"Kebab", pizza:"Pizza", burger:"Burger",
+    sushi:"Sushi", ramen:"Ramen", tapas:"Tapas", halal:"Halal", kosher:"Casher",
+    sandwich:"Sandwichs", crepe:"Crêpes", bakery:"Boulangerie", coffee_shop:"Café",
+    ice_cream:"Glaces", regional:"Cuisine régionale", international:"International",
+    fish_and_chips:"Fish and chips", barbecue:"Barbecue", steak_house:"Grillades",
+    friture:"Friterie", chicken:"Poulet", noodle:"Nouilles", curry:"Curry",
+  }).forEach(([tag, libelle])=>table.set(tag, libelle));
+  return table;
+})();
+
+function libelleCuisine(brut){
+  const valeurs = String(brut || "").split(/[;,]/).map(v=>v.trim().toLowerCase()).filter(Boolean);
+  const lus = [];
+  valeurs.forEach(v=>{
+    const libelle = CUISINES_FR.get(v);
+    if(libelle && !lus.includes(libelle)) lus.push(libelle);
+  });
+  if(!lus.length) return "";
+  const texte = lus.slice(0,2).join(" · ");
+  return texte.charAt(0).toUpperCase()+texte.slice(1);
 }
 
 /* Enregistrer : un repère qu'on retrouve, gardé sur l'appareil. */
@@ -6243,7 +6443,11 @@ function photoAutoriseeAide(l){
 function couvertureAide(l, c){
   const photo = photoAutoriseeAide(l);
   const teinte = COULEURS_CAT[l.cat] || "#B82A3A";
-  return '<figure class="aide-couverture" style="--teinte:'+teinte+'">'+
+  /* Le même repli que pour un lieu : une fiche sans photo se reconnaît à sa
+     tuile teintée et à son grand pictogramme, pas à une variante de plus.
+     Cette classe manquait ici, si bien que deux fiches sans photo ne se
+     ressemblaient pas selon la porte par laquelle on y entrait. */
+  return '<figure class="aide-couverture'+(photo?'':' sans-photo')+'" style="--teinte:'+teinte+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
     (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt="">' : '')+
     (photo && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
@@ -6262,8 +6466,11 @@ function sourceAide(l){
   const source = l && (l.source || ((l.sources || [])[0])) || "";
   const libelles = {
     openstreetmap:"OpenStreetMap", google_places:"Google Maps", datatourisme:"DATAtourisme",
-    autour:"Autour", openagenda:"Agenda officiel",
+    autour:"Autour", openagenda:"Agenda officiel", gemini:"Recherche ancrée",
   };
+  /* Une publication posée dans Autour a une provenance plus précise que
+     « Autour » : la personne ou la structure qui l'a écrite. On la garde. */
+  if(source === "autour" && l && l.par) return String(l.par);
   return libelles[source] || (l && l.par) || "Source non renseignée";
 }
 
@@ -6387,7 +6594,7 @@ function ouvrirLieuPartage(){
 
 async function partagerLieu(l){
   const url = lienVers(l);
-  const txt = l.titre+" — "+l.adresse+", "+l.cp+" · "+l.quand;
+  const txt = l.titre+" — "+l.adresse+", "+l.cp+" · "+libelleHoraires(l);
   try{
     if(navigator.share) await navigator.share({title:l.titre,text:txt,url});
     else { await navigator.clipboard.writeText(txt+"\n"+url); toast("Lien copié"); }
@@ -6961,7 +7168,22 @@ function distanceM(lat1,lng1,lat2,lng2){
   const a=Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
-const formatDist = (m)=> m<1000 ? Math.round(m/10)*10+" m" : (m/1000).toFixed(1)+" km";
+/* UNE DISTANCE INCONNUE N'EST PAS UNE DISTANCE.
+
+   `distanceDepuisZone` rend `NaN` tant qu'aucune position n'est connue — et
+   `(NaN/1000).toFixed(1)` rend « NaN km ». C'est ce qui s'affichait sur les
+   fiches des captures, au-dessus de « NaN min à pied ».
+
+   Pourquoi seulement sur téléphone : sur un ordinateur la position vient du
+   réseau et arrive avant la première fiche ouverte ; sur un téléphone, la
+   demande de géolocalisation pouvait échouer (voir `suivreMaPosition`) et
+   l'application vivait alors sans point. Rien dans ce format ne prévoyait ce
+   cas, alors qu'il est le cas normal des premières secondes.
+
+   On rend une chaîne vide : l'appelant l'écrit ou ne l'écrit pas, mais il
+   n'affiche jamais un nombre qui n'existe pas. */
+const formatDist = (m)=> !Number.isFinite(Number(m)) ? ""
+  : m<1000 ? Math.round(m/10)*10+" m" : (m/1000).toFixed(1)+" km";
 
 /* Certaines recommandations gardent leur distance de classement, d'autres
    repassent par leur objet d'origine avant « Voir tout ». Dans ce second cas,
@@ -7097,12 +7319,15 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner, connus){
       (x.avis?' <span style="font-weight:500;color:var(--ink2)">('+x.avis+')</span>':'')+'</span>');
     const badge = badgeDispo(x);
     if(badge) sous.push(badge);
-    if(x.cuisine) sous.push(esc(x.cuisine.replace(/[_;]/g," ")));
+    const cuisine = libelleCuisine(x.cuisine);
+    if(cuisine) sous.push(esc(cuisine));
     if(x.prixN != null) sous.push('<span class="prix-n">'+SYMBOLE_PRIX[x.prixN]+'</span>');
     if(x.service) sous.push('<span class="service">'+esc(x.service)+'</span>');
     sous.push(esc(x.adresse||""));
-    // horaires réels quand OpenStreetMap les connaît
-    sous.push(esc(libelleHoraires(x)));
+    /* Le badge dit déjà « Ouvert · ferme à 19h30 » : le répéter ici
+       consommait une ligne pour rien. On n'écrit donc les horaires que
+       lorsqu'aucun statut n'a pu être calculé — et en français. */
+    if(!badge) sous.push(esc(libelleHoraires(x)));
     return '<button class="rang" data-va="'+esc(x.id)+'">'+
       '<span class="rang-n">'+(i+1)+'</span>'+
       '<span class="rang-emoji">'+c.emoji+'</span>'+
@@ -7262,6 +7487,13 @@ const RESEAUX_AIDE = [
 const zonesAideChargees = new Map();
 const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
+/* Ce qu'une source secondaire d'Aide a le droit de faire attendre. Passé ce
+   délai, elle n'est pas annulée — elle n'est simplement plus attendue, et
+   l'écran cesse de dépendre d'elle. */
+const AIDE_DELAI_SOURCE_MS = 9000;
+/* Le palier réellement interrogé en ce moment : l'écran s'en sert pour dire
+   « je cherche plus loin » plutôt que « je n'ai rien trouvé ». */
+let rayonAidePalierEnCours = null;
 const RAYON_AIDE = window.AutourAideRayon || null;
 /* Les besoins que la phrase n'a pas nommés mais qu'elle implique. Ils entrent
    dans la recherche, à poids réduit : élargir n'est pas détourner. */
@@ -7271,6 +7503,7 @@ const POIDS_BESOIN_SECONDAIRE = .6;
    plus loin » plutôt que laisser croire au coin de la rue. */
 let rayonAideAtteint = RAYON_AIDE ? RAYON_AIDE.premier() : 3000;
 let aideEnCours = false;      // pour distinguer « on cherche » de « rien trouvé »
+let aidesEnVol = 0;           // combien de recherches d'aide sont réellement parties
 let aideEtrangersEcartes = false;
 
 /* Aide reste en France par défaut. Un fournisseur qui ne donne pas de pays
@@ -7408,6 +7641,12 @@ async function chargerAide(lat,lng,options){
   const generation = nouvelleGeneration("zone:aide",cleChargement,!!o.force);
   prendreEtatRecherche("places",generation);
   prendreEtatRecherche("overpass",generation);
+  /* Un compteur, pas un booléen. Le drapeau n'était remis à faux que si la
+     génération était encore la courante : une recherche remplacée en cours de
+     route (on choisit un autre besoin, la position arrive) laissait donc
+     « je cherche » allumé pour toujours, et l'écran ne pouvait plus jamais
+     annoncer une impasse. Un compteur redescend quoi qu'il arrive. */
+  aidesEnVol += 1;
   aideEnCours = true;
   definirEtatRechercheVersionne("places",SEARCH_STATES.LOADING_PLACES,generation);
   definirEtatRechercheVersionne("overpass",SEARCH_STATES.IDLE,generation);
@@ -7421,8 +7660,10 @@ async function chargerAide(lat,lng,options){
         zonesAideChargees.set(cleZoneAide,[lat,lng]);
     }
     finally{
+      aidesEnVol = Math.max(0, aidesEnVol - 1);
+      aideEnCours = aidesEnVol > 0;
+      if(feuilleNiveau !== null) planifierRendu({feuille:true});
       if(generationCourante(generation)){
-        aideEnCours = false;
         const trouve = contexte.besoins.length
           ? lieux.some(l=>dansZoneActive(l) && AIDE && AIDE.estSolution(l,contexte.besoins))
           : lieux.some(l=>dansZoneActive(l) && correspondUneCategorie(l,SET_AIDE));
@@ -7468,19 +7709,75 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
          c'est-à-dire le classement complet, pas le nombre d'objets ramenés. */
       charger:async()=>{
         const cats = catsContexte.length ? catsContexte : CATS_AIDE;
+        /* CE QU'ON SAIT DÉJÀ PASSE AVANT CE QU'ON VA DEMANDER.
+
+           Aide ne lisait aucun cache : elle partait d'un écran vide et
+           attendait OpenStreetMap. Or les structures d'un quartier ne bougent
+           pas d'un jour à l'autre — et la tuile locale les contient dès la
+           deuxième ouverture. On les affiche d'abord ; les paliers qui suivent
+           complètent et corrigent. Une source indisponible ne peut alors plus
+           faire disparaître ce qui était connu, puisque c'est déjà affiché. */
+        const connus = resultatsAideDansTerritoire(lireCacheProche(lat,lng) || []);
+        if(connus.length){
+          fusionner(connus,"permanent");
+          majFeuille2();
+          PERF.jalon("aide_cache_visible");
+        }
         let palier = RAYON_AIDE ? RAYON_AIDE.premier() : 3000;
         let dernierResultat = null;
+        let jamaisRepondu = true;
         for(;;){
+          rayonAidePalierEnCours = palier;
+          /* Le palier le plus proche a le budget le plus court : il est là
+             pour revenir vite. Les suivants cherchent plus large, donc plus
+             longtemps — mais personne ne les attend, puisque le précédent est
+             déjà à l'écran. */
+          const budget = palier <= 1500 ? 5000 : palier <= 5000 ? 8000 : 12000;
           const r = await vraisLieux(lat,lng,null,
-            {cats, rayon:palier, limite:180, pays:"FR", signal:generation.signal});
+            {cats, rayon:palier, limite:180, pays:"FR", delai:budget, signal:generation.signal});
           if(!generationCourante(generation)) return r;
           const locaux = r && r.ok ? resultatsAideDansTerritoire(r.lieux) : [];
-          dernierResultat = r && r.ok ? Object.assign({}, r, {lieux:locaux}) : r;
-          if(locaux.length) fusionner(locaux,"permanent");
+          if(r && r.ok){
+            jamaisRepondu = false;
+            dernierResultat = Object.assign({}, r, {lieux:locaux});
+          }else if(jamaisRepondu) dernierResultat = r;
+          rayonAideAtteint = palier;
+          /* PUBLIER À CHAQUE PALIER, PAS À LA FIN.
+
+             `fusionner` peignait déjà la carte, mais l'écran Aide, lui,
+             attendait la fin de la boucle : quatre paliers, chacun avec son
+             aller-retour réseau. Sur une fibre ça passe inaperçu ; sur un
+             téléphone, l'écran affichait « je n'ai pas trouvé de solution »
+             pendant que la recherche battait son plein. On publie donc dès
+             qu'il y a quelque chose à montrer. */
+          if(locaux.length){
+            fusionner(locaux,"permanent");
+            /* Et on garde. La prochaine ouverture d'Aide dans ce quartier
+               commencera par ces structures-là, sans attendre le réseau. */
+            completerCacheLieux(lat,lng,locaux);
+            definirEtatRechercheVersionne("overpass",SEARCH_STATES.SUCCESS,generation);
+            majFeuille2();
+          }
           if(!RAYON_AIDE) break;
+          /* UNE PANNE N'EST PAS UNE ABSENCE.
+
+             Un palier qui échoue (relais muet, délai dépassé, requête
+             refusée) rendait zéro résultat, ce que la règle d'élargissement
+             lisait comme « pas assez près » : on repartait donc pour un
+             palier plus large, plus lent, et voué au même échec. Quatre fois.
+             Sur mobile, cela transformait une panne d'une seconde en vingt
+             secondes d'attente sans rien afficher.
+
+             Un transport qui ne répond pas ne dit rien sur la distance. On
+             s'arrête, on le signale, et ce qui est déjà connu reste à
+             l'écran. */
+          if(!r || !r.ok){
+            if(r && r.raison === "annule") break;
+            definirEtatRechercheVersionne("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE,generation);
+            break;
+          }
           const retenus = lieux.filter(estSolutionAideLiee);
           const verdict = RAYON_AIDE.evaluer(retenus, palier);
-          rayonAideAtteint = palier;
           if(!verdict.elargir) break;
           palier = verdict.prochain;
         }
@@ -7488,19 +7785,37 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
       },
       publier:r=>{
         const osm = r && r.ok ? r.lieux : [];
-        definirEtatRechercheVersionne("overpass",r && r.ok
-          ? SEARCH_STATES.SUCCESS : SEARCH_STATES.OVERPASS_UNAVAILABLE,generation);
-        /* La fusion a déjà eu lieu, palier par palier : republier ici
-           écraserait le travail des paliers précédents. */
+        /* Un état déjà posé par un palier réussi ne se dégrade pas ici : la
+           boucle a publié au fur et à mesure, et le dernier mot appartient à
+           ce qu'elle a réellement obtenu. */
+        if(r && r.ok) definirEtatRechercheVersionne("overpass",SEARCH_STATES.SUCCESS,generation);
         return osm.length > 0;
       },
       echec:()=>definirEtatRechercheVersionne("overpass",SEARCH_STATES.OVERPASS_UNAVAILABLE,generation),
     },
     {
-      charger:()=>lieuxDatatourisme(lat,lng,generation.signal),
+      /* AUCUNE SOURCE N'A LE DROIT DE NE JAMAIS RÉPONDRE.
+
+         `fetch` n'a pas de délai par défaut. Sur un réseau mobile, une
+         connexion qui se perd sans être fermée — un changement d'antenne, un
+         portail captif — laisse la promesse en vol indéfiniment. Or la fin de
+         `coordonnerSourcesVersionnees` est ce qui retire le voile
+         « Recherche des points d'aide… » ET ce qui libère la clé de
+         chargement : une seule socket muette gelait donc l'écran Aide et
+         interdisait toute nouvelle recherche dans la même zone.
+
+         C'est la panne « ça tourne dans le vide sur téléphone, jamais sur
+         ordinateur » : sur une liaison stable la réponse arrive toujours, et
+         le défaut manquant ne se voit pas.
+
+         `avecDelai` rend une valeur neutre quand le temps est écoulé. La
+         requête part quand même — elle finira peut-être et remplira les
+         caches — mais elle ne retient plus personne. */
+      charger:()=>avecDelai(lieuxDatatourisme(lat,lng,generation.signal),
+        AIDE_DELAI_SOURCE_MS, [], generation.signal),
       publier:tourisme=>{
         const locaux = resultatsAideDansTerritoire(tourisme || []);
-        if(locaux.length) fusionner(locaux,"datatourisme");
+        if(locaux.length){ fusionner(locaux,"datatourisme"); majFeuille2(); }
         return !!locaux.length;
       },
     },
@@ -7508,7 +7823,8 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
       charger:async()=>{
         const garder = [];
         await Promise.all(reseaux.map(async r=>{
-          const res = await chercherGoogle(r.q, lat, lng,{signal:generation.signal});
+          const res = await avecDelai(chercherGoogle(r.q, lat, lng,{signal:generation.signal}),
+            AIDE_DELAI_SOURCE_MS, [], generation.signal);
           if(!generationCourante(generation)) return;
           res.forEach(f=>{
             // on écarte ce qui est trop loin : une distribution à 20 km n'aide personne
@@ -7529,14 +7845,17 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
           parCategorie.get(cat).push(f);
         });
         parCategorie.forEach((fiches,cat)=>ajouterLieuxGoogle(fiches,cat));
+        if(parCategorie.size) majFeuille2();
         return !!(garder && garder.length);
       },
     },
   ], ()=>generationCourante(generation));
-  if(generationCourante(generation)){
-    charge(null);
-    majAccueil();
-  }
+  /* Le voile part dans tous les cas. Conditionné à la génération courante, il
+     restait allumé quand une recherche était remplacée en vol — et « Recherche
+     des points d'aide… » se figeait au-dessus d'un écran parfaitement
+     utilisable. La génération qui prend la suite repose son propre message. */
+  charge(null);
+  if(generationCourante(generation)) majAccueil();
   return exploitable;
 }
 
@@ -9177,12 +9496,43 @@ function ecranSolutionsAide(){
   const besoin = sousAideChoisi();
   const liste = solutionsAide();
   const titre = besoin ? besoin.emoji+" "+besoin.label : "Aide";
-  if(!liste.length) return enteteBesoinAide(titre)+aucuneSolutionHTML();
+  /* « JE N'AI PAS TROUVÉ » N'EST PAS « JE CHERCHE ENCORE ».
+
+     Cet écran rendait l'impasse dès que la liste était vide — donc dès la
+     première image, avant même que la moindre requête ait répondu. Sur une
+     fibre, la première source arrive en une seconde et personne ne voit
+     l'impasse. Sur un téléphone, elle s'affiche plusieurs secondes, avec ses
+     quatre boutons de sortie, et elle se lit comme un verdict.
+
+     `aideEnCours` existait déjà, posé et levé au bon endroit — mais personne
+     ne le lisait. Il le dit maintenant : on cherche, on dit jusqu'où on en
+     est, et l'impasse est réservée au moment où l'on a vraiment fini. */
+  if(!liste.length)
+    return enteteBesoinAide(titre)+(aideEnCours ? rechercheAideHTML() : aucuneSolutionHTML());
   return enteteBesoinAide(titre)+
     annonceRayonAideHTML(liste)+
     '<div class="as-liste" data-testid="primary-results">'+
       liste.map(carteAide).join("")+'</div>'+
+    /* La recherche continue derrière une première liste : le dire évite de
+       croire que ces trois structures sont tout ce qui existe. */
+    (aideEnCours ? rechercheAideHTML() : "")+
     (liste.length >= 3 ? '<button class="as-plus" data-as-plus="1">Voir plus loin</button>' : "");
+}
+
+/* Ce qu'on cherche, et jusqu'où. Une ligne, dans le style de statut qui
+   existe déjà — aucun voile, aucun écran plein : ce qui est affiché reste
+   lisible et utilisable pendant que le reste arrive. */
+function rechercheAideHTML(){
+  const palier = rayonAidePalierEnCours;
+  const ou = Number.isFinite(Number(palier))
+    ? (Number(palier) < 1000
+      ? Number(palier)+" m autour de toi"
+      : Math.round(Number(palier)/1000)+" km autour de toi")
+    : "autour de toi";
+  return '<div class="fb-statut cherche" role="status" aria-live="polite" '+
+    'data-testid="aide-recherche">'+
+    '<i class="cherche-pastille" aria-hidden="true"></i>'+
+    '<span>Recherche des aides à '+esc(ou)+'…</span></div>';
 }
 
 /* QUAND LE RAYON A ÉTÉ ÉLARGI, ON LE DIT.
@@ -9459,8 +9809,8 @@ function libelleOuverture(l){
   const d = dispoDe(l);
   if(!d || d.status === "unknown") return "Horaires non renseignés";
   if(d.status === "permanently_closed") return "Définitivement fermé";
-  if(d.isOpenNow) return d.closesAtTime ? "Ouvert jusqu’à "+d.closesAtTime : "Ouvert";
-  if(d.opensAtTime) return d.reason || ("Ouvre à "+d.opensAtTime);
+  if(d.isOpenNow) return d.closesAtTime ? "Ouvert jusqu’à "+heureFrancaise(d.closesAtTime) : "Ouvert";
+  if(d.opensAtTime) return d.reason || ("Ouvre à "+heureFrancaise(d.opensAtTime));
   return "Fermé";
 }
 
@@ -10031,7 +10381,7 @@ function tempsMaintenant(l){
     /* Pour un lieu, c'est `availability.js` qui écrit l'heure — le même texte
        que partout ailleurs dans Autour, pas une seconde formulation. */
     const d = dispoDe(l);
-    if(d && d.closesAtTime) return "ouvert jusqu’à "+d.closesAtTime;
+    if(d && d.closesAtTime) return "ouvert jusqu’à "+heureFrancaise(d.closesAtTime);
     return "ouvert";
   }
   return l.finLe ? "jusqu’à "+heureLocale(l.finLe, l) : "";
@@ -10980,9 +11330,9 @@ function raisonCourte(l){
      la liste compacte n'affiche plus. « Ouvert » tout seul ne dit pas si l'on
      a le temps d'y aller ; « Ouvert · jusqu'à 22:00 » le dit. */
   if(d && d.isOpenNow && d.closesAtTime && fermeDansMoinsDUneHeure(d))
-    return {t:"Ferme bientôt · "+d.closesAtTime, c:"tiede"};
+    return {t:"Ferme bientôt · "+heureFrancaise(d.closesAtTime), c:"tiede"};
   if(d && d.isOpenNow)
-    return {t: d.closesAtTime ? "Ouvert · jusqu’à "+d.closesAtTime : "Ouvert maintenant",
+    return {t: d.closesAtTime ? "Ouvert · jusqu’à "+heureFrancaise(d.closesAtTime) : "Ouvert maintenant",
             c:"ouvert"};
   /* `gratuit` vaut `true` par défaut sur tout lieu OpenStreetMap sans tag
      `fee` — c'est-à-dire sur presque tous. L'afficher tel quel collait
@@ -11060,7 +11410,7 @@ function carteRecommandation(l){
      lui, ne dépend pas de nous : il reste. */
   const arrivee = l.rankArrival && !dejaEnCours && positionPrecise()
     ? "Arrivée "+heureLocale(l.rankArrival, l)
-    : (dispo && dispo.closesAtTime ? "Ferme à "+dispo.closesAtTime : "");
+    : (dispo && dispo.closesAtTime ? "Ferme à "+heureFrancaise(dispo.closesAtTime) : "");
 
   // La date réelle passe devant le temps de trajet : « Commence dans 35 min »
   // fait décider d'y aller, « 9 min à pied » ne décide de rien tout seul.
@@ -12292,15 +12642,43 @@ function suivreMaPosition(opts){
     (err)=>{
       localisationEnCours = false;
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
-      if(err && err.code === 1) noterAutorisationGeo(false);
-      definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
+      if(err && err.code === 1){
+        noterAutorisationGeo(false);
+        definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
+      }else{
+        /* UN DÉLAI DÉPASSÉ N'EST PAS UN REFUS.
+
+           Les trois codes d'erreur atterrissaient dans le même état :
+           « position refusée ». Or `TIMEOUT` et `POSITION_UNAVAILABLE` ne
+           disent rien du consentement — la permission est peut-être accordée,
+           le point n'est simplement pas encore là. Les traiter comme un refus
+           faisait dire à l'écran que la personne avait dit non, et empêchait
+           la veille de reprendre la main.
+
+           On revient donc à l'état neutre : le bandeau propose, la veille
+           continue, et le prochain point acquis s'applique normalement. */
+        definirEtatRecherche("location",SEARCH_STATES.IDLE);
+        if(geoDejaAutorisee()) veillerSurLaPosition();
+      }
       if(!o.silencieux) proposerPosition();
     },
-    /* Trente secondes, pas deux minutes. Un relevé récent rend la réponse
-       instantanée — c'est tout l'intérêt du cache — mais au-delà d'une demi-
-       minute il décrit un endroit où l'on n'est peut-être plus. La veille
-       prend le relais derrière, avec `maximumAge:0`. */
-    {enableHighAccuracy:true, timeout:8000, maximumAge:30000}
+    /* LE PREMIER POINT N'A PAS BESOIN D'ÊTRE LE MEILLEUR, IL A BESOIN
+       D'EXISTER.
+
+       `enableHighAccuracy:true` demande le GPS. Sur un ordinateur, cela ne
+       change rien : la position vient du réseau et arrive en quelques
+       centaines de millisecondes. Sur un téléphone, c'est une acquisition
+       satellite — dix à trente secondes en intérieur, davantage encore dans
+       un bâtiment ou un métro. Huit secondes de délai signifiaient donc, sur
+       mobile et sur mobile seulement, un échec quasi systématique à froid,
+       suivi d'un écran qui annonce un refus que personne n'a formulé.
+
+       On demande donc d'abord le point RAPIDE — celui du réseau, que le
+       téléphone a déjà —, et c'est `veillerSurLaPosition()` qui affine
+       ensuite en haute précision, avec `maximumAge:0` et sans pression de
+       temps. Le résultat final est identique ; ce qui change, c'est qu'il
+       existe une position en attendant. */
+    {enableHighAccuracy:false, timeout:15000, maximumAge:60000}
   );
 }
 

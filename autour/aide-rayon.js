@@ -29,10 +29,30 @@
      part pour ce qu'il croit être le coin de la rue.
      =================================================================== */
 
-  /* Quatre paliers. Le premier est un quartier, le dernier une agglomération.
-     Au-delà, ce n'est plus « autour de toi » : c'est un annuaire, et Autour
-     n'en est pas un. */
-  const PALIERS = Object.freeze([3000, 5000, 10000, 20000]);
+  /* Cinq paliers, du pas de la porte à l'intercommunalité. Au-delà, ce n'est
+     plus « autour de toi » : c'est un annuaire, et Autour n'en est pas un.
+
+     LE PREMIER PALIER MANQUAIT, ET C'EST CELUI QUI DÉCIDE DE TOUT.
+
+     La recherche commençait à trois kilomètres. Sur une seule requête ça se
+     défend ; sur un téléphone, non : trois kilomètres de centre-ville, c'est
+     une requête large, lente, et qui ne rend rien AVANT d'avoir tout ramené.
+     Pendant ce temps l'écran n'a rien à montrer, et il le dit — « je n'ai pas
+     trouvé de solution ». Sur une fibre, ce moment dure une seconde et
+     personne ne le voit. Sur un réseau mobile, il dure dix secondes, et il se
+     lit comme une réponse.
+
+     On commence donc par la PROXIMITÉ IMMÉDIATE : mille deux cents mètres,
+     un quart d'heure à pied, une requête petite qui revient vite. Ce qu'elle
+     rapporte s'affiche tout de suite ; les paliers suivants complètent
+     derrière, et chacun d'eux publie à son tour.
+
+       1200 m   ce qu'on peut atteindre à pied, maintenant
+       3000 m   le quartier élargi
+       5000 m   la commune
+      10000 m   la commune et ses voisines
+      20000 m   l'intercommunalité */
+  const PALIERS = Object.freeze([1200, 3000, 5000, 10000, 20000]);
 
   /* Assez pour choisir, pas assez pour noyer. En dessous, on élargit ; à
      partir de là, on s'arrête même si un palier plus large en donnerait

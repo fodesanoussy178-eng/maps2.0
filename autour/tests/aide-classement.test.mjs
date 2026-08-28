@@ -264,8 +264,13 @@ test("le nom et la description ne sont jamais mélangés", () => {
    ======================================================================== */
 
 test("on cherche près, puis plus loin, et jamais au hasard", () => {
-  assert.deepEqual(R.PALIERS, [3000, 5000, 10000, 20000]);
-  assert.equal(R.premier(), 3000);
+  /* Le premier palier est la PROXIMITÉ IMMÉDIATE — ce qu'on atteint à pied.
+     Il existe pour que quelque chose s'affiche vite : une requête de trois
+     kilomètres en centre-ville met plusieurs secondes à revenir sur un réseau
+     mobile, et pendant ce temps l'écran n'a rien à montrer. */
+  assert.deepEqual(R.PALIERS, [1200, 3000, 5000, 10000, 20000]);
+  assert.equal(R.premier(), 1200);
+  assert.equal(R.palierSuivant(1200), 3000);
   assert.equal(R.palierSuivant(3000), 5000);
   assert.equal(R.palierSuivant(20000), null, "au-delà, ce n’est plus « autour de toi »");
 });
@@ -293,7 +298,8 @@ test("quand le rayon s’élargit, l’écran peut le dire", () => {
   /* La distance annoncée est celle des résultats RÉELS, pas du palier
      interrogé : annoncer « moins de 10 km » serait exact et inutile. */
   assert.match(a.texte, /8 km/);
-  assert.equal(R.annonce(loin, 3000), null, "au premier palier, rien à annoncer");
+  assert.equal(R.annonce(loin, 1200), null, "au premier palier, rien à annoncer");
+  assert.ok(R.annonce(loin, 3000), "dès le second, l’élargissement se dit");
   assert.equal(R.annonce([], 10000), null, "sans résultat, rien à annoncer non plus");
 });
 

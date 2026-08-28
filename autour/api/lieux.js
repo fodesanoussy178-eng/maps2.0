@@ -40,12 +40,52 @@ const SERVEURS = [
 /* Une route ouverte sur Overpass serait un relais pour n'importe quelle
    requête. On n'accepte donc que la forme exacte que produit l'application :
    une lecture JSON, un groupe de `nwr`, une sortie bornée. Tout le reste est
-   refusé — pas filtré, refusé. */
-const FORME = /^\[out:json\]\[timeout:\d{1,2}\];\((?:nwr(?:\(around:\d{1,5},-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?\)|\(-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?\))\[[^\];]{1,400}\];){1,40}\);out center \d{1,4};$/;
+   refusé — pas filtré, refusé.
+
+   LA FORME QUI MANQUAIT, ET CE QU'ELLE COÛTAIT.
+
+   L'écran Aide restreint ses recherches au territoire français : sans ça, un
+   rayon autour de Tourcoing bascule sur Mouscron, en Belgique, sans que
+   personne l'ait demandé. Il produit donc une requête d'une autre forme —
+   une aire administrative nommée en préambule, puis rappelée sur chaque
+   sélecteur :
+
+     [out:json][timeout:8];area["ISO3166-1"="FR"]->.fr;
+     (nwr(around:3000,50.7,3.1)(area.fr)["amenity"~"^(…)$"];);out center 180;
+
+   Cette forme-là n'était pas décrite ici. Elle était donc REFUSÉE, avec un
+   400, à chaque appel — et le client, qui ne rejoue jamais Overpass en direct
+   derrière le relais, n'obtenait aucun lieu OpenStreetMap dans Aide. Pas
+   « moins de lieux » : aucun. La panne était invisible parce qu'un 400 se lit
+   côté client comme « Overpass indisponible », c'est-à-dire comme le réseau.
+
+   Les deux formes sont maintenant décrites, et elles restent aussi fermées
+   l'une que l'autre : le code pays est deux lettres majuscules, l'aire ne peut
+   porter que le nom qu'on lui donne ici, et le préambule et les rappels vont
+   ensemble ou pas du tout (voir `formeAcceptee`). */
+const SELECTEUR = "(?:nwr(?:\\(around:\\d{1,5},-?\\d{1,3}(?:\\.\\d+)?,-?\\d{1,3}(?:\\.\\d+)?\\)|" +
+  "\\(-?\\d{1,3}(?:\\.\\d+)?,-?\\d{1,3}(?:\\.\\d+)?,-?\\d{1,3}(?:\\.\\d+)?,-?\\d{1,3}(?:\\.\\d+)?\\))" +
+  "(?:\\(area\\.fr\\))?\\[[^\\];]{1,400}\\];){1,40}";
+const FORME = new RegExp("^\\[out:json\\]\\[timeout:\\d{1,2}\\];" +
+  "(?:area\\[\"ISO3166-1\"=\"[A-Z]{2}\"\\]->\\.fr;)?" +
+  "\\(" + SELECTEUR + "\\);out center \\d{1,4};$");
+
+/* Une aire rappelée sans être déclarée, ou déclarée sans être rappelée, n'est
+   pas une requête qu'Autour produit. On refuse les deux moitiés. */
+function formeAcceptee(q) {
+  if (!FORME.test(q)) return false;
+  return q.includes('area["ISO3166-1"=') === q.includes("(area.fr)");
+}
+
 const LONGUEUR_MAX = 4096;
 const SORTIE_MAX = 400;
-const DELAI_TOTAL_MS = 9000;          // l'enrichissement ne doit pas vivre 20 s
-const DELAI_SERVEUR_MS = 7500;
+/* Onze secondes, pas neuf. Le client accorde douze secondes à ce relais — il
+   n'attend rien pendant ce temps, l'écran est déjà rempli par le cache, les
+   jeux de zone et Supabase. Se couper à neuf quand l'appelant en offre douze
+   revient à jeter trois secondes de marge sur une instance publique chargée,
+   et à ne rien mettre en cache pour le quartier. */
+const DELAI_TOTAL_MS = 11000;
+const DELAI_SERVEUR_MS = 9500;
 const DECALAGE_SERVEUR_MS = 350;      // requêtes couvertures, sans triple rafale
 
 function refus(message, statut) {
@@ -61,7 +101,7 @@ export default async function handler(requete) {
   const q = url.searchParams.get("q") || "";
 
   if (q.length > LONGUEUR_MAX) return refus("requête trop longue", 413);
-  if (!FORME.test(q)) return refus("forme de requête non acceptée", 400);
+  if (!formeAcceptee(q)) return refus("forme de requête non acceptée", 400);
   const sortie = Number((q.match(/out center (\d+);$/) || [])[1] || 0);
   if (!sortie || sortie > SORTIE_MAX) return refus("sortie non bornée", 400);
 

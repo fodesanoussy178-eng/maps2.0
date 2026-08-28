@@ -201,8 +201,13 @@ test("la réponse est mutualisée par le CDN, et servie périmée pendant qu'ell
 });
 
 test("la source part avec les autres, en parallèle, et ne retient personne", () => {
-  assert.match(src, /decouvertesAncrees\(lat,lng,signal\)\.then\(r=>\{/);
-  const bloc = /travaux\.push\(\s*\n\s*decouvertesAncrees[\s\S]*?\n\s*\);/.exec(src)[0];
+  /* « Ne retient personne » est désormais garanti par un minuteur, pas
+     seulement par la structure : `fetch` n'a pas de délai par défaut, et la
+     clé de `chargementsZone` n'est libérée qu'à la fin de l'`allSettled`. Le
+     modèle ancré a le budget le plus long — il lit des pages avant de
+     répondre — mais il en a un. */
+  assert.match(src, /avecDelai\(decouvertesAncrees\(lat,lng,signal\), ZONE_DELAI_MODELE_MS, \[\], signal\)\.then\(r=>\{/);
+  const bloc = /travaux\.push\(\s*\n\s*avecDelai\(decouvertesAncrees[\s\S]*?\n\s*\);/.exec(src)[0];
   // elle ne compte pas comme « source exploitable » : l'écran ne dépend pas d'elle
   assert.doesNotMatch(bloc, /sourceExploitable = true;/);
   assert.match(bloc, /if\(!generationCourante\(generation\) \|\| !r \|\| !r\.length\) return;/,

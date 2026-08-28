@@ -118,7 +118,10 @@ test("la recherche Aide lance OSM, DATAtourisme et Google en parallèle",()=>{
   assert.match(aide,/charger:async\(\)=>\{[\s\S]*?await vraisLieux\(lat,lng,null,/);
   assert.match(aide,/RAYON_AIDE\.evaluer\(retenus, palier\)/,
     "le palier suivant se décide sur ce que l’écran retiendrait vraiment");
-  assert.match(aide,/charger:\(\)=>lieuxDatatourisme/);
+  /* DATAtourisme reste une source à part entière, simplement bornée dans le
+     temps : `fetch` n'a pas de délai par défaut, et une socket muette — le
+     quotidien d'un réseau mobile — retenait tout l'écran Aide. */
+  assert.match(aide,/charger:\(\)=>avecDelai\(lieuxDatatourisme/);
   assert.match(aide,/charger:async\(\)=>\{/);
   assert.match(aide,/chercherGoogle\(r\.q/);
   assert.doesNotMatch(aide,/const \[osmResultat, tourisme\] = await Promise\.all/,
