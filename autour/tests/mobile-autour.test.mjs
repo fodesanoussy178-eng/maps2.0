@@ -283,6 +283,61 @@ test("« je cherche » et « je n’ai pas trouvé » ne se disent plus pareil",
   assert.match(html, /aidesEnVol = Math\.max\(0, aidesEnVol - 1\);\s*\n\s*aideEnCours = aidesEnVol > 0;/);
 });
 
+test("Aide cherche enfin quand la position arrive après coup", () => {
+  /* TROUVÉ EN PILOTANT L'APPLICATION, PAS EN LA LISANT.
+
+     `basculerAide` ne lançait la recherche que `if(modeAide && positionMoi)`,
+     et rien ne la relançait quand le point arrivait ensuite. Sur un ordinateur
+     la position vient du réseau en une fraction de seconde : elle est toujours
+     là avant qu'un doigt n'atteigne l'onglet. Sur un téléphone elle met une à
+     quinze secondes — et quelqu'un qui ouvre Aide l'ouvre tout de suite.
+
+     L'écran affichait alors « Je n'ai pas trouvé de solution », sans avoir
+     cherché, et aucune requête ne partait jamais. Reproductible au banc. */
+  assert.match(html, /if\(modeAide\) chargerAideSiBesoin\(bouge\);/);
+  const bloc = html.slice(html.indexOf("function appliquerPosition"),
+    html.indexOf("function appliquerPosition") + 3600);
+  assert.match(bloc, /if\(modeAide\) chargerAideSiBesoin\(bouge\);/,
+    "la relance appartient au moment où la position arrive");
+});
+
+test("une recherche d’aide annulée n’interdit pas la suivante", () => {
+  /* Deux appuis rapides sur l'onglet Aide : le premier entre et lance, le
+     second sort et ANNULE, le troisième revient — et trouvait une entrée
+     « chargement en cours » pointant sur la recherche morte. Il rendait cette
+     promesse-là sans rien relancer, et l'écran restait sur l'impasse.
+
+     Sur un téléphone — latence, aucun retour sous le doigt — taper deux fois
+     est le geste normal de quelqu'un qui doute que son appui ait été pris. */
+  assert.match(html, /const enVol = chargementsAideEnCours\.get\(cleChargement\);/);
+  assert.match(html, /if\(!o\.force && generationCourante\(enVol\.generation\)\) return enVol\.promesse;/);
+  assert.match(html, /chargementsAideEnCours\.delete\(cleChargement\);/);
+  assert.match(html, /chargementsAideEnCours\.set\(cleChargement,\{promesse, generation\}\);/);
+});
+
+test("une panne de source se dit comme une panne, pas comme une absence d’aide", () => {
+  /* Observé au banc, relais coupé : l'écran annonçait « Je n'ai pas trouvé de
+     solution suffisamment fiable autour de cette zone » — pour quelqu'un qui
+     cherche à manger, cela se lit « il n'y a pas d'aide près de chez toi ».
+     C'est faux, et c'est la pire phrase possible à ce moment-là. */
+  assert.match(html, /function sourceAideIndisponible\(\)\{/);
+  assert.match(html, /if\(sourceAideIndisponible\(\)\)\s*\n?\s*return '<div class="as-vide" data-testid="aide-source-indisponible">'/);
+  assert.match(html, /l’annuaire des structures n’a pas répondu/);
+  /* Et devant une panne, la seule action qui a du sens est de réessayer — pas
+     de reformuler un besoin qui n'était pas en cause. */
+  const bloc = html.slice(html.indexOf('data-testid="aide-source-indisponible"'),
+    html.indexOf('data-testid="aide-source-indisponible"') + 900);
+  assert.match(bloc, /data-etat-action="retry"/);
+  assert.doesNotMatch(bloc, /data-as="reformuler"/);
+});
+
+test("dans Aide, « Réessayer » relance la recherche d’aide", () => {
+  /* Le bouton relançait `chargerAutourDuPoint`, le chemin d'exploration, qui
+     ne demande aucune des catégories sociales : il semblait travailler et ne
+     rapportait jamais rien. */
+  assert.match(html, /if\(modeAide\)\{\s*\n\s*chargerAideSiBesoin\(true\);/);
+});
+
 test("aucune source d’Aide ne peut retenir l’écran indéfiniment", () => {
   /* `fetch` n'a pas de délai par défaut. Sur mobile, une connexion perdue sans
      être fermée laisse la promesse en vol — et c'est la fin de la

@@ -7635,8 +7635,27 @@ async function chargerAide(lat,lng,options){
   else if(deja && distanceM(deja[0], deja[1], lat, lng) < AIDE_RAYON_RECHARGE) return;
 
   const cleChargement = idZoneActive()+"|"+lat.toFixed(2)+","+lng.toFixed(2)+"|"+contexte.cle;
-  if(!o.force && chargementsAideEnCours.has(cleChargement))
-    return chargementsAideEnCours.get(cleChargement);
+  /* UNE RECHERCHE ANNULÉE NE DOIT PAS INTERDIRE LA SUIVANTE.
+
+     Reproduit au banc, sur un geste que personne ne fait exprès : deux appuis
+     rapides sur l'onglet Aide. Le premier entre dans le mode et lance la
+     recherche ; le second en sort, ce qui ANNULE la génération en vol ; le
+     troisième y revient — et trouvait ici une entrée « chargement en cours »
+     qui pointait sur la recherche morte. Il rendait donc cette promesse-là,
+     sans jamais relancer quoi que ce soit. L'écran restait sur « je n'ai pas
+     trouvé de solution », définitivement, jusqu'à ce qu'on change de zone.
+
+     Sur un ordinateur, la recherche a le temps d'aboutir entre deux clics et
+     le cas ne se présente presque jamais. Sur un téléphone — latence, pas de
+     survol, aucun retour immédiat sous le doigt — taper deux fois est le
+     geste normal de quelqu'un qui doute que son appui ait été pris.
+
+     Une entrée n'est donc valable que tant que SA génération l'est. */
+  const enVol = chargementsAideEnCours.get(cleChargement);
+  if(enVol){
+    if(!o.force && generationCourante(enVol.generation)) return enVol.promesse;
+    chargementsAideEnCours.delete(cleChargement);
+  }
 
   const generation = nouvelleGeneration("zone:aide",cleChargement,!!o.force);
   prendreEtatRecherche("places",generation);
@@ -7672,10 +7691,11 @@ async function chargerAide(lat,lng,options){
       }
     }
   })();
-  chargementsAideEnCours.set(cleChargement,promesse);
+  chargementsAideEnCours.set(cleChargement,{promesse, generation});
   try{ return await promesse; }
   finally{
-    if(chargementsAideEnCours.get(cleChargement) === promesse)
+    const inscrit = chargementsAideEnCours.get(cleChargement);
+    if(inscrit && inscrit.promesse === promesse)
       chargementsAideEnCours.delete(cleChargement);
   }
 }
@@ -9825,7 +9845,35 @@ function fiableAide(l){
 
 /* Aucun résultat n'est jamais « aucun résultat » : c'est une impasse. On dit
    ce qu'on n'a pas trouvé, et on propose quatre sorties réelles. */
+/* « JE N'AI RIEN TROUVÉ » ET « JE N'AI PAS PU CHERCHER » NE SE DISENT PAS
+   PAREIL, ET C'EST LA DIFFÉRENCE QUI COMPTE LE PLUS ICI.
+
+   Observé au banc, relais coupé : l'écran annonçait « Je n'ai pas trouvé de
+   solution suffisamment fiable autour de cette zone » — c'est-à-dire, pour
+   quelqu'un qui cherche à manger, « il n'y a pas d'aide près de chez toi ».
+   C'est faux, et c'est la pire phrase possible à ce moment-là. La vérité
+   était : l'annuaire n'a pas répondu.
+
+   L'état existait déjà (`rechercheEtat.overpass`), il n'était simplement pas
+   lu ici. Une panne se dit comme une panne, et la seule action qui a du sens
+   devant une panne est de réessayer — pas de changer de ville ni de
+   reformuler un besoin qui n'était pas en cause. */
+function sourceAideIndisponible(){
+  return rechercheEtat.overpass === SEARCH_STATES.OVERPASS_UNAVAILABLE;
+}
+
 function aucuneSolutionHTML(){
+  if(sourceAideIndisponible())
+    return '<div class="as-vide" data-testid="aide-source-indisponible">'+
+      '<p class="as-vide-titre">La recherche n’a pas abouti&nbsp;: '+
+        'l’annuaire des structures n’a pas répondu.</p>'+
+      '<p class="as-vide-sous">Ce n’est pas une réponse sur ce qui existe '+
+        'autour de toi. Réessaie dans un instant.</p>'+
+      '<div class="as-vide-actions">'+
+        '<button class="pdep-btn pdep-fort" data-etat-action="retry">Réessayer</button>'+
+        '<button class="pdep-btn" data-as="ville">Chercher dans une autre ville</button>'+
+        '<button class="pdep-btn" data-as="general">Voir les structures générales</button>'+
+      '</div></div>';
   return '<div class="as-vide" data-testid="aide-vide">'+
     '<p class="as-vide-titre">'+(aideEtrangersEcartes
       ? 'Aucune aide fiable trouvée dans ce territoire. Élargir la recherche&nbsp;?'
@@ -11866,6 +11914,14 @@ function brancherFeuille2(){
     const centre = pointCarte();
     rechercheEtat.overpass = SEARCH_STATES.IDLE;
     definirEtatRecherche("places",SEARCH_STATES.LOADING_PLACES);
+    /* Dans Aide, « Réessayer » doit relancer LA RECHERCHE D'AIDE. Il relançait
+       le chargement d'exploration, qui ne demande aucune des catégories
+       sociales : le bouton semblait travailler et ne rapportait jamais rien. */
+    if(modeAide){
+      chargerAideSiBesoin(true);
+      majFeuille2();
+      return;
+    }
     chargerAutourDuPoint(centre.lat,centre.lng,{force:true});
     if(feuilleNiveau === "manger") completerRestauration({force:true});
   });
@@ -12499,6 +12555,26 @@ function appliquerPosition(p, opts){
      appartient à la personne qui la regarde. */
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
+
+  /* AIDE OUVERTE AVANT QUE LA POSITION N'ARRIVE.
+
+     `basculerAide` ne lance la recherche que `if(modeAide && positionMoi)`, et
+     rien ne la relançait quand le point arrivait ensuite. Sur un ordinateur, la
+     position vient du réseau en une fraction de seconde : elle est toujours là
+     avant qu'un doigt n'atteigne l'onglet, et le cas n'existe pas. Sur un
+     téléphone, elle met une à quinze secondes — et quelqu'un qui ouvre Aide
+     ouvre Aide TOUT DE SUITE.
+
+     Résultat observé au banc, reproductible : l'écran affichait « Je n'ai pas
+     trouvé de solution suffisamment fiable autour de cette zone », et il ne
+     cherchait pas. Jamais. Aucune requête ne partait, aucun bouton n'y
+     changeait rien, et la phrase était la pire possible pour quelqu'un qui
+     cherche à manger.
+
+     Le point qui arrive est exactement le moment où cette recherche devient
+     possible. On la lance donc là, comme le quartier l'est déjà juste en
+     dessous. */
+  if(modeAide) chargerAideSiBesoin(bouge);
 
   if(bouge){
     // le quartier réel se charge — court délai : on est encore au
