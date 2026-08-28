@@ -179,7 +179,7 @@ const CHAMPS = "place_key,place_name,commune,category,lat,lng,current_status," +
   "today_hours,opening_hours,next_open_at,temporary_closed,closure_reason," +
   "closure_until,programme_now,programme_soon,ticket_url,official_url," +
   "source_priority,sources,confidence,last_verified_at,checked_at,expires_at," +
-  "temporal_data,temporal_observations,temporal_conflicts";
+  "temporal_data,temporal_observations,temporal_conflicts,source_fingerprint";
 
 async function enCache(cle: string): Promise<Record<string, unknown> | null> {
   const r = await rest(
@@ -515,6 +515,7 @@ type Lieu = {
   commune: string; adresse: string; categorie: string; horairesConnus: string;
   estEvenement: boolean; structured: Record<string, unknown>; texte: string;
   image: Record<string, unknown> | null; reservation?: Reservation;
+  empreinte?: string;
 };
 
 type TemporalResult = {
@@ -999,6 +1000,12 @@ Deno.serve(async (requete: Request) => {
       corps.resume, corps.notes, corps.source_text, corps.horaires, corps.dates]
       .filter((x) => x != null).map((x) => propre(x, 1200)).filter(Boolean).join("\n"),
     image: imageDepuisClient(corps.image || corps.poster),
+    /* Le client dit sous quelle empreinte il a vu la source. On ne la
+       recalcule pas ici — on ne voit pas ce qu'il voit — et on ne s'en sert
+       jamais pour décider quoi que ce soit : elle est CONSERVÉE, puis rendue,
+       pour que lui seul juge si ce qu'on lui renvoie parle encore du lieu
+       qu'il affiche. Vide si l'appelant ne l'envoie pas. */
+    empreinte: propre(corps.source_fingerprint, 80),
   };
   Object.assign(lieu.structured, {
     start_at: lieu.structured.start_at || corps.start_at || corps.startAt || null,
