@@ -967,7 +967,7 @@ test("aucune empreinte : rien ne casse, et la ligne sera revérifiée", () => {
 
 test("la migration ajoute la colonne sans toucher aux données", async () => {
   const migration = await readFile(new URL(
-    "../supabase/migrations/20260828080000_enrichissement_source_fingerprint.sql",
+    "../supabase/migrations/20260828080303_enrichissement_source_fingerprint.sql",
     import.meta.url), "utf8");
   assert.match(migration, /add column if not exists source_fingerprint text/,
     "additive, idempotente, et nullable pour les lignes déjà écrites");
