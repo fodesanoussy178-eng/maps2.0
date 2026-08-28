@@ -1,48 +1,3 @@
--- ---------------------------------------------------------------------------
--- LA PROVENANCE D'UNE PHOTO, ET LA RÉPARATION DES URL OPENAGENDA
---
--- CE QUI ÉTAIT ÉCRIT EN BASE
---
--- Le connecteur OpenAgenda lisait le champ `base` de l'objet image et
--- s'arrêtait là, sans jamais y coller le `filename`. Il a donc écrit, pour
--- chaque événement illustré :
---
---     https://img.openagenda.com/main/          →  HTTP 400
---
--- Ce n'est pas une image absente : c'est une image présente dont la moitié du
--- nom manquait. Le navigateur retirait sagement la balise en `onerror`, et
--- personne n'a rien vu — sauf qu'aucune carte n'avait de photo.
---
--- `sync-openagenda/image.mjs` construit désormais l'URL correcte pour les
--- synchronisations à venir. Cette migration s'occupe des lignes DÉJÀ écrites :
--- elle ne masque pas l'erreur, elle efface les URL qui ne nomment aucun
--- fichier — la prochaine synchronisation les réécrira correctement, depuis le
--- champ d'origine.
---
--- CE QU'ELLE AJOUTE
---
--- Les cinq colonnes qui manquaient pour qu'une photo puisse dire d'où elle
--- vient. `image_url` existait déjà ; le contrat complet est :
---
---     image_url · image_source · image_source_url · image_author
---     image_license · image_updated_at
---
--- C'est exactement la forme que rend le résolveur unique du navigateur
--- (`images.js`). Une seule forme des deux côtés : la provenance ne se perd
--- jamais en route.
--- ---------------------------------------------------------------------------
-
--- ---------------------------------------------------------------------------
--- 1. La règle, écrite une fois
---
--- Une URL d'image nomme un FICHIER. `https://img.openagenda.com/main/` n'en
--- nomme aucun : le dernier segment de son chemin est vide. C'est la signature
--- exacte du bug, et c'est la seule vérification qui restera vraie si le
--- format d'OpenAgenda change encore.
--- ---------------------------------------------------------------------------
--- Le dernier segment du chemin, sans schéma, sans hôte, sans paramètres.
--- `https://img.openagenda.com/main/` en rend une chaîne vide : c'est tout le
--- diagnostic du bug, tenu en une expression.
 create or replace function public.image_dernier_segment(url text)
 returns text
 language sql
@@ -68,10 +23,6 @@ as $$
     when url !~* '^https?://' then false
     else public.image_dernier_segment(url) <> ''
       and (
-        -- une extension, ou des paramètres : quelque chose désigne bien une
-        -- ressource, et le mot d'arborescence n'est plus un répertoire nu.
-        -- Sans cette nuance, l'URL photo de Google Places, qui se termine par
-        -- `/media?key=…`, serait refusée à tort.
         public.image_dernier_segment(url) ~* '\.[a-z0-9]{2,5}$'
         or position('?' in url) > 0
         or public.image_dernier_segment(url) !~* '^(main|media|images?|photos?|thumb|thumbnails?)$'
@@ -82,9 +33,6 @@ $$;
 comment on function public.image_url_nomme_un_fichier(text) is
   'Une URL d''image nomme un fichier. https://img.openagenda.com/main/ n''en nomme aucun : c''est la signature du bug OpenAgenda corrigé le 21/08/2026.';
 
--- ---------------------------------------------------------------------------
--- 2. Les colonnes de provenance
--- ---------------------------------------------------------------------------
 alter table public.events
   add column if not exists image_source     text,
   add column if not exists image_source_url text,
@@ -101,12 +49,6 @@ comment on column public.events.image_license is
 comment on column public.events.image_updated_at is
   'Quand ce visuel a été établi. Sert à repérer une photo qui n''a plus été revue depuis longtemps.';
 
--- ---------------------------------------------------------------------------
--- 3. La réparation des lignes déjà écrites
---
--- On efface l'URL, pas l'événement. La prochaine synchronisation la réécrira
--- depuis `base` + `filename`, correctement cette fois.
--- ---------------------------------------------------------------------------
 do $reparation$
 declare
   cassees bigint;
@@ -126,18 +68,10 @@ begin
   where image_url is not null
     and not public.image_url_nomme_un_fichier(image_url);
 
-  raise notice 'images réparées : % URL ne nommaient aucun fichier (dont les https://img.openagenda.com/main/)', cassees;
+  raise notice 'images reparees : % URL ne nommaient aucun fichier', cassees;
 end;
 $reparation$;
 
--- ---------------------------------------------------------------------------
--- 4. La provenance des photos qui restent
---
--- Elles n'en avaient aucune : le navigateur étiquetait TOUTE image
--- d'événement « datatourisme_licence », y compris les affiches OpenAgenda.
--- On la déduit ici de ce qu'on sait réellement — l'hébergeur et la source
--- primaire — et plus jamais de ce que le client suppose.
--- ---------------------------------------------------------------------------
 update public.events
 set image_source = case
       when image_url ~* '://[^/]*openagenda\.com'  then 'openagenda'
@@ -163,13 +97,6 @@ where image_url is not null
   and coalesce(image_license, '') = ''
   and image_source in ('openagenda', 'datatourisme', 'autour');
 
--- ---------------------------------------------------------------------------
--- 5. Le bug ne peut plus être réécrit
---
--- La contrainte est posée APRÈS la réparation, donc elle passe. À partir
--- d'ici, une URL de répertoire est refusée à l'écriture : le connecteur ne
--- peut plus servir un 400 en silence.
--- ---------------------------------------------------------------------------
 alter table public.events
   drop constraint if exists events_image_url_nomme_un_fichier;
 alter table public.events
@@ -181,13 +108,6 @@ alter table public.events
 create index if not exists events_image_source_idx
   on public.events (image_source) where image_url is not null;
 
--- ---------------------------------------------------------------------------
--- 6. La lecture publique rend la provenance
---
--- Le type de retour change : `create or replace` ne suffit pas, il faut
--- supprimer puis recréer. Filtres, ordre, limite et statut sont identiques —
--- seules les cinq colonnes de provenance s'ajoutent à la fin.
--- ---------------------------------------------------------------------------
 drop function if exists public.evenements_proches(
   double precision, double precision, double precision, double precision,
   text[], integer, boolean
@@ -203,7 +123,7 @@ begin
   where e.extname = 'postgis';
 
   if postgis_schema is null then
-    raise exception 'PostGIS est introuvable : impossible de servir les événements.';
+    raise exception 'PostGIS est introuvable : impossible de servir les evenements.';
   end if;
 
   execute format($ddl$
@@ -347,7 +267,7 @@ comment on function public.evenements_proches(
   double precision, double precision, double precision, double precision,
   text[], integer, boolean
 ) is
-  'Événements canoniques territoriaux : filtre PostGIS, statut calculé une fois, provenance de la photo rendue avec elle.';
+  'Evenements canoniques territoriaux : filtre PostGIS, statut calcule une fois, provenance de la photo rendue avec elle.';
 
 grant execute on function public.evenements_proches(
   double precision, double precision, double precision, double precision,

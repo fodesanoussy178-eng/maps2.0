@@ -48,7 +48,9 @@
 
 import {
   cleLieu, construireFait, extraireObjet, invite, inviteAide,
-  ligneEnrichissement, lireOrdreAide,
+  ligneEnrichissement, lireOrdreAide, extraireTemporaliteTexte,
+  extraireTemporaliteStructuree, extraireTemporaliteAffiche,
+  fusionnerTemporalites, champsTemporelsCritiques,
 } from "./extraction.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -176,7 +178,8 @@ function nombre(valeur: unknown, max: number): number | null {
 const CHAMPS = "place_key,place_name,commune,category,lat,lng,current_status," +
   "today_hours,opening_hours,next_open_at,temporary_closed,closure_reason," +
   "closure_until,programme_now,programme_soon,ticket_url,official_url," +
-  "source_priority,sources,confidence,last_verified_at,checked_at,expires_at";
+  "source_priority,sources,confidence,last_verified_at,checked_at,expires_at," +
+  "temporal_data,temporal_observations,temporal_conflicts";
 
 async function enCache(cle: string): Promise<Record<string, unknown> | null> {
   const r = await rest(
@@ -510,7 +513,123 @@ function enTacheDeFond(travail: Promise<unknown>) {
 type Lieu = {
   cle: string; nom: string; lat: number; lng: number;
   commune: string; adresse: string; categorie: string; horairesConnus: string;
+  estEvenement: boolean; structured: Record<string, unknown>; texte: string;
+  image: Record<string, unknown> | null; reservation?: Reservation;
 };
+
+type TemporalResult = {
+  data: Record<string, unknown>;
+  observations: Record<string, unknown>[];
+  conflicts: Record<string, unknown>[];
+};
+
+function temporaliteLocale(lieu: Lieu): TemporalResult {
+  const structure = extraireTemporaliteStructuree(lieu.structured || {}, {
+    year: new Date().getUTCFullYear(),
+  });
+  const description = extraireTemporaliteTexte(lieu.texte || "", {
+    source_type: "description", confidence: 0.7,
+  });
+  const fusion = fusionnerTemporalites([structure, description]);
+  return {data: fusion.data, observations: fusion.observations, conflicts: fusion.conflicts};
+}
+
+function temporaliteAvecBase(base: Record<string, unknown> | null,
+                             temporal: TemporalResult) {
+  const b = base || {};
+  const tableaux = (nom: string) => Array.isArray(b[nom]) ? b[nom] : [];
+  const observations = temporal.observations.length ? temporal.observations :
+    (Array.isArray(b.temporal_observations) ? b.temporal_observations : []);
+  return {
+    current_status: b.current_status || "unknown",
+    today_hours: b.today_hours || null,
+    opening_hours: b.opening_hours || null,
+    next_open_at: b.next_open_at || null,
+    temporary_closed: b.temporary_closed ?? null,
+    closure_reason: b.closure_reason || null,
+    closure_until: b.closure_until || null,
+    programme_now: tableaux("programme_now"), programme_soon: tableaux("programme_soon"),
+    ticket_url: b.ticket_url || null, official_url: b.official_url || null,
+    /* La colonne historique est NOT NULL et ne connaît que les rangs web.
+       La provenance temporelle détaillée ci-dessous porte la vraie source
+       (`structured`, `description`, `poster`, ...); ce champ reste un rang de
+       compatibilité pour les anciennes lignes. */
+    source_priority: b.source_priority || "site_officiel", sources: Array.isArray(b.sources) ? b.sources : [],
+    confidence: Number(b.confidence) || (observations.length ? Math.max(...observations.map((x) => Number(x.confidence) || 0)) : 0),
+    last_verified_at: b.last_verified_at || null,
+    temporal_data: temporal.data,
+    temporal_observations: observations,
+    temporal_conflicts: temporal.conflicts,
+  };
+}
+
+function imageDepuisClient(value: unknown): Record<string, unknown> | null {
+  const image = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  if (!image) return null;
+  const url = String(image.url || image.image_url || image.uri || "");
+  if (!/^https:\/\//i.test(url)) return null;
+  const scope = String(image.scope || image.image_scope || "").toLowerCase();
+  const source = String(image.source_type || image.source || image.image_source || "").toLowerCase();
+  const autorisee = image.authorized === true || image.autorisee === true ||
+    /evenement/.test(scope) && /openagenda|datatourisme|organisateur|official|autour|source/.test(source);
+  if (!autorisee || scope !== "evenement") return null;
+  return {
+    url: url.slice(0, 1200),
+    mime_type: String(image.mime_type || image.mimeType || "image/jpeg").slice(0, 80),
+    image_id: String(image.image_id || image.imageId || url).slice(0, 500),
+    source_url: String(image.source_url || image.image_source_url || url).slice(0, 1200),
+  };
+}
+
+function inviteAffiche(lieu: Lieu) {
+  return [
+    "Lis cette affiche d'événement avec une prudence documentaire stricte.",
+    "Extrais uniquement les informations explicitement visibles et lisibles.",
+    "Ne complète jamais une date, une heure, une adresse ou un prix par déduction.",
+    "Si le texte est flou, coupé, décoratif ou ambigu, laisse la valeur à null.",
+    "S'il y a plusieurs événements sur l'affiche, rends un événement distinct pour chacun.",
+    `Événement attendu : ${lieu.nom}${lieu.commune ? ` — ${lieu.commune}` : ""}.`,
+    "Réponds uniquement en JSON :",
+    '{"readable":true,"events":[{"event_title":string|null,"date_unique":"JJ.MM.AAAA"|null,"period_start":"JJ.MM.AAAA"|null,"period_end":"JJ.MM.AAAA"|null,"weekdays":["mercredi"]|null,"start_time":"HH:MM"|null,"end_time":"HH:MM"|null,"address":string|null,"venue":string|null,"price":string|null,"reservation_required":true|false|null,"ticketing_url":string|null,"status":"cancelled"|"postponed"|"full"|null,"rescheduled_date":"JJ.MM.AAAA"|null,"evidence":string|null}],"confidence":0.0}',
+    "Une affiche illisible répond {\"readable\":false,\"events\":[]}; elle ne permet aucune supposition.",
+  ].join("\n");
+}
+
+function texteSortie(json: unknown): string {
+  const j = (json ?? {}) as Record<string, unknown>;
+  if (typeof j.output_text === "string") return j.output_text;
+  if (typeof j.outputText === "string") return j.outputText;
+  if (typeof j.text === "string") return j.text;
+  return texteDesEtapes(etapesDe(json));
+}
+
+async function interrogerAffiche(lieu: Lieu, image: Record<string, unknown>) {
+  const r = await fetch(POINT_DE_TERMINAISON, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "x-goog-api-key": CLE_GEMINI},
+    body: JSON.stringify({
+      model: MODELE,
+      input: [
+        {type: "text", text: inviteAffiche(lieu)},
+        {type: "image", uri: image.url, mime_type: image.mime_type},
+      ],
+    }),
+    signal: AbortSignal.timeout(DELAI_MS),
+  });
+  if (!r.ok) throw new Error(`affiche : HTTP ${r.status}`);
+  return texteSortie(await r.json());
+}
+
+function sourcePosterOptions(lieu: Lieu) {
+  return Object.assign({}, lieu.image || {}, {
+    source_type: "poster", source_url: lieu.image?.source_url,
+    image_id: lieu.image?.image_id, confidence: 0.82,
+  });
+}
+
+function baseSansSource(base: Record<string, unknown> | null, temporal: TemporalResult) {
+  return temporaliteAvecBase(base, temporal);
+}
 
 /* ---- La trace ------------------------------------------------------------
    UN TRAVAIL DE FOND QUI S'ARRÊTE S'ARRÊTE EN SILENCE.
@@ -548,9 +667,68 @@ function domainesSources(sources: {url: string; titre: string}[]): string[] {
   });
 }
 
+async function sauverTemporal(lieu: Lieu, temporal: TemporalResult,
+                             base: Record<string, unknown> | null, debut: number) {
+  trace("write_start", {place_key: lieu.cle});
+  await ecrire(ligneEnrichissement(baseSansSource(base, temporal), lieu,
+    {maintenant: debut, modele: MODELE, duree: Date.now() - debut}));
+  trace("write_success", {place_key: lieu.cle, duree_ms: Date.now() - debut});
+}
+
+/* La première passe est isolée de la passe web. Elle peut donc écrire un
+   résultat local sans jamais avoir besoin d'une citation web, et elle garde la
+   réservation pour le premier appel multimodal ou web réellement nécessaire. */
+async function appliquerSourcesLocales(lieu: Lieu, debut: number) {
+  let temporal = temporaliteLocale(lieu);
+  const manque = lieu.estEvenement ? champsTemporelsCritiques(temporal.data) : ["place_enrichment"];
+  if (lieu.estEvenement && !manque.length) {
+    await sauverTemporal(lieu, temporal, null, debut);
+    return {termine: true, temporal};
+  }
+  if (!CLE_GEMINI) {
+    if (temporal.observations.length) await sauverTemporal(lieu, temporal, null, debut);
+    return {termine: true, temporal};
+  }
+
+  if (lieu.estEvenement && lieu.image && lieu.reservation?.accorde) {
+    trace("poster_start", {place_key: lieu.cle, image: "authorized"});
+    const sortie = await interrogerAffiche(lieu, lieu.image);
+    const poster = extraireTemporaliteAffiche(sortie, sourcePosterOptions(lieu));
+    const fusionPoster = fusionnerTemporalites([temporal, poster]);
+    temporal = {data: fusionPoster.data, observations: fusionPoster.observations,
+                conflicts: fusionPoster.conflicts};
+    trace("poster_response", {place_key: lieu.cle, readable: poster.readable,
+                               observations: poster.observations.length,
+                               missing: champsTemporelsCritiques(temporal.data).length});
+    await cloturerAppel(poster.observations.length > 0);
+    lieu.reservation = undefined;
+    if (!champsTemporelsCritiques(temporal.data).length) {
+      await sauverTemporal(lieu, temporal, null, debut);
+      return {termine: true, temporal};
+    }
+    /* L'affiche a été un appel, le web en sera un autre : le second est à
+       réserver atomiquement, même si le premier a fourni quelques champs. */
+    lieu.reservation = await reserverAppel();
+    if (!lieu.reservation.accorde) {
+      trace("budget_atteint", {place_key: lieu.cle, lances: lieu.reservation.lances,
+                                plafond: lieu.reservation.plafond});
+      if (temporal.observations.length) await sauverTemporal(lieu, temporal, null, debut);
+      return {termine: true, temporal};
+    }
+  }
+  return {termine: false, temporal};
+}
+
 async function verifier(lieu: Lieu) {
   const debut = Date.now();
+  let reservation = lieu.reservation || null;
+  let reservationCloturee = false;
   try {
+    const cascade = await appliquerSourcesLocales(lieu, debut);
+    if (cascade.termine) return;
+    let temporal = cascade.temporal;
+    reservation = lieu.reservation || reservation;
+
     trace("gemini_start", {place_key: lieu.cle, modele: MODELE});
     const {sources, citations, requetes, texte, appels, formes, cles} =
       await interroger(lieu, debut);
@@ -577,14 +755,28 @@ async function verifier(lieu: Lieu) {
        maquillée en fait. */
     if (!appels && !requetes.length) {
       trace("no_search", {place_key: lieu.cle, texte_len: texte.length, formes});
-      /* L'appel a eu lieu, il a coûté, et il n'a rien amélioré. Il est déjà
-         compté dans `lances` ; ce qui se joue ici est seulement de savoir
-         combien d'appels ont réellement servi. */
       await cloturerAppel(false);
+      reservationCloturee = true;
+      if (temporal.observations.length) await sauverTemporal(lieu, temporal, null, debut);
       return;
     }
 
-    const fait = construireFait(extraireObjet(texte),
+    const brut = extraireObjet(texte);
+    const sourceType = sources.some((source) => /agenda|mairie|ville|gouv|culture|tourisme|organisateur/i.test(`${source.url} ${source.titre}`))
+      ? "official_web" : "third_party";
+    const webText = extraireTemporaliteTexte(texte, {
+      source_type: sourceType,
+      source_url: sources[0]?.url || null,
+      confidence: sourceType === "official_web" ? 0.88 : 0.5,
+    });
+    const webStructured = extraireTemporaliteStructuree(
+      Object.assign({}, brut || {}, (brut as Record<string, unknown> | null)?.temporal_data || {}),
+      {source_type: sourceType, source_url: sources[0]?.url || null,
+       confidence: sourceType === "official_web" ? 0.88 : 0.5});
+    const webFusion = fusionnerTemporalites([temporal, webStructured, webText]);
+    temporal = {data: webFusion.data, observations: webFusion.observations,
+                conflicts: webFusion.conflicts};
+    const fait = construireFait(brut,
       {sources, nom: lieu.nom, commune: lieu.commune, maintenant: debut});
 
     /* Cherché, mais aucune page citée : le web ne dit rien d'exploitable sur ce
@@ -594,16 +786,24 @@ async function verifier(lieu: Lieu) {
       trace("no_fact", {place_key: lieu.cle, search_queries: requetes.length,
                         sources: sources.length});
       await cloturerAppel(false);
+      reservationCloturee = true;
+      if (temporal.observations.length) await sauverTemporal(lieu, temporal, null, debut);
       return;
     }
 
     trace("write_start", {place_key: lieu.cle});
+    Object.assign(fait, {
+      temporal_data: temporal.data,
+      temporal_observations: temporal.observations,
+      temporal_conflicts: temporal.conflicts,
+    });
     await ecrire(ligneEnrichissement(fait, lieu,
       {maintenant: debut, modele: MODELE, duree: Date.now() - debut}));
     trace("write_success", {place_key: lieu.cle, duree_ms: Date.now() - debut});
     /* Le seul cas où un appel a réellement amélioré une information. C'est ce
        nombre-là qu'on veut pouvoir lire après la manifestation. */
     await cloturerAppel(true);
+    reservationCloturee = true;
   } catch (erreur) {
     /* Plus personne n'attend : une panne du modèle ne peut plus rien casser en
        aval. On la note — le message seul, tronqué — et le lieu sera redemandé
@@ -614,7 +814,7 @@ async function verifier(lieu: Lieu) {
     }, true);
     /* Un appel qui échoue compte quand même : il a été réservé, il a été
        payé, et le budget ne se rend pas. */
-    await cloturerAppel(false);
+    if (reservation?.accorde && !reservationCloturee) await cloturerAppel(false);
   }
 }
 
@@ -791,7 +991,23 @@ Deno.serve(async (requete: Request) => {
     adresse: propre(corps.adresse, 160),
     categorie: propre(corps.categorie, 40),
     horairesConnus: propre(corps.horaires, 200),
+    estEvenement: corps.is_event === true || corps.isEvent === true ||
+      !!(corps.start_at || corps.end_at || corps.debut_le || corps.debutLe),
+    structured: (corps.structured && typeof corps.structured === "object")
+      ? corps.structured as Record<string, unknown> : {},
+    texte: [corps.titre, corps.title, corps.description, corps.summary,
+      corps.resume, corps.notes, corps.source_text, corps.horaires, corps.dates]
+      .filter((x) => x != null).map((x) => propre(x, 1200)).filter(Boolean).join("\n"),
+    image: imageDepuisClient(corps.image || corps.poster),
   };
+  Object.assign(lieu.structured, {
+    start_at: lieu.structured.start_at || corps.start_at || corps.startAt || null,
+    end_at: lieu.structured.end_at || corps.end_at || corps.endAt || null,
+    horaires: lieu.structured.horaires || corps.horaires || null,
+    dates: lieu.structured.dates || corps.dates || null,
+    programme: lieu.structured.programme || corps.programme || null,
+    source_url: lieu.structured.source_url || corps.source_url || null,
+  });
 
   /* Le cache d'abord, toujours. C'est le cas le plus fréquent et le seul qui
      soit gratuit. */
@@ -807,24 +1023,22 @@ Deno.serve(async (requete: Request) => {
     return reponse({enrichissement: cache, origine: "cache", actif: true});
   }
 
-  /* Pas de clé : ce n'est pas une panne, c'est une source absente. On rend ce
-     qu'on a — fût-il périmé, il reste vrai plus souvent que rien — et le
-     client n'a aucun cas particulier à traiter. */
-  if (!CLE_GEMINI) {
-    return reponse({enrichissement: cache, origine: "cache", actif: false,
-                    raison: "source non configurée"});
+  const local = temporaliteLocale(lieu);
+  const manque = lieu.estEvenement ? champsTemporelsCritiques(local.data) : ["place_enrichment"];
+  let reservation: Reservation | null = null;
+  if (CLE_GEMINI && manque.length) {
+    /* La réservation vient après les sources déjà possédées : un événement
+       complet par ses champs structurés ou sa description ne consomme aucun
+       appel de modèle. */
+    reservation = await reserverAppel();
+    if (!reservation.accorde) {
+      trace("budget_atteint", {lances: reservation.lances, plafond: reservation.plafond});
+      return reponse({enrichissement: cache, origine: "cache", actif: false,
+                      raison: "budget du jour atteint"});
+    }
   }
 
-  /* La réservation, avant tout le reste. Si elle est refusée, aucun appel ne
-     part — et le client reçoit ce qu'on a, comme dans tous les autres cas où
-     la vérification n'a pas lieu. Le mode territorial, lui, continue de
-     fonctionner sans elle : c'est la condition posée dès le départ. */
-  const reservation = await reserverAppel();
-  if (!reservation.accorde) {
-    trace("budget_atteint", {lances: reservation.lances, plafond: reservation.plafond});
-    return reponse({enrichissement: cache, origine: "cache", actif: false,
-                    raison: "budget du jour atteint"});
-  }
+  (lieu as Lieu).reservation = reservation || undefined;
 
   /* ---- On lance, et on rend la main --------------------------------------
      Le navigateur repart tout de suite avec ce qu'on a : l'entrée périmée si

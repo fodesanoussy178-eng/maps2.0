@@ -31,7 +31,7 @@ import { lilleTestSource } from "../supabase/functions/sync-openagenda/config.mj
 const html = await sourceApplication(import.meta.url);
 const code = await readFile(new URL("../images.js", import.meta.url), "utf8");
 const migration = await readFile(
-  new URL("../supabase/migrations/20260821120000_provenance_images.sql", import.meta.url), "utf8");
+  new URL("../supabase/migrations/20260821224416_provenance_images.sql", import.meta.url), "utf8");
 const zones = await readFile(new URL("../outils/zones.mjs", import.meta.url), "utf8");
 
 /* Le résolveur, chargé comme la page le charge : un script classique qui se

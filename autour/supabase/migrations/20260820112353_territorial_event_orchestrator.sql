@@ -1,7 +1,8 @@
 -- ---------------------------------------------------------------------------
 -- Registre territorial et orchestrateur événementiel unique
 --
--- Version alignée sur l’historique de migrations Supabase du projet.
+-- Fichier de préparation : après application par Supabase, il est déplacé
+-- dans migrations/ avec la version réellement inscrite dans l'historique.
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.territories (
