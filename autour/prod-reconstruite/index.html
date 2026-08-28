@@ -1,0 +1,2275 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#141E19" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>Autour · ce qui se passe dans ton quartier</title>
+<meta name="description" content="Ce qui se passe autour de toi, maintenant : événements, aide alimentaire, associations, commerces ouverts et itinéraires. Sans compte, sans installation." />
+
+<!-- aperçu quand le lien est collé dans un message : sans ça, le partage
+     n'affiche qu'une URL nue et personne ne clique -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Autour" />
+<meta property="og:title" content="Autour · ce qui se passe dans ton quartier" />
+<meta property="og:description" content="Événements, aide, commerces ouverts et itinéraires autour de toi. Sans compte, sans installation." />
+<meta property="og:locale" content="fr_FR" />
+<meta name="twitter:card" content="summary" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📍%3C/text%3E%3C/svg%3E" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23F7F8F5'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle'%3E📍%3C/text%3E%3C/svg%3E" />
+<link rel="manifest" href="manifest.json" />
+<meta name="apple-mobile-web-app-title" content="Autour" />
+
+<!-- La CSS Leaflet est une dépendance structurelle de la carte : elle doit être
+     active avant la création de L.map(), sinon les panes et les tuiles peuvent
+     être construits dans le mauvais flux et rester invisibles. Ce chargement
+     bloquant reprend le comportement fiable de e57ebd9. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- les polices ne doivent pas retarder le premier affichage : chargées en
+     média « print » puis basculées, le texte s'affiche aussitôt en système -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" />
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+<link rel="preconnect" href="https://basemaps.cartocdn.com" />
+
+<style>
+:root{
+  --paper:#F7F8F5; --ink:#1F2A25; --ink2:#5D6B63; --signal:#FF4A17; --trait:#141E19;
+  --bord:#DCE0D8; --ardoise:#2C3A33; --aide:#B82A3A;
+  --sol:#F2F1EC; --bati:#E7E4DE; --vert:#C9E6C4; --eau:#A5CDEA;
+  --voie:#FFFFFF; --liseré:#DFDCD5; --vite:#F8D28D; --vite-bord:#E9B96A;
+  --label:#5F6863;
+  /* couleurs d'application : l'orange marque le moment présent, le violet
+     marque l'action de contribuer */
+  --orange:#FF6B2C; --violet:#7C3AED; --violet-doux:#F1ECFE;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --sheet-visible-height:0px;
+  /* hauteurs mesurées au lieu d'être devinées : l'en-tête et la barre basse
+     changent de taille selon l'appareil et la présence des safe areas */
+  --header-height:150px; --nav-height:calc(var(--safe-b) + 58px);
+  /* bord bas réel de l'en-tête flottant : ce qui se range juste dessous doit
+     s'y accrocher, pas à sa hauteur seule — l'en-tête ne commence pas à 0 */
+  --header-bas:calc(var(--safe-t) + 54px);
+  --map-control-bottom:max(calc(var(--nav-height) + 14px),calc(var(--sheet-visible-height) + 12px));
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* 100dvh : sur Safari iOS, 100vh inclut la barre d'URL et pousse le bas de
+   l'application hors de l'écran. dvh suit la hauteur réellement visible. */
+html,body{height:100%;height:100dvh;overscroll-behavior:none}
+body{font-family:'Inter Tight',system-ui,-apple-system,sans-serif;color:var(--ink);
+  background:var(--paper);-webkit-font-smoothing:antialiased;position:fixed;inset:0;width:100%}
+body.ui-modal-open{overflow:hidden;touch-action:none}
+button{font-family:inherit;cursor:pointer}
+input{font-family:inherit;font-size:16px}
+
+#map{position:absolute;inset:0;background:var(--sol)}
+#google-map-background{position:absolute;inset:0;z-index:0;background:var(--sol)}
+#map.avec-google-map .leaflet-container{position:relative;z-index:1;background:transparent;pointer-events:none}
+#map.avec-google-map .leaflet-marker-pane{pointer-events:auto}
+#map.avec-google-map .leaflet-ville-pane{opacity:0}
+.leaflet-container{font-family:inherit;background:var(--sol)}
+/* La carte est un décor : ni boutons +/-, ni bandeau d'attribution posé
+   dessus. Le zoom se fait au pinch, et l'attribution — légalement due —
+   est écrite sur la carte (#attribution), le détail derrière le « ⓘ ». */
+.leaflet-control-zoom,.leaflet-control-attribution{display:none!important}
+/* La carte descend sous l'en-tête arrondi et sous la barre basse : le fond
+   continue derrière eux, ce qui donne la profondeur d'une app native. */
+#map{top:0;bottom:0}
+
+/* étiquettes de rue */
+.rue{background:none;border:0;width:0!important;height:0!important}
+.rue-in{position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;
+  font-size:11px;font-weight:500;color:var(--label);letter-spacing:.01em;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+
+.mk{width:0!important;height:0!important;background:none;border:0}
+.mk-in{position:absolute;left:0;top:0;display:block}
+.mk-eph .mk-in{transform:translate(-50%,-100%)}
+.mk-fix .mk-in{transform:translate(-50%,-50%)}
+
+.affiche{position:relative;display:flex;flex-direction:column;gap:3px;width:max-content;
+  max-width:152px;padding:7px 9px 8px;border:1px solid var(--bord);border-radius:2px;
+  background:#fff;box-shadow:0 2px 10px rgba(20,30,25,.14);text-align:left;
+  transform:rotate(var(--tilt,0deg));transform-origin:50% 100%;animation:surgit .2s ease-out}
+.affiche::after{content:"";position:absolute;left:50%;bottom:-11px;width:1.5px;height:11px;
+  background:rgba(31,42,37,.45);transform:translateX(-50%)}
+.a-haut{display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.a-titre{font-size:12.5px;font-weight:600;line-height:1.25}
+.a-lieu{font-size:11px;line-height:1.25;opacity:.75}
+.a-places{opacity:.72;font-weight:500}
+/* Le statut d'envoi occupe la même ligne que le prix et les places, avec le
+   même poids typographique : c'est ce qu'on regarde en premier sur une affiche,
+   donc c'est là qu'un retard doit se lire. Il ne prend la place de rien — il
+   s'ajoute, et disparaît dès que la base a confirmé. */
+.a-envoi{flex-basis:100%;margin-top:3px;padding:2px 6px;border-radius:4px;
+  background:rgba(31,42,37,.1);font-weight:700;letter-spacing:.06em}
+.gratuit .a-envoi{background:rgba(255,255,255,.28)}
+.a-envoi.a-echec{background:var(--aide);color:#fff}
+.affiche.a-rate{border-color:var(--aide)}
+.gratuit{background:var(--signal);border-color:var(--signal);color:#fff}
+.payant{background:#fff;color:var(--ink)}
+.payant .a-haut{color:var(--ink2)}
+/* Annulé : l'affiche reste sur la carte — la faire disparaître laisserait
+   croire à une erreur — mais elle ne peut plus se lire comme un événement qui
+   a lieu. Titre barré, couleurs éteintes, mention en clair. */
+.affiche.annulee{background:#fff;border-color:var(--bord);color:var(--ink2);
+  opacity:.72;filter:grayscale(1)}
+.affiche.annulee .a-titre{text-decoration:line-through}
+.affiche.annulee .a-haut{color:#B82A3A}
+.rc-carte.annulee .rc-nom{text-decoration:line-through;color:var(--ink2)}
+.rc-annule{color:#B82A3A;font-weight:700}
+
+/* lieux permanents : pastille façon Maps — rond + nom dessous */
+.poi{display:flex;flex-direction:column;align-items:center;gap:2px;animation:surgit .2s ease-out}
+.poi-rond{width:23px;height:23px;border-radius:50%;background:#fff;border:1px solid var(--bord);
+  display:grid;place-items:center;font-size:12px;line-height:1;box-shadow:0 1px 3px rgba(20,30,25,.28)}
+.poi-nom{max-width:104px;text-align:center;font-size:11px;font-weight:600;line-height:1.15;
+  color:#37423D;letter-spacing:-.005em;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+.poi-rond{position:relative}
+
+/* ---- Carte d'un événement EN COURS, posée sur la carte -------------------
+   Blanche, opaque, avec une vraie ombre : elle doit flotter au-dessus du fond
+   désaturé, pas s'y fondre comme une étiquette de commerce. Trois lignes, pas
+   quatre — le titre, le lieu, et ce qui décide d'y aller. */
+.evc{display:flex;align-items:center;gap:9px;padding:8px 12px 8px 8px;
+  border-radius:14px;background:#fff;box-shadow:0 4px 16px rgba(20,30,25,.20);
+  max-width:214px;animation:surgit .2s ease-out}
+.evc-rond{flex-shrink:0;width:30px;height:30px;border-radius:9px;color:#fff;
+  display:grid;place-items:center;font-size:15px;line-height:1}
+.evc-txt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.evc-txt b{font-size:12.5px;font-weight:750;line-height:1.2;letter-spacing:-.01em;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evc-txt i{font-style:normal;font-size:11.5px;line-height:1.25;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evc-txt u{text-decoration:none;font-size:11px;line-height:1.25;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- Marqueurs de lieu façon application de découverte ------------------
+   Pastille ronde colorée par catégorie + étiquette blanche à deux lignes :
+   le nom, puis ce qui décide vraiment (heure de séance, heure de fermeture,
+   temps de trajet). La carte montre des lieux, pas des points. */
+.poi{flex-direction:row;align-items:center;gap:0}
+.poi-rond{width:28px;height:28px;font-size:14px;border:0;color:#fff;
+  box-shadow:0 2px 7px rgba(20,30,25,.30);z-index:2}
+.poi-eti{display:flex;flex-direction:column;margin-left:-8px;padding:4px 10px 4px 14px;
+  border-radius:0 9px 9px 0;background:rgba(255,255,255,.95);
+  box-shadow:0 1px 6px rgba(20,30,25,.20);max-width:158px}
+.poi-eti b{font-size:11.5px;font-weight:700;line-height:1.2;letter-spacing:-.01em;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poi-eti span{font-size:11px;line-height:1.25;color:var(--ink2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.poi-eti span.ouvre{color:#1B7F3B}
+.loin .poi-eti,.poi-eti.masquee{display:none}
+/* Même règle pour la carte d'événement : le texte s'efface, la pastille
+   reste — donc le marqueur reste touchable et repérable, il perd seulement
+   son libellé. Le fond de carte redevient lisible sans rien supprimer. */
+.evc-txt.masquee{display:none}
+.evc:has(.evc-txt.masquee){padding:6px;max-width:none}
+.evc-txt.a-gauche{order:-1}
+
+/* Le compteur d'une pile d'événements. Posé en absolu sur la carte de tête :
+   il ne pousse rien et n'élargit pas le marqueur. */
+.mk-pile{position:relative}
+.evc-plus{position:absolute;top:-6px;right:-8px;min-width:22px;height:22px;
+  padding:0 6px;border-radius:99px;background:var(--ink);color:#fff;
+  border:2px solid #fff;font-style:normal;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  display:grid;place-items:center;line-height:1;z-index:3}
+
+/* La liste des événements d'un même point, dans la fiche compacte. */
+.pl-tete{display:flex;flex-direction:column;gap:1px;padding:2px 2px 10px}
+.pl-tete b{font-size:15px;font-weight:750;letter-spacing:-.01em}
+.pl-tete span{font-size:12.5px;color:var(--ink2)}
+.pl-liste{display:flex;flex-direction:column;max-height:46vh;overflow-y:auto;
+  -webkit-overflow-scrolling:touch}
+.pl-l{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;
+  padding:8px 2px;border:0;border-top:1px solid var(--bord);background:transparent;
+  text-align:left;cursor:pointer}
+.pl-l:first-child{border-top:0}
+.pl-rond{flex-shrink:0;width:30px;height:30px;border-radius:9px;color:#fff;
+  display:grid;place-items:center;font-size:15px;line-height:1}
+.pl-txt{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.pl-txt b{font-size:13.5px;font-weight:700;line-height:1.25;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-txt i{font-style:normal;font-size:12px;line-height:1.3;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-fl{flex-shrink:0;font-size:18px;color:#B9C0BA;line-height:1}
+/* Basculée à gauche quand elle sortirait de l'écran à droite : la pastille ne
+   bouge pas, seule l'étiquette change de côté. */
+.poi-eti.a-gauche{order:-1;margin-left:0;margin-right:-8px;
+  padding:4px 14px 4px 10px;border-radius:9px 0 0 9px;text-align:right}
+.poi-ferme .poi-eti{background:rgba(255,255,255,.82)}
+/* Fermé : atténué et badgé. Jamais le même style qu'un lieu ouvert, jamais
+   masqué non plus — hors mode « Maintenant » il reste utile pour plus tard. */
+.poi-ferme{opacity:.55;filter:grayscale(1)}
+.poi-ferme .poi-rond{border-style:dashed;box-shadow:none}
+.poi-ferme .poi-nom{color:#6B756F;font-weight:500}
+.poi-ferme-badge{position:absolute;top:-7px;left:50%;transform:translateX(-50%);
+  padding:0 3px;border-radius:2px;background:#8A3B3B;color:#fff;
+  font-size:11px;font-weight:700;line-height:1.5;letter-spacing:.02em;font-style:normal}
+.inconnu{font-weight:600;color:var(--ink2)}
+.poi-pastille{position:absolute;top:-5px;right:-6px;min-width:15px;height:15px;padding:0 3px;
+  border-radius:99px;background:var(--signal);color:#fff;border:1.5px solid #fff;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;font-style:normal;
+  display:grid;place-items:center;animation:battement 2.2s ease-in-out infinite}
+@keyframes battement{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+.loin .poi-nom{display:none}
+.loin .poi-rond{width:11px;height:11px;font-size:0;border-width:1.5px;background:var(--ardoise)}
+
+/* ---- liste classée d'une catégorie ---- */
+/* ---- bloc "où", date et heure ---- */
+.ou{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--bord);
+  border-radius:3px;background:#fff}
+.ou-txt{flex:1;min-width:0}
+.ou-nom{display:block;font-size:14px;font-weight:600;line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ou-coord{display:block;margin-top:2px;font-family:'JetBrains Mono',monospace;
+  font-size:11px;color:var(--ink2)}
+.ou-bouton{flex-shrink:0;padding:8px 12px;border:1px solid var(--bord);border-radius:99px;
+  background:var(--paper);font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.duo{display:flex;gap:9px}
+.duo>label{flex:1;min-width:0}
+.champ input[type=date],.champ input[type=time]{width:100%;padding:12px;
+  border:1px solid var(--bord);border-radius:2px;background:#fff;color:var(--ink);
+  font-family:inherit;font-size:15px}
+.champ input[type=date]:focus,.champ input[type=time]:focus{outline:2px solid var(--signal);outline-offset:1px}
+.apercu-quand{margin-top:9px;padding:9px 12px;border-radius:2px;background:rgba(255,74,23,.09);
+  font-size:13px;font-weight:600;color:var(--ink)}
+.raccourcis{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
+
+.liste-tete{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
+.liste-tete h2{font-family:'Anton',sans-serif;font-size:25px;line-height:1;text-transform:uppercase}
+.liste-compte{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
+.liste-tri{margin:0 0 14px;font-size:11.5px;color:var(--ink2);line-height:1.45}
+.tri-barre{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 9px}
+.tri-barre .tri{padding:7px 12px;border:1px solid var(--bord);border-radius:99px;background:#fff;
+  color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+.tri-barre .tri.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.rang{display:flex;align-items:center;gap:11px;width:100%;padding:11px 4px;border:0;
+  border-top:1px solid var(--bord);background:none;text-align:left}
+.rang:last-of-type{border-bottom:1px solid var(--bord)}
+.rang-n{flex-shrink:0;width:26px;font-family:'JetBrains Mono',monospace;font-size:12px;
+  font-weight:700;color:var(--ink2)}
+.rang-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#fff;
+  border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
+.rang-txt{flex:1;min-width:0}
+.rang-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rang-sous{display:block;margin-top:2px;font-size:11.5px;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rang-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;color:var(--ink2)}
+.rang-note{display:inline-flex;align-items:center;gap:3px;margin-right:7px;font-weight:700;color:var(--ink)}
+.ouvert{font-weight:700;color:#1B7F3B}
+.ferme{font-weight:700;color:var(--signal)}
+.badge{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:99px;
+  background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;vertical-align:1px}
+.badge.mien{background:var(--ardoise)}
+.liste-vide{padding:26px 0 10px;text-align:center;font-size:14px;color:var(--ink2);line-height:1.6}
+
+.pastille{display:flex;align-items:center;gap:5px;padding:5px 9px 5px 6px;width:max-content;
+  max-width:150px;border:1px solid var(--bord);border-radius:99px;
+  background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(20,30,25,.14);animation:surgit .2s ease-out}
+@keyframes surgit{from{opacity:0}to{opacity:1}}
+
+.loin .affiche,.loin .pastille{width:13px;height:13px;max-width:none;padding:0;gap:0;
+  border-radius:50%;border-width:1.5px;overflow:hidden;transform:none;
+  box-shadow:0 1px 3px rgba(20,30,25,.3)}
+.loin .affiche::after,.loin .affiche>*,.loin .pastille>*{display:none}
+.loin .pastille{background:#fff;border-color:var(--ink2)}
+.loin .mk-eph .mk-in{transform:translate(-50%,-50%)}
+.loin .rue-in{display:none}
+
+.moi-in{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
+  display:grid;place-items:center;width:46px;height:46px}
+.mk-user{width:46px!important;height:46px!important}
+.mk-user .moi-in{left:23px;top:23px}
+.moi-in i{position:absolute;width:46px;height:46px;border-radius:50%;
+  background:rgba(39,112,255,.18);animation:respire 2.4s ease-in-out infinite}
+/* Point bleu et halo, comme toute application de carte : la convention est
+   assez forte pour être reconnue sans être expliquée. Un emoji faisait
+   ressembler la position de l'utilisateur à un lieu de plus. */
+.moi-in b{display:block;width:17px;height:17px;border-radius:50%;
+  background:#1A73E8;border:2.5px solid #fff;
+  box-shadow:0 1px 5px rgba(19,72,157,.45)}
+.loin .moi-in b{width:13px;height:13px;border-width:2px}
+@keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
+
+
+/* Les bandeaux se posent SOUS l'en-tête : sa hauteur est mesurée, donc ils
+   ne recouvrent plus la recherche quel que soit l'appareil. */
+#bandeauGeo,#bandeauVide{position:absolute;left:16px;right:16px;
+  top:calc(var(--header-bas) + 10px);z-index:650;
+  display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
+  box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
+#bandeauTxt,#videTxt{flex:1;min-width:0}
+#bandeauOk,#videOk{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+  color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+#charge{position:absolute;top:calc(var(--header-bas) + 10px);left:50%;transform:translateX(-50%);
+  z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+/* Quand l'écran montre déjà les propositions de la dernière session, il n'y a
+   rien à faire attendre : la mise à jour se signale au lieu de s'annoncer.
+   Même pastille, discrète — pas de voile, pas d'animation plein écran, et
+   surtout aucune carte retirée le temps que le réseau réponde. */
+#charge.discret{background:rgba(255,255,255,.9);border-color:transparent;color:var(--ink2);
+  box-shadow:0 1px 6px rgba(20,30,25,.1);letter-spacing:.06em}
+
+/* ---- En-tête flottant compact -------------------------------------------
+   La carte est le produit : l'interface se pose dessus au lieu de la
+   repousser. Une pastille de contexte, une loupe, une cloche — rien qui
+   occupe une bande pleine largeur. */
+#appHeader{position:absolute;top:calc(var(--safe-t) + 10px);left:12px;right:12px;
+  z-index:600;display:flex;align-items:center;gap:8px;background:none;
+  box-shadow:none;padding:0;border-radius:0}
+#btnLieu{flex:1;min-width:0;display:flex;align-items:center;gap:6px;
+  height:44px;padding:0 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink2);font-size:14px;font-weight:700;
+  box-shadow:0 2px 12px rgba(20,30,25,.16);
+  overflow:hidden;white-space:nowrap;
+  transition:background .16s ease,color .16s ease}
+#btnLieu.inconnu{background:#fff;border-color:var(--signal);color:var(--signal);
+  box-shadow:0 3px 14px rgba(255,107,44,.38)}
+.hd-sep{font-style:normal;opacity:.5}
+#btnLieu b{min-width:0;overflow:hidden;text-overflow:ellipsis;
+  font-weight:800;color:inherit}
+.hd-icone{position:relative;flex-shrink:0;width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--bord);background:#fff;color:var(--ink);
+  display:grid;place-items:center;box-shadow:0 2px 12px rgba(20,30,25,.16)}
+.hd-icone i{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;
+  background:var(--signal);border:1.5px solid #fff}
+#appHeader #btnNotifs{width:auto;min-width:44px;padding:0 11px;display:inline-flex;
+  align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.notif-texte{font-size:12px;font-weight:750}
+
+/* ---- Recherche superposée ------------------------------------------------
+   Elle recouvre la carte sans la remplacer : on garde le décor, on ajoute
+   l'intention. */
+#rechercheOverlay{position:absolute;top:0;left:0;right:0;z-index:660;
+  padding:calc(var(--safe-t) + 10px) 16px 14px;
+  background:#fff;border-radius:0 0 22px 22px;
+  box-shadow:0 4px 22px rgba(20,30,25,.16);animation:monteT .16s ease-out}
+.ro-barre{display:flex;align-items:center;gap:10px;position:relative}
+.ro-barre > svg{position:absolute;margin-left:15px;color:var(--ink2);pointer-events:none}
+.ro-barre input{flex:1;min-width:0;height:46px;padding:0 44px 0 42px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;
+  color:var(--ink);font-size:15px;outline:0}
+.ro-barre input::placeholder{color:#9AA49D;font-size:14.5px}
+.ro-barre input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+.icone-btn{position:absolute;right:62px;width:38px;height:38px;border:0;background:none;
+  color:var(--ink2);display:grid;place-items:center;padding:4px}
+.hd-filtres{flex-shrink:0;width:46px;height:46px;border-radius:50%;
+  border:1px solid var(--bord);background:#fff;color:var(--ink);
+  display:grid;place-items:center}
+
+/* ---- Pills de catégories ------------------------------------------------
+   Petites, horizontales, scrollables. La sélection est pleine et colorée :
+   elle doit se lire d'un coup d'œil, sans comparer les bordures. */
+/* Carousel horizontal : la rangée occupe toute la largeur, mais le premier
+   et le dernier élément restent entiers grâce au padding et au scroll-padding.
+   Une pill coupée au bord se lit comme un défaut d'affichage, pas comme une
+   invitation à faire défiler. */
+.pills{display:flex;gap:6px;margin:10px -16px 0;
+  padding-inline:16px;scroll-padding-inline:16px;padding-block:2px;
+  overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
+  scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.rc{scroll-snap-align:start}
+.pills::-webkit-scrollbar{display:none}
+.rc{flex:0 0 auto;display:flex;align-items:center;gap:5px;height:34px;padding:0 10px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:12.5px;font-weight:650;white-space:nowrap;
+  box-shadow:0 1px 4px rgba(20,30,25,.07);transition:background .16s ease,color .16s ease}
+.rc em{font-size:13px;font-style:normal;line-height:1}
+.rc:active{transform:scale(.97)}
+.rc.actif{background:var(--violet);border-color:var(--violet);color:#fff;
+  box-shadow:0 3px 12px rgba(124,58,237,.34)}
+.rc.aide.actif{background:var(--aide);border-color:var(--aide)}
+
+/* ---- Carousel « Pour toi, maintenant » ---------------------------------- */
+.rc-tete{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:2px 0 12px}
+.rc-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+/* La pastille de contexte : violette et discrète, parce qu'elle rappelle une
+   action faite — une recherche — sans se disputer le regard avec le nom de la
+   ville. Elle pousse « Voir tout » à droite, chacun à sa place. */
+.rc-contexte{flex:0 1 auto;min-width:0;padding:5px 11px;border-radius:99px;
+  background:rgba(124,58,237,.10);color:var(--violet);
+  font-size:12.5px;font-weight:700;line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-tete strong{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-tete .rc-tout{margin-left:auto;flex-shrink:0}
+
+/* ---- Aide : partir du problème -------------------------------------------
+   Une identité reconnaissable, mais pas une seconde application : mêmes
+   pastilles, mêmes cartes, mêmes règles. Ce qui change, c'est l'ordre —
+   la question d'abord, les structures ensuite. */
+.ab{display:block}
+
+/* L'en-tête d'Aide : ce que c'est, en deux lignes. */
+.ab-entete{margin:0 0 12px}
+.ab-entete b{display:block;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.ab-entete i{display:block;margin-top:4px;font-style:normal;font-size:13.5px;
+  line-height:1.4;color:var(--ink2)}
+
+/* La distinction que l'application doit tenir : orienter n'est pas secourir. */
+.ab-secours{margin:-10px 0 12px;padding:7px 10px;border-radius:9px;
+  background:rgba(20,30,25,.05);font-size:12px;line-height:1.35;color:var(--ink2)}
+.ab-secours b{font-weight:800;color:var(--ink)}
+
+/* ---- L'urgence, en tête et impossible à manquer -------------------------
+   Elle était sous les dix besoins : il fallait descendre pour la trouver,
+   ce qui est exactement l'inverse de ce qu'il faut quand c'est urgent.
+   Elle occupe maintenant le haut de l'écran, avec le seul fond coloré de la
+   feuille — rien d'autre ne lui dispute le regard. */
+.ab-urgence{display:block;width:100%;margin:0 0 16px;padding:14px 15px;
+  border:2px solid #B82A3A;border-radius:16px;
+  background:linear-gradient(180deg,rgba(184,42,58,.10),rgba(184,42,58,.05));
+  text-align:left;color:#8E1F2E}
+.abu-haut{display:flex;align-items:center;gap:9px}
+.abu-haut em{font-style:normal;font-size:23px;line-height:1}
+.abu-haut b{font-size:18px;font-weight:800;letter-spacing:-.01em;color:#8E1F2E}
+.abu-quoi{display:block;margin-top:5px;font-size:13.5px;line-height:1.4;
+  font-weight:600;color:var(--ink)}
+.abu-cta{display:block;margin-top:8px;font-size:13px;font-weight:750;color:#B82A3A}
+
+/* ---- La promesse, avant la grille ---------------------------------------
+   Sans elle, l'écran se lit comme dix cases sans raison d'être. */
+.ab-promesse{margin:0 0 12px;font-size:14px;line-height:1.4;color:var(--ink)}
+
+.ab-titre{margin:0 0 12px;font-size:20px;font-weight:800;letter-spacing:-.02em}
+/* Le nombre de colonnes suit la largeur RÉELLE du conteneur, pas celle de la
+   fenêtre : sur desktop la feuille fait 500 px dans un écran de 1440, et une
+   règle en `min-width:768px` y posait trois colonnes qui débordaient. */
+.ab-grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px}
+.ab-besoin{min-height:60px;display:flex;align-items:center;gap:10px;
+  padding:12px 13px;border:1px solid var(--bord);border-radius:14px;background:#fff;
+  text-align:left;font-size:14.5px;font-weight:700;color:var(--ink)}
+.ab-besoin em{font-style:normal;font-size:21px;line-height:1}
+.ab-besoin b{font-weight:700;min-width:0}
+.ab-sous{margin:18px 0 8px;font-size:14px;font-weight:650;color:var(--ink)}
+.ab-form{display:flex;gap:8px}
+.ab-form input{flex:1;min-width:0;min-height:48px;padding:12px 14px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:15px;color:var(--ink)}
+.ab-form input::placeholder{color:#939D96}
+.ab-ok{flex-shrink:0;min-height:48px;padding:0 16px;border:0;border-radius:12px;
+  background:var(--ink);color:#fff;font-size:14.5px;font-weight:700}
+.ab-vie{margin:10px 0 0;font-size:12px;line-height:1.4;color:var(--ink2)}
+.ab-exemples{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink2)}
+/* Discret : c'est un panneau indicateur, pas une consigne. */
+.ab-ailleurs-note{margin:6px 0 0;font-size:12px;line-height:1.4;color:#939D96}
+
+/* « Ça ressemble plutôt à une réparation » : une phrase, une action évidente,
+   une sortie de secours. Aucune hauteur imposée — le bloc fait sa taille. */
+.ab-ailleurs{padding:6px 0 4px}
+.aba-titre{margin:0 0 6px;font-size:17px;font-weight:750;line-height:1.35;letter-spacing:-.01em}
+.aba-sous{margin:0 0 16px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.aba-cta{width:100%;min-height:52px;padding:14px 16px;border:0;border-radius:12px;
+  background:var(--ink);color:#fff;font-size:15px;font-weight:700;text-align:left}
+.aba-rester{width:100%;min-height:44px;margin-top:8px;padding:10px 16px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:13.5px;font-weight:600;color:var(--ink2)}
+/* Les lectures possibles d'une phrase mal comprise. Trois au plus, empilées
+   comme les autres boutons de cet écran : rien de nouveau à apprendre, et
+   surtout aucune couleur qui porterait un sens à elle seule. */
+.aba-lectures{display:flex;flex-direction:column;gap:8px;margin:0 0 16px}
+.aba-lecture{width:100%;min-height:48px;padding:12px 14px;text-align:left;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:14.5px;font-weight:650;color:var(--ink)}
+.aba-lecture span{margin-right:8px;font-size:16px}
+
+/* ---- Compte et profil ---------------------------------------------------
+   Le même vocabulaire visuel que le reste des panneaux : un titre, une phrase,
+   des champs pleine largeur, un bouton sombre. Rien de nouveau à apprendre —
+   ces écrans arrivent dans un moment où l'on veut finir quelque chose, pas
+   découvrir une interface. */
+.cpt{padding:6px 0 4px}
+.cpt-titre{margin:0 0 6px;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.cpt-sous{margin:0 0 16px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.cpt-lab{display:block;margin:14px 0 6px;font-size:12.5px;font-weight:700;color:var(--ink2)}
+.cpt-lab i{font-style:normal;font-weight:500;opacity:.75}
+.cpt-champ{width:100%;min-height:48px;padding:12px 14px;font-size:16px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;color:var(--ink)}
+.cpt-valeur{margin:0;padding:12px 14px;font-size:14.5px;
+  border:1px solid var(--bord);border-radius:12px;background:var(--fond2,#F6F5F2);color:var(--ink2)}
+.cpt-cta{width:100%;min-height:52px;margin-top:14px;padding:14px 16px;border:0;
+  border-radius:12px;background:var(--ink);color:#fff;font-size:15px;font-weight:700}
+.cpt-lien{width:100%;min-height:44px;margin-top:8px;padding:10px 16px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;
+  font-size:13.5px;font-weight:600;color:var(--ink2)}
+.cpt-sortie{margin-top:18px}
+.cpt-envoye{margin:0 0 4px;font-size:14px;line-height:1.5}
+.cpt-err{margin:0 0 12px;padding:10px 12px;border-radius:10px;
+  background:#FBEEEC;font-size:13.5px;line-height:1.45;color:#8C3B2E}
+.cpt-note{margin:16px 0 0;font-size:12px;line-height:1.45;color:#939D96}
+.cpt-liste{margin:0 0 16px;padding:0 0 0 2px;list-style:none;
+  font-size:14px;line-height:1.9;color:var(--ink)}
+.cpt-actions{display:flex;flex-direction:column;gap:8px;margin:18px 0 4px}
+.cpt-bascule{display:flex;align-items:center;gap:10px;margin-top:18px;
+  font-size:14px;line-height:1.4;color:var(--ink)}
+.cpt-bascule input{width:20px;height:20px;flex:0 0 auto}
+
+.as-tete{padding:2px 0 10px}
+.as-tete strong{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.as-liste{display:flex;flex-direction:column;gap:10px}
+.ac-aide{padding:13px 14px;border:1px solid var(--bord);border-radius:16px;background:#fff}
+.aa-tete{display:flex;align-items:center;gap:9px}
+.aa-emoji{font-size:19px;line-height:1}
+.aa-nom{flex:1;min-width:0;font-size:15.5px;font-weight:750;line-height:1.25}
+.aa-visuel{position:relative;display:grid;place-items:center;width:58px;height:48px;flex:0 0 58px;
+  overflow:hidden;border-radius:10px;background:color-mix(in srgb,var(--teinte) 13%,#fff)}
+.aa-visuel i{font-style:normal;font-size:23px;line-height:1;opacity:.82}
+.aa-visuel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .18s ease}
+.aa-visuel img.vue{opacity:1}
+.aa-quoi{margin:7px 0 0;font-size:13.5px;line-height:1.45;color:var(--ink)}
+.aa-quand{margin:7px 0 0;font-size:13.5px;font-weight:750;color:var(--ink2)}
+.aa-quand.chaud{color:#1B7F4C}
+.aa-pourquoi{margin:8px 0 0;padding:8px 10px;border-radius:10px;
+  background:rgba(124,58,237,.07);font-size:13px;line-height:1.45;color:var(--ink)}
+.aa-pourquoi b{font-weight:750}
+.aa-cond{margin:7px 0 0;font-size:12.5px;line-height:1.4;color:var(--ink2)}
+.aa-cond i{display:block;margin-top:2px;font-style:normal;font-size:11px;
+  letter-spacing:.03em;text-transform:uppercase;color:var(--ink2);opacity:.8}
+.aa-hors{margin:7px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+.aa-bas{margin:8px 0 0;font-size:12.5px;color:var(--ink2)}
+.aa-verif{margin:6px 0 0;font-size:12.5px;font-weight:650;color:#B85C00}
+.aide-couverture{position:relative;display:grid;place-items:center;height:190px;margin:-18px -18px 18px;
+  overflow:hidden;border-radius:18px 18px 13px 13px;background:color-mix(in srgb,var(--teinte) 14%,#fff)}
+.aide-couverture>span{font-size:56px;line-height:1;opacity:.82}
+.aide-couverture.sans-photo>span{font-size:28px}
+.aide-couverture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.aide-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:1;max-width:75%;padding:3px 6px;
+  border-radius:5px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.2}
+dl.faits-aide>div{align-items:start}
+dl.faits-aide dd{max-width:63%;line-height:1.4}
+.as-plus{width:100%;min-height:48px;margin-top:12px;border:1px solid var(--bord);
+  border-radius:12px;background:#fff;font-size:14.5px;font-weight:700;color:var(--ink)}
+.as-vide-titre{margin:0 0 4px;font-size:16px;font-weight:750;line-height:1.35}
+.as-vide-sous{margin:0 0 14px;font-size:13.5px;color:var(--ink2)}
+.as-vide-actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Le bloc discret de l'accueil : présent, jamais envahissant. */
+.aide-bloc{display:flex;align-items:center;gap:11px;width:100%;margin:0 0 12px;
+  padding:12px 13px;border:1px solid var(--bord);border-radius:14px;
+  background:rgba(184,42,58,.05);text-align:left}
+.aide-bloc em{font-style:normal;font-size:20px;line-height:1}
+.aide-bloc span{flex:1;min-width:0}
+.aide-bloc b{display:block;font-size:14.5px;font-weight:750;color:var(--ink)}
+.aide-bloc i{display:block;font-style:normal;font-size:12.5px;color:var(--ink2)}
+.aide-bloc u{flex-shrink:0;text-decoration:none;font-size:13px;font-weight:700;color:#B82A3A}
+
+/* ---- Ce qu'Autour a compris d'une phrase --------------------------------
+   Des puces retirables : une interprétation fausse doit pouvoir être défaite
+   d'un geste, sans reformuler toute la phrase. */
+/* préfixe `cp` : `.chip` désigne déjà les pastilles du formulaire de
+   publication, et deux classes de même nom se marchent dessus */
+.cps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 0 12px}
+.cps-titre{font-size:12px;color:var(--ink2)}
+.cp{min-height:36px;padding:7px 11px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13px;font-weight:650;color:var(--ink);
+  display:inline-flex;align-items:center;gap:6px}
+.cp i{font-style:normal;font-size:11px;color:var(--ink2)}
+/* une contrainte exclut des résultats : elle ne se lit pas comme une envie */
+.cp.dure{background:var(--ink);border-color:var(--ink);color:#fff}
+.cp.dure i{color:rgba(255,255,255,.75)}
+.cp.zone{border-color:var(--violet);color:var(--violet)}
+
+/* ---- Le squelette de chargement -----------------------------------------
+   Ce qui arrive, pas ce qui manque. Une phrase seule se lit comme un aveu de
+   vide ; trois formes grises disent « ça vient ». */
+.sq{display:flex;flex-direction:column;gap:8px;padding:2px 0 10px}
+.sq-dit{font-size:14px;color:var(--ink2);padding-bottom:4px}
+.sq-carte{display:flex;gap:12px;align-items:center;padding:11px 12px;
+  border:1px solid var(--bord);border-radius:16px;background:#fff}
+.sq-img{width:64px;height:64px;border-radius:12px;flex-shrink:0}
+.sq-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.sq-txt i{display:block;height:12px;border-radius:6px}
+.sq-txt i.court{width:45%}
+.sq-img,.sq-txt i{background:linear-gradient(90deg,
+  rgba(20,30,25,.06) 25%, rgba(20,30,25,.11) 37%, rgba(20,30,25,.06) 63%);
+  background-size:400% 100%;animation:sq-onde 1.4s ease-in-out infinite}
+@keyframes sq-onde{0%{background-position:100% 0}100%{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){ .sq-img,.sq-txt i{animation:none} }
+
+/* ---- Les besoins rapides ------------------------------------------------ */
+.br{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:0 0 10px}
+.br::-webkit-scrollbar{display:none}
+.br-b{flex:0 0 auto;min-height:44px;padding:9px 14px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);
+  font-size:14px;font-weight:700;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:6px}
+.br-b em{font-style:normal;font-size:16px;line-height:1}
+.br-b.actif{background:var(--violet-doux);border-color:var(--violet);color:var(--violet)}
+.br-b[data-br="aide"].actif{background:rgba(184,42,58,.10);border-color:#B82A3A;color:#B82A3A}
+/* Le contexte temporaire quand il n'est encore qu'une annonce : un trait
+   pointillé, rien de plus. Pas de thème, pas de couleur d'événement partout —
+   Autour reste Autour, et le bouton disparaîtra de lui-même. */
+.br-b.br-annonce{border-style:dashed;color:var(--ink2)}
+
+/* ---- Pourquoi cette recommandation --------------------------------------
+   Une étiquette, la plus décisive, et rien de plus. */
+.rc-pourquoi{display:inline-block;align-self:flex-start;
+  margin-top:4px;padding:2px 8px;border-radius:99px;
+  background:rgba(20,30,25,.06);font-size:11.5px;font-weight:700;color:var(--ink2)}
+.rc-pourquoi.ouvert{background:rgba(27,127,76,.10);color:#1B7F4C}
+.rc-pourquoi.chaud{background:rgba(240,90,20,.12);color:#C24A08}
+.rc-pourquoi.tiede{background:rgba(184,92,0,.12);color:#B85C00}
+
+/* ---- La carte s'efface derrière le lieu regardé -------------------------
+   Sélectionner une recommandation ne doit pas laisser vingt pastilles de même
+   poids à l'écran : celle qu'on regarde grossit, les autres reculent. */
+body.focus-lieu .leaflet-marker-icon{opacity:.35;transition:opacity .18s ease}
+body.focus-lieu .leaflet-marker-icon.en-avant{opacity:1;z-index:500!important}
+body.focus-lieu .leaflet-marker-icon.en-avant .poi-rond{transform:scale(1.25);
+  box-shadow:0 3px 12px rgba(20,30,25,.34)}
+body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
+
+/* ---- Les quatre groupes de temps ----------------------------------------
+   Une seule rangée, en tête de la feuille : c'est la première question qu'on
+   se pose (« maintenant ou plus tard ? ») et elle mérite d'être visible sans
+   ouvrir de menu. */
+.ong-temps{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+  padding:0 0 12px;margin:0 -2px}
+.ong-temps::-webkit-scrollbar{display:none}
+.ong{flex:0 0 auto;min-height:44px;padding:11px 15px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink2);
+  font-size:13.5px;font-weight:700;white-space:nowrap}
+.ong.actif{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* ---- « ⚡ Maintenant (3) » : la liste de ce qui se passe -------------------
+   Compacte, sans photo, sans badge : trois lignes par entrée et une flèche.
+   Rien à décoder — un titre, un lieu, et jusqu'à quand. */
+/* LA PLACE EST RÉSERVÉE, ET C'EST TOUT L'INTÉRÊT.
+
+   CE QUI CASSAIT : le bloc n'existait pas tant qu'il n'avait rien à montrer.
+   Il apparaissait une seconde après l'ouverture et poussait les boutons du
+   dessous sous le doigt de quelqu'un qui appuyait déjà.
+
+   POURQUOI LA RÉSERVATION PORTE SUR LE CORPS, PAS SUR LA CARTE.
+
+   Une première version posait `min-height` sur `.mn` en additionnant une
+   hauteur d'en-tête SUPPOSÉE et trois lignes. L'en-tête réel faisait deux
+   pixels de moins, les lignes réelles douze de plus, et le banc a mesuré
+   quatre pixels de saut. On ne devine plus rien : l'en-tête garde sa hauteur
+   naturelle, et c'est le CORPS qui réserve exactement trois lignes — des
+   lignes dont la hauteur est FIXÉE, pas déduite de leur contenu. */
+:root{--mn-ligne:68px;--mn-pied:46px}
+.mn{margin:2px 0 14px;padding:4px 0 2px;border:1px solid var(--bord);
+  border-radius:16px;background:#fff;overflow:hidden;
+  display:flex;flex-direction:column}
+/* LA RÉSERVE VAUT TANT QU'ON NE SAIT PAS ENCORE, ET PAS APRÈS.
+
+   Elle existe pour un cas précis : pendant la collecte, le bloc n'a rien à
+   montrer, et sans place gardée il s'insérait à l'arrivée des données en
+   poussant les boutons du dessous sous le doigt de quelqu'un qui appuyait
+   déjà. Ce danger-là dure exactement le temps du chargement.
+
+   Une fois la réponse connue, la garder revenait à afficher une ligne et
+   demie de blanc sous deux résultats — trois emplacements dessinés pour un
+   contenu qui n'en remplit que deux, ce qui se lit comme un manque. Le bloc
+   fait donc la taille de ce qu'il montre : trois lignes pour trois, deux pour
+   deux, et un état vide qui ne mime plus une liste absente.
+
+   `maximum trois`, pas `toujours trois`. */
+.mn-corps{display:flex;flex-direction:column}
+
+/* ---- Le contexte territorial temporaire ---------------------------------
+   Deux petits blocs, dans le langage visuel d'Autour : pas de carte spéciale,
+   pas d'écran différent, pas de microsite. Une ligne de contexte au-dessus de
+   « Maintenant », et un bloc compact de services en dessous. */
+.tterr{margin:2px 0 8px;padding:2px 2px 0}
+.tterr-tete{display:flex;align-items:center;gap:7px;margin:0;
+  font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--ink)}
+.tterr-tete em{font-style:normal;font-size:15px;letter-spacing:0}
+.tterr-sous{margin:2px 0 0;font-size:12.5px;color:var(--ink2)}
+.tterr-recentrer{margin-top:7px;min-height:38px;padding:8px 13px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;
+  color:var(--ink);font-size:13px;font-weight:700}
+/* Compact, et volontairement : la mission reste QUOI + QUAND + OÙ. Ce bloc
+   répond à ce qu'on cherche quand on y est déjà, pas à ce qu'on vient faire. */
+.tsv{margin:0 0 14px;padding:0}
+.tsv-tete{margin:0 0 6px;padding:0 2px;font-size:11.5px;font-weight:800;
+  letter-spacing:.06em;color:var(--ink2)}
+.tsv-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.tsv-l button{display:flex;align-items:center;gap:9px;width:100%;min-height:40px;
+  padding:6px 10px;border:0;border-radius:12px;background:transparent;
+  color:var(--ink);font-size:13.5px;text-align:left}
+.tsv-l button em{font-style:normal;font-size:15px;line-height:1}
+.tsv-l button b{font-weight:650}
+.tsv-l button u{margin-left:auto;text-decoration:none;font-family:'JetBrains Mono',monospace;
+  font-size:12px;color:var(--ink2)}
+.mn[data-mn-etat="loading"] .mn-corps{
+  min-height:calc(3 * var(--mn-ligne) + var(--mn-pied))}
+/* Trois barres grises, à la place exacte des trois lignes à venir. Pas de
+   texte : un message qui apparaît puis disparaît demande à être lu pour rien. */
+.mn-attente{flex:1;display:flex;flex-direction:column;justify-content:flex-start}
+.mn-attente i{height:var(--mn-ligne);border-top:1px solid var(--bord);
+  background:linear-gradient(90deg,#F4F3F0 25%,#EDECE8 37%,#F4F3F0 63%);
+  background-size:400% 100%;animation:mn-onde 1.4s ease-in-out infinite}
+.mn-attente i:first-child{border-top:0}
+@keyframes mn-onde{0%{background-position:100% 50%}100%{background-position:0 50%}}
+@media (prefers-reduced-motion:reduce){.mn-attente i{animation:none}}
+/* Un état vide propre : il dit ce qu'il a à dire et s'arrête là. Il occupait
+   la hauteur de trois lignes, ce qui dessinait une liste vide sous une phrase
+   qui expliquait déjà qu'il n'y en avait pas. */
+.mn-rien{display:flex;flex-direction:column;align-items:flex-start;
+  gap:10px;padding:14px;border-top:1px solid var(--bord)}
+.mn-rien p{margin:0;font-size:13.5px;line-height:1.45;color:var(--ink2)}
+.mn-sortie{min-height:40px;padding:9px 14px;border:1px solid var(--bord);
+  border-radius:11px;background:#fff;font-size:13.5px;font-weight:650;color:var(--ink)}
+.mn-tete{display:flex;align-items:center;gap:6px;margin:0;padding:10px 14px 8px;
+  font-size:15px;font-weight:750;letter-spacing:-.01em;color:var(--ink)}
+.mn-tete em{font-style:normal}
+.mn-tete span{font-weight:650;color:var(--ink2)}
+.mn-l{display:flex;align-items:center;gap:11px;width:100%;
+  height:var(--mn-ligne);flex:0 0 var(--mn-ligne);overflow:hidden;
+  padding:9px 14px;border:0;border-top:1px solid var(--bord);background:#fff;
+  text-align:left;cursor:pointer}
+.mn-l:first-of-type{border-top:0}
+.mn-rond{flex-shrink:0;width:34px;height:34px;border-radius:10px;color:#fff;
+  display:grid;place-items:center;font-size:16px;line-height:1}
+.mn-txt{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.mn-txt b{font-size:14px;font-weight:700;line-height:1.25;letter-spacing:-.01em;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mn-txt i{font-style:normal;font-size:12.5px;line-height:1.3;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mn-txt u{text-decoration:none;font-size:12px;line-height:1.3;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mn-fl{flex-shrink:0;font-size:19px;color:#B9C0BA;line-height:1}
+.mn-tout{width:100%;min-height:46px;padding:12px;border:0;border-top:1px solid var(--bord);
+  background:#fff;font-size:13.5px;font-weight:700;color:var(--violet,#6D4AFF);cursor:pointer}
+/* Une phrase, pas un avertissement : ni cadre, ni couleur d'alerte, ni bouton.
+   Elle explique une sélection maigre, elle ne réclame rien. */
+.mn-couverture{margin:0;padding:8px 14px 12px;font-size:12px;line-height:1.45;
+  color:var(--ink2);opacity:.85}
+
+/* La pastille « Maintenant » vit au-dessus de la carte, centrée, sous
+   l'en-tête. `pointer-events` reste actif sur elle seule : le reste de la
+   bande laisse passer les gestes vers la carte. */
+#badgeMaintenant{position:fixed;left:50%;transform:translateX(-50%);
+  /* `--safe-t` existe déjà en tête de feuille : le réutiliser plutôt que de
+     réécrire env(safe-area-inset-top) garde une seule définition à corriger. */
+  top:calc(var(--haut-entete, 64px) + var(--safe-t, 0px) + 10px);
+  z-index:420;display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:9px 18px;border:0;border-radius:99px;background:#fff;
+  box-shadow:0 6px 20px rgba(20,30,25,.16);cursor:pointer;
+  max-width:calc(100vw - 32px)}
+#badgeMaintenant .bm-haut{display:flex;align-items:center;gap:7px;
+  font-size:15px;font-weight:750;letter-spacing:-.01em;color:var(--ink)}
+#badgeMaintenant .bm-haut em{font-style:normal;font-size:15px}
+#badgeMaintenant .bm-haut i{font-style:normal;font-weight:750}
+#badgeMaintenant .bm-haut i::before{content:"· "}
+#badgeMaintenant .bm-sous{font-size:11.5px;font-weight:500;color:var(--ink2);
+  white-space:nowrap}
+/* en navigation ou en pose, la carte appartient à autre chose */
+body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
+/* Le compteur de « Maintenant » ne doit JAMAIS pousser les onglets voisins.
+   La place est réservée en permanence (padding-right) et le badge s'y pose en
+   absolu : il apparaît quand des événements arrivent, disparaît quand il n'y
+   en a plus, et aucun autre onglet ne bouge d'un pixel. */
+.ong-maintenant{position:relative;padding-right:38px}
+.ong-compte{position:absolute;top:50%;right:11px;transform:translateY(-50%);
+  min-width:20px;height:20px;padding:0 5px;border-radius:99px;
+  background:var(--signal);color:#fff;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  display:grid;place-items:center;line-height:1}
+.ong.actif .ong-compte{background:#fff;color:var(--ink)}
+/* La pastille est posée en absolu sur le bord droit de l'onglet : sans place
+   réservée pour elle, elle se posait SUR la fin du libellé — « Maintena2 ».
+   L'onglet qui la porte s'élargit donc, et lui seul. */
+.ong:has(.ong-compte){padding-right:38px}
+
+/* ---- « Où veux-tu regarder ? » ------------------------------------------
+   Ce qui s'affiche tant que personne n'a donné sa position : deux gestes et
+   cinq envies, plutôt qu'une carte de Paris légendée « autour de toi ».
+   Préfixe `pdep` (point de départ) : `.ou` désigne déjà le bloc « où » du
+   formulaire de publication, et les deux se marchaient dessus. */
+.pdep{display:block;margin:0 0 14px;padding:14px;border:1px solid var(--bord);
+  border-radius:16px;background:rgba(44,58,51,.05)}
+.pdep-titre{margin:0 0 10px;font-size:16px;font-weight:750;line-height:1.25}
+.pdep-actions{display:flex;flex-wrap:wrap;gap:8px}
+.pdep-btn{min-height:44px;padding:10px 16px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:14px;font-weight:700;color:var(--ink)}
+.pdep-btn.pdep-fort{background:var(--signal);border-color:var(--signal);color:#fff}
+.pdep-sous{margin:12px 0 8px;font-size:13px;color:var(--ink2)}
+.pdep-envies{display:flex;flex-wrap:wrap;gap:6px}
+.pdep-envie{min-height:44px;padding:9px 13px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13.5px;font-weight:650;color:var(--ink);
+  display:inline-flex;align-items:center;gap:6px}
+.pdep-envie em{font-style:normal;font-size:15px}
+/* 89 × 16 px : impossible à viser au pouce. Le texte ne change pas, la zone
+   de frappe passe à 44 px de haut. */
+.rc-tout{flex-shrink:0;white-space:nowrap;border:0;background:none;
+  min-height:44px;padding:0 4px;margin:-12px -4px;
+  color:var(--violet);font-size:14.5px;font-weight:700}
+.rc-piste{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;
+  padding:0 0 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+/* Une liste courte doit dire qu'elle est courte exprès, sinon elle passe pour
+   une base de données pauvre. Une ligne, discrète, sans bouton : rien n'est
+   demandé à la personne. */
+.rc-apercu{margin:2px 0 0;font-size:13px;line-height:1.5;color:var(--ink2)}
+.rc-piste::-webkit-scrollbar{display:none}
+/* Le bloc principal se lit en colonne, y compris sur téléphone : deux cartes
+   côte à côte, c'était deux recommandations visibles sur douze. En rangée on
+   en voit trois ou quatre d'un coup, avec plus d'information sur chacune —
+   sans devenir une liste : la carte reste là, derrière, à la moitié de
+   l'écran. Les autres pistes gardent le défilement horizontal. */
+/* ---- La liste du panneau : cinq propositions doivent tenir sans défiler ---
+   Chaque ligne faisait deux cent quinze pixels : une vignette de 88 px de
+   haut, un nom sur deux lignes réservées, une pastille d'état, la distance,
+   puis « Arrivée 01:22 » sur sa propre ligne. Deux propositions et demie par
+   écran, et la question « qu'est-ce que je fais maintenant » restait sous le
+   pli. La référence tient cinq lignes dans la même hauteur : vignette carrée
+   de 76 px, quatre lignes de texte, rien d'autre.
+
+   Ce qui disparaît ici ne disparaît pas de l'application : le détail du trajet
+   et l'heure d'arrivée restent sur la fiche du lieu, où on les cherche. */
+.rc-colonne{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:8px}
+.rc-colonne .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:center;
+  box-shadow:0 1px 4px rgba(20,30,25,.06)}
+.rc-colonne .rc-photo{width:76px;height:76px;min-height:0;flex-shrink:0;
+  margin:9px 0 9px 9px;border-radius:12px;overflow:hidden}
+.rc-colonne .rc-corps{flex:1;min-width:0;gap:1px;padding:10px 12px}
+.rc-colonne .rc-nom{min-height:0;-webkit-line-clamp:1}
+/* L'état d'ouverture est une phrase, pas une étiquette. En pastille pleine il
+   pesait autant que le nom du lieu ; la référence l'écrit en toutes lettres,
+   coloré, sur une ligne. */
+.rc-colonne .rc-carte .rc-pourquoi{padding:0;background:none;font-size:12.5px;font-weight:750}
+.rc-colonne .rc-trajet,.rc-colonne .rc-arrivee{display:none}
+.rc-carte{flex:0 0 178px;scroll-snap-align:start;display:flex;flex-direction:column;
+  border:1px solid var(--bord);border-radius:16px;background:#fff;overflow:hidden;
+  text-align:left;box-shadow:0 2px 10px rgba(20,30,25,.09)}
+.rc-carte:active{transform:scale(.985)}
+.rc-photo{display:block;height:74px;background:var(--paper) center/cover no-repeat}
+/* Tuile de repli : teintée par la catégorie, avec une petite icône. Elle
+   doit ressembler à une composition, pas à une image qui n'a pas chargé. */
+/* Champ photo du formulaire de publication */
+.photo-champ{position:relative;display:block;margin-top:8px;height:104px;
+  border:1px dashed var(--bord);border-radius:12px;background:var(--paper);
+  overflow:hidden;cursor:pointer}
+.photo-champ.rempli{border-style:solid}
+.photo-champ img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-champ input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photo-vide{position:absolute;inset:0;display:grid;place-items:center;
+  font-size:13.5px;font-weight:600;color:var(--ink2)}
+.photo-retirer{margin-top:8px;padding:7px 12px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;font-size:12.5px;font-weight:600}
+.champ span i{font-style:normal;font-weight:500;color:var(--ink2)}
+
+/* Choix du type de publication, avant toute question de localisation */
+.creer-choix{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px}
+.creer-type{display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  padding:14px 14px 15px;border:1px solid var(--bord);border-radius:16px;background:#fff;
+  text-align:left}
+.creer-type em{font-size:24px;font-style:normal;line-height:1}
+.creer-type b{font-size:14.5px;font-weight:700}
+.creer-type:active{background:var(--paper)}
+/* « Créer » est le seul onglet à porter une pastille pleine : il reste
+   identifiable sans déséquilibrer le rail, et remplace l'ancien bouton
+   flottant qui faisait doublon. */
+.nb-creer{color:var(--violet)}
+.nb-plus{display:grid;place-items:center;width:34px;height:34px;border-radius:12px;
+  background:var(--violet);color:#fff;font-style:normal;
+  box-shadow:0 3px 10px rgba(124,58,237,.34)}
+.nb-creer svg{opacity:1}
+.nb.avec-pastille{position:relative}
+.nb.avec-pastille::after{content:"";position:absolute;top:4px;right:50%;
+  transform:translateX(16px);width:7px;height:7px;border-radius:50%;background:var(--signal)}
+
+.rc-photo-vide{position:relative;display:grid;place-items:center;
+  background:var(--teinte,#5D6B63)}
+.rc-photo-vide::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
+.rc-photo-vide i{position:relative;z-index:1;font-size:20px;font-style:normal;opacity:.9}
+/* La photo se pose par-dessus le placeholder une fois chargée : aucun saut
+   de mise en page, et rien à attendre pour lire la carte. */
+.rc-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
+  object-fit:cover;opacity:0;transition:opacity .18s ease}
+.rc-photo img.vue{opacity:1}
+.rc-photo figcaption{position:absolute;right:4px;bottom:4px;z-index:3;max-width:92%;padding:2px 4px;
+  overflow:hidden;border-radius:4px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.15;
+  white-space:nowrap;text-overflow:ellipsis}
+.rc-photo figcaption a{color:inherit;text-decoration:underline}
+.rc-corps{display:flex;flex-direction:column;gap:3px;padding:10px 11px 12px}
+.rc-haut{display:flex;align-items:center;justify-content:space-between;gap:6px}
+/* le cœur des cartes : 30 px de large, sous le seuil du pouce. On garde le
+   dessin à 30 px et on élargit la zone de frappe autour. */
+.rc-haut .coeur{width:44px;height:44px;margin:-11px -13px -11px 0}
+.rc-haut .coeur svg{width:19px;height:19px}
+/* 9 px en majuscules monospace : illisible dès qu'on n'a pas vingt ans et un
+   écran propre. Rien ne descend plus sous 11 px dans l'application. */
+/* LA COULEUR DE CATÉGORIE VIT ICI, ET NULLE PART AILLEURS SUR LA CARTE.
+   Elle était violette pour tout le monde — donc elle ne distinguait rien, et
+   elle empruntait la couleur de l'interaction à une ligne sur laquelle on
+   n'appuie pas. Elle prend maintenant la teinte de la catégorie, et c'est le
+   seul endroit coloré de la carte : le reste est de l'encre. */
+.rc-cats{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.05em;color:var(--cat,var(--ink2))}
+.rc-nom{font-size:14px;font-weight:750;letter-spacing:-.01em;line-height:1.2;
+  min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Où c'est : une seule ligne, jamais deux. Un nom de salle qui passe à la
+   ligne pousse l'état d'ouverture sous le pli, et c'est lui qu'on vient lire. */
+.rc-ou{font-size:12.5px;color:var(--ink2);line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-ligne{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+.rc-note{font-size:12.5px;font-weight:650}
+.rc-note i{font-style:normal;font-weight:500;color:var(--ink2)}
+.rc-mesure{display:flex;align-items:baseline;gap:7px}
+/* Le seul violet de la carte : on appuie dessus, et ça sort d'Autour. */
+.rc-lien{align-self:flex-start;margin-top:3px;font-size:12.5px;font-weight:700;
+  color:var(--violet);text-decoration:none}
+.rc-lien:hover{text-decoration:underline}
+/* La distance est la mesure forte ; le temps de marche l'accompagne. Ni l'une
+   ni l'autre n'est violette : on n'appuie pas sur une distance. */
+.rc-dist{font-size:12.5px;font-weight:750;color:var(--ink2)}
+.rc-min{font-size:12.5px;font-weight:600;color:var(--ink2)}
+.rc-trajet{font-size:12px;color:var(--ink2);margin-top:2px}
+.rc-arrivee{font-size:11.5px;color:var(--ink2)}
+/* La date réelle est ce qu'on lit en premier sur un événement ; le trajet
+   passe derrière. Sans cette hiérarchie « 9 min à pied » se lit comme si
+   l'événement avait lieu maintenant, ce qui est faux la plupart du temps. */
+.rc-quand{display:block;margin-top:3px;font-size:12.5px;font-weight:750;
+  color:var(--ink);line-height:1.25}
+/* UN ÉVÉNEMENT EN COURS DOIT RESSORTIR DAVANTAGE QU'UN LIEU OUVERT.
+
+   Les deux étaient verts. Le vert dit « c'est ouvert », un état permanent et
+   tranquille ; il ne dit pas « ça se passe en ce moment, et ça s'arrête à
+   23 h 30 ». La référence donne l'orange vif au temporaire et garde le vert
+   pour les horaires — c'est aussi la hiérarchie du produit : l'éphémère est
+   rare, donc précieux, donc plus visible. */
+.rc-quand.en-cours{color:#C2410C}
+.rc-quand.imminent{color:#B85C00}
+.rc-quand.flou{color:var(--ink2);font-weight:600}
+/* trajet secondaire dès qu'une date occupe la ligne forte */
+.rc-carte:has(.rc-quand) .rc-min{font-weight:600;color:var(--ink2)}
+
+/* Le retour au bout de la liste. Volontairement sobre : c'est une sortie, pas
+   une proposition — il ne prend donc ni le violet de l'interaction principale
+   ni le rouge d'Aide. */
+/* Les suites : des gestes, pas des résultats. Sobres — ce ne sont pas des
+   propositions, ce sont des portes. */
+.suites{margin-top:16px;padding-top:14px;border-top:1px solid var(--bord)}
+.suite-note{margin:0 0 10px;font-size:13px;line-height:1.4;color:var(--ink2)}
+.suites-gestes{display:flex;flex-wrap:wrap;gap:8px}
+.suite{padding:10px 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13.5px;font-weight:650;color:var(--ink)}
+.suite:active{background:var(--paper)}
+
+.rc-retour{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;
+  padding:13px 14px;border:1px solid var(--bord);border-radius:16px;background:#fff;
+  text-align:left;box-shadow:0 1px 4px rgba(20,30,25,.06)}
+.rc-retour:active{background:var(--paper)}
+.rc-retour-ic{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;
+  border-radius:50%;background:var(--paper);font-size:15px;color:var(--ink)}
+.rc-retour-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.rc-retour-txt b{font-size:14px;font-weight:750;letter-spacing:-.01em}
+.rc-retour-txt i{font-style:normal;font-size:12.5px;color:var(--ink2)}
+.rc-retour-fl{flex-shrink:0;font-size:18px;color:var(--ink2)}
+
+/* ---- Cœur des favoris --------------------------------------------------- */
+.coeur{flex-shrink:0;width:40px;height:40px;border:0;background:none;border-radius:50%;
+  color:var(--ink2);display:grid;place-items:center;transition:transform .12s ease}
+.coeur.actif{color:#E0334E}
+.coeur.actif svg{fill:currentColor}
+.coeur:active{transform:scale(.88)}
+
+/* ---- Fiche compacte ----------------------------------------------------- */
+#ficheCompacte{position:absolute;left:12px;right:12px;
+  bottom:calc(var(--nav-height) + 12px);z-index:645;
+  display:flex;flex-direction:column;gap:3px;padding:14px 14px 12px;
+  border:1px solid var(--bord);border-radius:20px;background:#fff;
+  box-shadow:0 6px 26px rgba(20,30,25,.20);animation:monteB .18s ease-out}
+@keyframes monteB{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.fc-tete{display:flex;align-items:center;gap:10px}
+.fc-tete b{flex:1;min-width:0;font-size:17px;font-weight:750;letter-spacing:-.01em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc-expli{font-size:13px;line-height:1.35;color:var(--ink)}
+.fc-l2{font-size:13px;color:var(--ink2)}
+.fc-l3{font-size:13px;font-weight:650}
+.fc-modes{margin-top:2px;font-size:13px;color:var(--ink2)}
+.fc-actions{display:flex;gap:8px;margin-top:10px}
+.fc-actions button{flex:1;min-height:44px;padding:0 12px;border:1px solid var(--bord);
+  border-radius:12px;background:#fff;font-size:14px;font-weight:650}
+.fc-y{background:var(--violet)!important;border-color:var(--violet)!important;color:#fff}
+
+/* ---- Annonces d'un événement ------------------------------------------- */
+.an-msg{display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:10px 12px;
+  border-left:3px solid var(--bord);border-radius:0 10px 10px 0;background:var(--paper)}
+.an-msg.systeme{border-left-color:var(--violet);background:var(--violet-doux)}
+.an-msg.urgent{border-left-color:var(--aide);background:#FBEDEE}
+.an-tag{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--ink2)}
+.an-msg.urgent .an-tag{color:var(--aide)}
+.an-corps{font-size:14px;line-height:1.35}
+.an-actions{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 12px}
+.an-act{padding:10px 13px;border:1px solid var(--bord);border-radius:99px;background:#fff;
+  font-size:13.5px;font-weight:650}
+.an-act.danger{color:var(--aide);border-color:var(--aide)}
+.an-suivre{width:100%;margin:6px 0 12px;padding:13px;border:1px solid var(--violet);
+  border-radius:12px;background:var(--violet-doux);color:var(--violet);
+  font-size:14.5px;font-weight:700}
+.lien-fort{font-weight:700;color:var(--violet)}
+
+/* ---- Couche transports ------------------------------------------------- */
+.tr-bloc{display:flex;align-items:center;gap:12px;margin:16px 0 8px;padding:13px 14px;
+  border-radius:14px;background:var(--violet-doux)}
+.tr-icone{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#fff;
+  display:grid;place-items:center;font-size:18px}
+.tr-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tr-titre{font-size:14.5px;font-weight:700;color:var(--violet)}
+.tr-lignes{font-size:13px;color:var(--ink)}
+
+#suggestions{position:absolute;left:14px;right:14px;top:calc(100% - 6px);z-index:610;
+  max-height:46vh;overflow-y:auto;
+  border:1px solid var(--bord);border-radius:16px;background:#fff;
+  box-shadow:0 6px 24px rgba(20,30,25,.22);animation:monteT .18s}
+.sg{display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;border:0;
+  border-top:1px solid rgba(20,30,25,.08);background:none;text-align:left;font-size:14px;
+  color:var(--ink)}
+.sg:first-child{border-top:0}
+.sg:active{background:var(--paper)}
+.sg-emo{width:22px;text-align:center;font-size:15px}
+.sg-sous{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink2)}
+.sg-rapides{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;scrollbar-width:none}
+.sg-rapides::-webkit-scrollbar{display:none}
+.sg-rapide{flex:0 0 auto;padding:7px 12px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
+
+/* ---- Barre de navigation basse -----------------------------------------
+   Cinq onglets, comme une application native. Deux d'entre eux (Favoris,
+   Messages) n'ont pas encore de fonctionnalité : ils sont explicitement
+   désactivés plutôt que muets, pour ne pas promettre un écran inexistant. */
+#navBas{position:absolute;left:0;right:0;bottom:0;z-index:660;
+  display:flex;align-items:stretch;
+  padding:6px 4px calc(var(--safe-b) + 6px);
+  background:#fff;border-top:1px solid rgba(20,30,25,.09)}
+.nb{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:6px 2px;border:0;background:none;color:var(--ink2);
+  font-size:11px;font-weight:600;line-height:1.1}
+.nb svg{opacity:.85}
+.nb.actif{color:var(--violet)}
+.nb.actif svg{opacity:1}
+.nb[aria-disabled="true"]{opacity:.38}
+
+/* Les filtres ne flottent plus au milieu de la carte : ils forment une ligne
+   compacte sous les catégories, et seulement quand on les a demandés. */
+#filtresHumains{display:flex;gap:6px;margin:8px -16px 0;
+  padding-inline:16px;scroll-padding-inline:16px;padding-block:2px;
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+#filtresHumains::-webkit-scrollbar{display:none}
+.fh{flex:0 0 auto;padding:7px 12px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink);font-size:12.5px;font-weight:600;white-space:nowrap}
+.fh.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+
+/* ---- Boutons flottants sur la carte -------------------------------------
+   Petites icônes rondes à droite : se recentrer, voir les transports. Elles
+   ne portent plus de libellé — l'icône suffit et rend la carte au décor. */
+.rond-flottant{position:absolute;right:16px;z-index:601;width:44px;height:44px;
+  border-radius:50%;border:1px solid var(--bord);background:#fff;color:var(--ink);
+  font-size:18px;line-height:1;display:grid;place-items:center;
+  box-shadow:0 2px 10px rgba(20,30,25,.16);
+  transition:bottom .22s ease,transform .15s ease}
+/* Un interrupteur doit dire s'il est allumé : la couche transport est un état,
+   pas une action ponctuelle. */
+.rond-flottant.actif{background:var(--violet);border-color:var(--violet);color:#fff}
+#btnTransports{bottom:calc(var(--map-control-bottom) + 56px)}
+
+/* ---- L'accès rapide à l'aide -------------------------------------------
+   Même logique qu'avant — une pastille flottante, à droite, à un doigt —
+   mais le mot est écrit. Un cœur seul peut se comprendre comme « favoris »
+   (et Favoris en porte un dans la barre du bas), comme « santé », ou comme
+   rien du tout. La capsule reste compacte et ne mange pas la carte. */
+.capsule-flottante{position:absolute;right:16px;z-index:601;min-height:44px;
+  padding:0 14px 0 11px;display:inline-flex;align-items:center;gap:7px;
+  border-radius:99px;border:1px solid var(--bord);background:#fff;color:var(--ink);
+  box-shadow:0 2px 10px rgba(20,30,25,.16);
+  transition:bottom .22s ease,transform .15s ease}
+.capsule-flottante b{font-size:14px;font-weight:750;letter-spacing:-.01em}
+.capsule-flottante:active{transform:scale(.96)}
+#btnAide{bottom:calc(var(--map-control-bottom) + 108px)}
+/* actif : le rouge de l'aide, distinct du violet de la couche transport */
+#btnAide.actif{background:var(--urgence,#B82A3A);border-color:var(--urgence,#B82A3A);color:#fff}
+.rond-flottant:active{transform:scale(.94)}
+
+/* Attribution : obligatoire, donc conservée — mais repliée derrière un « ⓘ »
+   au lieu d'occuper le bas de la carte en permanence. */
+/* Retour à soi : n'apparaît que lorsqu'on s'est éloigné, sinon il ne veut
+   rien dire et occupe la carte pour rien. */
+/* Compact et sur une seule ligne : sur 390 px, « ⌖ Revenir autour de moi » en
+   14 px passait à la ligne et faisait un pavé de deux étages sous l'en-tête. */
+#btnAutourDeMoi{position:absolute;left:50%;transform:translateX(-50%);
+  top:calc(var(--header-bas) + 10px);z-index:604;
+  height:34px;padding:0 13px;border:0;border-radius:99px;
+  background:var(--trait);color:#fff;font-size:12.5px;font-weight:700;
+  white-space:nowrap;max-width:calc(100vw - 32px);
+  overflow:hidden;text-overflow:ellipsis;
+  box-shadow:0 4px 16px rgba(20,30,25,.30);animation:monteT .18s ease-out}
+#btnAutourDeMoi:active{transform:translateX(-50%) scale(.96)}
+
+/* ---- Attribution ---------------------------------------------------------
+   Elle était entièrement derrière ce bouton : légalement due, mais invisible
+   tant qu'on ne cliquait pas. Elle est maintenant écrite sur la carte, en
+   petit et en discret, et le bouton ne sert plus qu'à ouvrir le détail. */
+#attribution{position:absolute;left:10px;bottom:calc(var(--map-control-bottom) + 4px);
+  z-index:601;padding:2px 7px;border-radius:7px;
+  background:rgba(255,255,255,.82);color:var(--ink2);
+  font-size:11px;line-height:1.5;letter-spacing:.01em;
+  display:flex;align-items:center;gap:6px;transition:bottom .22s ease;
+  pointer-events:auto}
+#attribution a{color:inherit;text-decoration:none;padding:5px 2px;margin:-5px 0}
+#attribution a:hover,#attribution a:focus-visible{text-decoration:underline}
+#btnCredits{flex-shrink:0;width:44px;height:44px;margin:-11px -11px -11px 0;
+  border:0;background:none;color:var(--ink2);font-size:13px;line-height:1;
+  display:grid;place-items:center}
+#credits{position:absolute;left:12px;right:12px;bottom:calc(var(--map-control-bottom) + 36px);
+  z-index:601;padding:8px 11px;border:1px solid var(--bord);border-radius:10px;
+  background:rgba(255,255,255,.96);font-size:11px;line-height:1.4;color:var(--ink2);
+  box-shadow:0 2px 10px rgba(20,30,25,.16)}
+#credits a{color:var(--ink2)}
+
+
+/* ---- bottom sheet : fermée · compacte · dépliée ---- */
+#feuilleBesoins{position:absolute;left:8px;right:8px;bottom:0;z-index:640;
+  display:flex;flex-direction:column;
+  width:auto;max-width:none;margin:0;
+  /* un peu plus haute qu'avant : à 45 dvh on ne voyait que deux
+     recommandations sur douze, et la question « qu'est-ce que je peux faire »
+     restait sous le pli. La carte garde un peu plus de 40 % de l'écran, et
+     reste entièrement rendue derrière. */
+  height:58dvh;max-height:58dvh;
+  background:#fff;border:1px solid var(--bord);border-bottom:0;border-radius:22px 22px 0 0;
+  box-shadow:0 -3px 18px rgba(20,30,25,.13);
+  transition:height .22s ease,max-height .22s ease}
+/* À l'accueil la feuille est l'écran lui-même : elle occupe toute la largeur
+   et se passe de barre de titre, le titre étant dans le corps. La croix reste
+   toutefois atteignable sur téléphone : la carte doit pouvoir redevenir
+   pleine sans imposer un geste de défilement ou un tap sur la carte. */
+#feuilleBesoins.accueil{left:0;right:0;border-left:0;border-right:0}
+#feuilleBesoins.accueil .fb-tete{position:absolute;z-index:3;top:0;right:10px;
+  display:flex;width:44px;min-height:44px;padding:0;background:transparent}
+#feuilleBesoins.accueil .fb-titre,#feuilleBesoins.accueil .fb-retour{display:none}
+#feuilleBesoins.accueil .fb-x{box-shadow:0 2px 8px rgba(20,30,25,.14)}
+/* À l'accueil, la poignée et le titre coûtent une recommandation entière :
+   on les resserre pour qu'une troisième carte tienne au-dessus du pli. */
+/* le trait reste fin — c'est la zone de frappe qui doit faire 44 px, pas le
+   dessin : on la déborde sur la carte plutôt que sur les recommandations */
+#feuilleBesoins.accueil .fb-poignee{height:44px;margin-top:-18px}
+#feuilleBesoins.accueil .fb-poignee::before{top:25px}
+#feuilleBesoins.accueil .rc-tete{padding:0 0 8px}
+#feuilleBesoins.accueil .rc-tete strong{font-size:17px}
+#feuilleBesoins.deplie{height:80dvh;max-height:80dvh}
+/* État réduit : la poignée et le titre restent lus, la carte reprend la main.
+   La feuille ne disparaît jamais complètement — elle dit toujours ce qu'elle
+   contient. */
+#feuilleBesoins.reduite{height:144px;max-height:144px}
+#feuilleBesoins.reduite .fb-corps{overflow:hidden}
+
+/* Sur téléphone, les contrôles de carte ne suivent pas la feuille.
+   La feuille s'anime et sa hauteur sert encore à l'attribution, mais faire
+   dépendre Aide et Transports de cette mesure donnait un faux temps de
+   réponse : les deux boutons partaient d'en bas puis remontaient pendant
+   l'ouverture. Leur zone fixe sous l'en-tête reste disponible quel que soit
+   l'état du panneau et ne bouge pas quand une réponse réseau le redessine. */
+@media (max-width:767px){
+  #btnAide,#btnTransports{bottom:auto;transition:transform .15s ease}
+  #btnAide{top:calc(var(--header-bas) + 54px)}
+  #btnTransports{top:calc(var(--header-bas) + 108px)}
+}
+
+.fb-poignee{position:relative;flex-shrink:0;display:block;width:64px;height:44px;margin:0 auto;border:0;
+  background:transparent;padding:0;touch-action:none}
+.fb-poignee::before{content:"";position:absolute;left:9px;right:9px;top:16px;height:5px;
+  border-radius:99px;background:rgba(20,30,25,.25)}
+.fb-tete{position:relative;z-index:2;flex-shrink:0;display:flex;align-items:center;gap:8px;
+  min-height:52px;padding:0 12px 8px;background:var(--paper)}
+.fb-titre{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-retour,.fb-x{flex-shrink:0;width:44px;height:44px;border:0;border-radius:50%;
+  background:#fff;border:1px solid var(--bord);color:var(--ink);
+  font-size:16px;line-height:1;display:grid;place-items:center}
+.fb-retour{font-size:22px}
+.fb-corps{flex:1;min-height:0;overflow-y:auto;padding:0 16px calc(var(--safe-b) + 20px);
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable}
+
+/* les grands choix : un par ligne, larges, lisibles de loin */
+.bn{display:flex;align-items:center;gap:12px;width:100%;padding:15px 14px;margin-bottom:8px;
+  border:1px solid var(--bord);border-radius:14px;background:#fff;text-align:left;
+  font-size:15.5px;font-weight:600;color:var(--ink)}
+.bn em{font-size:22px;font-style:normal;line-height:1}
+.bn b{flex:1;min-width:0;font-weight:600}
+.bn i{flex-shrink:0;font-style:normal;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;color:var(--ink2)}
+.bn:active{background:var(--paper)}
+.bn.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.bn.actif i{color:rgba(255,255,255,.72)}
+.bn.actif::after{content:"✓";font-size:15px;font-weight:700}
+.fb-section{margin:14px 2px 8px;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.fb-resultats-tete{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
+  margin:2px 2px 6px}
+.fb-resultats-tete strong{font-size:14px;line-height:1.25}
+.fb-resultats-tete span{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink2);
+  text-transform:uppercase;letter-spacing:.08em;text-align:right}
+.fb-statut{margin:4px 0 10px;padding:11px 12px;border-radius:12px;background:#fff;
+  border:1px solid var(--bord);font-size:13px;line-height:1.4;color:var(--ink2)}
+.fb-statut.erreur{border-color:#E6B3AA;background:#FFF4F1;color:#713127}
+.fb-statut.partiel{display:flex;align-items:center;gap:10px;margin-top:10px;
+  border-color:rgba(20,30,25,.10);background:rgba(44,58,51,.045);color:var(--ink2)}
+.fb-statut.partiel span{flex:1;min-width:0}
+.fb-statut.partiel button{flex-shrink:0;margin-top:0;background:#fff}
+/* « Autour cherche… » : une ligne, pas un panneau. Ni cadre, ni fond, ni
+   bouton — rien qui ressemble à une chose sur laquelle il faudrait agir ou
+   attendre. Le point qui respire suffit à dire que ça travaille. */
+.fb-statut.cherche{display:flex;align-items:center;gap:8px;margin:8px 0 2px;
+  padding:2px 2px;border:0;background:none;font-size:12.5px;color:var(--ink2);opacity:.82}
+.cherche-pastille{width:7px;height:7px;flex-shrink:0;border-radius:50%;
+  background:var(--ink2);animation:cherche-respire 1.6s ease-in-out infinite}
+@keyframes cherche-respire{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:.9;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){
+  .cherche-pastille{animation:none;opacity:.55}
+}
+.fb-statut button{min-height:44px;margin-top:8px;padding:8px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font-weight:700}
+.fb-plus{display:block;margin:8px 0 4px;padding:9px 0;border-top:1px solid var(--bord);
+  color:var(--ink2);font-size:12px;text-align:center}
+.fb-vide{padding:16px 4px;font-size:14px;line-height:1.5;color:var(--ink2)}
+.fb-vide button{margin-top:10px;padding:12px 18px;border:0;border-radius:12px;
+  background:var(--trait);color:#fff;font-size:14px;font-weight:700}
+.fb-pied{display:flex;flex-wrap:wrap;gap:14px;margin:18px 2px 4px;
+  padding-top:14px;border-top:1px solid rgba(20,30,25,.1)}
+.fb-pied button{min-height:44px;border:0;background:none;padding:8px 0;font-size:12.5px;
+  color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+
+/* ---- résultats : cinq suggestions, pas trente ---- */
+.ac-item{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;padding:11px 2px;border:0;
+  border-top:1px solid rgba(20,30,25,.1);background:none;text-align:left}
+.ac-item:first-child{border-top:0}
+.ac-item:active{opacity:.6}
+.ac-emoji{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#fff;
+  border:1px solid var(--bord);display:grid;place-items:center;font-size:14px}
+.ac-photo{position:relative;display:grid;place-items:center;flex-shrink:0;width:46px;height:46px;
+  overflow:hidden;border-radius:11px;background:var(--teinte,#5D6B63)}
+.ac-photo::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.91))}
+.ac-photo i{position:relative;z-index:1;font-style:normal;font-size:17px}
+.ac-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .18s ease}
+.ac-photo img.vue{opacity:1}
+.ac-txt{flex:1;min-width:0}
+.ac-nom{display:block;font-size:14.5px;font-weight:600;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-sous{display:block;margin-top:2px;font-size:11.5px;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.raison{color:var(--signal);font-weight:600}
+.ac-dist{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;color:var(--ink2)}
+
+/* ---- Tablette : mêmes composants, feuille centrée et plus large --------- */
+@media (min-width:768px) and (max-width:1099px){
+  #appHeader{padding-left:24px;padding-right:24px}
+  .hd-rech input{height:52px}
+  #feuilleBesoins,#feuilleBesoins.accueil{left:50%;right:auto;bottom:calc(var(--nav-height) + 12px);
+    width:min(720px,calc(100% - 32px));
+    height:52dvh;max-height:52dvh;transform:translateX(-50%);
+    border:1px solid var(--bord);border-radius:22px}
+  #feuilleBesoins.deplie{height:82dvh;max-height:82dvh}
+  .rc-carte{flex:0 0 210px}
+}
+
+/* ---- Desktop : la même application, carte plein écran ---------------------
+   Rien n'est dupliqué et rien n'est réservé autour de la carte : elle occupe
+   toute la fenêtre et sert de canvas, exactement comme en mobile. Les mêmes
+   éléments changent seulement de place et de taille :
+     · la barre d'onglets devient une pastille flottante en bas à gauche ;
+     · l'en-tête reste une pastille flottante, en haut à gauche ;
+     · la recherche se pose sous l'en-tête au lieu de couvrir la largeur ;
+     · « Pour toi, maintenant » devient un panneau latéral temporaire, que la
+       croix referme pour rendre toute la fenêtre à la carte ;
+     · le carousel de ce panneau devient une liste verticale.
+   Aucune sidebar permanente, aucun rail : tout flotte au-dessus de la carte.
+   Priorité mobile conservée : ces règles ne s'ajoutent qu'au-delà de 1100px. */
+@media (min-width:1100px){
+  :root{
+    --panneau:530px;        /* largeur de la référence desktop */
+    --pourtoi:420px;        /* la colonne « Pour toi », à droite */
+    --marge-desktop:28px;
+    --decalage-desktop:calc(var(--panneau) + (var(--marge-desktop) * 2));
+    --nav-height:0px;       /* la navigation flotte : rien à réserver */
+  }
+
+  /* La carte est le canvas : elle occupe toute la fenêtre, sans rail ni
+     colonne qui la rognent. Tout le reste se pose dessus. */
+  #map{left:0;right:0;top:0;bottom:0}
+
+  /* Navigation : une pastille flottante en bas à gauche, pas un rail
+     pleine hauteur. Même produit qu'en mobile, autre disposition. */
+  #navBas{top:auto;bottom:var(--marge-desktop);left:var(--decalage-desktop);right:auto;width:440px;
+    min-height:92px;flex-direction:row;gap:2px;padding:7px;
+    border-top:0;border-radius:99px;
+    box-shadow:0 6px 26px rgba(20,30,25,.20)}
+  .nb{flex:1 1 0;gap:5px;padding:9px 8px;border-radius:99px;font-size:15.5px}
+  .nb svg{width:25px;height:25px}
+  .nb-plus{width:46px;height:46px;border-radius:15px}
+  .nb-plus svg{width:23px;height:23px}
+  .nb.actif{background:var(--violet-doux)}
+
+  /* ---- Lecture de gauche à droite ---------------------------------------
+     Le panneau des recommandations tient la GAUCHE, la carte la droite. On
+     lit de gauche à droite : ce qu'on peut faire d'abord, où c'est ensuite.
+     Le panneau était à droite, ce qui donnait l'ordre inverse — la carte
+     d'abord, la réponse après. L'organisation mobile ne bouge pas : là-bas
+     la feuille monte du bas, et c'est la bonne géométrie pour un pouce. */
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite{
+    left:var(--marge-desktop);right:auto;top:calc(var(--safe-t) + var(--marge-desktop));
+    bottom:var(--marge-desktop);
+    width:var(--panneau);height:auto;max-height:none;transform:none;
+    border:1px solid var(--bord);border-radius:28px;
+    box-shadow:0 8px 34px rgba(20,30,25,.18)}
+
+  /* ---- La barre du haut porte les quatre envies -------------------------
+     Sur la référence, Manger / Sortir / Maintenant / Aide commandent tout
+     l'écran depuis le haut, pas seulement le panneau de gauche. L'en-tête
+     traverse donc la fenêtre : les envies à gauche, la zone au centre, la
+     cloche à droite. */
+  #appHeader{left:var(--marge-desktop);right:var(--marge-desktop);
+    top:calc(var(--safe-t) + var(--marge-desktop));width:auto;max-width:none;
+    gap:10px;align-items:center}
+  #appHeader #btnLieu{margin-left:auto}
+  #appHeader #btnNotifs{margin-left:auto}
+  #barreEnvies .br-b{min-height:46px;padding:0 15px;font-size:15px}
+
+  /* ---- Trois zones : panneau, carte, panneau ---------------------------
+     La carte reste le fond ; les deux panneaux se posent dessus. Le panneau
+     de gauche descend sous la barre du haut au lieu de la recouvrir. */
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite{
+    top:calc(var(--safe-t) + var(--marge-desktop) + 74px)}
+
+  /* PAS DE CROIX SUR L'INTERFACE PRINCIPALE.
+
+     Sur un téléphone, Explorer est une feuille qui monte par-dessus la carte :
+     on doit pouvoir la refermer pour voir dessous. Sur grand écran c'est une
+     colonne du décor, à côté de la carte et non devant — la refermer ne
+     découvrirait rien. La croix n'y proposait donc que de faire disparaître
+     l'écran principal.
+
+     Elle ne disparaît qu'à la RACINE : dès qu'on est descendu dans une
+     catégorie, la feuille redevient quelque chose dont on veut sortir, et
+     elle garde sa croix comme son « ‹ Retour ». */
+  #feuilleBesoins.accueil .fb-x{display:none}
+
+  #pourToi{left:auto;right:var(--marge-desktop);
+    top:calc(var(--safe-t) + var(--marge-desktop) + 74px);
+    bottom:var(--marge-desktop);
+    width:var(--pourtoi);max-height:none;
+    border-radius:28px;border-bottom:1px solid var(--bord);
+    box-shadow:0 8px 34px rgba(20,30,25,.18);animation:none}
+  body:not(.pourtoi-ouvert) #pourToi{display:none}
+  /* Quand la colonne de droite est là, la navigation flottante se recentre
+     entre les deux panneaux plutôt que sous celle de droite. */
+  body.pourtoi-ouvert #navBas{left:var(--decalage-desktop)}
+  #btnLieu{flex:0 0 auto;max-width:380px;height:58px;padding:0 20px;font-size:17px}
+  .hd-icone{width:58px;height:58px}
+  .hd-icone svg{width:23px;height:23px}
+
+  #rechercheOverlay{left:var(--decalage-desktop);right:auto;
+    top:calc(var(--safe-t) + var(--marge-desktop));
+    width:min(694px,calc(100vw - var(--decalage-desktop) - var(--marge-desktop)));
+    border-radius:28px;padding:20px 22px 18px}
+  body:not(.sheet-open) #rechercheOverlay{left:var(--marge-desktop);
+    width:min(694px,calc(100vw - (var(--marge-desktop) * 2)))}
+  .ro-barre{gap:14px}
+  .ro-barre > svg{width:23px;height:23px;margin-left:18px}
+  .ro-barre input{height:62px;padding:0 54px 0 54px;font-size:18px}
+  .ro-barre input::placeholder{font-size:18px}
+  .icone-btn{right:76px;width:48px;height:48px}
+  .icone-btn svg{width:20px;height:20px}
+  .hd-filtres{width:62px;height:62px}
+  .hd-filtres svg{width:23px;height:23px}
+  #rechercheOverlay .pills{gap:8px;margin:12px -22px 0;padding-inline:22px}
+  #rechercheOverlay .rc{height:45px;padding:0 15px;gap:7px;font-size:15.5px}
+  #rechercheOverlay .rc em{font-size:17px}
+  #rechercheOverlay #filtresHumains{margin-inline:-22px;padding-inline:22px}
+  .fb-poignee{display:none}
+  .fb-tete{min-height:72px;padding:10px 16px 8px;border-radius:28px 28px 0 0;background:#fff}
+  .fb-titre{font-size:22px;font-weight:800}
+  .fb-retour,.fb-x{width:56px;height:56px;font-size:18px}
+  .fb-retour{font-size:29px}
+  .fb-corps{padding:0 22px 26px}
+  /* la croix doit rester visible même sur l'accueil : c'est elle qui rend
+     l'espace à la carte */
+  /* L'en-tête de la racine réservait 72 px pour un titre transparent et une
+     croix — la croix vient de partir, et le titre n'a jamais été lu que par
+     les lecteurs d'écran. Il ne reste donc rien à montrer : la bande se
+     referme, et les onglets de temps commencent le panneau comme sur la
+     référence. Le titre garde sa place dans l'arbre d'accessibilité. */
+  #feuilleBesoins.accueil .fb-tete{position:relative;top:auto;right:auto;
+    display:flex;width:auto;min-height:0;padding:4px 16px 0;background:#fff}
+  #feuilleBesoins.accueil .fb-titre{display:block;position:absolute;
+    width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+  /* Le panneau de découverte reprend le rythme ample de la référence, sans
+     dupliquer aucun contenu : ce sont toujours les mêmes boutons et cartes. */
+  /* LES QUATRE DOIVENT SE VOIR, SINON IL Y EN A TROIS.
+
+     À 17,5 px dans un panneau de 530, le quatrième bouton — Favoris, puis
+     « À venir » — tombait hors du cadre. On peut le faire défiler, mais un
+     choix qu'on ne voit pas n'est pas offert : la référence montre les quatre
+     intentions et les quatre moments d'un coup d'œil. On rend donc quelques
+     pixels, ce qui reste très au-dessus de la taille mobile. */
+  .br{gap:8px;padding-bottom:12px}
+  .br-b{min-height:50px;padding:9px 14px;font-size:15.5px}
+  .br-b em{font-size:18px}
+  .ong-temps{gap:7px;padding-bottom:16px}
+  /* Les quatre groupes de temps doivent tenir SANS défilement : « À venir »
+     coupé au bord donne l'impression qu'il n'existe pas. La barre reste
+     défilable — un libellé plus long un jour ne cassera rien — mais à cette
+     taille les quatre sont là d'un coup d'œil. */
+  .ong{min-height:46px;padding:11px 13px;font-size:14px}
+  .aide-bloc{min-height:76px;margin-bottom:16px;padding:14px 16px;border-radius:17px}
+  .aide-bloc em{font-size:23px}
+  .aide-bloc b{font-size:17.5px}
+  .aide-bloc i{font-size:14.5px}
+  .aide-bloc u{font-size:16px}
+  .rc-tete{padding:2px 0 12px}
+  #feuilleBesoins.accueil .rc-tete{padding:0 0 12px}
+  #feuilleBesoins.accueil .rc-tete strong,.rc-tete strong{font-size:22px}
+  .rc-tout{font-size:17px}
+
+  /* Le carousel devient une liste verticale : sur grand écran on fait
+     défiler vers le bas, pas latéralement. */
+  /* CINQ PROPOSITIONS DOIVENT TENIR SANS DÉFILER.
+
+     Ce bloc agrandissait tout : vignette de 118 px de haut, titre de 17,5 px,
+     et cinq lignes de texte empilées — deux cent quinze pixels par ligne, soit
+     deux propositions et demie dans un panneau de neuf cents pixels. La
+     référence en montre cinq, et c'est ce qui fait qu'on peut CHOISIR : une
+     liste qu'on ne voit qu'à moitié n'est pas une liste, c'est un aperçu.
+
+     On garde la disposition en ligne, on rend les proportions à l'échelle du
+     panneau, et on renvoie le détail du trajet à la fiche du lieu. */
+  .rc-piste{flex-direction:column;overflow-x:visible;scroll-snap-type:none;gap:8px}
+  .rc-carte{flex:0 0 auto;width:100%;flex-direction:row;align-items:center;
+    box-shadow:0 1px 4px rgba(20,30,25,.07)}
+  .rc-photo,.rc-colonne .rc-photo{width:76px;height:76px;min-height:0;flex-shrink:0;
+    margin:10px 0 10px 10px;border-radius:13px;overflow:hidden}
+  .rc-photo-vide i{font-size:23px}
+  /* LA DISTANCE SE LIT EN FACE DE L'ÉTAT, PAS EN DESSOUS.
+
+     Empilée, elle ajoutait une troisième ligne à droite d'un vide : la carte
+     grandissait d'un rang pour dire « 240 m ». La référence la met en regard —
+     à gauche ce qui se passe, à droite à quelle distance c'est. Deux colonnes,
+     donc, et seulement à partir de la ligne d'état : le nom et le lieu gardent
+     toute la largeur. */
+  .rc-corps{flex:1;min-width:0;padding:11px 14px;gap:1px;
+    display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px}
+  .rc-haut,.rc-nom,.rc-ou{grid-column:1/-1}
+  .rc-quand,.rc-pourquoi{grid-column:1;justify-self:start}
+  .rc-ligne{grid-column:2;grid-row:4;justify-self:end;margin:0}
+  .rc-cats{font-size:11.5px}
+  .rc-nom{font-size:16px;line-height:1.2;min-height:0;-webkit-line-clamp:1}
+  .rc-ou{font-size:13px}
+  .rc-quand{font-size:13px;margin-top:2px}
+  .rc-dist,.rc-min,.rc-note{font-size:13px}
+  /* L'état d'ouverture s'écrit, il ne s'encadre pas : en pastille pleine il
+     pesait autant que le nom du lieu. */
+  .rc-carte .rc-pourquoi{padding:0;background:none;font-size:13px;font-weight:750;margin-top:2px}
+  /* Le détail du trajet et l'heure d'arrivée vivent sur la fiche du lieu, où
+     on les cherche vraiment. Ici ils faisaient deux lignes de plus pour
+     répéter « 3 min » sous une autre forme. */
+  .rc-trajet,.rc-arrivee{display:none}
+  .tr-bloc{min-height:86px;margin:20px 0 10px;padding:15px 17px;border-radius:17px}
+  .tr-icone{width:44px;height:44px;font-size:21px}
+  .tr-titre{font-size:17px}
+  .tr-lignes{font-size:14.5px}
+  .fb-pied{gap:18px;margin-top:24px;padding-top:17px}
+  .fb-pied button{font-size:14.5px}
+
+  /* Exploration d'une catégorie : même liste réelle, dimensionnée comme le
+     classement numéroté de la référence. */
+  .fb-resultats-tete{margin:4px 2px 8px}
+  .fb-resultats-tete strong{font-size:18px}
+  .fb-resultats-tete span{font-size:13.5px;letter-spacing:.12em}
+  .sq{gap:10px;padding-bottom:12px}
+  .sq-dit{font-size:16px}
+  .sq-carte{min-height:118px;padding:15px 16px;border-radius:18px}
+  .sq-img{width:86px;height:86px;border-radius:15px}
+  .sq-txt{gap:10px}
+  .sq-txt i{height:16px}
+  .ac-item{min-height:76px;padding:13px 3px;gap:14px}
+  .ac-emoji{width:40px;height:40px;font-size:16px}
+  .ac-photo{width:58px;height:58px;border-radius:13px}
+  .ac-nom{font-size:17.5px;font-weight:700}
+  .ac-sous{font-size:14.5px}
+  .ac-dist{font-size:18px}
+  .fb-plus{font-size:14px;padding:12px 0}
+  .fb-section{margin-top:20px;font-size:13px;letter-spacing:.14em}
+  .bn{min-height:58px;font-size:17px;border-radius:16px}
+
+  /* Les flottants longent le bord droit : le panneau est à gauche, ils n'ont
+     plus à s'écarter pour lui. */
+  #btnTransports,#btnAide{right:var(--marge-desktop)}
+  #btnTransports{bottom:var(--marge-desktop);width:58px;height:58px;
+    background:var(--violet);border-color:var(--violet);color:#fff}
+  #btnTransports.actif{box-shadow:0 0 0 4px rgba(124,58,237,.20),0 3px 14px rgba(20,30,25,.22)}
+  #btnTransports svg{width:23px;height:23px}
+  #btnAide{bottom:98px;min-height:58px;padding:0 20px 0 16px;gap:9px;
+    background:var(--aide);border-color:var(--aide);color:#fff}
+  #btnAide b{font-size:17px}
+  #btnAide svg{width:21px;height:21px}
+  /* l'attribution se pose sous le panneau, dans le coin bas droit de la carte */
+  #attribution{left:auto;right:var(--marge-desktop);bottom:8px;font-size:13px}
+  #credits{left:auto;right:var(--marge-desktop);width:min(420px,40vw);bottom:72px}
+
+  /* Les marqueurs deviennent de vrais repères légendés sur grand écran. Le
+     moteur de collision continue de décider quelles étiquettes restent. */
+  .poi-rond{width:40px;height:40px;font-size:20px}
+  .poi-eti{margin-left:-10px;padding:6px 14px 6px 18px;border-radius:0 12px 12px 0;
+    max-width:240px}
+  .poi-eti b{font-size:15.5px}
+  .poi-eti span{font-size:13.5px}
+  .poi-eti.a-gauche{margin-right:-10px;padding:6px 18px 6px 14px;
+    border-radius:12px 0 0 12px}
+  .moi-in b{width:20px;height:20px}
+
+  /* La fiche compacte se pose en bas au centre de la carte disponible. */
+  #ficheCompacte{left:50%;right:auto;transform:translateX(-50%);
+    width:min(460px,calc(100vw - 40px));bottom:20px}
+  body.sheet-open #ficheCompacte{
+    left:calc((100vw + var(--decalage-desktop)) / 2);}
+
+  #bandeauGeo,#bandeauVide{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
+  #charge{left:50%}
+  #filtresHumains{width:auto;max-width:none}
+  /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
+     que dessous — il y a la place, et le centre appartient à la carte */
+  #btnAutourDeMoi{left:auto;right:var(--marge-desktop);transform:none;
+    margin-left:0;top:calc(var(--safe-t) + var(--marge-desktop));height:48px;
+    padding:0 18px;font-size:15px}
+  #btnAutourDeMoi:active{transform:scale(.96)}
+}
+
+/* ---- grappes de marqueurs quand la carte est éloignée ---- */
+.grappe{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
+  display:grid;place-items:center;min-width:32px;height:32px;padding:0 8px;border-radius:99px;
+  background:var(--ardoise);color:#fff;border:2px solid #fff;
+  font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+  box-shadow:0 2px 8px rgba(20,30,25,.32);animation:surgit .2s ease-out}
+
+/* ---- mode navigation : la carte prend tout, le reste s'efface ---- */
+#navBarre{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 14px);z-index:700;
+  display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;box-shadow:0 3px 16px rgba(20,30,25,.2);
+  animation:monteT .24s}
+.nav-mode{font-size:19px;line-height:1}
+.nav-txt{flex:1;min-width:0;font-size:14px;font-weight:600;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-x{flex-shrink:0;width:44px;height:44px;border:0;border-radius:50%;background:var(--paper);
+  color:var(--ink);font-size:14px;display:grid;place-items:center}
+body.nav .leaflet-control-zoom{display:none}
+.filtres{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 16px);z-index:600;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 14px,#000 calc(100% - 48px),transparent)}
+.piste{display:flex;gap:7px;padding:4px 86px 4px 14px;overflow-x:auto;scrollbar-width:none}
+.piste::-webkit-scrollbar{display:none}
+.filtre{flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:10px 14px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:13.5px;font-weight:600;white-space:nowrap;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+.filtre.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
+
+.sp-tete{margin-bottom:2px;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
+.sp-raison{margin:-6px 0 15px;font-size:13.5px;font-weight:600;color:var(--signal)}
+
+.mini{position:absolute;top:calc(var(--safe-t) + 72px);right:14px;z-index:600;
+  display:flex;align-items:center;gap:6px;padding:9px 13px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  box-shadow:0 2px 10px rgba(20,30,25,.14)}
+[hidden]{display:none!important}
+
+#viseur{position:absolute;left:50%;top:50%;z-index:602;transform:translate(-50%,-100%);pointer-events:none}
+.pin-choix{display:block;font-size:40px;line-height:1;filter:drop-shadow(0 3px 5px rgba(0,0,0,.32));
+  transform-origin:50% 100%;animation:pinPose .22s ease-out}
+@keyframes pinPose{from{transform:translateY(-8px);opacity:.4}to{transform:translateY(0);opacity:1}}
+#poseBarre{position:absolute;left:14px;right:14px;bottom:calc(var(--safe-b) + 16px);
+  z-index:603;display:flex;gap:8px;align-items:center}
+#poseBarre .txt{flex:1;padding:12px 14px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13px;font-weight:600;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+#poseBarre .ok{padding:14px 20px;border:1px solid var(--bord);border-radius:99px;
+  background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+
+#voile{position:absolute;inset:0;z-index:900;background:rgba(20,30,25,.38);animation:fondu .2s}
+@keyframes fondu{from{opacity:0}to{opacity:1}}
+#feuille{position:absolute;left:0;right:0;bottom:0;z-index:901;max-height:72%;overflow-y:auto;
+  padding:10px 20px calc(var(--safe-b) + 26px);background:var(--paper);
+  border-top:1px solid var(--bord);border-radius:20px 20px 0 0;
+  overscroll-behavior:contain;animation:monte .28s cubic-bezier(.2,.9,.3,1)}
+@keyframes monte{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.poignee{position:relative;display:block;width:64px;height:44px;margin:-8px auto 4px;border:0;
+  background:transparent;padding:0}
+.poignee::before{content:"";position:absolute;left:9px;right:9px;top:16px;height:4px;
+  border-radius:99px;background:rgba(20,30,25,.22)}
+.feuille-x{position:sticky;top:0;z-index:3;float:right;width:44px;height:44px;margin:0 0 4px 8px;
+  border:1px solid var(--bord);border-radius:50%;background:#fff;color:var(--ink);
+  font-size:17px;font-weight:700;box-shadow:0 2px 8px rgba(20,30,25,.14)}
+.annuler-publication{width:100%;margin-top:10px;padding:14px;border:1px solid var(--bord);
+  border-radius:2px;background:#fff;color:var(--ink);font-size:14px;font-weight:700}
+.etat-vide-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.etat-vide-actions button{width:100%;padding:12px;border:1px solid var(--bord);border-radius:10px;
+  background:#fff;color:var(--ink);font-size:13.5px;font-weight:700}
+.etat-vide-actions button:first-child{background:var(--trait);border-color:var(--trait);color:#fff}
+
+#abandonVoile{position:absolute;inset:0;z-index:1100;background:rgba(20,30,25,.52);display:grid;
+  place-items:center;padding:20px}
+#abandonDialog{width:min(100%,390px);padding:22px;border:1px solid var(--bord);border-radius:16px;
+  background:#fff;box-shadow:0 8px 36px rgba(20,30,25,.28)}
+#abandonDialog h2{font-size:21px;line-height:1.2;margin-bottom:10px}
+#abandonDialog p{font-size:14px;line-height:1.5;color:var(--ink2)}
+.abandon-actions{display:flex;gap:8px;margin-top:18px}
+.abandon-actions button{flex:1;padding:12px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink);font-weight:700}
+.abandon-actions .danger{background:var(--signal);border-color:var(--signal);color:#fff}
+
+button:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:3px solid #2673E8!important;outline-offset:3px!important}
+.retour{display:inline-flex;align-items:center;margin-bottom:12px;padding:7px 13px 7px 9px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+.retour:active{transform:scale(.96)}
+
+.d-haut{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tag{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.prix-tag{padding:4px 9px;border:1px solid var(--bord);border-radius:2px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase}
+.prix-tag.g{background:var(--signal);border-color:var(--signal);color:#fff}
+h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
+  text-transform:uppercase;margin:12px 0 16px}
+.adresse{display:flex;flex-direction:column;gap:2px;padding:15px 16px;font-style:normal;
+  border:1px solid var(--bord);border-radius:3px;background:#fff}
+.ad-rue{font-size:17px;font-weight:700;line-height:1.3}
+.ad-ville{font-size:13.5px;color:var(--ink2)}
+.resume{display:flex;flex-wrap:wrap;gap:6px 12px;margin:-8px 0 15px;font-size:13.5px;
+  font-weight:600;color:var(--ink2)}
+.resume .ouvert,.resume .ferme{font-weight:700}
+.actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:18px}
+.act{min-width:0;padding:12px 7px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-align:center;
+  text-decoration:none;display:block;transition:transform .15s}
+.act:active{transform:scale(.95)}
+.act[disabled],.act[aria-disabled="true"]{opacity:.42;cursor:not-allowed;transform:none}
+.act-1{background:var(--signal);border-color:var(--signal);color:#fff}
+.act-on{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+
+/* ---- « ✨ NOUVEAU POUR TOI » : la même chose qu'à droite, vue d'ici ------ */
+.npt{margin:2px 0 14px;padding:12px 14px 12px;border:1px solid #DED2FB;
+  border-radius:16px;background:#FAF7FF}
+.npt-tete{display:flex;align-items:center;gap:7px;margin:0 0 10px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.11em;color:#5B3FC4}
+.npt-tete em{font-style:normal;font-size:13px}
+.npt-l{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;
+  padding:0;border:0;background:transparent;color:var(--ink);
+  font:inherit;text-align:left;cursor:pointer}
+.npt-l:active{transform:scale(.99)}
+.npt-img{flex:0 0 auto;width:52px;height:52px;border-radius:13px;object-fit:cover;
+  background:#fff}
+.npt-img-vide{display:inline-flex;align-items:center;justify-content:center;font-size:24px}
+.npt-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.npt-txt b{font-size:15.5px;font-weight:750;line-height:1.25}
+.npt-txt i{font-style:normal;font-size:13px;color:var(--ink2)}
+.npt-fl{flex:0 0 auto;font-size:20px;color:#8B7BC0;line-height:1}
+
+/* ---- AUTOUR DE TOI : les catégories générales, en gros -------------------
+   Six cibles larges, visées sans réfléchir. C'est la porte des lieux
+   permanents et des commodités — celles qui ne se proposent plus d'elles-mêmes
+   dans « Maintenant ». */
+.adt{margin:2px 0 16px}
+.adt-grille{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.adt-b{display:flex;flex-direction:column;align-items:center;gap:7px;
+  border:0;background:transparent;color:var(--ink);font:inherit;cursor:pointer;padding:2px}
+.adt-b:active{transform:scale(.95)}
+.adt-rond{width:56px;height:56px;border-radius:18px;
+  display:inline-flex;align-items:center;justify-content:center;font-size:25px;
+  box-shadow:0 2px 8px rgba(20,30,25,.13)}
+.adt-lab{font-size:12.5px;font-weight:700;text-align:center;line-height:1.2}
+/* Sur un téléphone étroit, six colonnes deviennent illisibles : trois par
+   ligne gardent la cible large. */
+@media (max-width:420px){
+  .adt-grille{grid-template-columns:repeat(3,1fr);gap:14px}
+}
+
+/* ---- POUR TOI : la colonne de droite -------------------------------------
+   Ce qui vient d'apparaître et qui relève de ce qu'on suit. Sur grand écran
+   c'est une colonne du décor ; sur mobile un tiroir qu'ouvre la cloche. */
+#pourToi{position:absolute;z-index:900;display:flex;flex-direction:column;
+  background:#fff;border:1px solid var(--bord);overflow:hidden}
+/* Mobile et tablette : un tiroir qui monte, comme la feuille de détail. Trois
+   colonnes sur un téléphone n'existent pas. La borne est écrite en toutes
+   lettres pour ne pas entrer en concurrence avec la géométrie de bureau —
+   deux règles de même poids, c'est l'ordre du fichier qui trancherait. */
+@media (max-width:1099px){
+  #pourToi{left:0;right:0;bottom:0;top:auto;max-height:86%;
+    border-radius:20px 20px 0 0;border-bottom:0;
+    animation:monte .28s cubic-bezier(.2,.9,.3,1)}
+}
+/* `flex:0 0 auto` n'est pas décoratif : sans lui, un corps long comprime
+   l'en-tête d'un tiroir borné à 86% de l'écran, et la sortie part sous le
+   pli — exactement ce qu'on corrige ici. */
+.pt-tete{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:16px 18px 12px;
+  border-bottom:1px solid rgba(20,30,25,.08)}
+.pt-tete h2{flex:1 1 auto;font-size:17px;font-weight:750;line-height:1.2}
+.pt-tete button{flex:0 0 auto;border:0;background:transparent;color:var(--violet,#6D3BEB);
+  font-size:12.5px;font-weight:700;cursor:pointer;padding:6px}
+#ptFermer{width:36px;height:36px;border-radius:50%;border:1px solid var(--bord);
+  color:var(--ink);font-size:15px}
+.pt-corps{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:14px}
+
+.pt-carte{display:flex;gap:13px;padding:14px;margin-bottom:12px;
+  border:1px solid rgba(20,30,25,.10);border-radius:16px;background:#fff;
+  box-shadow:0 1px 2px rgba(20,30,25,.04)}
+.pt-vu{opacity:.62}
+.pt-img{flex:0 0 auto;width:72px;height:88px;border-radius:12px;object-fit:cover;
+  background:var(--paper)}
+.pt-img-vide{display:inline-flex;align-items:center;justify-content:center;font-size:30px}
+.pt-txt{flex:1 1 auto;min-width:0}
+.pt-haut{display:flex;align-items:center;gap:8px;margin-bottom:5px;
+  font-size:11px;color:var(--ink2)}
+.pt-neuf{padding:2px 7px;border-radius:99px;background:#EFE7FD;color:#5B3FC4;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em}
+.pt-txt h3{font-size:16.5px;font-weight:750;line-height:1.2}
+.pt-date{margin-top:4px;font-size:13.5px;color:var(--ink)}
+.pt-lieu{margin-top:2px;font-size:13px;color:var(--ink2)}
+.pt-tags{margin-top:5px;font-size:11.5px;font-weight:700;color:#5B3FC4}
+.pt-billetterie{margin-top:4px;font-size:11.5px;line-height:1.35;color:var(--ink2)}
+.pt-pourquoi{display:flex;align-items:center;gap:6px;margin-top:10px;
+  font-size:13px;font-weight:700;color:#5B3FC4}
+.pt-raison{margin-top:2px;font-size:12.5px;line-height:1.4;color:var(--ink2)}
+.pt-groupe + .pt-groupe{margin-top:20px;padding-top:4px;border-top:1px solid rgba(20,30,25,.08)}
+.pt-groupe-titre{margin:0 2px 10px;font-size:15px;font-weight:800;color:var(--ink)}
+.pt-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;margin-top:10px}
+.pt-actions{gap:7px;align-items:center}
+.pt-billet{min-height:36px;padding:0 13px;display:inline-flex;align-items:center;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:12.5px;font-weight:700;text-decoration:none}
+.pt-voir{min-height:36px;padding:0 12px;border:0;border-radius:99px;background:transparent;
+  color:#5B3FC4;font-size:13px;font-weight:750;cursor:pointer}
+.pt-action{min-height:34px;padding:0 10px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink2);font-size:11.5px;font-weight:700;cursor:pointer}
+.pt-action-discret{border-color:transparent;background:transparent}
+.pt-vide{padding:18px 14px;border-radius:14px;background:var(--paper);
+  font-size:13.5px;line-height:1.5;color:var(--ink2)}
+
+.pt-envies{margin-top:16px;padding-top:14px;border-top:1px solid rgba(20,30,25,.10)}
+.pt-envies-tete{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.pt-envies-tete strong{font-size:15px;font-weight:750}
+#ptGerer{border:0;background:transparent;color:#5B3FC4;font-size:12.5px;font-weight:700;
+  cursor:pointer;padding:6px}
+.pt-envies-liste{display:flex;flex-wrap:wrap;gap:8px}
+.pt-envie{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 13px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;
+  font-size:12.5px;font-weight:700;color:var(--ink)}
+.pt-envie-plus{cursor:pointer;font-size:17px;padding:0 14px}
+.pt-envies-vide{margin-top:4px;font-size:12.5px;line-height:1.45;color:var(--ink2)}
+
+/* L'écran « Tes envies » : une liste à cocher, chaque geste enregistré tout
+   de suite — il n'y a pas de bouton « valider » à oublier. */
+.env-intro{margin:8px 0 18px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.env-liste{display:grid;gap:9px}
+.env-b{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:0 15px;
+  border:1px solid var(--bord);border-radius:14px;background:#fff;color:var(--ink);
+  font:inherit;text-align:left;cursor:pointer}
+.env-b em{font-size:20px;font-style:normal}
+.env-b b{flex:1 1 auto;font-size:15.5px;font-weight:700}
+.env-etat{flex:0 0 auto;width:26px;height:26px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--bord);font-size:13px;color:var(--ink2)}
+.env-b.actif{border-color:#5B3FC4;background:#F6F2FE}
+.env-b.actif .env-etat{background:#5B3FC4;border-color:#5B3FC4;color:#fff}
+
+/* Les quatre envies rapides dans la barre du haut (grand écran seulement). */
+#barreEnvies{display:flex;gap:8px;flex:0 0 auto}
+#barreEnvies .br{display:flex;gap:8px;margin:0}
+
+/* ---- Mode itinéraire : la feuille ne parle plus du lieu, mais du chemin --
+   Décision prise → quatre moyens de partir → un clic. Beaucoup de blanc, des
+   cartes larges, rien d'autre à l'écran. Le contenu vit dans une colonne
+   centrale : sur un grand écran, la feuille garde sa largeur mais le texte ne
+   s'étire pas sur toute la fenêtre, sinon les cartes deviennent des barres
+   presque vides. */
+.itin{max-width:580px;margin:0 auto;padding-bottom:10px}
+.itin-tete{display:flex;align-items:center;min-height:44px;margin:0 0 18px}
+/* La croix appartient à la feuille, le retour au panneau : ils ne sont pas
+   frères dans le DOM. La croix flotte en haut à droite — la descendre de la
+   hauteur qu'occupe la poignée la pose sur la ligne du retour, sans toucher
+   au balisage commun ni aux autres écrans. */
+#feuille:has(#ficheItineraire:not([hidden])) .feuille-x{margin-top:40px}
+/* Quatre cartes et rien d'autre : elles doivent tenir sans qu'on ait à faire
+   défiler pour découvrir qu'il existe des transports. La feuille du LIEU
+   garde ses 72 % — là, ce qui reste de carte visible sert encore à situer
+   l'endroit ; ici la décision est prise, et c'est le choix du moyen qui
+   compte. */
+#feuille:has(#ficheItineraire:not([hidden])){max-height:88%}
+.itin-retour{display:inline-flex;align-items:center;gap:8px;
+  min-height:44px;padding:0 14px 0 11px;
+  border:1px solid var(--bord);border-radius:99px;background:#fff;color:var(--ink);
+  font-size:15px;font-weight:650;cursor:pointer;transition:transform .15s}
+.itin-retour:active{transform:scale(.96)}
+h2.itin-titre{margin:0;text-align:center;font-size:27px;line-height:1.06}
+.itin-adresse{margin:8px 0 0;text-align:center;font-size:14.5px;line-height:1.4;
+  color:var(--ink2)}
+.itin-question{margin:30px 0 14px;font-size:19px;font-weight:750;color:var(--ink)}
+.itin-modes{display:grid;gap:12px}
+
+/* La carte : bordure très fine, ombre à peine posée, beaucoup d'air dedans. */
+.itin-mode{display:flex;align-items:center;gap:15px;width:100%;
+  padding:18px 17px;border:1px solid rgba(20,30,25,.10);border-radius:18px;background:#fff;
+  box-shadow:0 1px 2px rgba(20,30,25,.04);
+  font:inherit;color:var(--ink);text-align:left}
+button.itin-mode{cursor:pointer;transition:transform .15s,box-shadow .15s}
+button.itin-mode:active{transform:scale(.985);box-shadow:0 1px 2px rgba(20,30,25,.07)}
+.itin-mode-ext{margin-top:12px}
+.itin-mode-ext:first-of-type{margin-top:12px}
+
+/* Le cercle : une teinte très légère, jamais une pastille de couleur pleine. */
+.itin-rond{flex:0 0 auto;width:48px;height:48px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center}
+.itin-rond-pied{background:#FFEDE4;color:#D8480F}
+.itin-rond-velo{background:#E2F4E7;color:#1B7F3B}
+.itin-rond-voiture{background:#E4EDFD;color:#2159C4}
+.itin-rond-transports{background:#EBE6FB;color:#5B3FC4}
+
+.itin-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.itin-txt b{font-size:17.5px;font-weight:750;line-height:1.2}
+.itin-detail{font-size:14px;color:var(--ink2);line-height:1.3}
+.itin-chevron{flex:0 0 auto;display:inline-flex;color:#A8B2AB}
+
+/* Les fournisseurs : de petits boutons propres, jamais des liens en ligne. */
+.itin-liens{flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end}
+/* Les boutons ne prennent pas leur place au libellé : « Ouvrir l'itinéraire »
+   doit rester sur une ligne, sinon la carte se met à respirer de travers. */
+.itin-mode-ext .itin-txt{min-width:150px}
+.itin-lien{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;min-width:80px;min-height:54px;padding:6px 9px;
+  border:1px solid rgba(20,30,25,.10);border-radius:13px;background:#fff;color:var(--ink);
+  font-size:11.5px;font-weight:700;line-height:1.15;text-align:center;text-decoration:none;
+  white-space:nowrap;
+  box-shadow:0 1px 2px rgba(20,30,25,.04)}
+.itin-lien:active{transform:scale(.96)}
+.itin-lien-marque{display:inline-flex;color:var(--ink2)}
+
+.itin-note{display:flex;align-items:flex-start;gap:9px;margin:22px 0 0;padding:13px 15px;
+  border-radius:14px;background:var(--paper);font-size:12.5px;line-height:1.45;color:var(--ink2)}
+.itin-note svg{flex:0 0 auto;margin-top:1px}
+
+/* Sur un téléphone, trois boutons de fournisseur ne tiennent pas à côté du
+   libellé : ils passent sous lui, alignés à gauche, en gardant leur taille de
+   cible. L'icône et le nom du mode, eux, ne se séparent jamais. */
+@media (max-width:560px){
+  .itin-mode-ext{flex-wrap:wrap;row-gap:12px}
+  .itin-liens{flex:1 1 100%;justify-content:flex-start}
+  .itin-lien{flex:1 1 auto;min-width:0;padding:6px 7px}
+  /* Un écran de téléphone est haut mais étroit : le titre y tient plus
+     souvent sur une ligne à cette taille, et les quatre cartes gagnent la
+     place que le repli lui prenait. */
+  h2.itin-titre{font-size:23px}
+  .itin-tete{margin-bottom:14px}
+  .itin-question{margin:24px 0 12px}
+  .itin-modes{gap:10px}
+  .itin-mode{padding:16px 15px}
+  .itin-mode-ext .itin-txt{min-width:0}
+  .itin-note{margin-top:18px}
+}
+
+/* Sur un grand écran, la feuille reste large mais son contenu se recentre :
+   la croix et le retour encadrent alors la même colonne que les cartes. */
+@media (min-width:1100px){
+  /* La feuille garde toute la largeur de l'écran — c'est sa géométrie — mais
+     son contenu se replie sur la même colonne que les cartes, pour que la
+     croix tombe exactement sur leur bord droit. */
+  #feuille:has(#ficheItineraire:not([hidden])){
+    padding-left:max(20px,calc((100% - 580px) / 2));
+    padding-right:max(20px,calc((100% - 580px) / 2));
+  }
+}
+.prix-n{font-weight:700;color:#1B7F3B}
+.horaires{margin:0 0 16px;padding:11px 14px;border:1px solid var(--bord);border-radius:3px;background:#fff}
+.horaires summary{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ink2);cursor:pointer}
+.h-ligne{padding:5px 0;font-size:13px;color:var(--ink2);
+  border-top:1px solid rgba(20,30,25,.09)}
+.h-ligne:nth-of-type(1){border-top:0;margin-top:7px}
+.h-jour{font-weight:700;color:var(--ink)}
+.service{font-weight:700;color:var(--ardoise)}
+.non-verifie{margin:-8px 0 14px;padding:10px 12px;border-radius:3px;
+  background:rgba(255,74,23,.1);border:1px solid rgba(255,74,23,.3);
+  font-size:12.5px;line-height:1.45;color:var(--ink)}
+.service-bloc{margin:-8px 0 14px;padding:8px 11px;border-radius:3px;
+  background:rgba(44,58,51,.08);font-size:12.5px;font-weight:600;color:var(--ardoise)}
+/* « À quoi ça sert » : le texte qu'on lit avant de décider de s'y rendre.
+   Assez lisible pour être lu vraiment, assez sobre pour ne pas passer devant
+   l'adresse et les horaires. */
+.expli{margin:-4px 0 14px;padding:11px 13px;border-radius:12px;
+  background:rgba(44,58,51,.05);border:1px solid var(--bord)}
+.expli-txt{margin:0;font-size:14px;line-height:1.45;color:var(--ink)}
+.expli-public{margin:6px 0 0;font-size:13px;font-weight:650;color:var(--ardoise)}
+.expli-src{margin:7px 0 0;font-family:'JetBrains Mono',monospace;font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+/* deux lignes au plus : la liste sert à choisir, pas à lire. Le texte complet
+   est sur la fiche. Sans cette limite, une seule entrée occupait l'écran. */
+.ac-expli{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;font-size:12px;line-height:1.35;color:var(--ink2);margin-top:2px}
+dl.faits{margin:16px 0 18px}
+dl.faits>div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;
+  border-top:1px solid rgba(20,30,25,.13)}
+dl.faits>div:last-child{border-bottom:1px solid rgba(20,30,25,.13)}
+dl.faits dt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ink2);padding-top:2px}
+dl.faits dd{font-size:14.5px;font-weight:600;text-align:right}
+.billet{display:flex;gap:14px;align-items:center;padding:14px;border:1px solid var(--bord);
+  border-radius:3px;background:#fff}
+.qr{display:grid;width:88px;height:88px;flex-shrink:0;padding:5px;background:#fff}
+.qr span{background:transparent}
+.qr span.on{background:var(--ink)}
+.code{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;letter-spacing:.05em}
+.billet p{margin:4px 0 0;font-size:13px;color:var(--ink2)}
+.billet .note{margin-top:7px;font-size:11.5px;line-height:1.45;padding-top:7px;
+  border-top:1px solid rgba(20,30,25,.13)}
+.sans-billet{padding:14px 16px;border:1px dashed rgba(20,30,25,.32);border-radius:3px;
+  font-size:13.5px;line-height:1.55;color:var(--ink2)}
+.sans-billet strong{color:var(--ink)}
+.liens{display:flex;gap:10px;justify-content:center;margin-top:16px}
+.liens button{border:0;background:none;font-size:12px;color:var(--ink2);
+  text-decoration:underline;text-underline-offset:3px;padding:6px}
+.liens .lien-danger{color:var(--signal);font-weight:700}
+
+h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transform:uppercase;margin:0 0 20px}
+.champ{display:block;margin-bottom:17px}
+.champ>span{display:block;margin-bottom:7px;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink2)}
+.champ input[type=text]{width:100%;padding:12px;border:1px solid var(--bord);
+  border-radius:2px;background:#fff;color:var(--ink)}
+.champ input::placeholder{color:#A3ADA6}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:5px;padding:9px 13px;border:1px solid var(--bord);
+  border-radius:2px;background:#fff;font-size:13.5px;font-weight:600;color:var(--ink)}
+.chip.actif{background:var(--ardoise);color:#fff;border-color:var(--ardoise)}
+.bascule{display:flex;border:1px solid var(--bord);border-radius:2px;overflow:hidden}
+.cote{flex:1;padding:12px 8px;border:0;background:#fff;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+.cote+.cote{border-left:1px solid var(--bord)}
+.cote.actif{background:var(--signal);color:#fff}
+.ligne{display:flex;align-items:center;gap:9px;margin-top:10px}
+.ligne input{width:78px;padding:10px;border:1px solid var(--bord);border-radius:2px;
+  font-family:'JetBrains Mono',monospace;font-weight:700;text-align:center}
+.ligne span{font-size:12.5px;color:var(--ink2)}
+.compteur{display:flex;align-items:center;margin-top:10px}
+.compteur button{width:44px;height:44px;border:1px solid var(--bord);background:#fff;
+  font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--ink);line-height:1}
+.compteur button:first-of-type{border-radius:2px 0 0 2px}
+.compteur button:last-of-type{border-radius:0 2px 2px 0}
+.compteur input{width:72px;height:44px;padding:0;text-align:center;border:1px solid var(--bord);
+  border-left:0;border-right:0;border-radius:0;font-family:'JetBrains Mono',monospace;font-weight:700}
+.aide{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--ink2)}
+.valider{width:100%;padding:16px;border:1px solid var(--bord);border-radius:2px;
+  background:var(--signal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;
+  font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:0 4px 14px rgba(255,74,23,.3)}
+.valider:active{transform:translate(1px,1px)}
+
+#toast{position:absolute;left:50%;bottom:calc(var(--safe-b) + 150px);z-index:950;
+  transform:translateX(-50%);padding:11px 16px;border:1px solid var(--bord);border-radius:2px;
+  background:#fff;color:var(--ink);white-space:nowrap;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  box-shadow:0 2px 10px rgba(20,30,25,.18);animation:monteT .26s}
+@keyframes monteT{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+#panne{position:absolute;left:14px;right:14px;top:calc(var(--safe-t) + 70px);z-index:2000;
+  padding:14px 16px;border:1px solid var(--bord);border-radius:3px;background:#fff;
+  font-size:13px;line-height:1.55;box-shadow:0 2px 10px rgba(20,30,25,.14)}
+#panne strong{display:block;margin-bottom:5px}
+#panne button{margin-top:10px;padding:8px 12px;border:1px solid var(--bord);
+  border-radius:99px;background:var(--ardoise);color:#fff;font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="charge" hidden>Recherche autour de toi…</div>
+
+<div id="bandeauGeo" hidden>
+  <span id="bandeauTxt">Autorise ta position pour voir ton quartier.</span>
+  <button id="bandeauOk">Activer</button>
+</div>
+
+<div id="bandeauVide" hidden>
+  <span id="videTxt">Rien d’ouvert autour de toi en ce moment.</span>
+  <button id="videOk">Tout voir</button>
+</div>
+
+<!-- « ⚡ Maintenant · 3 » : la réponse à « qu'est-ce qui se passe vraiment
+     là, tout de suite ». Elle est posée sur la carte, entre les pastilles de
+     gauche et Filtres à droite, et elle n'existe que s'il y a réellement
+     quelque chose en cours — jamais de « 0 », jamais de place réservée vide.
+     Un appui ouvre la liste de ces événements, rien d'autre. -->
+<button id="badgeMaintenant" hidden aria-live="polite">
+  <span class="bm-haut"><em aria-hidden="true">⚡</em><b>Maintenant</b><i id="bmCompte"></i></span>
+  <span class="bm-sous">En cours près de toi</span>
+</button>
+
+<!-- En-tête fixe : le contexte d'abord (où je suis, quand), puis l'intention
+     (que veux-tu faire), puis le raccourci (catégories). La carte est un
+     décor derrière ça, pas l'interface elle-même. -->
+<!-- En-tête flottant compact : la carte domine, l'interface se pose dessus.
+     Une pastille de contexte, une loupe, une cloche. Rien d'autre. -->
+<header id="appHeader">
+  <!-- Sur grand écran, les quatre entrées rapides vivent dans la barre du
+       haut, comme sur la référence : elles commandent tout l'écran, pas
+       seulement le panneau de gauche. Sur mobile elles restent dans le
+       panneau, à portée de pouce. Un seul jeu de boutons dans les deux cas —
+       `poserBesoinsRapides` les pose ici ou là, jamais aux deux endroits. -->
+  <div id="barreEnvies" hidden></div>
+  <!-- Le lieu regardé, et rien d'autre. Cette pastille portait aussi
+       « Maintenant », ce qui faisait deux commandes du temps (ici et dans la
+       feuille) et brouillait la seule question qu'elle doit répondre : où
+       est-ce que je regarde ? Un appui recentre, ou demande où regarder. -->
+  <button id="btnLieu" title="Recentrer sur ma position">
+    ⌖ <b id="hdVille">Autour de toi</b>
+  </button>
+  <button class="hd-icone" id="btnLoupe" aria-label="Rechercher">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+  </button>
+  <button class="hd-icone" id="btnNotifs" aria-label="Pour toi">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    <span class="notif-texte">Pour toi</span>
+    <i id="notifPastille" hidden></i>
+  </button>
+</header>
+
+<!-- Recherche : superposée à la carte, jamais un écran de remplacement. -->
+<div id="rechercheOverlay" hidden role="dialog" aria-label="Rechercher">
+  <!-- Un vrai <form> : sur iOS, c'est ce qui fait apparaître « rechercher »
+       sur le clavier et ce qui garantit que la touche Retour valide. Écouter
+       keydown seul laissait certains claviers mobiles sans action. -->
+  <form class="ro-barre" id="formRech" role="search" action="#">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+    <input id="rech" type="search" name="q" enterkeyhint="search" inputmode="search"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+           placeholder="Une envie, un lieu, une ville…" />
+    <button class="icone-btn" id="btnFermerRech" type="button" aria-label="Fermer la recherche">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <button class="hd-filtres" id="btnFiltres" type="button" aria-label="Filtres" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+    </button>
+  </form>
+  <div id="raccourcis" class="pills"></div>
+  <div id="filtresHumains" hidden></div>
+  <div id="suggestions" hidden></div>
+</div>
+
+<!-- Partager ne vit que sur la fiche d'un lieu : la carte n'a pas à le porter. -->
+<button class="mini droite" id="btnPartager" hidden>↗ Partager</button>
+
+<!-- Quand la carte s'éloigne de soi — recherche, déplacement à la main — un
+     seul geste ramène à sa position et à ses recommandations locales.
+     Il n'y en a qu'un : la pastille ronde « revenir » faisait exactement la
+     même chose, en moins clair et sans dire ce qu'elle faisait. -->
+<button id="btnAutourDeMoi" hidden>⌖ Revenir autour de moi</button>
+<!-- Trouver de l'aide : alimentaire, hébergement, santé. Ce n'est pas une
+     envie parmi d'autres, et ça n'a rien à faire derrière une loupe — quand on
+     en a besoin, ça doit être à un doigt. C'est pour ça que c'est un contrôle
+     permanent de la carte et non une pastille du rail des intentions. -->
+<!-- Une capsule, pas un rond : un cœur seul se lit « favoris », « santé »,
+     « j'aime » — tout sauf « aide ». Le mot est donc écrit, sans clic. -->
+<button class="capsule-flottante" id="btnAide" aria-pressed="false" aria-label="Trouver de l’aide : manger, logement, santé, papiers">
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
+  <b>Aide</b>
+</button>
+<button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les arrêts et stations">
+  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
+</button>
+
+<!-- Attribution : légalement due, et donc lisible sur la carte elle-même.
+     Elle vivait entièrement derrière le « ⓘ », c'est-à-dire nulle part pour
+     qui ne clique pas. Compacte, discrète, mais présente. -->
+<div id="attribution">
+  <span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OSM</a>
+  · <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></span>
+  <button id="btnCredits" aria-label="Sources et attributions" aria-expanded="false">ⓘ</button>
+</div>
+<div id="credits" hidden>
+  © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
+  © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>
+</div>
+
+
+<!-- Bottom sheet : fermée, compacte, ou dépliée à la demande. -->
+<div id="feuilleBesoins" role="dialog" aria-labelledby="fbTitre" hidden>
+  <button class="fb-poignee" id="fbPoignee" aria-label="Agrandir la feuille" aria-expanded="false"></button>
+  <div class="fb-tete">
+    <button class="fb-retour" id="fbRetour" hidden aria-label="Retour">‹</button>
+    <!-- Ce texte est le nom accessible du panneau tant que rien ne l'a écrit.
+         Il portait encore « Que faire autour de moi ? », l'ancien gros CTA
+         noir supprimé depuis : invisible à l'œil, mais annoncé tel quel par un
+         lecteur d'écran avant le premier rendu. -->
+    <span class="fb-titre" id="fbTitre">Pour toi, maintenant</span>
+    <button class="fb-x" id="fbFermer" aria-label="Fermer">✕</button>
+  </div>
+  <div class="fb-corps" id="fbCorps"></div>
+</div>
+
+<!-- ---- Pour toi -----------------------------------------------------------
+     Ce qui vient d'apparaître et qui relève de ce que la personne suit. Le
+     panneau ne se remplit que de vrais événements ; sans envie suivie ou sans
+     correspondance, il le dit et propose d'en choisir.
+
+     Sur grand écran il occupe la colonne de droite. Sur mobile il devient un
+     tiroir qu'ouvre la cloche : trois colonnes sur un téléphone n'existent
+     pas. -->
+<aside id="pourToi" hidden aria-labelledby="ptTitre">
+  <div class="pt-tete">
+    <h2 id="ptTitre"><span aria-hidden="true">🔔</span> Pour toi</h2>
+    <button id="ptToutVu" hidden>Tout marquer comme vu</button>
+    <!-- La sortie. Elle n'est plus conditionnée à la taille d'écran : sur la
+         colonne de bureau comme sur le tiroir mobile, on doit pouvoir refermer
+         ce panneau sans deviner que la cloche le rebascule. « Gérer » ne sert
+         qu'aux surveillances et n'a jamais fermé quoi que ce soit. -->
+    <button id="ptFermer" aria-label="Fermer Pour toi" title="Fermer">✕</button>
+  </div>
+  <div class="pt-corps" id="ptCorps"></div>
+</aside>
+
+<!-- Navigation basse. « Messages » ne sert qu'à prévenir les participants
+     d'un événement qu'on a créé (annulation, changement d'horaire, limite
+     de places) : il ne s'active donc que si on a publié quelque chose. -->
+<nav id="navBas">
+  <!-- « Autour de moi » et « Pour toi » ouvraient le même écran par deux
+       portes : c'était deux noms pour une seule chose. Il n'en reste qu'une,
+       Explorer, et le temps se choisit à l'intérieur (Maintenant, Ce soir,
+       Ce week-end, À venir). Revenir à sa position est devenu un geste
+       géographique : la pastille de l'en-tête et le bouton de la carte. -->
+  <button class="nb actif" data-nb="explorer">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+    Explorer
+  </button>
+  <!-- Aide n'est plus un cœur flottant sur la carte : c'est l'une des deux
+       questions auxquelles Autour répond. « Qu'est-ce qui se passe autour de
+       moi » et « qu'est-ce qui peut m'aider autour de moi » méritent la même
+       place. Icône de soutien (deux mains), et le mot écrit. -->
+  <!-- Le cœur revient à Aide : c'est lui qui dit « soutien », et c'est là que
+       ça compte. Favoris passe donc au signet — deux cœurs côte à côte ne se
+       distinguaient pas, et le plus important des deux devait garder le sien. -->
+  <button class="nb nb-aide" data-nb="aide">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
+    Aide
+  </button>
+  <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
+    <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
+    Créer
+  </button>
+  <button class="nb" data-nb="favoris">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1z"/></svg>
+    Favoris
+  </button>
+  <button class="nb" data-nb="profil">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
+    Profil
+  </button>
+</nav>
+
+<!-- Fiche compacte : premier niveau d'un lieu, au-dessus de la carte. -->
+<div id="ficheCompacte" hidden role="dialog" aria-label="Aperçu du lieu"></div>
+
+<div id="navBarre" hidden>
+  <span class="nav-mode" id="navMode"></span>
+  <span class="nav-txt" id="navTxt"></span>
+  <button class="nav-x" id="navFermer" aria-label="Quitter l’itinéraire">✕</button>
+</div>
+
+
+<div id="viseur" hidden>
+  <span class="pin-choix" aria-hidden="true">📍</span>
+</div>
+<div id="poseBarre" hidden>
+  <div class="txt">Déplace la carte : l'épingle se pose ici.</div>
+  <button class="ok" id="btnPoseOk">C'est là</button>
+</div>
+
+<div id="voile" hidden></div>
+<section id="feuille" hidden role="dialog" aria-modal="true" aria-label="Panneau Autour"></section>
+<div id="abandonVoile" hidden>
+  <div id="abandonDialog" role="alertdialog" aria-modal="true" aria-labelledby="abandonTitre" aria-describedby="abandonTexte">
+    <h2 id="abandonTitre">Abandonner cette publication&nbsp;?</h2>
+    <p id="abandonTexte">Les informations saisies ne seront pas conservées.</p>
+    <div class="abandon-actions">
+      <button id="abandonContinuer">Continuer</button>
+      <button class="danger" id="abandonConfirmer">Abandonner</button>
+    </div>
+  </div>
+</div>
+<div id="toast" hidden></div>
+<div id="panne" hidden></div>
+
+<!-- Leaflet est une dépendance du chemin critique cartographique. Le script
+     synchrone reprend le démarrage fiable de e57ebd9 : quand le programme
+     s'exécute, L existe déjà et aucune course ne peut précéder installerCarte(). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="availability.js?v=fefb49c1" defer></script>
+<script src="comprendre.js?v=674ea341" defer></script>
+<script src="donnees.js?v=c3559619" defer></script>
+<script src="intentions.js?v=39e671d2" defer></script>
+<script src="comptes.js?v=9f5e8a5d" defer></script>
+<script src="maintenant.js?v=21c39395" defer></script>
+<script src="ordonnanceur.js?v=c8368526" defer></script>
+<script src="plafonds.js?v=fac04c2e" defer></script>
+<script src="annonces-taxonomie.js?v=8bab34b5" defer></script>
+<script src="annonces-classement.js?v=45434ec3" defer></script>
+<script src="envies.js?v=9f6fe1a5" defer></script>
+<script src="enrichissements.js?v=18427494" defer></script>
+<script src="contexte.js?v=54aec3b1" defer></script>
+<script src="territoire.js?v=589cf5db" defer></script>
+<script src="aide-taxonomie.js?v=be5a07f1" defer></script>
+<script src="aide-classement.js?v=f3ef883d" defer></script>
+<script src="aide-rayon.js?v=c36fcbae" defer></script>
+<script src="aide-contexte-ia.js?v=3da4c06f" defer></script>
+<script src="aide.js?v=9fb4c9de" defer></script>
+<script src="signaux.js?v=319acaa9" defer></script>
+<script src="temporel.js?v=35a146e1" defer></script>
+<script src="explications.js?v=ea344e6e" defer></script>
+<script src="events.js?v=2a03415f" defer></script>
+<script src="images.js?v=159d48a4" defer></script>
+<script src="core.js?v=a8780708" defer></script>
+<script src="providers/normaliser.js?v=d4adfe74" defer></script>
+<script src="providers/googlePlaces.js?v=70338a03" defer></script>
+<script src="providers/datatourisme.js?v=6f242f4e" defer></script>
+<script src="providers/aideInstitutionnelle.js?v=31dd2cfc" defer></script>
+<script src="providers/decouvertes.js?v=e089f93c" defer></script>
+<script src="providers/osm.js?v=9553d989" defer></script>
+<script src="mapProviders/googleMaps.js?v=2c285b59" defer></script>
+<script src="app.js?v=0d3b6c2e" defer></script>
+</body>
+</html>
