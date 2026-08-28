@@ -160,10 +160,21 @@ function mots(valeur) {
   return " " + texteNormalise(valeur).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim() + " ";
 }
 
-/* Un terme peut être une expression ; le pluriel français ordinaire est
-   toléré, rien d'autre. Le motif est ancré des deux côtés. */
+/* Un terme peut être une expression ; le pluriel français est toléré, rien
+   d'autre. Le motif est ancré des deux côtés.
+
+   LE PLURIEL EN -AUX NE S'OBTIENT PAS EN AJOUTANT UNE LETTRE. « patrimonial »
+   donne « patrimoniaux », et le suffixe `e?s?` ne le voyait pas : « visite de
+   lieux patrimoniaux » — l'exemple même de cet audit — retombait sur
+   « Événement » dès que la description ne contenait aucun autre mot culturel.
+   « patrimoniales » passait, « patrimoniaux » non. */
+function motif(terme) {
+  const radical = /al$/.test(terme) ? terme.slice(0, -2) + "a(?:l|ux)" : terme;
+  return new RegExp("(?:^| )" + radical + "e?s?(?= |$)");
+}
+
 function dit(texteMots, termes) {
-  return termes.some((terme) => new RegExp("(?:^| )" + terme + "e?s?(?= |$)").test(texteMots));
+  return termes.some((terme) => motif(terme).test(texteMots));
 }
 
 /* ---- 1. La nature de l'activité ------------------------------------------
@@ -217,6 +228,18 @@ const LIEUX = [
   ["bar",       ["bar", "pub", "taverne", "brasserie bar", "bar a vin", "bar a bieres"]],
   ["resto",     ["restaurant", "brasserie", "auberge", "bistrot", "creperie",
                  "pizzeria", "table"]],
+  /* UN HÔTEL QUI NE LOGE PERSONNE.
+
+     « Hôtel de Ville », « Hôtel-Dieu », « Hôtel des Postes », « Hôtel de
+     Police » : en français, « hôtel » désigne aussi un bâtiment public. Tous
+     sortaient en Hébergement — et dans Aide, cela envoyait quelqu'un qui
+     cherche à dormir vers la mairie. Le nom de tête décide : à position égale,
+     `lieuDe` retient le terme le plus long, donc « hotel de ville » l'emporte
+     sur « hotel ». */
+  ["mairie", ["hotel de ville", "hotel du departement", "hotel de region",
+              "hotel de police", "hotel des postes", "hotel de la prefecture",
+              "hotel des impots"]],
+  ["sante", ["hotel dieu"]],
   ["hebergement", ["hotel", "camping", "gite", "chambre d hotes", "auberge de jeunesse",
                    "hebergement", "residence de tourisme"]],
   ["commerce",  ["boutique", "magasin", "commerce", "librairie", "epicerie"]],
@@ -238,7 +261,7 @@ function lieuDe(texteMots) {
   let meilleur = null;
   for (const [cat, termes] of LIEUX) {
     for (const terme of termes) {
-      const trouve = new RegExp("(?:^| )" + terme + "e?s?(?= |$)").exec(texteMots);
+      const trouve = motif(terme).exec(texteMots);
       if (!trouve) continue;
       const position = trouve.index;
       if (!meilleur || position < meilleur.position ||

@@ -101,6 +101,30 @@ test("le nom de tête décide, pas l’ordre d’une liste", () => {
    2. LES SOUS-CHAÎNES QUI DÉCIDAIENT À LA PLACE DES MOTS
    ======================================================================== */
 
+test("le pluriel français en -aux est un pluriel", () => {
+  /* « patrimonial » donne « patrimoniaux », et le suffixe `e?s?` ne le voyait
+     pas. « Visite de lieux patrimoniaux » — l'exemple même de cet audit —
+     retombait donc sur « Événement » dès que la description ne contenait
+     aucun autre mot culturel. « patrimoniales » passait, « patrimoniaux » non. */
+  for (const titre of ["Visite de lieux patrimoniaux", "Visite de sites patrimoniaux",
+                       "Visite de lieux patrimoniales", "Visite du patrimoine"])
+    assert.equal(categorieDe({titre, description: "Ouvert au public."}), "musee", titre);
+});
+
+test("un hôtel qui ne loge personne n’est pas un hébergement", () => {
+  /* En français « hôtel » désigne aussi un bâtiment public. Tous sortaient en
+     Hébergement — et dans Aide, cela envoyait quelqu'un qui cherche à dormir
+     vers la mairie. */
+  const attendus = [
+    ["Hôtel de Ville", "mairie"], ["Hôtel des Postes", "mairie"],
+    ["Hôtel de Police", "mairie"], ["Hôtel du Département", "mairie"],
+    ["Hôtel-Dieu", "sante"],
+    ["Hôtel Ibis Lille", "hebergement"], ["Camping des Dunes", "hebergement"],
+  ];
+  for (const [titre, attendu] of attendus)
+    assert.equal(categorieDe({titre, description: "Bâtiment ouvert au public."}), attendu, titre);
+});
+
 test("les coïncidences de lettres ne classent plus rien", () => {
   const pieges = [
     // « Barbieux » contient « bar ». Le parc Barbieux, à Roubaix.
@@ -125,7 +149,11 @@ test("la classification lit des mots bornés, jamais des morceaux de mots", () =
      ajoutée suive la même discipline. */
   assert.match(apiDatatourisme, /function mots\(valeur\)/);
   assert.match(apiDatatourisme, /function dit\(texteMots, termes\)/);
-  assert.match(apiDatatourisme, /"\(\?:\^\| \)" \+ terme \+ "e\?s\?\(\?= \|\$\)"/);
+  assert.match(apiDatatourisme, /function motif\(terme\)/);
+  assert.match(apiDatatourisme, /"\(\?:\^\| \)" \+ radical \+ "e\?s\?\(\?= \|\$\)"/);
+  // et les deux lecteurs passent par ce motif-là, pas par le leur
+  assert.match(apiDatatourisme, /termes\.some\(\(terme\) => motif\(terme\)\.test\(texteMots\)\)/);
+  assert.match(apiDatatourisme, /const trouve = motif\(terme\)\.exec\(texteMots\);/);
   // et les anciens motifs de sous-chaîne ont disparu
   assert.doesNotMatch(apiDatatourisme, /\/bar\|pub\/\.test/);
   assert.doesNotMatch(apiDatatourisme, /\/restaurant\|brasserie\/\.test/);

@@ -4,13 +4,11 @@
    exécute, avec le même contrôle de forme sur `/api/lieux`. */
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { join, extname } from "node:path";
+import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { dirname, join as joindre } from "node:path";
-import { fileURLToPath } from "node:url";
 const RACINE = process.env.AUTOUR_RACINE ||
-  joindre(dirname(fileURLToPath(import.meta.url)), "..");
+  join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT || 8787);
 
 const TYPES = {
