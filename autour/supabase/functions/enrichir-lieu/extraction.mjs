@@ -638,6 +638,12 @@ export function ligneEnrichissement(fait, lieu, meta) {
     category: l.categorie ? String(l.categorie).slice(0, 40) : null,
     lat: Number.isFinite(Number(l.lat)) ? Number(l.lat) : null,
     lng: Number.isFinite(Number(l.lng)) ? Number(l.lng) : null,
+    /* L'empreinte que le client avait de la source quand il a demandé cette
+       vérification. Elle voyage avec la ligne pour que le client puisse, plus
+       tard, refuser un enrichissement calculé pour une source qui a changé
+       depuis. Absente — un appelant qui ne l'envoie pas — la ligne reste
+       écrite, avec `null` : elle sera simplement revérifiée. */
+    source_fingerprint: l.empreinte ? String(l.empreinte).slice(0, 80) : null,
     ...fait,
     checked_at: new Date(maintenant).toISOString(),
     expires_at: expiration(fait, maintenant).toISOString(),
