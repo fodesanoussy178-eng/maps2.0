@@ -123,18 +123,51 @@ Vérifié sur toutes les branches, le reflog et les 29 commits orphelins :
 - `annonces-classement.js` — classement des annonces (`AutourAnnoncesClassement`)
 - `providers/aideInstitutionnelle.js` — provider service-public.fr
 
+## Le côté serverless — `fonctions/`
+
+Une fonction edge est *exécutée*, jamais servie : on ne la télécharge pas
+depuis autour.eu. Mais Vercel conserve les fichiers d'origine d'un envoi direct
+par CLI, et l'onglet *Source* du déploiement `nfVGndrAF` les rend. C'est de là
+que vient ce dossier — et, différence capitale avec `artefacts/`, **ce sont de
+vraies sources** : la prose française y est intacte, esbuild n'est jamais passé.
+
+    fonctions/
+      api/aide-institutionnelle.js              la route
+      data/aide-institutionnelle-dila-59599.js  l'instantané de secours
+
+La disposition reproduit celle de la racine du projet, pour que l'import
+relatif `../data/…` de la route se résolve tel quel.
+
+### La chaîne est complète, et vérifiée
+
+`api/aide-institutionnelle.js` a **une seule dépendance locale** — la ligne 11,
+`import snapshotTourcoing from "../data/aide-institutionnelle-dila-59599.js"` —
+et **aucune variable d'environnement**. Tout le reste est du HTTPS public :
+`geo.api.gouv.fr`, `api-lannuaire.service-public.gouv.fr`,
+`lannuaire.service-public.gouv.fr`, `lecomarquage.service-public.gouv.fr`.
+
+Exercée hors ligne, réseau coupé sauf la résolution de commune, la route
+bascule sur `baseLocaleStatique()` et rend **24 institutions**, statut 200,
+en-tête `x-autour-source: service_public`. Le `normaliser` du provider de
+production digère le premier item et produit un lieu complet — « Mission Emploi
+Lys Tourcoing », 50.709408 / 3.166806, catégorie `emploi`, source
+`service_public`. Le maillon client tient donc lui aussi.
+
+L'instantané couvre la commune **59599 (Tourcoing)** seulement, daté du
+26/08/2026, 24 enregistrements. Ailleurs, `baseLocaleStatique()` rend `null` et
+la route dépend entièrement de l'amont — c'est un filet local, pas une copie de
+l'annuaire national.
+
 ## Routes API non récupérables
 
-- `api/interpreter.js`
-- `api/aide-institutionnelle.js`
+Aucune. L'inventaire du 27/08 en annonçait deux ; les deux étaient des erreurs
+de lecture.
 
-Elles sont appelées par la production (`/api/interpreter` ×4 dans `app.js`,
-`/api/aide-institutionnelle` par le provider institutionnel) mais **leur source
-est définitivement hors de portée** : ce sont des fonctions serverless, donc
-*exécutées* et jamais servies. `https://autour.eu/api/interpreter.js` répond
-**404**. Aucun dossier `.vercel/` n'existe sur la machine de récupération.
-
-Seule la copie de travail ayant lancé le `vercel --prod` peut les contenir.
+- `api/interpreter.js` **n'a jamais existé**. Les quatre `/api/interpreter` d'
+  `app.js` sont des serveurs Overpass externes (`overpass-api.de`,
+  `overpass.kumi.systems`, …), pas une route locale. Idem pour `/api/broadcast`
+  (Supabase Realtime, dans le SDK vendorisé) et `/api/js` (Google Maps).
+- `api/aide-institutionnelle.js` était bien réelle, et elle est ici.
 
 ## Références associées
 
@@ -145,4 +178,7 @@ Seule la copie de travail ayant lancé le `vercel --prod` peut les contenir.
 ## Intégrité
 
 `SHA256SUMS.txt`, à la racine de ce dossier, porte l'empreinte de chaque
-artefact au moment du dépôt.
+fichier — `artefacts/` et `fonctions/` — au moment du dépôt. Il se vérifie
+depuis cette racine :
+
+    cd recovery/prod-live-20260827 && sha256sum -c SHA256SUMS.txt
