@@ -1825,6 +1825,23 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .env-b.actif{border-color:#5B3FC4;background:#F6F2FE}
 .env-b.actif .env-etat{background:#5B3FC4;border-color:#5B3FC4;color:#fff}
 
+/* Un genre n'est pas une envie de moins : c'est une envie DANS une autre. Le
+   décalage et le filet vertical le disent sans ajouter une phrase. Le bouton
+   du parent, lui, ne change pas d'un pixel — suivre « Artistes & concerts »
+   reste le même geste qu'avant, au même endroit. */
+.env-groupe{display:grid;gap:9px}
+.env-plier{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;min-height:38px;padding:0 15px;margin:-3px 0 0;
+  border:0;background:none;color:var(--ink2);font:inherit;font-size:13px;
+  text-align:left;cursor:pointer}
+.env-plier:hover{color:var(--ink)}
+.env-chevron{font-size:12px;line-height:1}
+.env-genres{display:grid;gap:9px;margin:0 0 3px 22px;padding-left:13px;
+  border-left:2px solid var(--bord)}
+.env-genres .env-b{min-height:48px}
+.env-genres .env-b em{font-size:17px}
+.env-genres .env-b b{font-size:14.5px;font-weight:650}
+
 /* Les quatre envies rapides dans la barre du haut (grand écran seulement). */
 #barreEnvies{display:flex;gap:8px;flex:0 0 auto}
 #barreEnvies .br{display:flex;gap:8px;margin:0}
@@ -2264,9 +2281,9 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="maintenant.js?v=21c39395" defer></script>
 <script src="ordonnanceur.js?v=c8368526" defer></script>
 <script src="plafonds.js?v=fac04c2e" defer></script>
-<script src="annonces-taxonomie.js?v=8bab34b5" defer></script>
+<script src="annonces-taxonomie.js?v=5d104c41" defer></script>
 <script src="annonces-classement.js?v=45434ec3" defer></script>
-<script src="envies.js?v=9f6fe1a5" defer></script>
+<script src="envies.js?v=7c46be5b" defer></script>
 <script src="enrichissements.js?v=18427494" defer></script>
 <script src="contexte.js?v=54aec3b1" defer></script>
 <script src="territoire.js?v=589cf5db" defer></script>
@@ -2288,6 +2305,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/decouvertes.js?v=e089f93c" defer></script>
 <script src="providers/osm.js?v=9553d989" defer></script>
 <script src="mapProviders/googleMaps.js?v=2c285b59" defer></script>
-<script src="app.js?v=f19169d3" defer></script>
+<script src="app.js?v=08742b1e" defer></script>
 </body>
 </html>

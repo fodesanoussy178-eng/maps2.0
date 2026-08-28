@@ -8325,17 +8325,32 @@ function ouvrirEnvies() {
     peindreEnvies();
   });
 }
+let enviesGenresOuverts = null;
 function peindreEnvies() {
   const zone = $("#envListe");
   if (!zone || !ENVIES) return;
-  zone.innerHTML = ENVIES.CATALOGUE.map((e) => {
+  const carte = (e, genre) => {
     const on = ENVIES.suivie(e.id);
-    return '<button type="button" class="env-b' + (on ? " actif" : "") + '" data-env="' + esc(e.id) + '" aria-pressed="' + on + '"><em aria-hidden="true">' + e.emoji + "</em><b>" + esc(e.label) + '</b><span class="env-etat" aria-hidden="true">' + (on ? "\u2713" : "+") + "</span></button>";
+    return '<button type="button" class="env-b' + (genre ? " env-g" : "") + (on ? " actif" : "") + '" data-env="' + esc(e.id) + '" aria-pressed="' + on + '"><em aria-hidden="true">' + e.emoji + "</em><b>" + esc(e.label) + '</b><span class="env-etat" aria-hidden="true">' + (on ? "\u2713" : "+") + "</span></button>";
+  };
+  let ouvertRendu = false;
+  zone.innerHTML = ENVIES.racines().map((e) => {
+    if (!e.porteGenres) return carte(e, false);
+    const genres = ENVIES.enfants(e.id);
+    const suivis = genres.filter((g) => ENVIES.suivie(g.id)).length;
+    const ouvert = enviesGenresOuverts === null ? suivis > 0 : enviesGenresOuverts;
+    ouvertRendu = ouvert;
+    const compte = suivis ? suivis + (suivis > 1 ? " genres suivis" : " genre suivi") : "Choisir un genre";
+    return '<div class="env-groupe">' + carte(e, false) + '<button type="button" class="env-plier" data-plier="' + esc(e.id) + '" aria-expanded="' + ouvert + '"><span>' + esc(compte) + '</span><span class="env-chevron" aria-hidden="true">' + (ouvert ? "\u25B4" : "\u25BE") + '</span></button><div class="env-genres"' + (ouvert ? "" : " hidden") + ">" + genres.map((g) => carte(g, true)).join("") + "</div></div>";
   }).join("");
   zone.querySelectorAll("[data-env]").forEach((b) => b.onclick = () => {
     ENVIES.basculer(b.dataset.env);
     peindreEnvies();
     majPourToi();
+  });
+  zone.querySelectorAll("[data-plier]").forEach((b) => b.onclick = () => {
+    enviesGenresOuverts = !ouvertRendu;
+    peindreEnvies();
   });
 }
 function ouvrirPourToi() {

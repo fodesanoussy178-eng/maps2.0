@@ -291,7 +291,16 @@
       "cultural_festival",
       "manga_festival",
       "local_festival"
-    ])
+    ]),
+    rnb: Object.freeze(["rnb"]),
+    pop: Object.freeze(["pop"]),
+    afro: Object.freeze(["afro"]),
+    rock: Object.freeze(["rock"]),
+    electro: Object.freeze(["electro"]),
+    jazz: Object.freeze(["jazz"]),
+    reggae: Object.freeze(["reggae"]),
+    kpop: Object.freeze(["kpop"]),
+    classical: Object.freeze(["classical"])
   });
   const INTEREST_ALIASES = Object.freeze({
     rap: "rap",
@@ -311,7 +320,16 @@
     famille: "family",
     family: "family",
     theatre: "theatre",
-    festivals: "festivals"
+    festivals: "festivals",
+    rnb: "rnb",
+    pop: "pop",
+    afro: "afro",
+    rock: "rock",
+    electro: "electro",
+    jazz: "jazz",
+    reggae: "reggae",
+    kpop: "kpop",
+    classical: "classical"
   });
   const INTEREST_LABELS = Object.freeze({
     rap: "Rap",
@@ -326,7 +344,16 @@
     nightlife: "Vie nocturne",
     family: "Famille",
     theatre: "Th\xE9\xE2tre",
-    festivals: "Festivals"
+    festivals: "Festivals",
+    rnb: "R&B",
+    pop: "Pop",
+    afro: "Afro",
+    rock: "Rock",
+    electro: "\xC9lectro",
+    jazz: "Jazz",
+    reggae: "Reggae",
+    kpop: "K-pop",
+    classical: "Classique"
   });
   const ALIASES = Object.freeze({
     "hip hop": "hip_hop",
@@ -394,6 +421,7 @@
     jazz: "Jazz",
     reggae: "Reggae",
     kpop: "K-pop",
+    classical: "Classique",
     concert: "Concert",
     live: "Live",
     showcase: "Showcase",
