@@ -1,6 +1,6 @@
 {
   "buildCommand": "node outils/alleger.mjs",
-  "outputDirectory": "livraison",
+  "outputDirectory": "prod-reconstruite",
   "headers": [
     {
       "source": "/(.*)\\.js",
