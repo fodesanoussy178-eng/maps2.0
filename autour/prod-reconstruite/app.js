@@ -6281,7 +6281,7 @@ async function chargerAideVraiment(lat, lng, generation, contexte) {
             lat,
             lng,
             null,
-            { cats, rayon: palier, limite: 180, pays: "FR", delai: budget, signal: generation.signal }
+            { cats, rayon: palier, limite: 180, delai: budget, signal: generation.signal }
           );
           if (!generationCourante(generation)) return r;
           const locaux = r && r.ok ? resultatsAideDansTerritoire(r.lieux) : [];
