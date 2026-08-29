@@ -487,7 +487,13 @@
     const CLASSEMENT = root.AutourAideClassement;
     if (!CLASSEMENT) return pertinenceSansClassement(lieu, b);
 
-    const v = CLASSEMENT.repond(lieu, besoinId);
+    const options = arguments[2] || {};
+    /* Le profil n'est jamais inventé ; quand l'appelant le fournit, il sert
+       seulement aux structures dont le public est réellement conditionnel
+       (FJT, centre parental/maternel, CHRS mineur/adulte). */
+    const v = options.profil || options.profile
+      ? CLASSEMENT.repond(lieu, besoinId, options)
+      : CLASSEMENT.repond(lieu, besoinId);
     if (v && v.accorde) {
       return {
         /* La confiance du classement, ramenée entre 0 et 1. Un lieu accepté
@@ -663,7 +669,10 @@
     if (!estFournisseurAide(lieu, ids)) return false;
     const o = options || {};
     return ids.some((id) => {
-      const p = pertinence(lieu, id, { large: o.large === true });
+      const p = pertinence(lieu, id, {
+        large: o.large === true,
+        profil: o.profil || o.profile,
+      });
       return p.direct === true || (o.accepterLarge === true && p.poids > 0);
     });
   }
