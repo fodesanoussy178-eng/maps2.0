@@ -62,6 +62,156 @@
     FAIBLE:   "faible",
   });
 
+  /* ===================================================================
+     ONTOLOGIE LOGEMENT — UNE STRUCTURE N'EST PAS UN LIT PARCE QU'ELLE
+     APPARTIENT AU SECTEUR SOCIAL
+
+     Ces définitions décrivent la fonction générale d'un dispositif. Elles ne
+     remplacent jamais les champs locaux : accès, horaires, téléphone et
+     confiance restent `null` quand la source ne les donne pas. Le classement
+     s'en sert pour empêcher un SIAO, un CCAS ou un FSL d'être présenté comme
+     une place disponible, et pour ne pas confondre une MECS avec un logement
+     pour adulte.
+     =================================================================== */
+  const typeLogement = (type_structure, valeurs) => {
+    const v = valeurs || {};
+    return Object.freeze(Object.assign({ type_structure }, v, {
+      aliases: Object.freeze([].concat(v.aliases || [])),
+      besoins_servis: Object.freeze([].concat(v.besoins_servis || [])),
+      public_admis: v.public_admis == null
+        ? null : Object.freeze([].concat(v.public_admis)),
+    }));
+  };
+
+  const TYPES_LOGEMENT = Object.freeze({
+    foyer: typeLogement("foyer", {
+      aliases: ["foyer"], besoins_servis: ["logement"],
+      public_admis: null, acces_libre: null, orientation_requise: null,
+      urgence_possible: false, hebergement_effectif: true, fonction: "heberge",
+    }),
+    foyer_hebergement: typeLogement("foyer_hebergement", {
+      aliases: ["foyer d hebergement", "foyer d'hébergement"],
+      besoins_servis: ["logement", "accompagnement"], public_admis: null,
+      acces_libre: null, orientation_requise: true, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_accompagne",
+    }),
+    chrs: typeLogement("chrs", {
+      aliases: ["centre d hebergement et de reinsertion sociale"],
+      besoins_servis: ["logement", "insertion"],
+      public_admis: ["adultes en situation de précarité"], acces_libre: null,
+      orientation_requise: true, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_accompagne",
+    }),
+    chu: typeLogement("chu", {
+      aliases: ["centre d hebergement d urgence"],
+      besoins_servis: ["logement", "urgence"],
+      public_admis: ["personnes sans domicile"], acces_libre: null,
+      orientation_requise: true, urgence_possible: true,
+      hebergement_effectif: true, fonction: "heberge_urgence",
+    }),
+    hebergement_urgence: typeLogement("hebergement_urgence", {
+      aliases: ["hébergement d urgence", "abri de nuit", "halte de nuit",
+        "night shelter", "emergency shelter"],
+      besoins_servis: ["logement", "urgence"],
+      public_admis: ["personnes sans domicile"], acces_libre: null,
+      orientation_requise: true, urgence_possible: true,
+      hebergement_effectif: true, fonction: "heberge_urgence",
+    }),
+    residence_sociale: typeLogement("residence_sociale", {
+      aliases: ["résidence sociale"], besoins_servis: ["logement"],
+      public_admis: ["adultes en situation de précarité"], acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge",
+    }),
+    maison_relais: typeLogement("maison_relais", {
+      aliases: ["maison relais"], besoins_servis: ["logement", "accompagnement"],
+      public_admis: ["adultes en situation de précarité"], acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_accompagne",
+    }),
+    pension_de_famille: typeLogement("pension_de_famille", {
+      aliases: ["pension de famille"], besoins_servis: ["logement", "accompagnement"],
+      public_admis: ["adultes en situation de précarité"], acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_accompagne",
+    }),
+    foyer_jeunes_travailleurs: typeLogement("foyer_jeunes_travailleurs", {
+      aliases: ["foyer de jeunes travailleurs", "fjt"],
+      besoins_servis: ["logement", "jeunes"], public_admis: ["jeunes"],
+      age_admis: Object.freeze({ min: 16, max: 30 }), acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge",
+    }),
+    residence_habitat_jeunes: typeLogement("residence_habitat_jeunes", {
+      aliases: ["résidence habitat jeunes", "habitat jeunes", "habitat jeune"],
+      besoins_servis: ["logement", "jeunes"], public_admis: ["jeunes"],
+      age_admis: Object.freeze({ min: 16, max: 30 }), acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge",
+    }),
+    centre_maternel: typeLogement("centre_maternel", {
+      aliases: ["centre maternel"], besoins_servis: ["logement", "famille"],
+      public_admis: ["femmes enceintes", "mères avec enfants"], acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_specialise",
+    }),
+    centre_parental: typeLogement("centre_parental", {
+      aliases: ["centre parental"], besoins_servis: ["logement", "famille"],
+      public_admis: ["parents", "enfants"], acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_specialise",
+    }),
+    accueil_de_jour: typeLogement("accueil_de_jour", {
+      aliases: ["accueil de jour", "accueil de jour sans domicile"],
+      besoins_servis: ["logement", "accueil_de_jour", "accompagnement"],
+      public_admis: ["personnes sans domicile"], acces_libre: null,
+      orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: false, fonction: "accueille_jour",
+    }),
+    siao: typeLogement("siao", {
+      aliases: ["siao", "siao 115", "115"],
+      besoins_servis: ["logement", "orientation"], public_admis: null,
+      acces_libre: null, orientation_requise: false, urgence_possible: true,
+      hebergement_effectif: false, fonction: "oriente",
+    }),
+    ccas: typeLogement("ccas", {
+      aliases: ["centre communal d action sociale"],
+      besoins_servis: ["logement", "orientation", "accompagnement"],
+      public_admis: null, acces_libre: null, orientation_requise: null,
+      urgence_possible: false, hebergement_effectif: false, fonction: "oriente_accompagne",
+    }),
+    logement_accompagne: typeLogement("logement_accompagne", {
+      aliases: ["logement accompagné", "logement accompagne"],
+      besoins_servis: ["logement", "accompagnement"], public_admis: null,
+      acces_libre: null, orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: true, fonction: "heberge_accompagne",
+    }),
+    intermediation_locative: typeLogement("intermediation_locative", {
+      aliases: ["intermédiation locative", "intermediation locative"],
+      besoins_servis: ["logement", "accompagnement"], public_admis: null,
+      acces_libre: null, orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: false, fonction: "accompagne",
+    }),
+    avdl: typeLogement("avdl", {
+      aliases: ["avdl", "accompagnement vers et dans le logement"],
+      besoins_servis: ["logement", "accompagnement"], public_admis: null,
+      acces_libre: null, orientation_requise: null, urgence_possible: false,
+      hebergement_effectif: false, fonction: "accompagne",
+    }),
+    fsl: typeLogement("fsl", {
+      aliases: ["fsl", "fonds de solidarité pour le logement"],
+      besoins_servis: ["logement", "financement", "maintien_dans_le_logement"],
+      public_admis: null, acces_libre: null, orientation_requise: null,
+      urgence_possible: false, hebergement_effectif: false, fonction: "finance_aide_maintien",
+    }),
+    mecs: typeLogement("mecs", {
+      aliases: ["mecs", "maison d enfants à caractère social", "maison d enfants"],
+      besoins_servis: ["protection_enfance"], public_admis: ["enfants", "adolescents"],
+      acces_libre: null, orientation_requise: true, urgence_possible: false,
+      hebergement_effectif: true, fonction: "protection_enfance",
+    }),
+  });
+
   /* Un tag, sa valeur (ou plusieurs), et la force de ce qu'il prouve. */
   const t = (cle, valeurs, preuve, note) => Object.freeze({
     cle,
@@ -149,9 +299,12 @@
       id: "logement", capacite: "housing_assistance",
       categories: [c("hebergement", PREUVE.CERTAINE), c("asso", PREUVE.FAIBLE),
                    c("mairie", PREUVE.FAIBLE)],
-      types: ["hebergement_urgence", "chrs", "residence_sociale", "maison_relais",
-              "pension_de_famille", "abri_de_nuit", "foyer", "accueil_de_nuit",
-              "service_logement"],
+      types: ["hebergement_urgence", "chu", "chrs", "residence_sociale",
+              "maison_relais", "pension_de_famille", "foyer", "foyer_hebergement",
+              "foyer_jeunes_travailleurs", "residence_habitat_jeunes",
+              "centre_maternel", "centre_parental", "accueil_de_jour", "siao",
+              "ccas", "logement_accompagne", "intermediation_locative", "avdl",
+              "fsl", "abri_de_nuit", "accueil_de_nuit", "service_logement"],
       tags: [
         /* DORMIR CE SOIR N'EST PAS ÊTRE LOGÉ QUELQUE PART.
 
@@ -178,9 +331,6 @@
         t("amenity", ["refugee_site", "dormitory"], PREUVE.CERTAINE),
         t("social_facility", ["group_home", "assisted_living"], PREUVE.FORTE,
           "foyer, résidence, CHRS : un vrai hébergement, mais pas une place ce soir"),
-        /* Un EHPAD n'est une réponse pour personne qui dort dehors. Il reste
-           trouvable — c'est un hébergement — au dernier rang de la preuve. */
-        t("social_facility", ["nursing_home"], PREUVE.FAIBLE),
         t("amenity", ["social_facility"], PREUVE.FAIBLE),
       ],
       services: ["shelter", "housing", "accommodation", "night_shelter"],
@@ -576,7 +726,7 @@
     BESOINS.flatMap((b) => b.categories.map((k) => k.id)))].sort());
 
   root.AutourAideTaxonomie = Object.freeze({
-    PREUVE, BESOINS, BESOIN_OUVERT, CATEGORIES_REQUISES,
+    PREUVE, BESOINS, BESOIN_OUVERT, CATEGORIES_REQUISES, TYPES_LOGEMENT,
     besoin, parCapacite, capacites, capacitesVides, tagsARecolter,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

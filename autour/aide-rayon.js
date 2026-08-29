@@ -34,6 +34,19 @@
      n'en est pas un. */
   const PALIERS = Object.freeze([3000, 5000, 10000, 20000]);
 
+  /* Le rayon sert à trouver des candidats ; le trajet sert à les classer.
+     La distance à vol d'oiseau seule est trop trompeuse en ville et ne doit
+     plus être le proxy principal de l'accès réel. Quand aucun ETA n'est fourni,
+     on garde l'estimation locale du moteur (environ 80 m/min à pied), sans la
+     présenter comme un temps réel. */
+  const PALIERS_TRAJET = Object.freeze([
+    Object.freeze({ max: 10, priorite: 4 }),
+    Object.freeze({ max: 20, priorite: 3 }),
+    Object.freeze({ max: 30, priorite: 2 }),
+    Object.freeze({ max: 45, priorite: 1 }),
+    Object.freeze({ max: Infinity, priorite: 0 }),
+  ]);
+
   /* Assez pour choisir, pas assez pour noyer. En dessous, on élargit ; à
      partir de là, on s'arrête même si un palier plus large en donnerait
      davantage — parce que « davantage » n'est pas « mieux ». */
@@ -49,6 +62,40 @@
   }
 
   const dernier = (courant) => palierSuivant(courant) === null;
+
+  function minutesTrajet(lieu) {
+    const l = lieu || {};
+    const eta = l.rankEta && l.rankEta.minutes != null
+      ? l.rankEta.minutes
+      : l.rankBreakdown && l.rankBreakdown.etaMinutes != null
+        ? l.rankBreakdown.etaMinutes : null;
+    const direct = Number(eta);
+    if (Number.isFinite(direct) && direct >= 0) return direct;
+    const distance = Number(l.rankDistance != null
+      ? l.rankDistance
+      : l.rankBreakdown && l.rankBreakdown.distance);
+    if (!Number.isFinite(distance) || distance < 0) return null;
+    return Math.max(1, Math.round(distance / 80));
+  }
+
+  function palierTrajet(minutesOuLieu) {
+    const minutes = typeof minutesOuLieu === "object"
+      ? minutesTrajet(minutesOuLieu) : Number(minutesOuLieu);
+    if (!Number.isFinite(minutes) || minutes < 0) return null;
+    return PALIERS_TRAJET.find((p) => minutes <= p.max) || null;
+  }
+
+  /* Compare d'abord les grandes expériences de trajet, puis les minutes à
+     l'intérieur d'un même palier. Une aide à 12 min reste devant une aide à
+     25 min, tandis qu'une différence de quelques secondes ne réordonne pas
+     des résultats équivalents. */
+  function comparerTemps(a, b) {
+    const pa = palierTrajet(a), pb = palierTrajet(b);
+    if (pa && pb && pa.priorite !== pb.priorite) return pb.priorite - pa.priorite;
+    const ma = minutesTrajet(a), mb = minutesTrajet(b);
+    if (Number.isFinite(ma) && Number.isFinite(mb) && ma !== mb) return ma - mb;
+    return 0;
+  }
 
   /* ===================================================================
      FAUT-IL ÉLARGIR ?
@@ -111,7 +158,8 @@
   const plan = () => PALIERS.slice();
 
   root.AutourAideRayon = Object.freeze({
-    PALIERS, SUFFISANT,
-    premier, palierSuivant, dernier, evaluer, portee, annonce, plan,
+    PALIERS, PALIERS_TRAJET, SUFFISANT,
+    premier, palierSuivant, dernier, minutesTrajet, palierTrajet, comparerTemps,
+    evaluer, portee, annonce, plan,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
