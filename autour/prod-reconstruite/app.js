@@ -1555,10 +1555,41 @@ async function chargerProfil() {
     if (error) throw error;
     monProfil = data || null;
     if (monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
+    lireConsultationCompte();
     return monProfil;
   } catch (e) {
     console.error("Profil indisponible :", e.message || e);
     return null;
+  }
+}
+/* La date de dernière consultation de « Pour toi » vit sur le compte quand
+   la base la porte : c'est elle qui dit, sur un appareil neuf, ce qui est
+   réellement nouveau. Tant que la colonne n'existe pas, la mémoire locale
+   fait foi et on cesse d'interroger le compte. */
+let consultationCompte = null;
+let consultationCompteBloquee = false;
+async function lireConsultationCompte() {
+  if (consultationCompteBloquee || !sb || !moiId || !estConnecte()) return null;
+  try {
+    const { data, error } = await sb.from("profiles").select("pourtoi_consulte_le").eq("id", moiId).maybeSingle();
+    if (error) throw error;
+    const t = data && data.pourtoi_consulte_le ? Date.parse(data.pourtoi_consulte_le) : NaN;
+    consultationCompte = Number.isFinite(t) ? t : null;
+  } catch (e) {
+    consultationCompteBloquee = true;
+    consultationCompte = null;
+  }
+  majPastillePourToi();
+  return consultationCompte;
+}
+async function ecrireConsultationCompte(marque) {
+  if (consultationCompteBloquee || !sb || !moiId || !estConnecte()) return;
+  try {
+    const { error } = await sb.from("profiles").update({ pourtoi_consulte_le: new Date(marque).toISOString() }).eq("id", moiId);
+    if (error) throw error;
+    consultationCompte = marque;
+  } catch (e) {
+    consultationCompteBloquee = true;
   }
 }
 const REPRISES = /* @__PURE__ */ new Map();
@@ -3223,6 +3254,7 @@ function finaliserFusion(opts) {
     ouvrirLieuPartage();
   }
   if (document.body.classList.contains("pourtoi-ouvert")) majPourToi();
+  else majPastillePourToi();
   PERF.travail("reconstruction", debutCpu);
 }
 function fusionnerLots(lots, opts) {
@@ -8146,6 +8178,10 @@ const POURTOI_GROUPES_STATUT = Object.freeze({
   aNePasManquer: "pourtoi-a-ne-pas-manquer"
 });
 const POURTOI_NOUVEAU_MS = 72 * 3600 * 1e3;
+const CLE_POURTOI_ANNONCE = "autour:pourtoi-annonce:v1";
+const CLE_POURTOI_CONSULTE = "autour:pourtoi-consulte:v1";
+const POURTOI_PASTILLE_MAX = 9;
+const POURTOI_MEMOIRE_MAX = 400;
 function marquesVues() {
   try {
     const v = JSON.parse(localStorage.getItem(CLE_POURTOI_VU) || "[]");
@@ -8157,6 +8193,30 @@ function marquesVues() {
 function ecrireMarquesVues(ids) {
   try {
     localStorage.setItem(CLE_POURTOI_VU, JSON.stringify([...ids].slice(-200)));
+  } catch (e) {
+  }
+}
+/* La pastille tient son propre registre. « Vu » dit qu'une carte a été
+   ouverte ou acquittée ; « annoncé » dit seulement qu'elle a déjà été
+   portée à la connaissance de la personne. Confondre les deux ferait
+   griser les cartes dès qu'on ouvre le panneau. */
+function marquesAnnoncees() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLE_POURTOI_ANNONCE) || "[]");
+    return new Set(Array.isArray(v) ? v : []);
+  } catch (e) {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function ecrireMarquesAnnoncees(ids) {
+  try {
+    localStorage.setItem(CLE_POURTOI_ANNONCE, JSON.stringify([...ids].slice(-POURTOI_MEMOIRE_MAX)));
+  } catch (e) {
+  }
+}
+function ecrireConsultationPourToi(marque) {
+  try {
+    localStorage.setItem(CLE_POURTOI_CONSULTE, String(marque));
   } catch (e) {
   }
 }
@@ -8199,13 +8259,21 @@ function pourquoiAnnonce(x) {
     solide: true
   };
 }
+function estCanonique(l) {
+  /* Un doublon rattaché à un événement canonique n'est jamais proposé :
+     il ferait compter deux fois la même soirée. */
+  if (!l) return false;
+  const maitre = l.duplicate_of || l.duplicateOf;
+  return !maitre || String(maitre) === String(l.id);
+}
 function bassinPourToi() {
   /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
      puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
      identifiant déjà présent n'est jamais remplacé. */
-  if (!evenementsMetropole.length) return lieux;
-  const vus = new Set(lieux.map((l) => l && l.id));
-  return lieux.concat(evenementsMetropole.filter((l) => l && !vus.has(l.id)));
+  const locaux = lieux.filter(estCanonique);
+  if (!evenementsMetropole.length) return locaux;
+  const vus = new Set(locaux.map((l) => l && l.id));
+  return locaux.concat(evenementsMetropole.filter((l) => l && !vus.has(l.id) && estCanonique(l)));
 }
 function propositionsPourToi(limite = POURTOI_MAX) {
   if (!ENVIES || !ENVIES.choisies().length || !ANNONCES) return [];
@@ -8330,8 +8398,14 @@ function majPourToi() {
   const nonVues = propositions.filter((x) => !x.vu && x.groupe === "nouvelles_annonces").length;
   const toutVu = $("#ptToutVu");
   if (toutVu) toutVu.hidden = !nonVues;
-  const pastille = $("#notifPastille");
-  if (pastille) pastille.hidden = !nonVues;
+  /* Le panneau est à l'écran : ce qu'il montre cesse d'être une nouveauté
+     à annoncer. Fermé, la pastille compte ce qui n'a jamais été exposé. */
+  if (pourToiOuvert()) {
+    noterConsultationPourToi(propositions);
+    peindrePastillePourToi(0);
+  } else {
+    peindrePastillePourToi(nouveautesPourToi(propositions).length);
+  }
   brancherPourToi(propositions);
   PERF.travail("pour_toi", debutCpu);
 }
@@ -8388,6 +8462,55 @@ function brancherPourToi(propositions) {
     marquerVu(propositions.map((x) => x.l.id));
     majPourToi();
   };
+}
+/* Une nouveauté, c'est une proposition pertinente qui n'a jamais été
+   portée à la connaissance de la personne. Pas un horaire qui bouge, pas
+   une resynchronisation : le registre est tenu par identifiant canonique,
+   donc le même événement ne compte qu'une fois. */
+function retenirAnnoncees(propositions) {
+  const annoncees = marquesAnnoncees();
+  let ajouts = 0;
+  (propositions || []).forEach((x) => {
+    const id = x && x.l ? x.l.id : null;
+    if (id == null || annoncees.has(id)) return;
+    annoncees.add(id);
+    ajouts++;
+  });
+  if (ajouts) ecrireMarquesAnnoncees(annoncees);
+  return ajouts;
+}
+function nouveautesPourToi(propositions) {
+  const annoncees = marquesAnnoncees();
+  if (!annoncees.size && consultationCompte) {
+    /* Ce compte a déjà consulté « Pour toi » ailleurs : ce qui est là
+       n'est pas neuf pour lui, seule la suite le sera. */
+    retenirAnnoncees(propositions);
+    return [];
+  }
+  return (propositions || []).filter((x) => x && x.l && x.l.id != null && !annoncees.has(x.l.id));
+}
+function noterConsultationPourToi(propositions) {
+  const ajouts = retenirAnnoncees(propositions);
+  const premiere = !consultationCompte;
+  const marque = Date.now();
+  ecrireConsultationPourToi(marque);
+  /* Le compte n'est touché que quand la consultation apprend quelque chose :
+     repeindre un panneau déjà ouvert ne doit pas écrire à chaque
+     rafraîchissement de données. */
+  if (ajouts || premiere) ecrireConsultationCompte(marque);
+}
+function peindrePastillePourToi(nombre) {
+  const compte = Math.max(0, Number(nombre) || 0);
+  const pastille = $("#notifPastille");
+  if (pastille) {
+    pastille.hidden = !compte;
+    pastille.textContent = compte ? compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte : "";
+  }
+  const cloche = $("#btnNotifs");
+  if (cloche) cloche.setAttribute("aria-label", compte ? "Pour toi, " + compte + " nouveaut\xE9" + (compte > 1 ? "s" : "") : "Pour toi");
+}
+function majPastillePourToi() {
+  peindrePastillePourToi(nouveautesPourToi(propositionsPourToi(POURTOI_TOUT_MAX)).length);
 }
 function marquerVu(ids) {
   const vues = marquesVues();
