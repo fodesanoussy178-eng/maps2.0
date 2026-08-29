@@ -263,7 +263,8 @@ function ouvrirDetail(id){
      défilement compris. */
   ouvrirFeuille(
     '<div class="d-lieu" id="ficheLieu">'+
-    (ficheAide ? couvertureAide(l, c) : couvertureLieu(l, c))+
+    (ficheAide ? couvertureAide(l, c) : (estTemporaire(l)
+      ? couvertureEvenement(l, c) : couvertureLieu(l, c)))+
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
     (prix ? '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+esc(prix)+'</span>' : '')+'</div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+

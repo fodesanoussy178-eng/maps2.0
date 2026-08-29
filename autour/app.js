@@ -157,7 +157,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=e8bab4dc"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=81334446"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -2314,9 +2314,9 @@ async function chargerPublications(lat,lng){
    base est plus ancienne que la migration de provenance, `IMAGES` retrouve la
    source depuis l'hébergeur plutôt que de la deviner. */
 function visuelEvenement(e){
-  const v = IMAGES && IMAGES.visuel({
+  const v = IMAGES && IMAGES.visuelEvenement({
     image_url:e.image_url || "",
-    image_source:e.image_source || (IMAGES ? IMAGES.normaliserAncienneSource({
+    image_source:e.image_source || (IMAGES && e.image_url ? IMAGES.normaliserAncienneSource({
       image:e.image_url, source:e.primary_source,
     }) : ""),
     image_source_url:e.image_source_url || e.source_url || "",
@@ -2333,6 +2333,7 @@ function visuelEvenement(e){
     image_url:v.image_url, image_source:v.image_source,
     image_source_url:v.image_source_url, image_author:v.image_author,
     image_license:v.image_license, image_updated_at:v.image_updated_at,
+    image_type:v.image_type, image_confidence:v.image_confidence,
     image_scope:"evenement",
   };
 }
@@ -6221,6 +6222,21 @@ function attributionPhoto(l){
   }).join(" · ");
 }
 
+function provenanceImage(l){
+  if(!l) return "";
+  const photo = l.imageAttribution ? attributionPhoto(l) : "";
+  if(photo) return "Photo : "+photo;
+  const url = urlSiteSure(l.image_source_url || l.imageSourceUrl);
+  if(!url) return "";
+  const noms = {
+    openagenda:"Agenda officiel", datatourisme:"DATAtourisme",
+    structure:"Organisateur", site_officiel:"Lieu officiel",
+    autour:"Autour", wikimedia_commons:"Wikimedia Commons",
+  };
+  const nom = noms[l.image_source || l.imageSource] || "Source déclarée";
+  return '<a href="'+esc(url)+'" target="_blank" rel="noopener">Source : '+esc(nom)+'</a>';
+}
+
 /* Une image est un fait, pas une décoration : les fiches Aide n'emploient que
    des photos dont on sait dire l'origine — une licence ouverte explicite, une
    structure vérifiée, Commons, l'affiche d'un organisateur, le site officiel
@@ -6245,8 +6261,20 @@ function couvertureAide(l, c){
   const teinte = COULEURS_CAT[l.cat] || "#B82A3A";
   return '<figure class="aide-couverture" style="--teinte:'+teinte+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
-    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt="">' : '')+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
     (photo && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
+    '</figure>';
+}
+
+function couvertureEvenement(l, c){
+  const photo = l && l.image ? l.image : "";
+  const teinte = COULEURS_CAT[l && l.cat] || "#E23A8C";
+  return '<figure class="event-couverture'+(photo?'':' image-absente')+'" style="--teinte:'+teinte+'">'+
+    fallbackVisuelEvenement(l, c, "event-fallback-detail")+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
+    (photo && provenanceImage(l) ? '<figcaption>'+provenanceImage(l)+'</figcaption>' : '')+
     '</figure>';
 }
 
@@ -6254,7 +6282,8 @@ function couvertureLieu(l, c){
   if(!l) return "";
   return '<figure class="aide-couverture'+(l.image?'':' sans-photo')+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
-    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt="">' : '')+
+    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt=""'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
     (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
 }
 
@@ -10140,6 +10169,55 @@ function dateProposition(l){
   return heure ? jour+" · "+heure : jour;
 }
 
+function fallbackVisuelEvenement(l, c, classe){
+  const f = IMAGES && IMAGES.fallbackEvenement
+    ? IMAGES.fallbackEvenement(l && l.cat) : {key:"event", emoji:(c && c.emoji) || "✨"};
+  return '<span class="'+classe+' event-fallback event-fallback-'+esc(f.key || "event")+'" aria-hidden="true">'+
+    '<i>'+esc(f.emoji || (c && c.emoji) || "✨")+'</i><small>Visuel Autour</small></span>';
+}
+
+/* Les images sont décoratives dans les listes : une panne réseau les retire
+   proprement et laisse la composition Autour en place. Le même gestionnaire
+   sert à la fiche, où il retire aussi un crédit qui ne correspondrait plus à
+   une image visible. */
+function imageEvenementErreur(img){
+  if(!img) return;
+  const parent = img.parentElement;
+  const figure = img.closest ? img.closest("figure") : null;
+  if(parent) parent.classList.add("image-absente");
+  if(figure){
+    figure.classList.add("image-absente", "sans-photo");
+    const credit = figure.querySelector("figcaption");
+    if(credit) credit.remove();
+  }
+  img.remove();
+}
+
+function imageEvenementChargee(img){
+  if(!img) return;
+  const parent = img.parentElement;
+  if(parent) parent.classList.add("image-ready");
+  img.classList.add("image-ready");
+  const figure = img.closest ? img.closest(".event-couverture") : null;
+  if(!figure) return;
+  const classes = IMAGES && IMAGES.ratioImage
+    ? IMAGES.ratioImage(img.naturalWidth, img.naturalHeight).split(/\s+/).filter(Boolean)
+    : [];
+  figure.classList.remove("event-couverture-paysage", "event-couverture-portrait",
+    "event-couverture-carre", "event-couverture-inconnue", "event-couverture-basse");
+  figure.classList.add(...classes, "image-ready");
+}
+
+function visuelCarteEvenement(l, c, taille){
+  const classeImage = taille === "npt" ? "npt-img" : "pt-img";
+  const classeConteneur = taille === "npt" ? "npt-image-shell" : "pt-image-shell";
+  return '<span class="'+classeConteneur+'" aria-hidden="true">'+
+    fallbackVisuelEvenement(l, c, "event-fallback-carte")+
+    '<img class="'+classeImage+'" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async"'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">'+
+    '</span>';
+}
+
 function carteProposition(x){
   const l = x.l;
   const dist = jeSuisDansLaZoneRegardee() ? formatDist(distanceDepuisZone(l)) : "";
@@ -10150,8 +10228,9 @@ function carteProposition(x){
   /* L'image est celle de la source, sous licence. Sans image, un pictogramme
      de catégorie — jamais une photo d'illustration prise ailleurs. */
   const visuel = l.image
-    ? '<img class="pt-img" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async">'
-    : '<span class="pt-img pt-img-vide" aria-hidden="true">'+c.emoji+'</span>';
+    ? visuelCarteEvenement(l, c, "pt")
+    : '<span class="pt-img pt-img-vide pt-image-shell event-fallback-carte" aria-hidden="true">'+
+      fallbackVisuelEvenement(l, c, "")+'</span>';
   return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'">'+
     visuel+
     '<div class="pt-txt">'+
@@ -10786,8 +10865,9 @@ function blocNouveauPourToi(){
   const l = x.l;
   const c = categorieAffichee(l);
   const visuel = l.image
-    ? '<img class="npt-img" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async">'
-    : '<span class="npt-img npt-img-vide" aria-hidden="true">'+c.emoji+'</span>';
+    ? visuelCarteEvenement(l, c, "npt")
+    : '<span class="npt-img npt-img-vide npt-image-shell event-fallback-carte" aria-hidden="true">'+
+      fallbackVisuelEvenement(l, c, "")+'</span>';
   /* Date et lieu, tels quels : sans date exploitable la ligne disparaît
      plutôt que d'écrire une approximation. */
   const bas = [dateProposition(l), (l.cp || l.adresse || "").trim()]
@@ -11035,7 +11115,8 @@ function carteRecommandation(l){
       '<i>'+c.emoji+'</i>'+
       (l.image
         ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image)+'" '+
-          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')">'
+          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')" '+
+          'onerror="imageEvenementErreur(this)">'
         : '')+
       (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
     '</figure>';
