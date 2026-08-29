@@ -64,6 +64,17 @@ test("les surveillances sont rendues avant les recommandations", () => {
   assert.doesNotMatch(tete, /ptGerer/);
 });
 
+test("les deux fonctions de l'avatar existent vraiment", () => {
+  /* Elles étaient appelées sans être définies. `avatarChoisi` part de
+     `majEnteteLieu`, que `demarrer()` exécute : la ReferenceError coupait
+     l'amorçage avant la carte, et Explorer restait vide. Le défaut n'était
+     visible nulle part tant que la production servait l'ancien arbre. */
+  ["avatarChoisi", "sauvegarderAvatar"].forEach((nom) => {
+    assert.match(source, new RegExp("function\\s+" + nom + "\\s*\\("),
+      nom + " est appelée mais n'est pas définie");
+  });
+});
+
 test("l'avatar est un choix visuel local réutilisé près de la ville", () => {
   assert.match(source, /const AVATARS_ONBOARDING = Object\.freeze\(\["🧑🏻", "🧑🏼", "🧑🏽", "🧑🏾", "🧑🏿"\]\)/);
   assert.match(source, /avatar:\"\"/);

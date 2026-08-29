@@ -8002,6 +8002,29 @@ function enregistrerProfil(){
   try{ localStorage.setItem("autour:profil", JSON.stringify(PROFIL)); }catch(e){}
 }
 
+/* L'AVATAR. Ces deux fonctions étaient appelées sans jamais être définies :
+   `avatarChoisi` depuis `majEnteteLieu`, qui s'exécute dans `demarrer()`. La
+   ReferenceError coupait donc l'amorçage AVANT la carte — Explorer restait
+   vide alors qu'une fiche ouverte par URL, qui ne passe pas par là,
+   fonctionnait. Le défaut était invisible tant que la production servait
+   l'ancien arbre, qui n'a pas d'avatar.
+
+   L'avatar vit dans PROFIL comme le reste des préférences et ne quitte jamais
+   le navigateur. On n'écrit que ce que la liste fermée propose. */
+function avatarChoisi(){
+  return PROFIL && typeof PROFIL.avatar === "string" ? PROFIL.avatar : "";
+}
+
+function sauvegarderAvatar(avatar){
+  PROFIL.avatar = AVATARS_ONBOARDING.includes(avatar) ? avatar : "";
+  enregistrerProfil();
+  majEnteteLieu();
+  const avatars = $("#onboardingAvatars");
+  if(avatars) avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
+    bouton.setAttribute("aria-pressed", String(bouton.dataset.avatar === avatarChoisi()));
+  });
+}
+
 function mettreAJourProfil(action, valeur){
   if(!personnalisation) return;
   const h = new Date().getHours();
