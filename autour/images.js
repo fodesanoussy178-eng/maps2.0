@@ -402,7 +402,11 @@
     if (!(w > 0) || !(h > 0)) return "event-couverture-inconnue";
     const ratio = w / h;
     const forme = ratio >= 1.35 ? "paysage" : ratio <= 0.75 ? "portrait" : "carre";
-    return "event-couverture-" + forme + (w < 600 || h < 600 ? " event-couverture-basse" : "");
+    /* Une seule dimension courte ne suffit pas à signaler un upscale visible :
+       une affiche 500×1200 est affichée en réduction dans son cadre portrait.
+       On réserve donc l'état « basse » aux sources dont les deux dimensions
+       sont inférieures au seuil de rendu. */
+    return "event-couverture-" + forme + (w < 600 && h < 600 ? " event-couverture-basse" : "");
   }
 
   /* Ce qu'on peut affirmer sans le lire : une affiche déposée par l'organisme

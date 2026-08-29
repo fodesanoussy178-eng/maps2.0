@@ -471,6 +471,7 @@ test("le ratio distingue paysage, affiche, carré et petite source sans l'upscal
   assert.equal(IMAGES.ratioImage(600, 900), "event-couverture-portrait");
   assert.equal(IMAGES.ratioImage(1000, 1000), "event-couverture-carre");
   assert.equal(IMAGES.ratioImage(320, 480), "event-couverture-portrait event-couverture-basse");
+  assert.equal(IMAGES.ratioImage(500, 1200), "event-couverture-portrait");
 });
 
 /* ======================================================================== */
