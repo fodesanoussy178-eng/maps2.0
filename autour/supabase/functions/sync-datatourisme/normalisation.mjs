@@ -367,11 +367,40 @@ export function normaliserEvenement(poi, options = {}) {
   };
 }
 
-/* ---- La zone décide de ce qui la concerne ------------------------------- */
-export function dansLaZone(lat, lng, area) {
+/* ---- La zone décide de ce qui la concerne -------------------------------
+
+   LE RECTANGLE NE SUFFIT PAS À DIRE « MÉTROPOLE ».
+
+   Un rectangle assez large pour contenir Halluin au nord et Carnin au sud
+   contient aussi Orchies, Cysoing, Bailleul et un morceau de Belgique. Le
+   rectangle sert donc à INTERROGER le catalogue ; ce qui décide de garder,
+   c'est la liste des communes de la zone, quand elle existe.
+
+   On compare des NOMS, pas des codes INSEE : `insee_code` est NULL sur la
+   totalité des événements de la base — aucune source amont ne le fournit —
+   tandis que `city` est toujours renseigné. Une zone sans `commune_keys`
+   garde le comportement d'avant : le rectangle seul. */
+export function cleCommune(nom) {
+  return String(nom || "")
+    .toLowerCase()
+    .replace(/œ/g, "oe").replace(/æ/g, "ae")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+export function communeDeLaZone(ville, area) {
+  const liste = area && Array.isArray(area.commune_keys) ? area.commune_keys : null;
+  if (!liste || !liste.length) return true;   // zone sans liste : le rectangle décide seul
+  const cle = cleCommune(ville);
+  return cle ? liste.includes(cle) : false;
+}
+
+export function dansLaZone(lat, lng, area, ville) {
   if (!area || lat == null || lng == null) return false;
-  return lat >= area.min_lat && lat <= area.max_lat
-    && lng >= area.min_lng && lng <= area.max_lng;
+  if (lat < area.min_lat || lat > area.max_lat) return false;
+  if (lng < area.min_lng || lng > area.max_lng) return false;
+  return communeDeLaZone(ville, area);
 }
 
 /* ===========================================================================
@@ -537,8 +566,11 @@ export function normaliserLot(pois, area, options = {}) {
       continue;
     }
     if (!normalise) { rejets.push({ raison: "inexploitable" }); continue; }
-    if (!dansLaZone(normalise.event.lat, normalise.event.lng, area)) {
-      rejets.push({ raison: "hors_zone" });
+    if (!dansLaZone(normalise.event.lat, normalise.event.lng, area, normalise.event.city)) {
+      rejets.push({
+        raison: communeDeLaZone(normalise.event.city, area) ? "hors_rectangle" : "hors_communes",
+        ville: normalise.event.city || null,
+      });
       continue;
     }
     retenus.push(normalise);

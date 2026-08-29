@@ -119,11 +119,21 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
     sourceUrl: sourceUrl(event, source, externalId),
     now,
   });
-  const annonce = normaliserAnnonce(event, {
-    source: "openagenda",
-    externalId,
-    sourceUrl: sourceUrl(event, source, externalId),
-  });
+  /* LA DATE D'ANNONCE ÉTAIT LÀ, ET PERSONNE NE LA LISAIT.
+     OpenAgenda publie `createdAt` sur chaque fiche : le moment où l'annonce
+     est apparue dans l'agenda. La cascade n'accepte que `datePublished`,
+     `publishedAt`, `publicationDate`, `releaseDate` — aucun de ces noms.
+     Résultat : `announced_at` était NULL sur toute la base, « Nouvelles
+     annonces » ne se remplissait jamais, et la pastille rouge n'avait rien à
+     compter. On ne fabrique rien ici : on nomme ce que la source dit déjà.
+     `updatedAt` reste dehors — une retouche d'horaire n'est pas une annonce. */
+  const annonce = normaliserAnnonce(
+    event.createdAt ? {...event, datePublished: event.createdAt} : event,
+    {
+      source: "openagenda",
+      externalId,
+      sourceUrl: sourceUrl(event, source, externalId),
+    });
   const rawEvent = annonce.tagEvidence?.length
     ? {...event, announcement_tag_evidence: annonce.tagEvidence}
     : event;

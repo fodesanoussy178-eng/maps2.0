@@ -174,12 +174,15 @@ async function fetchAvecReprise(url: string): Promise<Response> {
 type Zone = {
   id: number; code: string; name: string; timezone: string;
   min_lat: number; min_lng: number; max_lat: number; max_lng: number;
+  /* La liste des communes de la zone. Quand elle est renseignée, c'est elle
+     qui décide, et le rectangle ne sert plus qu'à interroger le catalogue. */
+  commune_keys: string[] | null;
 };
 
 async function zones(codeDemande: string | null): Promise<Zone[]> {
   const filtre = codeDemande ? `&code=eq.${encodeURIComponent(codeDemande)}` : "";
   const reponse = await rest(
-    `event_areas?select=id,code,name,timezone,min_lat,min_lng,max_lat,max_lng` +
+    `event_areas?select=id,code,name,timezone,min_lat,min_lng,max_lat,max_lng,commune_keys` +
     `&enabled=is.true${filtre}&order=priorite.asc`);
   if (!reponse.ok) throw new Error(`lecture des zones : HTTP ${reponse.status}`);
   return await reponse.json();
