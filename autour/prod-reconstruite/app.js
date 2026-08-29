@@ -1972,6 +1972,75 @@ async function chargerAnnoncesCanoniques(lat, lng) {
     return [];
   }
 }
+/* LE BASSIN, POUR « POUR TOI » SEULEMENT.
+
+   `lieux` est hyper-local : cinq kilomètres, ou ce que la carte montre. C'est
+   ce qu'il faut pour Maintenant — « ouvert en ce moment » à trente kilomètres
+   ne veut rien dire — et cette collection ne bouge pas d'un pouce ici.
+
+   Mais « Pour toi » ne répond pas à la même question. Quelqu'un à Tourcoing
+   qui suit le rap doit voir l'artiste annoncé au Zénith de Lille : ce n'est
+   pas sa commune qui décide, c'est son bassin de vie. On charge donc, à côté
+   et sans jamais la mélanger, une seconde collection à l'échelle de la
+   métropole, dont Pour toi est le seul lecteur.
+
+   Chaque événement en rapporte le bassin. `classerPourToi` sait déjà quoi en
+   faire : un événement du MÊME bassin que la personne échappe au plafond de
+   distance, quel que soit le nombre de kilomètres. La règle existait, il lui
+   manquait la donnée. */
+const RAYON_METROPOLE_M = 25e3;
+const METROPOLE_LIMITE = 300;
+let evenementsMetropole = [];
+let metropoleEnCours = null;
+function empriseMetropole(lat, lng) {
+  const dLat = RAYON_METROPOLE_M / 111320;
+  const dLng = RAYON_METROPOLE_M / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+  return { s: lat - dLat, n: lat + dLat, o: lng - dLng, e: lng + dLng };
+}
+async function chargerEvenementsMetropole(lat, lng) {
+  if (!sbLecture) return [];
+  const b = empriseMetropole(lat, lng);
+  const params = { p_sud: Number(b.s), p_ouest: Number(b.o), p_nord: Number(b.n), p_est: Number(b.e), p_limite: METROPOLE_LIMITE };
+  const fini = PERF.requete("supabase_metropole");
+  try {
+    const [base, annonces] = await Promise.all([
+      sbLecture.rpc("evenements_proches", params),
+      sbLecture.rpc("annonces_proches", params)
+    ]);
+    if (base.error) {
+      journal.warn("Bassin m\xE9tropolitain indisponible :", base.error.message);
+      return [];
+    }
+    const parId = new Map((Array.isArray(annonces.data) ? annonces.data : []).map((e) => [String(e.id), e]));
+    /* Le bassin de l'événement est celui de la personne : il vient d'être lu
+       dans la même emprise, il ne peut pas en être ailleurs. C'est ce qui
+       autorise `classerPourToi` à ignorer la distance. */
+    const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+    return (Array.isArray(base.data) ? base.data : []).map((event) => {
+      const canonique = versEvenementCanonique({ ...event, ...parId.get(String(event.id)) || {} });
+      if (canonique && bassin) {
+        canonique.metro_area = bassin;
+        canonique.metro_area_label = bassinTerritorialActif?.name || bassinTerritorialActif?.nom || "";
+      }
+      return canonique;
+    }).filter(Boolean);
+  } catch (error) {
+    journal.warn("Bassin m\xE9tropolitain indisponible :", error?.message || error);
+    return [];
+  } finally {
+    fini();
+  }
+}
+function rafraichirMetropole(lat, lng) {
+  const cle = Number(lat).toFixed(2) + "," + Number(lng).toFixed(2);
+  if (metropoleEnCours === cle) return;
+  metropoleEnCours = cle;
+  chargerEvenementsMetropole(lat, lng).then((liste) => {
+    if (!liste.length) return;
+    evenementsMetropole = liste;
+    majPourToi();
+  }).catch(() => {});
+}
 async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee) {
   if (requetesCouchesSupabase.has(cle)) return requetesCouchesSupabase.get(cle);
   let promesse;
@@ -2001,6 +2070,10 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee) {
       ecrireCacheCouchesSupabase(cle, entree);
       publierCoucheSupabase(cle, entree, portee, lat, lng);
     }
+    /* Hors du chemin critique, et après la couche locale : le bassin ne fait
+       attendre personne, et le territoire vient d'être résolu — c'est lui qui
+       donne son nom au bassin. */
+    rafraichirMetropole(lat, lng);
     return entree;
   })().finally(() => {
     if (requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
@@ -8126,10 +8199,18 @@ function pourquoiAnnonce(x) {
     solide: true
   };
 }
+function bassinPourToi() {
+  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
+     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
+     identifiant déjà présent n'est jamais remplacé. */
+  if (!evenementsMetropole.length) return lieux;
+  const vus = new Set(lieux.map((l) => l && l.id));
+  return lieux.concat(evenementsMetropole.filter((l) => l && !vus.has(l.id)));
+}
 function propositionsPourToi(limite = POURTOI_MAX) {
   if (!ENVIES || !ENVIES.choisies().length || !ANNONCES) return [];
   const vues = marquesVues();
-  const classes = ANNONCES.classerPourToi(lieux, {
+  const classes = ANNONCES.classerPourToi(bassinPourToi(), {
     now: Date.now(),
     interests: ENVIES.choisies(),
     seenIds: [...vues],
