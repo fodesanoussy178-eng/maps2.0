@@ -1781,6 +1781,15 @@ const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
 const CLE_PSEUDO_CREATEUR = "autour:creator_name";
 let sb = null, sbLecture = null, moiId = null, monPseudo = "";
+
+/* LE BASSIN MÉTROPOLITAIN. « Pour toi » cherche dans toute la métropole, pas
+   dans la commune où l'on se tient. Ces trois-là sont déclarés ici, et non
+   près des fonctions qui les emploient, parce que `rafraichirMetropole()` est
+   appelée pendant le chargement des couches — bien avant. */
+let bassinTerritorialActif = null;
+let evenementsMetropole = [];
+let metropoleEnCours = null;
+const METROPOLE_LIMITE = 300;
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
@@ -2424,9 +2433,17 @@ async function chargerEvenementsCanoniques(lat,lng){
   const finTerritoire = PERF.requete("supabase_territoire");
   void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
     p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
-  })).then(({error})=>{
-    if(error) console.error("Résolution du territoire :", error.message);
-  }).catch(()=>{}).finally(finTerritoire);
+  })).then(({data, error})=>{
+    /* La résolution servait uniquement à mutualiser la synchronisation ; on
+       retient désormais son résultat, parce que c'est lui qui nomme le bassin
+       dans lequel « Pour toi » a le droit de chercher. */
+    if(error){
+      console.error("Résolution du territoire :", error.message);
+      bassinTerritorialActif = null;
+      return;
+    }
+    bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
+  }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2467,6 +2484,10 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       ecrireCacheCouchesSupabase(cle, entree);
       publierCoucheSupabase(cle, entree, portee, lat, lng);
     }
+    /* Hors du chemin critique, et après la couche locale : le bassin ne fait
+       attendre personne, et le territoire vient d'être résolu — c'est lui qui
+       donne son nom au bassin. */
+    rafraichirMetropole();
     return entree;
   })().finally(()=>{
     if(requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
@@ -7584,6 +7605,25 @@ async function chargerAide(lat,lng,options){
   }
 }
 
+/* L'ANNUAIRE PUBLIC. France Travail, missions locales : ces structures ont une
+   identité officielle et un type normalisé qu'OpenStreetMap ne donne pas. On
+   les demande donc EN PREMIER, et OSM complète ensuite les objets non
+   référencés — il ne remplace jamais cette source.
+
+   Restreint aux besoins « travail » et « jeunes » : l'annuaire ne couvre pas
+   les autres, et l'interroger pour rien coûterait une requête par recherche. */
+async function lieuxAideInstitutionnels(lat, lng, contexte, signal){
+  const fournisseur = window.AutourProviders && AutourProviders.aideInstitutionnelle;
+  const besoins = contexte && Array.isArray(contexte.besoins) ? contexte.besoins : [];
+  if(!fournisseur || !besoins.some(id=> id === "travail" || id === "jeunes")) return [];
+  try{
+    const places = await fournisseur.nearby(lat, lng, { needs:besoins, radius:15000, signal });
+    return places.map(p=> AutourProviders.versInterne(p)).filter(Boolean);
+  }catch(e){
+    return [];
+  }
+}
+
 async function chargerAideVraiment(lat,lng,generation,contexte){
   charge("Recherche des points d’aide…");
   aideEtrangersEcartes = false;
@@ -7595,6 +7635,16 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
     : contexte.cats.filter(cat=>CATS_AIDE.includes(cat));
   const reseaux = reseauxPourContexteAide(contexte);
   const exploitable = await coordonnerSourcesVersionnees([
+    {
+      /* L'annuaire public d'abord : il donne le type normalisé et l'identité
+         officielle. OSM arrive ensuite compléter, jamais remplacer. */
+      charger: ()=> lieuxAideInstitutionnels(lat, lng, contexte, generation.signal),
+      publier: (locaux)=>{
+        const retenus = resultatsAideDansTerritoire(locaux || []);
+        if(retenus.length) fusionner(retenus, "permanent");
+        return !!retenus.length;
+      }
+    },
     {
       /* ---- LE RAYON PROGRESSIF ------------------------------------------
 
@@ -10217,6 +10267,9 @@ const ORDO = window.AutourOrdonnanceur || null;
    elle n'a pas le droit de retarder la carte ni « Maintenant ». */
 
 const ENVIES = window.AutourEnvies || null;
+const ANNONCES = window.AutourAnnoncesClassement || null;
+const TAXONOMIE_ANNONCES = window.AutourAnnoncesTaxonomie || null;
+const POURTOI_TOUT_MAX = 300;
 const CLE_POURTOI_VU = "autour:pourtoi-vu:v1";
 const CLE_POURTOI_MASQUES = "autour:pourtoi-masque:v1";
 const POURTOI_MAX = 6;
@@ -10280,31 +10333,136 @@ function detecteDepuis(l){
 
 /* Les propositions : des événements à venir, rattachés à une envie suivie.
    Le plus récemment détecté d'abord — c'est ce que le panneau annonce. */
-function propositionsPourToi(){
-  if(!ENVIES || !ENVIES.choisies().length) return [];
-  const maintenant = Date.now();
+/* Un doublon rattaché à un événement canonique n'est jamais proposé : il
+   ferait compter deux fois la même soirée. */
+function estCanonique(l){
+  if(!l) return false;
+  const maitre = l.duplicate_of || l.duplicateOf;
+  return !maitre || String(maitre) === String(l.id);
+}
+
+async function chargerEvenementsMetropole(bassin){
+  if(!sbLecture || !bassin) return [];
+  /* On ne demande plus un rectangle de 25 km — on demandait bien 25 km, et
+     `evenements_proches` les ramenait à 5 : elle recalcule son rayon d'après
+     le territoire qui contient le centre, et pour quelqu'un à Tourcoing c'est
+     Tourcoing, rayon 5 km. Le bassin métropolitain n'existait donc pas à
+     l'exécution.
+
+     `evenements_bassin` pose l'autre question : non pas « qu'y a-t-il à moins
+     de N kilomètres » mais « qu'y a-t-il dans MON bassin ». L'appartenance
+     territoriale décide, la distance ne plafonne plus rien — c'est le
+     classement qui la pondère ensuite. `Maintenant` continue de passer par
+     `evenements_proches`, inchangée. */
+  const fini = PERF.requete("supabase_metropole");
+  try{
+    const { data, error } = await sbLecture.rpc("evenements_bassin", {
+      p_group_slug: String(bassin),
+      p_limite: METROPOLE_LIMITE
+    });
+    if(error){
+      journal.warn("Bassin métropolitain indisponible :", error.message);
+      return [];
+    }
+    /* `metro_area` vient de la base, qui sait à quel territoire l'événement
+       appartient. On ne l'écrase pas par le bassin de la personne : affirmer
+       que tout ce qui est à 25 km est « du même bassin » ferait passer pour
+       métropolitain ce qui ne l'est pas. */
+    return (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter(Boolean);
+  }catch(error){
+    journal.warn("Bassin métropolitain indisponible :", error?.message || error);
+    return [];
+  }finally{
+    fini();
+  }
+}
+
+function rafraichirMetropole(){
+  /* Le bassin ne dépend pas de l'endroit exact où l'on se tient : se déplacer
+     de Tourcoing à Lille ne change pas la métropole. La clé de cache est donc
+     le bassin lui-même, et non des coordonnées. */
+  const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+  if(!bassin || metropoleEnCours === bassin) return;
+  metropoleEnCours = bassin;
+  chargerEvenementsMetropole(bassin).then((liste)=>{
+    if(!liste.length) return;
+    evenementsMetropole = liste;
+    majPourToi();
+  }).catch(()=>{ metropoleEnCours = null; });
+}
+
+function bassinPourToi(){
+  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
+     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
+     identifiant déjà présent n'est jamais remplacé. */
+  const locaux = lieux.filter(estCanonique);
+  if(!evenementsMetropole.length) return locaux;
+  const vus = new Set(locaux.map((l)=> l && l.id));
+  return locaux.concat(evenementsMetropole.filter((l)=> l && !vus.has(l.id) && estCanonique(l)));
+}
+
+function pourquoiAnnonce(x){
+  return {
+    /* Le classement produit cette phrase à partir des tags qui ont réellement
+       matché. Aucun libellé n'est déduit du domaine général de l'événement. */
+    texte: x.reason || "correspondance explicite avec une envie suivie",
+    solide: true
+  };
+}
+
+function dateAnnonceProposition(value){
+  if(!value) return "";
+  const t = new Date(value).getTime();
+  if(!Number.isFinite(t)) return "";
+  return new Date(t).toLocaleDateString("fr-FR", {
+    day:"numeric", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit"
+  });
+}
+
+function groupesInteretsPourToi(propositions){
+  if(!TAXONOMIE_ANNONCES) return [];
+  const groupes = new Map();
+  const ordre = (ENVIES ? ENVIES.choisies() : []).map((id)=>{
+    const canonique = TAXONOMIE_ANNONCES.normaliserInteret(id);
+    return { id:canonique, label: TAXONOMIE_ANNONCES.INTEREST_LABELS[canonique] || String(id) };
+  });
+  propositions.forEach((proposition)=>{
+    const ids = new Set((proposition.matchedInterests || []).map((id)=> TAXONOMIE_ANNONCES.normaliserInteret(id)));
+    ids.forEach((id)=>{
+      const entree = ordre.find((item)=> item.id === id);
+      if(!entree) return;
+      if(!groupes.has(id)) groupes.set(id, { id, label: entree.label, propositions: [] });
+      groupes.get(id).propositions.push(proposition);
+    });
+  });
+  return ordre.map((item)=> groupes.get(item.id)).filter(Boolean);
+}
+
+function propositionsPourToi(limite = POURTOI_MAX){
+  if(!ENVIES || !ENVIES.choisies().length || !ANNONCES) return [];
   const vues = marquesVues();
-  return lieux
-    .filter(l=>estTemporaire(l) && !l.annule)
-    /* Un événement déjà terminé n'est pas une proposition. Sans date de fin,
-       on se fie au début : mieux vaut ne rien promettre qu'annoncer un
-       concert d'hier. */
-    .filter(l=>{
-      const fin = l.finLe || l.debutLe;
-      return Number.isFinite(fin) && fin >= maintenant;
-    })
-    .map(l=>({l, pourquoi:ENVIES.pourquoi(l), nouveau:detecteDepuis(l)}))
-    .filter(x=>!!x.pourquoi)
-    .sort((a,b)=>{
-      /* Ce qui n'a pas encore été vu passe devant : c'est l'objet du panneau. */
-      const vuA = vues.has(a.l.id) ? 1 : 0, vuB = vues.has(b.l.id) ? 1 : 0;
-      if(vuA !== vuB) return vuA - vuB;
-      /* Puis la preuve la plus solide, puis la date la plus proche. */
-      if(a.pourquoi.solide !== b.pourquoi.solide) return a.pourquoi.solide ? -1 : 1;
-      return (a.l.debutLe || Infinity) - (b.l.debutLe || Infinity);
-    })
-    .slice(0, POURTOI_MAX)
-    .map(x=>Object.assign(x, {vu:vues.has(x.l.id)}));
+  /* Le classement vit dans `annonces-classement.js`, pas ici : c'est lui qui
+     sait apparier tags et envies, et il travaille sur le bassin entier. */
+  const classes = ANNONCES.classerPourToi(bassinPourToi(), {
+    now: Date.now(),
+    interests: ENVIES.choisies(),
+    seenIds: [...vues],
+    hiddenIds: [...marquesMasquees()],
+    limit: Number.isFinite(Number(limite)) ? Math.max(0, Number(limite)) : POURTOI_MAX,
+    distanceFor: (event)=> distanceDepuisZone(event),
+    metroArea: bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null,
+    territorySlug: bassinTerritorialActif?.slug || null
+  });
+  return classes.map((classe)=>({
+    l: classe.event,
+    groupe: classe.group,
+    groupeLabel: ANNONCES.libelleGroupe(classe.group),
+    pourquoi: pourquoiAnnonce(classe),
+    nouveau: classe.isNew ? detecteDepuis(classe.event) : null,
+    vu: classe.seen,
+    score: classe.score,
+    matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : []
+  }));
 }
 
 /* La date d'un événement, écrite par le moteur temporel — le même texte que
@@ -10450,6 +10608,19 @@ function blocSurveillances(){
     '</section>';
 }
 
+function rendreGroupePourToi(label, identifiant, propositions){
+  if(!propositions.length) return "";
+  const visibles = propositions.slice(0, 2);
+  const reste = propositions.slice(2);
+  return '<section class="pt-groupe" data-testid="'+identifiant+'"><h3 class="pt-groupe-titre">'+esc(label)+'</h3>'
+    + visibles.map(carteProposition).join("")
+    + (reste.length
+        ? '<div class="pt-groupe-suite" data-pt-suite="'+esc(identifiant)+'" hidden>'+reste.map(carteProposition).join("")+'</div>'
+          + '<button class="pt-action pt-liste-plus" data-pt-expand="'+esc(identifiant)+'" aria-expanded="false">Voir les '+propositions.length+' \u2192</button>'
+        : "")
+    + '</section>';
+}
+
 /* Le registre de ce qui a DÉJÀ ÉTÉ ANNONCÉ, borné pour ne pas croître sans
    fin. Il ne se confond pas avec « vu » : on peut avoir été prévenu d'une
    annonce sans l'avoir lue. */
@@ -10517,7 +10688,7 @@ function peindrePastillePourToi(nombre){
 }
 
 function majPastillePourToi(){
-  peindrePastillePourToi(nouveautesPourToi(propositionsPourToi()).length);
+  peindrePastillePourToi(nouveautesPourToi(propositionsPourToi(POURTOI_TOUT_MAX)).length);
 }
 
 function majPourToi(){
@@ -10525,7 +10696,7 @@ function majPourToi(){
   const corps = $("#ptCorps");
   if(!panneau || !corps) return;
   const debutCpu = performance.now();
-  const propositions = propositionsPourToi();
+  const propositions = propositionsPourToi(POURTOI_TOUT_MAX);
   const suivies = ENVIES ? ENVIES.choisies().length : 0;
 
   let contenu;
@@ -10538,11 +10709,22 @@ function majPourToi(){
     contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
       'Autour continue de regarder.</p>';
   }else{
-    contenu = propositions.map(carteProposition).join("");
+    /* Groupé par envie, et non en liste plate : « Rap · 4 » dit pourquoi
+       chaque carte est là. Deux cartes visibles par groupe, le reste derrière
+       un bouton — le panneau reste lisible quand la métropole donne beaucoup. */
+    contenu = groupesInteretsPourToi(propositions).map((groupe)=> rendreGroupePourToi(
+      groupe.label + " · " + groupe.propositions.length,
+      "pourtoi-interet-" + groupe.id,
+      groupe.propositions
+    )).join("");
+    if(!contenu) contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
+      'Autour continue de regarder.</p>';
   }
+  /* Les surveillances restent EN HAUT : c'est ce que la personne a demandé
+     explicitement de suivre, ça passe avant ce qu'Autour propose. */
   corps.innerHTML = blocSurveillances() + contenu;
 
-  const nonVues = propositions.filter(x=>!x.vu).length;
+  const nonVues = propositions.filter(x=>!x.vu && x.groupe === "nouvelles_annonces").length;
   const toutVu = $("#ptToutVu");
   if(toutVu) toutVu.hidden = !nonVues;
   /* Ouvert, le panneau expose les nouveautés : on les note comme annoncées et
