@@ -2035,6 +2035,7 @@ async function chargerProfil(){
     if(error) throw error;
     monProfil = data || null;
     if(monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
+    lireConsultationCompte();
     return monProfil;
   }catch(e){
     console.error("Profil indisponible :", e.message || e);
@@ -2050,6 +2051,39 @@ async function chargerProfil(){
 
    `reprise` est rejouée après la connexion — c'est elle qui évite de renvoyer
    quelqu'un à l'accueil avec son formulaire à refaire. */
+/* La date de dernière consultation de « Pour toi » vit sur le compte quand la
+   base la porte : c'est elle qui dit, sur un appareil neuf, ce qui est
+   réellement nouveau. Tant que la colonne n'existe pas, la mémoire locale fait
+   foi et on cesse d'interroger le compte. */
+let consultationCompte = null;
+let consultationCompteBloquee = false;
+
+async function lireConsultationCompte(){
+  if(consultationCompteBloquee || !sb || !moiId || !estConnecte()) return null;
+  try{
+    const { data, error } = await sb.from("profiles").select("pourtoi_consulte_le").eq("id", moiId).maybeSingle();
+    if(error) throw error;
+    const t = data && data.pourtoi_consulte_le ? Date.parse(data.pourtoi_consulte_le) : NaN;
+    consultationCompte = Number.isFinite(t) ? t : null;
+  }catch(e){
+    consultationCompteBloquee = true;
+    consultationCompte = null;
+  }
+  majPastillePourToi();
+  return consultationCompte;
+}
+
+async function ecrireConsultationCompte(marque){
+  if(consultationCompteBloquee || !sb || !moiId || !estConnecte()) return;
+  try{
+    const { error } = await sb.from("profiles").update({ pourtoi_consulte_le: new Date(marque).toISOString() }).eq("id", moiId);
+    if(error) throw error;
+    consultationCompte = marque;
+  }catch(e){
+    consultationCompteBloquee = true;
+  }
+}
+
 const REPRISES = new Map();
 
 function enregistrerReprise(action, fn){ REPRISES.set(action, fn); }
@@ -3785,6 +3819,7 @@ function finaliserFusion(opts){
      remet à jour quand il est ouvert, jamais autrement : peindre une colonne
      invisible coûterait sans rien apporter. */
   if(document.body.classList.contains("pourtoi-ouvert")) majPourToi();
+  else majPastillePourToi();
   PERF.travail("reconstruction", debutCpu);
 }
 
@@ -10185,6 +10220,17 @@ const ENVIES = window.AutourEnvies || null;
 const CLE_POURTOI_VU = "autour:pourtoi-vu:v1";
 const CLE_POURTOI_MASQUES = "autour:pourtoi-masque:v1";
 const POURTOI_MAX = 6;
+
+/* LA PASTILLE « +N » DE POUR TOI.
+
+   Elle compte les nouveautés, elle ne dit pas seulement qu'il y en a. Son
+   registre est SÉPARÉ de « vu » : être annoncé dans la pastille ne grise pas
+   la carte, sinon ouvrir le panneau effacerait ce qu'on venait signaler. */
+const CLE_POURTOI_ANNONCE = "autour:pourtoi-annonce:v1";
+const CLE_POURTOI_CONSULTE = "autour:pourtoi-consulte:v1";
+const POURTOI_PASTILLE_MAX = 9;
+const POURTOI_MEMOIRE_MAX = 400;
+
 /* « Détecté il y a… » n'a de sens que sur une découverte récente. Au-delà,
    l'événement n'est plus une nouvelle : il est simplement au programme. */
 const POURTOI_NOUVEAU_MS = 72 * 3600 * 1000;
@@ -10404,6 +10450,76 @@ function blocSurveillances(){
     '</section>';
 }
 
+/* Le registre de ce qui a DÉJÀ ÉTÉ ANNONCÉ, borné pour ne pas croître sans
+   fin. Il ne se confond pas avec « vu » : on peut avoir été prévenu d'une
+   annonce sans l'avoir lue. */
+function marquesAnnoncees(){
+  try{
+    const v = JSON.parse(localStorage.getItem(CLE_POURTOI_ANNONCE) || "[]");
+    return new Set(Array.isArray(v) ? v : []);
+  }catch(e){ return new Set(); }
+}
+
+function ecrireMarquesAnnoncees(ids){
+  try{
+    localStorage.setItem(CLE_POURTOI_ANNONCE, JSON.stringify([...ids].slice(-POURTOI_MEMOIRE_MAX)));
+  }catch(e){}
+}
+
+function ecrireConsultationPourToi(marque){
+  try{ localStorage.setItem(CLE_POURTOI_CONSULTE, String(marque)); }catch(e){}
+}
+
+function retenirAnnoncees(propositions){
+  const annoncees = marquesAnnoncees();
+  let ajouts = 0;
+  (propositions||[]).forEach((x)=>{
+    const id = x && x.l ? x.l.id : null;
+    if(id == null || annoncees.has(id)) return;
+    annoncees.add(id);
+    ajouts++;
+  });
+  if(ajouts) ecrireMarquesAnnoncees(annoncees);
+  return ajouts;
+}
+
+function nouveautesPourToi(propositions){
+  const annoncees = marquesAnnoncees();
+  if(!annoncees.size && consultationCompte){
+    /* Ce compte a déjà consulté « Pour toi » ailleurs : ce qui est là n'est
+       pas neuf pour lui, seule la suite le sera. */
+    retenirAnnoncees(propositions);
+    return [];
+  }
+  return (propositions||[]).filter((x)=> x && x.l && x.l.id != null && !annoncees.has(x.l.id));
+}
+
+function noterConsultationPourToi(propositions){
+  const ajouts = retenirAnnoncees(propositions);
+  const premiere = !consultationCompte;
+  const marque = Date.now();
+  ecrireConsultationPourToi(marque);
+  /* Le compte n'est touché que quand la consultation apprend quelque chose :
+     repeindre un panneau déjà ouvert ne doit pas écrire à chaque
+     rafraîchissement de données. */
+  if(ajouts || premiere) ecrireConsultationCompte(marque);
+}
+
+function peindrePastillePourToi(nombre){
+  const compte = Math.max(0, Number(nombre) || 0);
+  const pastille = $("#notifPastille");
+  if(pastille){
+    pastille.hidden = !compte;
+    pastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte) : "";
+  }
+  const cloche = $("#btnNotifs");
+  if(cloche) cloche.setAttribute("aria-label", compte ? "Pour toi, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Pour toi");
+}
+
+function majPastillePourToi(){
+  peindrePastillePourToi(nouveautesPourToi(propositionsPourToi()).length);
+}
+
 function majPourToi(){
   const panneau = $("#pourToi");
   const corps = $("#ptCorps");
@@ -10429,8 +10545,14 @@ function majPourToi(){
   const nonVues = propositions.filter(x=>!x.vu).length;
   const toutVu = $("#ptToutVu");
   if(toutVu) toutVu.hidden = !nonVues;
-  const pastille = $("#notifPastille");
-  if(pastille) pastille.hidden = !nonVues;
+  /* Ouvert, le panneau expose les nouveautés : on les note comme annoncées et
+     la pastille retombe. Fermé, elle compte ce qui n'a jamais été exposé. */
+  if(pourToiOuvert()){
+    noterConsultationPourToi(propositions);
+    peindrePastillePourToi(0);
+  }else{
+    peindrePastillePourToi(nouveautesPourToi(propositions).length);
+  }
   brancherPourToi(propositions);
   PERF.travail("pour_toi", debutCpu);
 }
