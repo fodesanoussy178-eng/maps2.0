@@ -174,12 +174,15 @@ async function fetchAvecReprise(url: string): Promise<Response> {
 type Zone = {
   id: number; code: string; name: string; timezone: string;
   min_lat: number; min_lng: number; max_lat: number; max_lng: number;
+  /* La liste des communes de la zone. Quand elle est renseignée, c'est elle
+     qui décide, et le rectangle ne sert plus qu'à interroger le catalogue. */
+  commune_keys: string[] | null;
 };
 
 async function zones(codeDemande: string | null): Promise<Zone[]> {
   const filtre = codeDemande ? `&code=eq.${encodeURIComponent(codeDemande)}` : "";
   const reponse = await rest(
-    `event_areas?select=id,code,name,timezone,min_lat,min_lng,max_lat,max_lng` +
+    `event_areas?select=id,code,name,timezone,min_lat,min_lng,max_lat,max_lng,commune_keys` +
     `&enabled=is.true${filtre}&order=priorite.asc`);
   if (!reponse.ok) throw new Error(`lecture des zones : HTTP ${reponse.status}`);
   return await reponse.json();
@@ -217,7 +220,32 @@ function pageDeLaZone(zone: Zone, page: number): string {
     lang: "fr",
     fields: [
       "uuid", "label", "type", "hasDescription", "lastUpdate",
-      "isLocatedAt", "takesPlaceAt",
+      "isLocatedAt", "takesPlaceAt", "url", "sameAs",
+      /* DATAtourisme n'a pas une forme unique : on demande explicitement les
+         deux emplacements documentés, sans wildcard. Le normaliseur vérifie
+         ensuite l'URL et la licence avant de produire un visuel. */
+      "hasMainRepresentation", "hasMainRepresentation.url",
+      "hasMainRepresentation.uri", "hasMainRepresentation.contentUrl",
+      "hasMainRepresentation.schema:contentUrl", "hasMainRepresentation.schema:url",
+      "hasMainRepresentation.resourceLocator", "hasMainRepresentation.license",
+      "hasMainRepresentation.licence", "hasMainRepresentation.rights",
+      "hasMainRepresentation.dc:rights", "hasMainRepresentation.schema:license",
+      "hasMainRepresentation.encodingFormat", "hasMainRepresentation.mediaType",
+      "hasMainRepresentation.mimeType", "hasMainRepresentation.contentType",
+      "hasMainRepresentation.format",
+      "hasMainRepresentation.credits", "hasMainRepresentation.credit",
+      "hasMainRepresentation.author", "hasMainRepresentation.creator",
+      "hasRelatedResource", "hasRelatedResource.url", "hasRelatedResource.uri",
+      "hasRelatedResource.contentUrl", "hasRelatedResource.schema:contentUrl",
+      "hasRelatedResource.schema:url", "hasRelatedResource.resourceLocator",
+      "hasRelatedResource.license", "hasRelatedResource.licence",
+      "hasRelatedResource.rights", "hasRelatedResource.dc:rights",
+      "hasRelatedResource.schema:license", "hasRelatedResource.credits",
+      "hasRelatedResource.encodingFormat", "hasRelatedResource.mediaType",
+      "hasRelatedResource.mimeType", "hasRelatedResource.contentType",
+      "hasRelatedResource.format",
+      "hasRelatedResource.credit", "hasRelatedResource.author",
+      "hasRelatedResource.creator",
     ].join(","),
   });
   return `${CATALOGUE}?${params}`;

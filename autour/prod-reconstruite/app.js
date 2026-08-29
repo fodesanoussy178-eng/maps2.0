@@ -1555,10 +1555,41 @@ async function chargerProfil() {
     if (error) throw error;
     monProfil = data || null;
     if (monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
+    lireConsultationCompte();
     return monProfil;
   } catch (e) {
     console.error("Profil indisponible :", e.message || e);
     return null;
+  }
+}
+/* La date de dernière consultation de « Pour toi » vit sur le compte quand
+   la base la porte : c'est elle qui dit, sur un appareil neuf, ce qui est
+   réellement nouveau. Tant que la colonne n'existe pas, la mémoire locale
+   fait foi et on cesse d'interroger le compte. */
+let consultationCompte = null;
+let consultationCompteBloquee = false;
+async function lireConsultationCompte() {
+  if (consultationCompteBloquee || !sb || !moiId || !estConnecte()) return null;
+  try {
+    const { data, error } = await sb.from("profiles").select("pourtoi_consulte_le").eq("id", moiId).maybeSingle();
+    if (error) throw error;
+    const t = data && data.pourtoi_consulte_le ? Date.parse(data.pourtoi_consulte_le) : NaN;
+    consultationCompte = Number.isFinite(t) ? t : null;
+  } catch (e) {
+    consultationCompteBloquee = true;
+    consultationCompte = null;
+  }
+  majPastillePourToi();
+  return consultationCompte;
+}
+async function ecrireConsultationCompte(marque) {
+  if (consultationCompteBloquee || !sb || !moiId || !estConnecte()) return;
+  try {
+    const { error } = await sb.from("profiles").update({ pourtoi_consulte_le: new Date(marque).toISOString() }).eq("id", moiId);
+    if (error) throw error;
+    consultationCompte = marque;
+  } catch (e) {
+    consultationCompteBloquee = true;
   }
 }
 const REPRISES = /* @__PURE__ */ new Map();
@@ -1972,6 +2003,76 @@ async function chargerAnnoncesCanoniques(lat, lng) {
     return [];
   }
 }
+/* LE BASSIN, POUR « POUR TOI » SEULEMENT.
+
+   `lieux` est hyper-local : cinq kilomètres, ou ce que la carte montre. C'est
+   ce qu'il faut pour Maintenant — « ouvert en ce moment » à trente kilomètres
+   ne veut rien dire — et cette collection ne bouge pas d'un pouce ici.
+
+   Mais « Pour toi » ne répond pas à la même question. Quelqu'un à Tourcoing
+   qui suit le rap doit voir l'artiste annoncé au Zénith de Lille : ce n'est
+   pas sa commune qui décide, c'est son bassin de vie. On charge donc, à côté
+   et sans jamais la mélanger, une seconde collection à l'échelle de la
+   métropole, dont Pour toi est le seul lecteur.
+
+   Chaque événement en rapporte le bassin. `classerPourToi` sait déjà quoi en
+   faire : un événement du MÊME bassin que la personne échappe au plafond de
+   distance, quel que soit le nombre de kilomètres. La règle existait, il lui
+   manquait la donnée. */
+const METROPOLE_LIMITE = 300;
+let evenementsMetropole = [];
+let metropoleEnCours = null;
+async function chargerEvenementsMetropole(bassin) {
+  if (!sbLecture || !bassin) return [];
+  /* On ne demande plus un rectangle de 25 km — on demandait bien 25 km, et
+     `evenements_proches` les ramenait à 5 : elle recalcule son rayon d'après
+     le territoire qui contient le centre, et pour quelqu'un à Tourcoing c'est
+     Tourcoing, rayon 5 km. Le bassin métropolitain n'existait donc pas à
+     l'exécution.
+
+     `evenements_bassin` pose l'autre question : non pas « qu'y a-t-il à moins
+     de N kilomètres » mais « qu'y a-t-il dans MON bassin ». L'appartenance
+     territoriale décide, la distance ne plafonne plus rien — c'est le
+     classement qui la pondère ensuite. `Maintenant` continue de passer par
+     `evenements_proches`, inchangée. */
+  const fini = PERF.requete("supabase_metropole");
+  try {
+    const { data, error } = await sbLecture.rpc("evenements_bassin", {
+      p_group_slug: String(bassin),
+      p_limite: METROPOLE_LIMITE
+    });
+    if (error) {
+      journal.warn("Bassin m\xE9tropolitain indisponible :", error.message);
+      return [];
+    }
+    /* `metro_area` vient de la base, qui sait à quel territoire l'événement
+       appartient. On ne l'écrase plus par le bassin de la personne : affirmer
+       que tout ce qui est à 25 km est « du même bassin » faisait passer pour
+       métropolitain ce qui ne l'est pas, et levait son plafond de distance. */
+    return (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter(Boolean);
+  } catch (error) {
+    journal.warn("Bassin m\xE9tropolitain indisponible :", error?.message || error);
+    return [];
+  } finally {
+    fini();
+  }
+}
+
+function rafraichirMetropole() {
+  /* Le bassin ne dépend plus de l'endroit exact où l'on se tient : se
+     déplacer de Tourcoing à Lille ne change pas la métropole. La clé de
+     cache est donc le bassin lui-même, et non des coordonnées. */
+  const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+  if (!bassin || metropoleEnCours === bassin) return;
+  metropoleEnCours = bassin;
+  chargerEvenementsMetropole(bassin).then((liste) => {
+    if (!liste.length) return;
+    evenementsMetropole = liste;
+    majPourToi();
+  }).catch(() => {
+    metropoleEnCours = null;
+  });
+}
 async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee) {
   if (requetesCouchesSupabase.has(cle)) return requetesCouchesSupabase.get(cle);
   let promesse;
@@ -2001,6 +2102,10 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee) {
       ecrireCacheCouchesSupabase(cle, entree);
       publierCoucheSupabase(cle, entree, portee, lat, lng);
     }
+    /* Hors du chemin critique, et après la couche locale : le bassin ne fait
+       attendre personne, et le territoire vient d'être résolu — c'est lui qui
+       donne son nom au bassin. */
+    rafraichirMetropole();
     return entree;
   })().finally(() => {
     if (requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
@@ -3150,6 +3255,7 @@ function finaliserFusion(opts) {
     ouvrirLieuPartage();
   }
   if (document.body.classList.contains("pourtoi-ouvert")) majPourToi();
+  else majPastillePourToi();
   PERF.travail("reconstruction", debutCpu);
 }
 function fusionnerLots(lots, opts) {
@@ -8073,6 +8179,10 @@ const POURTOI_GROUPES_STATUT = Object.freeze({
   aNePasManquer: "pourtoi-a-ne-pas-manquer"
 });
 const POURTOI_NOUVEAU_MS = 72 * 3600 * 1e3;
+const CLE_POURTOI_ANNONCE = "autour:pourtoi-annonce:v1";
+const CLE_POURTOI_CONSULTE = "autour:pourtoi-consulte:v1";
+const POURTOI_PASTILLE_MAX = 9;
+const POURTOI_MEMOIRE_MAX = 400;
 function marquesVues() {
   try {
     const v = JSON.parse(localStorage.getItem(CLE_POURTOI_VU) || "[]");
@@ -8084,6 +8194,30 @@ function marquesVues() {
 function ecrireMarquesVues(ids) {
   try {
     localStorage.setItem(CLE_POURTOI_VU, JSON.stringify([...ids].slice(-200)));
+  } catch (e) {
+  }
+}
+/* La pastille tient son propre registre. « Vu » dit qu'une carte a été
+   ouverte ou acquittée ; « annoncé » dit seulement qu'elle a déjà été
+   portée à la connaissance de la personne. Confondre les deux ferait
+   griser les cartes dès qu'on ouvre le panneau. */
+function marquesAnnoncees() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLE_POURTOI_ANNONCE) || "[]");
+    return new Set(Array.isArray(v) ? v : []);
+  } catch (e) {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function ecrireMarquesAnnoncees(ids) {
+  try {
+    localStorage.setItem(CLE_POURTOI_ANNONCE, JSON.stringify([...ids].slice(-POURTOI_MEMOIRE_MAX)));
+  } catch (e) {
+  }
+}
+function ecrireConsultationPourToi(marque) {
+  try {
+    localStorage.setItem(CLE_POURTOI_CONSULTE, String(marque));
   } catch (e) {
   }
 }
@@ -8126,10 +8260,26 @@ function pourquoiAnnonce(x) {
     solide: true
   };
 }
+function estCanonique(l) {
+  /* Un doublon rattaché à un événement canonique n'est jamais proposé :
+     il ferait compter deux fois la même soirée. */
+  if (!l) return false;
+  const maitre = l.duplicate_of || l.duplicateOf;
+  return !maitre || String(maitre) === String(l.id);
+}
+function bassinPourToi() {
+  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
+     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
+     identifiant déjà présent n'est jamais remplacé. */
+  const locaux = lieux.filter(estCanonique);
+  if (!evenementsMetropole.length) return locaux;
+  const vus = new Set(locaux.map((l) => l && l.id));
+  return locaux.concat(evenementsMetropole.filter((l) => l && !vus.has(l.id) && estCanonique(l)));
+}
 function propositionsPourToi(limite = POURTOI_MAX) {
   if (!ENVIES || !ENVIES.choisies().length || !ANNONCES) return [];
   const vues = marquesVues();
-  const classes = ANNONCES.classerPourToi(lieux, {
+  const classes = ANNONCES.classerPourToi(bassinPourToi(), {
     now: Date.now(),
     interests: ENVIES.choisies(),
     seenIds: [...vues],
@@ -8249,8 +8399,14 @@ function majPourToi() {
   const nonVues = propositions.filter((x) => !x.vu && x.groupe === "nouvelles_annonces").length;
   const toutVu = $("#ptToutVu");
   if (toutVu) toutVu.hidden = !nonVues;
-  const pastille = $("#notifPastille");
-  if (pastille) pastille.hidden = !nonVues;
+  /* Le panneau est à l'écran : ce qu'il montre cesse d'être une nouveauté
+     à annoncer. Fermé, la pastille compte ce qui n'a jamais été exposé. */
+  if (pourToiOuvert()) {
+    noterConsultationPourToi(propositions);
+    peindrePastillePourToi(0);
+  } else {
+    peindrePastillePourToi(nouveautesPourToi(propositions).length);
+  }
   brancherPourToi(propositions);
   PERF.travail("pour_toi", debutCpu);
 }
@@ -8307,6 +8463,55 @@ function brancherPourToi(propositions) {
     marquerVu(propositions.map((x) => x.l.id));
     majPourToi();
   };
+}
+/* Une nouveauté, c'est une proposition pertinente qui n'a jamais été
+   portée à la connaissance de la personne. Pas un horaire qui bouge, pas
+   une resynchronisation : le registre est tenu par identifiant canonique,
+   donc le même événement ne compte qu'une fois. */
+function retenirAnnoncees(propositions) {
+  const annoncees = marquesAnnoncees();
+  let ajouts = 0;
+  (propositions || []).forEach((x) => {
+    const id = x && x.l ? x.l.id : null;
+    if (id == null || annoncees.has(id)) return;
+    annoncees.add(id);
+    ajouts++;
+  });
+  if (ajouts) ecrireMarquesAnnoncees(annoncees);
+  return ajouts;
+}
+function nouveautesPourToi(propositions) {
+  const annoncees = marquesAnnoncees();
+  if (!annoncees.size && consultationCompte) {
+    /* Ce compte a déjà consulté « Pour toi » ailleurs : ce qui est là
+       n'est pas neuf pour lui, seule la suite le sera. */
+    retenirAnnoncees(propositions);
+    return [];
+  }
+  return (propositions || []).filter((x) => x && x.l && x.l.id != null && !annoncees.has(x.l.id));
+}
+function noterConsultationPourToi(propositions) {
+  const ajouts = retenirAnnoncees(propositions);
+  const premiere = !consultationCompte;
+  const marque = Date.now();
+  ecrireConsultationPourToi(marque);
+  /* Le compte n'est touché que quand la consultation apprend quelque chose :
+     repeindre un panneau déjà ouvert ne doit pas écrire à chaque
+     rafraîchissement de données. */
+  if (ajouts || premiere) ecrireConsultationCompte(marque);
+}
+function peindrePastillePourToi(nombre) {
+  const compte = Math.max(0, Number(nombre) || 0);
+  const pastille = $("#notifPastille");
+  if (pastille) {
+    pastille.hidden = !compte;
+    pastille.textContent = compte ? compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte : "";
+  }
+  const cloche = $("#btnNotifs");
+  if (cloche) cloche.setAttribute("aria-label", compte ? "Pour toi, " + compte + " nouveaut\xE9" + (compte > 1 ? "s" : "") : "Pour toi");
+}
+function majPastillePourToi() {
+  peindrePastillePourToi(nouveautesPourToi(propositionsPourToi(POURTOI_TOUT_MAX)).length);
 }
 function marquerVu(ids) {
   const vues = marquesVues();

@@ -4,8 +4,9 @@ import test from "node:test";
 import {
   analyserDate, analyserHeure, instantLocal, analyserPeriode,
   analyserPosition, analyserAdresse, estEvenement, normaliserEvenement,
+  imageDatatourisme,
   titreNormalise, cleDedup, similariteTitre, memeEvenement,
-  dedupliquer, normaliserLot, dansLaZone,
+  dedupliquer, normaliserLot, dansLaZone, cleCommune, communeDeLaZone,
 } from "../supabase/functions/sync-datatourisme/normalisation.mjs";
 
 /* La zone d'essai est un rectangle nommé, exactement comme une ligne de
@@ -168,6 +169,65 @@ test("un événement normalisé porte sa confiance de date et sa source", () => 
   assert.equal(n.event.timezone, "Europe/Paris");
 });
 
+test("une représentation principale avec licence explicite devient le visuel", () => {
+  const n = normaliserEvenement(poi({
+    url: "https://www.exemple.fr/evenements/concert-abc",
+    lastUpdate: "2026-08-01T10:00:00Z",
+    hasMainRepresentation: {
+      resourceLocator: {contentUrl: "https://cdn.exemple.fr/affiche-abc.jpg"},
+      license: "https://creativecommons.org/licenses/by/4.0/",
+      author: {name: "Organisateur ABC"},
+    },
+  }));
+  assert.equal(n.event.image_url, "https://cdn.exemple.fr/affiche-abc.jpg");
+  assert.equal(n.event.image_source, "datatourisme");
+  assert.equal(n.event.image_source_url, "https://www.exemple.fr/evenements/concert-abc");
+  assert.equal(n.event.image_license, "https://creativecommons.org/licenses/by/4.0/");
+  assert.equal(n.event.image_author, "Organisateur ABC");
+  assert.equal(n.event.image_updated_at, "2026-08-01T10:00:00.000Z");
+});
+
+test("une ressource liée est un repli seulement si ses droits sont explicites", () => {
+  const n = normaliserEvenement(poi({
+    hasMainRepresentation: {contentUrl: "https://cdn.exemple.fr/sans-droit.jpg"},
+    hasRelatedResource: [{
+      resourceLocator: {locator: "https://cdn.exemple.fr/affiche-liee.webp"},
+      rights: {label: "Licence Ouverte 2.0"},
+    }],
+  }));
+  assert.equal(n.event.image_url, "https://cdn.exemple.fr/affiche-liee.webp");
+  assert.equal(n.event.image_license, "Licence Ouverte 2.0");
+});
+
+test("un lien d'image DATAtourisme sans licence ne produit rien", () => {
+  const p = poi({
+    hasMainRepresentation: {contentUrl: "https://cdn.exemple.fr/affiche-sans-droit.jpg"},
+  });
+  assert.equal(imageDatatourisme(p), null);
+  assert.equal(normaliserEvenement(p).event.image_url, null);
+});
+
+test("une ressource liée explicitement non image reste ignorée", () => {
+  assert.equal(imageDatatourisme(poi({
+    hasRelatedResource: {
+      contentUrl: "https://cdn.exemple.fr/programme.pdf",
+      encodingFormat: "application/pdf",
+      license: "Licence Ouverte 2.0",
+    },
+  })), null);
+});
+
+test("les champs de représentation sont lus seulement dans les deux emplacements prévus", () => {
+  const p = poi({
+    hasDescription: {fr: "https://cdn.exemple.fr/ceci-n-est-pas-une-image.jpg"},
+    isLocatedAt: [{
+      geo: {latitude: "50.6292", longitude: "3.0573"},
+      label: {fr: "https://cdn.exemple.fr/ceci-n-est-pas-un-lieu.jpg"},
+    }],
+  });
+  assert.equal(imageDatatourisme(p), null);
+});
+
 /* ---- La clé de rapprochement doit être celle de Postgres ---------------- */
 test("le titre normalisé perd accents et ponctuation", () => {
   assert.equal(titreNormalise("Fête de la Musique — Édition 2026"),
@@ -284,4 +344,60 @@ test("un lot vide ne casse rien", () => {
   const lot = normaliserLot([], ZONE_LILLE, {});
   assert.deepEqual({vus: lot.vus, gardes: lot.gardes.length, rejets: lot.rejets},
     {vus: 0, gardes: 0, rejets: 0});
+});
+
+/* ---- La liste de communes, et pourquoi elle ne peut pas être un rectangle */
+
+const ZONE_MEL = {
+  id: 1, code: "lille", name: "Métropole Européenne de Lille", timezone: "Europe/Paris",
+  min_lat: 50.44, min_lng: 2.68, max_lat: 50.82, max_lng: 3.32,
+  commune_keys: ["lille", "hellemmes", "lomme", "villeneuvedascq", "halluin",
+                 "comines", "armentieres", "fachesthumesnil", "marcqenbaroeul"],
+};
+
+test("la clé de commune efface la ponctuation, les accents et la ligature", () => {
+  assert.equal(cleCommune("Faches Thumesnil"), cleCommune("Faches-Thumesnil"));
+  assert.equal(cleCommune("LILLE"), "lille");
+  assert.equal(cleCommune("Marcq-en-Barœul"), "marcqenbaroeul");
+  assert.equal(cleCommune("St-André-lez-Lille"), cleCommune("Saint-André-lez-Lille"));
+  assert.equal(cleCommune(""), "");
+});
+
+test("les communes que le rectangle attrapait sans qu'elles soient la MEL sont refusées", () => {
+  /* Orchies et Bailleul tombent dans le rectangle élargi ; elles ne sont pas
+     de la métropole. C'est précisément ce que la liste sert à dire. */
+  assert.equal(communeDeLaZone("Orchies", ZONE_MEL), false);
+  assert.equal(communeDeLaZone("Bailleul", ZONE_MEL), false);
+  assert.equal(communeDeLaZone("Lille", ZONE_MEL), true);
+  assert.equal(communeDeLaZone("Halluin", ZONE_MEL), true);
+});
+
+test("les communes associées ne sont pas des communes étrangères", () => {
+  /* Hellemmes et Lomme ne figurent pas dans la liste officielle des 95 : ce
+     sont des communes associées de Lille. Les refuser viderait des salles. */
+  assert.equal(communeDeLaZone("Hellemmes", ZONE_MEL), true);
+  assert.equal(communeDeLaZone("Lomme", ZONE_MEL), true);
+});
+
+test("une ville absente ne passe pas quand la zone porte une liste", () => {
+  assert.equal(communeDeLaZone(null, ZONE_MEL), false);
+  assert.equal(communeDeLaZone("", ZONE_MEL), false);
+});
+
+test("une zone sans liste garde le comportement du rectangle seul", () => {
+  assert.equal(communeDeLaZone("N'importe où", ZONE_LILLE), true);
+  assert.equal(dansLaZone(50.6292, 3.0573, ZONE_LILLE), true);
+});
+
+test("Halluin entre par le nouveau rectangle et par la liste", () => {
+  /* 50.787 était au-dessus de l'ancien plafond 50.75 : la commune n'était
+     jamais interrogée. C'est l'explication de son zéro. */
+  assert.equal(dansLaZone(50.7867, 3.1281, ZONE_MEL, "Halluin"), true);
+  assert.equal(dansLaZone(50.7867, 3.1281, ZONE_LILLE), false);
+  assert.equal(dansLaZone(50.6875, 2.8811, ZONE_MEL, "Armentières"), true);
+  assert.equal(dansLaZone(50.4906, 2.9736, ZONE_MEL, "Carnin"), false); // pas dans la liste courte du test
+});
+
+test("le rectangle reste une condition, la liste ne le remplace pas", () => {
+  assert.equal(dansLaZone(48.8566, 2.3522, ZONE_MEL, "Lille"), false);
 });

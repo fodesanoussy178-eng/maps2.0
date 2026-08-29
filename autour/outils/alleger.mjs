@@ -67,6 +67,9 @@ const A_ALLEGER = MODULES.concat(MODULES_DIFFERES);
 const HORS_LIVRAISON = new Set([
   /* ce qui n'est pas servi */
   "outils", "tests", "docs", "supabase", "livraison", "node_modules",
+  /* l'ancienne application reconstruite : gardée au dépôt comme archive de
+     référence jusqu'au smoke test, mais elle n'a plus à être servie. */
+  "prod-reconstruite",
   /* ce que Vercel lit à la racine du projet, pas dans la sortie */
   "api", "middleware.js", "vercel.json", "package.json", "package-lock.json",
   ".vercelignore", ".vercel",

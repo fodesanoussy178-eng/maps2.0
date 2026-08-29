@@ -157,7 +157,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=e8bab4dc"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=81334446"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -1781,6 +1781,15 @@ const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 
 const CLE_PSEUDO_CREATEUR = "autour:creator_name";
 let sb = null, sbLecture = null, moiId = null, monPseudo = "";
+
+/* LE BASSIN MÉTROPOLITAIN. « Pour toi » cherche dans toute la métropole, pas
+   dans la commune où l'on se tient. Ces trois-là sont déclarés ici, et non
+   près des fonctions qui les emploient, parce que `rafraichirMetropole()` est
+   appelée pendant le chargement des couches — bien avant. */
+let bassinTerritorialActif = null;
+let evenementsMetropole = [];
+let metropoleEnCours = null;
+const METROPOLE_LIMITE = 300;
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
@@ -2035,6 +2044,7 @@ async function chargerProfil(){
     if(error) throw error;
     monProfil = data || null;
     if(monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
+    lireConsultationCompte();
     return monProfil;
   }catch(e){
     console.error("Profil indisponible :", e.message || e);
@@ -2050,6 +2060,39 @@ async function chargerProfil(){
 
    `reprise` est rejouée après la connexion — c'est elle qui évite de renvoyer
    quelqu'un à l'accueil avec son formulaire à refaire. */
+/* La date de dernière consultation de « Pour toi » vit sur le compte quand la
+   base la porte : c'est elle qui dit, sur un appareil neuf, ce qui est
+   réellement nouveau. Tant que la colonne n'existe pas, la mémoire locale fait
+   foi et on cesse d'interroger le compte. */
+let consultationCompte = null;
+let consultationCompteBloquee = false;
+
+async function lireConsultationCompte(){
+  if(consultationCompteBloquee || !sb || !moiId || !estConnecte()) return null;
+  try{
+    const { data, error } = await sb.from("profiles").select("pourtoi_consulte_le").eq("id", moiId).maybeSingle();
+    if(error) throw error;
+    const t = data && data.pourtoi_consulte_le ? Date.parse(data.pourtoi_consulte_le) : NaN;
+    consultationCompte = Number.isFinite(t) ? t : null;
+  }catch(e){
+    consultationCompteBloquee = true;
+    consultationCompte = null;
+  }
+  majPastillePourToi();
+  return consultationCompte;
+}
+
+async function ecrireConsultationCompte(marque){
+  if(consultationCompteBloquee || !sb || !moiId || !estConnecte()) return;
+  try{
+    const { error } = await sb.from("profiles").update({ pourtoi_consulte_le: new Date(marque).toISOString() }).eq("id", moiId);
+    if(error) throw error;
+    consultationCompte = marque;
+  }catch(e){
+    consultationCompteBloquee = true;
+  }
+}
+
 const REPRISES = new Map();
 
 function enregistrerReprise(action, fn){ REPRISES.set(action, fn); }
@@ -2314,9 +2357,9 @@ async function chargerPublications(lat,lng){
    base est plus ancienne que la migration de provenance, `IMAGES` retrouve la
    source depuis l'hébergeur plutôt que de la deviner. */
 function visuelEvenement(e){
-  const v = IMAGES && IMAGES.visuel({
+  const v = IMAGES && IMAGES.visuelEvenement({
     image_url:e.image_url || "",
-    image_source:e.image_source || (IMAGES ? IMAGES.normaliserAncienneSource({
+    image_source:e.image_source || (IMAGES && e.image_url ? IMAGES.normaliserAncienneSource({
       image:e.image_url, source:e.primary_source,
     }) : ""),
     image_source_url:e.image_source_url || e.source_url || "",
@@ -2333,6 +2376,7 @@ function visuelEvenement(e){
     image_url:v.image_url, image_source:v.image_source,
     image_source_url:v.image_source_url, image_author:v.image_author,
     image_license:v.image_license, image_updated_at:v.image_updated_at,
+    image_type:v.image_type, image_confidence:v.image_confidence,
     image_scope:"evenement",
   };
 }
@@ -2389,9 +2433,17 @@ async function chargerEvenementsCanoniques(lat,lng){
   const finTerritoire = PERF.requete("supabase_territoire");
   void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
     p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
-  })).then(({error})=>{
-    if(error) console.error("Résolution du territoire :", error.message);
-  }).catch(()=>{}).finally(finTerritoire);
+  })).then(({data, error})=>{
+    /* La résolution servait uniquement à mutualiser la synchronisation ; on
+       retient désormais son résultat, parce que c'est lui qui nomme le bassin
+       dans lequel « Pour toi » a le droit de chercher. */
+    if(error){
+      console.error("Résolution du territoire :", error.message);
+      bassinTerritorialActif = null;
+      return;
+    }
+    bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
+  }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2432,6 +2484,10 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       ecrireCacheCouchesSupabase(cle, entree);
       publierCoucheSupabase(cle, entree, portee, lat, lng);
     }
+    /* Hors du chemin critique, et après la couche locale : le bassin ne fait
+       attendre personne, et le territoire vient d'être résolu — c'est lui qui
+       donne son nom au bassin. */
+    rafraichirMetropole();
     return entree;
   })().finally(()=>{
     if(requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
@@ -3784,6 +3840,7 @@ function finaliserFusion(opts){
      remet à jour quand il est ouvert, jamais autrement : peindre une colonne
      invisible coûterait sans rien apporter. */
   if(document.body.classList.contains("pourtoi-ouvert")) majPourToi();
+  else majPastillePourToi();
   PERF.travail("reconstruction", debutCpu);
 }
 
@@ -4488,6 +4545,12 @@ function positionMemorisee(){
   return null;
 }
 
+/* Repli explicite quand personne n'a encore choisi de ville et que la
+   géolocalisation n'est pas disponible. Tourcoing est le territoire par
+   défaut de l'application ; cela évite de faire croire à une position à Paris
+   et laisse toujours la recherche de ville accessible. */
+const POSITION_REPLI = [50.7236, 3.1610];
+
 /* Point reproductible pour les contrôles locaux. Ignoré sur le site public,
    il permet de tester Tourcoing sans détourner la vraie géolocalisation. */
 function positionLocaleDeTest(){
@@ -4520,6 +4583,78 @@ function noterAutorisationGeo(ok){
 }
 function geoDejaAutorisee(){
   try{ return localStorage.getItem(CLE_GEO_OK) === "1"; }catch(e){ return false; }
+}
+
+/* L'onboarding reste volontairement distinct de l'autorisation navigateur :
+   une seule petite valeur locale suffit à ne pas rejouer la séquence à chaque
+   ouverture. Les coordonnées et le reste du fonctionnement de la carte ne
+   dépendent pas de cette valeur. */
+const CLE_ONBOARDING_LOCALISATION = "autour:onboarding-localisation";
+const ETAPES_ONBOARDING = Object.freeze({BIENVENUE:"bienvenue", LOCALISATION:"localisation", TERMINE:"termine"});
+let etapeOnboarding = null;
+
+function lireEtapeOnboarding(){
+  try{
+    const etape = localStorage.getItem(CLE_ONBOARDING_LOCALISATION);
+    return Object.values(ETAPES_ONBOARDING).includes(etape) ? etape : null;
+  }catch(e){ return null; }
+}
+function memoriserEtapeOnboarding(etape){
+  etapeOnboarding = etape;
+  try{ localStorage.setItem(CLE_ONBOARDING_LOCALISATION, etape); }catch(e){}
+}
+
+const TEXTES_ONBOARDING = Object.freeze({
+  bienvenue: {texte:"👋 Bienvenue sur Autour", action:"Commencer"},
+  localisation: {texte:"📍 Autoriser votre localisation", action:"Autoriser"},
+  preparation: {texte:"Autour prépare déjà autour de toi", action:null},
+});
+let onboardingTimer = null;
+
+function afficherOnboarding(etape){
+  const panneau = $("#onboardingLocalisation");
+  const texte = $("#onboardingTxt");
+  const action = $("#onboardingAction");
+  const avatars = $("#onboardingAvatars");
+  const contenu = TEXTES_ONBOARDING[etape];
+  if(!panneau || !texte || !action || !contenu) return;
+  clearTimeout(onboardingTimer);
+  etapeOnboarding = etape;
+  texte.textContent = contenu.texte;
+  action.textContent = contenu.action || "";
+  action.hidden = !contenu.action;
+  if(avatars){
+    if(!avatars.childElementCount){
+      avatars.innerHTML = AVATARS_ONBOARDING.map((avatar)=>
+        '<button type="button" data-avatar="'+esc(avatar)+'" ' +
+          'aria-label="Choisir cet avatar" aria-pressed="false">'+avatar+'</button>'
+      ).join("");
+      avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
+        bouton.onclick = ()=>sauvegarderAvatar(bouton.dataset.avatar);
+      });
+    }
+    avatars.hidden = etape !== "bienvenue";
+    avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
+      bouton.setAttribute("aria-pressed", String(bouton.dataset.avatar === avatarChoisi()));
+    });
+  }
+  panneau.hidden = false;
+  if(etape === "preparation"){
+    onboardingTimer = setTimeout(()=>{
+      if(etapeOnboarding === "preparation") panneau.hidden = true;
+    }, 1600);
+  }
+}
+function cacherOnboarding(){
+  clearTimeout(onboardingTimer);
+  etapeOnboarding = lireEtapeOnboarding();
+  const panneau = $("#onboardingLocalisation");
+  if(panneau) panneau.hidden = true;
+}
+function terminerOnboardingLocalisation(resultat){
+  memoriserEtapeOnboarding(ETAPES_ONBOARDING.TERMINE);
+  cacherOnboarding();
+  toast(resultat === "ok" ? "✓ C’est prêt" : "🧭 On continue sans position précise");
 }
 
 /* L'état réel de la permission, avec le repli qu'impose Safari. */
@@ -4840,7 +4975,10 @@ async function demarrer(coords){
     if(duServeur.ville) commune = duServeur.ville;
     PERF.jalon("position_server");
   }
-  else { originePosition = null; precisionPosition = null; positionMoi = [48.8566,2.3522]; }
+  else {
+    originePosition = "manual"; precisionPosition = "ville";
+    positionMoi = [...POSITION_REPLI]; commune = "Tourcoing";
+  }
   PERF.jalon("position_" + (originePosition || "inconnue"));
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
@@ -6221,6 +6359,21 @@ function attributionPhoto(l){
   }).join(" · ");
 }
 
+function provenanceImage(l){
+  if(!l) return "";
+  const photo = l.imageAttribution ? attributionPhoto(l) : "";
+  if(photo) return "Photo : "+photo;
+  const url = urlSiteSure(l.image_source_url || l.imageSourceUrl);
+  if(!url) return "";
+  const noms = {
+    openagenda:"Agenda officiel", datatourisme:"DATAtourisme",
+    structure:"Organisateur", site_officiel:"Lieu officiel",
+    autour:"Autour", wikimedia_commons:"Wikimedia Commons",
+  };
+  const nom = noms[l.image_source || l.imageSource] || "Source déclarée";
+  return '<a href="'+esc(url)+'" target="_blank" rel="noopener">Source : '+esc(nom)+'</a>';
+}
+
 /* Une image est un fait, pas une décoration : les fiches Aide n'emploient que
    des photos dont on sait dire l'origine — une licence ouverte explicite, une
    structure vérifiée, Commons, l'affiche d'un organisateur, le site officiel
@@ -6245,8 +6398,20 @@ function couvertureAide(l, c){
   const teinte = COULEURS_CAT[l.cat] || "#B82A3A";
   return '<figure class="aide-couverture" style="--teinte:'+teinte+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
-    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt="">' : '')+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
     (photo && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
+    '</figure>';
+}
+
+function couvertureEvenement(l, c){
+  const photo = l && l.image ? l.image : "";
+  const teinte = COULEURS_CAT[l && l.cat] || "#E23A8C";
+  return '<figure class="event-couverture'+(photo?'':' image-absente')+'" style="--teinte:'+teinte+'">'+
+    fallbackVisuelEvenement(l, c, "event-fallback-detail")+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
+    (photo && provenanceImage(l) ? '<figcaption>'+provenanceImage(l)+'</figcaption>' : '')+
     '</figure>';
 }
 
@@ -6254,7 +6419,8 @@ function couvertureLieu(l, c){
   if(!l) return "";
   return '<figure class="aide-couverture'+(l.image?'':' sans-photo')+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
-    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt="">' : '')+
+    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt=""'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
     (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
 }
 
@@ -7439,6 +7605,25 @@ async function chargerAide(lat,lng,options){
   }
 }
 
+/* L'ANNUAIRE PUBLIC. France Travail, missions locales : ces structures ont une
+   identité officielle et un type normalisé qu'OpenStreetMap ne donne pas. On
+   les demande donc EN PREMIER, et OSM complète ensuite les objets non
+   référencés — il ne remplace jamais cette source.
+
+   Restreint aux besoins « travail » et « jeunes » : l'annuaire ne couvre pas
+   les autres, et l'interroger pour rien coûterait une requête par recherche. */
+async function lieuxAideInstitutionnels(lat, lng, contexte, signal){
+  const fournisseur = window.AutourProviders && AutourProviders.aideInstitutionnelle;
+  const besoins = contexte && Array.isArray(contexte.besoins) ? contexte.besoins : [];
+  if(!fournisseur || !besoins.some(id=> id === "travail" || id === "jeunes")) return [];
+  try{
+    const places = await fournisseur.nearby(lat, lng, { needs:besoins, radius:15000, signal });
+    return places.map(p=> AutourProviders.versInterne(p)).filter(Boolean);
+  }catch(e){
+    return [];
+  }
+}
+
 async function chargerAideVraiment(lat,lng,generation,contexte){
   charge("Recherche des points d’aide…");
   aideEtrangersEcartes = false;
@@ -7450,6 +7635,16 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
     : contexte.cats.filter(cat=>CATS_AIDE.includes(cat));
   const reseaux = reseauxPourContexteAide(contexte);
   const exploitable = await coordonnerSourcesVersionnees([
+    {
+      /* L'annuaire public d'abord : il donne le type normalisé et l'identité
+         officielle. OSM arrive ensuite compléter, jamais remplacer. */
+      charger: ()=> lieuxAideInstitutionnels(lat, lng, contexte, generation.signal),
+      publier: (locaux)=>{
+        const retenus = resultatsAideDansTerritoire(locaux || []);
+        if(retenus.length) fusionner(retenus, "permanent");
+        return !!retenus.length;
+      }
+    },
     {
       /* ---- LE RAYON PROGRESSIF ------------------------------------------
 
@@ -7790,9 +7985,12 @@ const POIDS = {
   SEUIL_NIVEAU_B:    45,   // en dessous, le lieu passe en niveau C (masqué)
 };
 
-/* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé ---- */
+/* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé --------
+   L'avatar est uniquement un repère visuel choisi dans une liste fermée : il
+   ne constitue pas un champ démographique et ne quitte jamais le navigateur. */
+const AVATARS_ONBOARDING = Object.freeze(["🧑🏻", "🧑🏼", "🧑🏽", "🧑🏾", "🧑🏿"]);
 const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
-                      ignores:{}, vu:0 };
+                      ignores:{}, vu:0, avatar:"" };
 let PROFIL = (()=>{
   try{ return Object.assign({}, PROFIL_VIDE,
        JSON.parse(localStorage.getItem("autour:profil")||"{}")); }
@@ -7802,6 +8000,29 @@ let personnalisation = localStorage.getItem("autour:perso") !== "non";
 
 function enregistrerProfil(){
   try{ localStorage.setItem("autour:profil", JSON.stringify(PROFIL)); }catch(e){}
+}
+
+/* L'AVATAR. Ces deux fonctions étaient appelées sans jamais être définies :
+   `avatarChoisi` depuis `majEnteteLieu`, qui s'exécute dans `demarrer()`. La
+   ReferenceError coupait donc l'amorçage AVANT la carte — Explorer restait
+   vide alors qu'une fiche ouverte par URL, qui ne passe pas par là,
+   fonctionnait. Le défaut était invisible tant que la production servait
+   l'ancien arbre, qui n'a pas d'avatar.
+
+   L'avatar vit dans PROFIL comme le reste des préférences et ne quitte jamais
+   le navigateur. On n'écrit que ce que la liste fermée propose. */
+function avatarChoisi(){
+  return PROFIL && typeof PROFIL.avatar === "string" ? PROFIL.avatar : "";
+}
+
+function sauvegarderAvatar(avatar){
+  PROFIL.avatar = AVATARS_ONBOARDING.includes(avatar) ? avatar : "";
+  enregistrerProfil();
+  majEnteteLieu();
+  const avatars = $("#onboardingAvatars");
+  if(avatars) avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
+    bouton.setAttribute("aria-pressed", String(bouton.dataset.avatar === avatarChoisi()));
+  });
 }
 
 function mettreAJourProfil(action, valeur){
@@ -10069,8 +10290,23 @@ const ORDO = window.AutourOrdonnanceur || null;
    elle n'a pas le droit de retarder la carte ni « Maintenant ». */
 
 const ENVIES = window.AutourEnvies || null;
+const ANNONCES = window.AutourAnnoncesClassement || null;
+const TAXONOMIE_ANNONCES = window.AutourAnnoncesTaxonomie || null;
+const POURTOI_TOUT_MAX = 300;
 const CLE_POURTOI_VU = "autour:pourtoi-vu:v1";
+const CLE_POURTOI_MASQUES = "autour:pourtoi-masque:v1";
 const POURTOI_MAX = 6;
+
+/* LA PASTILLE « +N » DE POUR TOI.
+
+   Elle compte les nouveautés, elle ne dit pas seulement qu'il y en a. Son
+   registre est SÉPARÉ de « vu » : être annoncé dans la pastille ne grise pas
+   la carte, sinon ouvrir le panneau effacerait ce qu'on venait signaler. */
+const CLE_POURTOI_ANNONCE = "autour:pourtoi-annonce:v1";
+const CLE_POURTOI_CONSULTE = "autour:pourtoi-consulte:v1";
+const POURTOI_PASTILLE_MAX = 9;
+const POURTOI_MEMOIRE_MAX = 400;
+
 /* « Détecté il y a… » n'a de sens que sur une découverte récente. Au-delà,
    l'événement n'est plus une nouvelle : il est simplement au programme. */
 const POURTOI_NOUVEAU_MS = 72 * 3600 * 1000;
@@ -10084,6 +10320,23 @@ function marquesVues(){
 function ecrireMarquesVues(ids){
   try{ localStorage.setItem(CLE_POURTOI_VU, JSON.stringify([...ids].slice(-200))); }
   catch(e){}
+}
+
+function marquesMasquees(){
+  try{ const v = JSON.parse(localStorage.getItem(CLE_POURTOI_MASQUES) || "[]");
+    return new Set(Array.isArray(v) ? v.map(String) : []); }
+  catch(e){ return new Set(); }
+}
+
+function ecrireMarquesMasquees(ids){
+  try{ localStorage.setItem(CLE_POURTOI_MASQUES, JSON.stringify([...ids].slice(-200))); }
+  catch(e){}
+}
+
+function masquerPourToi(id){
+  const masquees = marquesMasquees();
+  masquees.add(String(id));
+  ecrireMarquesMasquees(masquees);
 }
 
 /* Depuis combien de temps Autour connaît cet événement. La date vient de la
@@ -10103,31 +10356,136 @@ function detecteDepuis(l){
 
 /* Les propositions : des événements à venir, rattachés à une envie suivie.
    Le plus récemment détecté d'abord — c'est ce que le panneau annonce. */
-function propositionsPourToi(){
-  if(!ENVIES || !ENVIES.choisies().length) return [];
-  const maintenant = Date.now();
+/* Un doublon rattaché à un événement canonique n'est jamais proposé : il
+   ferait compter deux fois la même soirée. */
+function estCanonique(l){
+  if(!l) return false;
+  const maitre = l.duplicate_of || l.duplicateOf;
+  return !maitre || String(maitre) === String(l.id);
+}
+
+async function chargerEvenementsMetropole(bassin){
+  if(!sbLecture || !bassin) return [];
+  /* On ne demande plus un rectangle de 25 km — on demandait bien 25 km, et
+     `evenements_proches` les ramenait à 5 : elle recalcule son rayon d'après
+     le territoire qui contient le centre, et pour quelqu'un à Tourcoing c'est
+     Tourcoing, rayon 5 km. Le bassin métropolitain n'existait donc pas à
+     l'exécution.
+
+     `evenements_bassin` pose l'autre question : non pas « qu'y a-t-il à moins
+     de N kilomètres » mais « qu'y a-t-il dans MON bassin ». L'appartenance
+     territoriale décide, la distance ne plafonne plus rien — c'est le
+     classement qui la pondère ensuite. `Maintenant` continue de passer par
+     `evenements_proches`, inchangée. */
+  const fini = PERF.requete("supabase_metropole");
+  try{
+    const { data, error } = await sbLecture.rpc("evenements_bassin", {
+      p_group_slug: String(bassin),
+      p_limite: METROPOLE_LIMITE
+    });
+    if(error){
+      journal.warn("Bassin métropolitain indisponible :", error.message);
+      return [];
+    }
+    /* `metro_area` vient de la base, qui sait à quel territoire l'événement
+       appartient. On ne l'écrase pas par le bassin de la personne : affirmer
+       que tout ce qui est à 25 km est « du même bassin » ferait passer pour
+       métropolitain ce qui ne l'est pas. */
+    return (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter(Boolean);
+  }catch(error){
+    journal.warn("Bassin métropolitain indisponible :", error?.message || error);
+    return [];
+  }finally{
+    fini();
+  }
+}
+
+function rafraichirMetropole(){
+  /* Le bassin ne dépend pas de l'endroit exact où l'on se tient : se déplacer
+     de Tourcoing à Lille ne change pas la métropole. La clé de cache est donc
+     le bassin lui-même, et non des coordonnées. */
+  const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+  if(!bassin || metropoleEnCours === bassin) return;
+  metropoleEnCours = bassin;
+  chargerEvenementsMetropole(bassin).then((liste)=>{
+    if(!liste.length) return;
+    evenementsMetropole = liste;
+    majPourToi();
+  }).catch(()=>{ metropoleEnCours = null; });
+}
+
+function bassinPourToi(){
+  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
+     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
+     identifiant déjà présent n'est jamais remplacé. */
+  const locaux = lieux.filter(estCanonique);
+  if(!evenementsMetropole.length) return locaux;
+  const vus = new Set(locaux.map((l)=> l && l.id));
+  return locaux.concat(evenementsMetropole.filter((l)=> l && !vus.has(l.id) && estCanonique(l)));
+}
+
+function pourquoiAnnonce(x){
+  return {
+    /* Le classement produit cette phrase à partir des tags qui ont réellement
+       matché. Aucun libellé n'est déduit du domaine général de l'événement. */
+    texte: x.reason || "correspondance explicite avec une envie suivie",
+    solide: true
+  };
+}
+
+function dateAnnonceProposition(value){
+  if(!value) return "";
+  const t = new Date(value).getTime();
+  if(!Number.isFinite(t)) return "";
+  return new Date(t).toLocaleDateString("fr-FR", {
+    day:"numeric", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit"
+  });
+}
+
+function groupesInteretsPourToi(propositions){
+  if(!TAXONOMIE_ANNONCES) return [];
+  const groupes = new Map();
+  const ordre = (ENVIES ? ENVIES.choisies() : []).map((id)=>{
+    const canonique = TAXONOMIE_ANNONCES.normaliserInteret(id);
+    return { id:canonique, label: TAXONOMIE_ANNONCES.INTEREST_LABELS[canonique] || String(id) };
+  });
+  propositions.forEach((proposition)=>{
+    const ids = new Set((proposition.matchedInterests || []).map((id)=> TAXONOMIE_ANNONCES.normaliserInteret(id)));
+    ids.forEach((id)=>{
+      const entree = ordre.find((item)=> item.id === id);
+      if(!entree) return;
+      if(!groupes.has(id)) groupes.set(id, { id, label: entree.label, propositions: [] });
+      groupes.get(id).propositions.push(proposition);
+    });
+  });
+  return ordre.map((item)=> groupes.get(item.id)).filter(Boolean);
+}
+
+function propositionsPourToi(limite = POURTOI_MAX){
+  if(!ENVIES || !ENVIES.choisies().length || !ANNONCES) return [];
   const vues = marquesVues();
-  return lieux
-    .filter(l=>estTemporaire(l) && !l.annule)
-    /* Un événement déjà terminé n'est pas une proposition. Sans date de fin,
-       on se fie au début : mieux vaut ne rien promettre qu'annoncer un
-       concert d'hier. */
-    .filter(l=>{
-      const fin = l.finLe || l.debutLe;
-      return Number.isFinite(fin) && fin >= maintenant;
-    })
-    .map(l=>({l, pourquoi:ENVIES.pourquoi(l), nouveau:detecteDepuis(l)}))
-    .filter(x=>!!x.pourquoi)
-    .sort((a,b)=>{
-      /* Ce qui n'a pas encore été vu passe devant : c'est l'objet du panneau. */
-      const vuA = vues.has(a.l.id) ? 1 : 0, vuB = vues.has(b.l.id) ? 1 : 0;
-      if(vuA !== vuB) return vuA - vuB;
-      /* Puis la preuve la plus solide, puis la date la plus proche. */
-      if(a.pourquoi.solide !== b.pourquoi.solide) return a.pourquoi.solide ? -1 : 1;
-      return (a.l.debutLe || Infinity) - (b.l.debutLe || Infinity);
-    })
-    .slice(0, POURTOI_MAX)
-    .map(x=>Object.assign(x, {vu:vues.has(x.l.id)}));
+  /* Le classement vit dans `annonces-classement.js`, pas ici : c'est lui qui
+     sait apparier tags et envies, et il travaille sur le bassin entier. */
+  const classes = ANNONCES.classerPourToi(bassinPourToi(), {
+    now: Date.now(),
+    interests: ENVIES.choisies(),
+    seenIds: [...vues],
+    hiddenIds: [...marquesMasquees()],
+    limit: Number.isFinite(Number(limite)) ? Math.max(0, Number(limite)) : POURTOI_MAX,
+    distanceFor: (event)=> distanceDepuisZone(event),
+    metroArea: bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null,
+    territorySlug: bassinTerritorialActif?.slug || null
+  });
+  return classes.map((classe)=>({
+    l: classe.event,
+    groupe: classe.group,
+    groupeLabel: ANNONCES.libelleGroupe(classe.group),
+    pourquoi: pourquoiAnnonce(classe),
+    nouveau: classe.isNew ? detecteDepuis(classe.event) : null,
+    vu: classe.seen,
+    score: classe.score,
+    matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : []
+  }));
 }
 
 /* La date d'un événement, écrite par le moteur temporel — le même texte que
@@ -10140,6 +10498,55 @@ function dateProposition(l){
   return heure ? jour+" · "+heure : jour;
 }
 
+function fallbackVisuelEvenement(l, c, classe){
+  const f = IMAGES && IMAGES.fallbackEvenement
+    ? IMAGES.fallbackEvenement(l && l.cat) : {key:"event", emoji:(c && c.emoji) || "✨"};
+  return '<span class="'+classe+' event-fallback event-fallback-'+esc(f.key || "event")+'" aria-hidden="true">'+
+    '<i>'+esc(f.emoji || (c && c.emoji) || "✨")+'</i><small>Visuel Autour</small></span>';
+}
+
+/* Les images sont décoratives dans les listes : une panne réseau les retire
+   proprement et laisse la composition Autour en place. Le même gestionnaire
+   sert à la fiche, où il retire aussi un crédit qui ne correspondrait plus à
+   une image visible. */
+function imageEvenementErreur(img){
+  if(!img) return;
+  const parent = img.parentElement;
+  const figure = img.closest ? img.closest("figure") : null;
+  if(parent) parent.classList.add("image-absente");
+  if(figure){
+    figure.classList.add("image-absente", "sans-photo");
+    const credit = figure.querySelector("figcaption");
+    if(credit) credit.remove();
+  }
+  img.remove();
+}
+
+function imageEvenementChargee(img){
+  if(!img) return;
+  const parent = img.parentElement;
+  if(parent) parent.classList.add("image-ready");
+  img.classList.add("image-ready");
+  const figure = img.closest ? img.closest(".event-couverture") : null;
+  if(!figure) return;
+  const classes = IMAGES && IMAGES.ratioImage
+    ? IMAGES.ratioImage(img.naturalWidth, img.naturalHeight).split(/\s+/).filter(Boolean)
+    : [];
+  figure.classList.remove("event-couverture-paysage", "event-couverture-portrait",
+    "event-couverture-carre", "event-couverture-inconnue", "event-couverture-basse");
+  figure.classList.add(...classes, "image-ready");
+}
+
+function visuelCarteEvenement(l, c, taille){
+  const classeImage = taille === "npt" ? "npt-img" : "pt-img";
+  const classeConteneur = taille === "npt" ? "npt-image-shell" : "pt-image-shell";
+  return '<span class="'+classeConteneur+'" aria-hidden="true">'+
+    fallbackVisuelEvenement(l, c, "event-fallback-carte")+
+    '<img class="'+classeImage+'" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async"'+
+      ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">'+
+    '</span>';
+}
+
 function carteProposition(x){
   const l = x.l;
   const dist = jeSuisDansLaZoneRegardee() ? formatDist(distanceDepuisZone(l)) : "";
@@ -10150,13 +10557,20 @@ function carteProposition(x){
   /* L'image est celle de la source, sous licence. Sans image, un pictogramme
      de catégorie — jamais une photo d'illustration prise ailleurs. */
   const visuel = l.image
-    ? '<img class="pt-img" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async">'
-    : '<span class="pt-img pt-img-vide" aria-hidden="true">'+c.emoji+'</span>';
-  return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'">'+
+    ? visuelCarteEvenement(l, c, "pt")
+    : '<span class="pt-img pt-img-vide pt-image-shell event-fallback-carte" aria-hidden="true">'+
+      fallbackVisuelEvenement(l, c, "")+'</span>';
+  const statut = x.groupe === "nouvelles_annonces"
+    ? (x.nouveau
+      ? '<b class="pt-neuf">NOUVELLE ANNONCE</b><span>'+esc(x.nouveau)+'</span>'
+      : '<b class="pt-neuf">ANNONCE PUBLIÉE</b>')
+    : '<b class="pt-neuf">À NE PAS MANQUER</b>';
+  return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'"'+
+    ' role="button" tabindex="0" aria-label="Ouvrir '+esc(l.titre)+'">'+
     visuel+
     '<div class="pt-txt">'+
       '<p class="pt-haut">'+
-        (x.nouveau ? '<b class="pt-neuf">NOUVEAU</b><span>'+esc(x.nouveau)+'</span>' : '')+
+        statut+
       '</p>'+
       '<h3>'+esc(l.titre)+'</h3>'+
       (date ? '<p class="pt-date">'+esc(date)+'</p>' : '')+
@@ -10188,6 +10602,10 @@ function actionsProposition(l){
     (l.ticket_url
       ? '<a class="pt-billet" href="'+esc(l.ticket_url)+'" target="_blank" rel="noopener">'+
         'Billetterie</a>' : '')+
+    '<button class="pt-action" data-pt-save="'+esc(l.id)+'" aria-label="Enregistrer">'+
+      (estFavori(l) ? "Enregistré" : "Enregistrer")+'</button>'+
+    '<button class="pt-action" data-pt-share="'+esc(l.id)+'" aria-label="Partager">Partager</button>'+
+    '<button class="pt-action pt-action-discret" data-pt-hide="'+esc(l.id)+'" aria-label="Masquer">Masquer</button>'+
     '<button class="pt-voir" data-pt-voir="'+esc(l.id)+'">Voir →</button>'+
   '</p>';
 }
@@ -10213,12 +10631,95 @@ function blocSurveillances(){
     '</section>';
 }
 
+function rendreGroupePourToi(label, identifiant, propositions){
+  if(!propositions.length) return "";
+  const visibles = propositions.slice(0, 2);
+  const reste = propositions.slice(2);
+  return '<section class="pt-groupe" data-testid="'+identifiant+'"><h3 class="pt-groupe-titre">'+esc(label)+'</h3>'
+    + visibles.map(carteProposition).join("")
+    + (reste.length
+        ? '<div class="pt-groupe-suite" data-pt-suite="'+esc(identifiant)+'" hidden>'+reste.map(carteProposition).join("")+'</div>'
+          + '<button class="pt-action pt-liste-plus" data-pt-expand="'+esc(identifiant)+'" aria-expanded="false">Voir les '+propositions.length+' \u2192</button>'
+        : "")
+    + '</section>';
+}
+
+/* Le registre de ce qui a DÉJÀ ÉTÉ ANNONCÉ, borné pour ne pas croître sans
+   fin. Il ne se confond pas avec « vu » : on peut avoir été prévenu d'une
+   annonce sans l'avoir lue. */
+function marquesAnnoncees(){
+  try{
+    const v = JSON.parse(localStorage.getItem(CLE_POURTOI_ANNONCE) || "[]");
+    return new Set(Array.isArray(v) ? v : []);
+  }catch(e){ return new Set(); }
+}
+
+function ecrireMarquesAnnoncees(ids){
+  try{
+    localStorage.setItem(CLE_POURTOI_ANNONCE, JSON.stringify([...ids].slice(-POURTOI_MEMOIRE_MAX)));
+  }catch(e){}
+}
+
+function ecrireConsultationPourToi(marque){
+  try{ localStorage.setItem(CLE_POURTOI_CONSULTE, String(marque)); }catch(e){}
+}
+
+function retenirAnnoncees(propositions){
+  const annoncees = marquesAnnoncees();
+  let ajouts = 0;
+  (propositions||[]).forEach((x)=>{
+    const id = x && x.l ? x.l.id : null;
+    if(id == null || annoncees.has(id)) return;
+    annoncees.add(id);
+    ajouts++;
+  });
+  if(ajouts) ecrireMarquesAnnoncees(annoncees);
+  return ajouts;
+}
+
+function nouveautesPourToi(propositions){
+  const annoncees = marquesAnnoncees();
+  if(!annoncees.size && consultationCompte){
+    /* Ce compte a déjà consulté « Pour toi » ailleurs : ce qui est là n'est
+       pas neuf pour lui, seule la suite le sera. */
+    retenirAnnoncees(propositions);
+    return [];
+  }
+  return (propositions||[]).filter((x)=> x && x.l && x.l.id != null && !annoncees.has(x.l.id));
+}
+
+function noterConsultationPourToi(propositions){
+  const ajouts = retenirAnnoncees(propositions);
+  const premiere = !consultationCompte;
+  const marque = Date.now();
+  ecrireConsultationPourToi(marque);
+  /* Le compte n'est touché que quand la consultation apprend quelque chose :
+     repeindre un panneau déjà ouvert ne doit pas écrire à chaque
+     rafraîchissement de données. */
+  if(ajouts || premiere) ecrireConsultationCompte(marque);
+}
+
+function peindrePastillePourToi(nombre){
+  const compte = Math.max(0, Number(nombre) || 0);
+  const pastille = $("#notifPastille");
+  if(pastille){
+    pastille.hidden = !compte;
+    pastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte) : "";
+  }
+  const cloche = $("#btnNotifs");
+  if(cloche) cloche.setAttribute("aria-label", compte ? "Pour toi, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Pour toi");
+}
+
+function majPastillePourToi(){
+  peindrePastillePourToi(nouveautesPourToi(propositionsPourToi(POURTOI_TOUT_MAX)).length);
+}
+
 function majPourToi(){
   const panneau = $("#pourToi");
   const corps = $("#ptCorps");
   if(!panneau || !corps) return;
   const debutCpu = performance.now();
-  const propositions = propositionsPourToi();
+  const propositions = propositionsPourToi(POURTOI_TOUT_MAX);
   const suivies = ENVIES ? ENVIES.choisies().length : 0;
 
   let contenu;
@@ -10231,15 +10732,32 @@ function majPourToi(){
     contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
       'Autour continue de regarder.</p>';
   }else{
-    contenu = propositions.map(carteProposition).join("");
+    /* Groupé par envie, et non en liste plate : « Rap · 4 » dit pourquoi
+       chaque carte est là. Deux cartes visibles par groupe, le reste derrière
+       un bouton — le panneau reste lisible quand la métropole donne beaucoup. */
+    contenu = groupesInteretsPourToi(propositions).map((groupe)=> rendreGroupePourToi(
+      groupe.label + " · " + groupe.propositions.length,
+      "pourtoi-interet-" + groupe.id,
+      groupe.propositions
+    )).join("");
+    if(!contenu) contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
+      'Autour continue de regarder.</p>';
   }
-  corps.innerHTML = contenu + blocSurveillances();
+  /* Les surveillances restent EN HAUT : c'est ce que la personne a demandé
+     explicitement de suivre, ça passe avant ce qu'Autour propose. */
+  corps.innerHTML = blocSurveillances() + contenu;
 
-  const nonVues = propositions.filter(x=>!x.vu).length;
+  const nonVues = propositions.filter(x=>!x.vu && x.groupe === "nouvelles_annonces").length;
   const toutVu = $("#ptToutVu");
   if(toutVu) toutVu.hidden = !nonVues;
-  const pastille = $("#notifPastille");
-  if(pastille) pastille.hidden = !nonVues;
+  /* Ouvert, le panneau expose les nouveautés : on les note comme annoncées et
+     la pastille retombe. Fermé, elle compte ce qui n'a jamais été exposé. */
+  if(pourToiOuvert()){
+    noterConsultationPourToi(propositions);
+    peindrePastillePourToi(0);
+  }else{
+    peindrePastillePourToi(nouveautesPourToi(propositions).length);
+  }
   brancherPourToi(propositions);
   PERF.travail("pour_toi", debutCpu);
 }
@@ -10247,12 +10765,71 @@ function majPourToi(){
 function brancherPourToi(propositions){
   const corps = $("#ptCorps");
   if(!corps) return;
-  corps.querySelectorAll("[data-pt-voir]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.ptVoir;
+  const ouvrirDetailPourToi = (id)=>{
     marquerVu([id]);
     if(!NAV_FLOTTANTE.matches) fermerPourToi();
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(id));
+  };
+  /* Un clic standard est volontaire ici : il couvre souris, pointer et tap
+     Safari sans ajouter un `pointerup` concurrent qui ouvrirait la fiche deux
+     fois sur les navigateurs mobiles. Les contrôles internes sortent avant la
+     porte de la carte et gardent leur propre action. */
+  corps.querySelectorAll("[data-pt]").forEach((carte)=>{
+    carte.onclick = (event)=>{
+      const cible = event.target;
+      if(cible && cible.closest && cible.closest("a,button")) return;
+      ouvrirDetailPourToi(carte.dataset.pt);
+    };
+    carte.onkeydown = (event)=>{
+      const cible = event.target;
+      if(cible && cible.closest && cible.closest("a,button")) return;
+      if(event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      ouvrirDetailPourToi(carte.dataset.pt);
+    };
+  });
+  corps.querySelectorAll(".pt-billet").forEach((lien)=>lien.onclick=(event)=>{
+    event.stopPropagation();
+  });
+  corps.querySelectorAll("[data-pt-voir]").forEach((b)=>b.onclick=(event)=>{
+    event.stopPropagation();
+    ouvrirDetailPourToi(b.dataset.ptVoir);
+  });
+  corps.querySelectorAll("[data-pt-expand]").forEach((b)=>{
+    b.onclick = (event)=>{
+      event.stopPropagation();
+      const groupe = b.closest(".pt-groupe");
+      const suite = groupe ? groupe.querySelector("[data-pt-suite]") : null;
+      if(!suite) return;
+      suite.hidden = false;
+      b.hidden = true;
+      b.setAttribute("aria-expanded", "true");
+    };
+  });
+  corps.querySelectorAll("[data-pt-save]").forEach((b)=>{
+    b.onclick = async (event)=>{
+      event.stopPropagation();
+      const item = propositions.find((x)=>String(x.l.id) === String(b.dataset.ptSave));
+      if(!item) return;
+      await basculerFavori(item.l);
+      b.textContent = estFavori(item.l) ? "Enregistré" : "Enregistrer";
+    };
+  });
+  corps.querySelectorAll("[data-pt-share]").forEach((b)=>{
+    b.onclick = async (event)=>{
+      event.stopPropagation();
+      const item = propositions.find((x)=>String(x.l.id) === String(b.dataset.ptShare));
+      if(item) await partagerLieu(item.l);
+    };
+  });
+  corps.querySelectorAll("[data-pt-hide]").forEach((b)=>{
+    b.onclick = (event)=>{
+      event.stopPropagation();
+      masquerPourToi(b.dataset.ptHide);
+      majPourToi();
+      toast("Annonce masquée");
+    };
   });
   const gerer = ()=>ouvrirEnvies();
   if($("#ptGerer")) $("#ptGerer").onclick = gerer;
@@ -10786,8 +11363,9 @@ function blocNouveauPourToi(){
   const l = x.l;
   const c = categorieAffichee(l);
   const visuel = l.image
-    ? '<img class="npt-img" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async">'
-    : '<span class="npt-img npt-img-vide" aria-hidden="true">'+c.emoji+'</span>';
+    ? visuelCarteEvenement(l, c, "npt")
+    : '<span class="npt-img npt-img-vide npt-image-shell event-fallback-carte" aria-hidden="true">'+
+      fallbackVisuelEvenement(l, c, "")+'</span>';
   /* Date et lieu, tels quels : sans date exploitable la ligne disparaît
      plutôt que d'écrire une approximation. */
   const bas = [dateProposition(l), (l.cp || l.adresse || "").trim()]
@@ -11035,7 +11613,8 @@ function carteRecommandation(l){
       '<i>'+c.emoji+'</i>'+
       (l.image
         ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image)+'" '+
-          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')">'
+          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')" '+
+          'onerror="imageEvenementErreur(this)">'
         : '')+
       (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
     '</figure>';
@@ -12271,13 +12850,15 @@ function suivreMaPosition(opts){
   const o = opts || {};
   if(!navigator.geolocation){
     definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-    etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
+    if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("refus");
+    else etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
     return;
   }
   // Le démarrage, le bouton et le retour au premier plan peuvent se croiser.
   // Une seule demande navigateur à la fois évite les réponses dans le désordre.
   if(localisationEnCours) return;
   localisationEnCours = true;
+  if(o.onboarding || o.reproposer) afficherOnboarding("preparation");
   definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
   PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
@@ -12285,7 +12866,8 @@ function suivreMaPosition(opts){
       localisationEnCours = false;
       PERF.jalon("geolocation_ready");
       PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
-      appliquerPosition(p, {discret: !!o.silencieux});
+      appliquerPosition(p, {discret: !!o.silencieux || !!o.onboarding || !!o.reproposer});
+      if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("ok");
       // une fois la permission acquise, on ne la redemande plus : on veille
       veillerSurLaPosition();
     },
@@ -12294,7 +12876,8 @@ function suivreMaPosition(opts){
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
       if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-      if(!o.silencieux) proposerPosition();
+      if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("refus");
+      else if(!o.silencieux) proposerPosition();
     },
     /* Trente secondes, pas deux minutes. Un relevé récent rend la réponse
        instantanée — c'est tout l'intérêt du cache — mais au-delà d'une demi-
@@ -12316,20 +12899,37 @@ function proposerPosition(){
       : "Active ta position ou choisis un endroit sur la carte.", true);
 }
 
-/* La demande part dès l'ouverture, en parallèle du premier rendu. Le temps de
-   répondre au navigateur, la coquille, la carte et les caches se stabilisent.
-   Une permission déjà refusée n'est jamais redemandée : le bandeau conserve
-   alors le choix manuel. Safari ne répondant pas toujours à
-   `permissions.query`, notre trace locale distingue une autorisation déjà
-   obtenue d'un premier démarrage. */
+/* La demande ne part qu'après le geste d'onboarding. Une autorisation déjà
+   obtenue peut ensuite être rafraîchie silencieusement, mais un premier écran
+   ou un refus ne relance jamais la permission tout seul. */
 async function demarrerLocalisation(){
+  etapeOnboarding = lireEtapeOnboarding();
+  if(etapeOnboarding !== ETAPES_ONBOARDING.TERMINE){
+    afficherOnboarding(etapeOnboarding === ETAPES_ONBOARDING.LOCALISATION
+      ? "localisation" : "bienvenue");
+    return;
+  }
   const etatPerm = await permissionPosition();
   PERF.jalon("permission_" + etatPerm);
-  if(etatPerm === "denied"){ proposerPosition(); return; }
-  suivreMaPosition();
+  if(etatPerm === "granted") suivreMaPosition({silencieux:true});
 }
 
-$("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
+function lancerOnboardingLocalisation(){
+  memoriserEtapeOnboarding(ETAPES_ONBOARDING.LOCALISATION);
+  afficherOnboarding("localisation");
+  /* Laisser une peinture passer rend la transition perceptible, puis réutilise
+     exactement la même porte `suivreMaPosition` que les autres gestes. */
+  requestAnimationFrame(()=>suivreMaPosition({onboarding:true}));
+}
+
+$("#onboardingAction").onclick=()=>{
+  if(etapeOnboarding === ETAPES_ONBOARDING.LOCALISATION){
+    suivreMaPosition({onboarding:true});
+    return;
+  }
+  lancerOnboardingLocalisation();
+};
+$("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition({reproposer:true}); };
 $("#bandeauOk").textContent = "Utiliser ma position";
 $("#videOk").onclick=()=>{
   $("#bandeauVide").hidden = true;
@@ -12343,14 +12943,9 @@ $("#videOk").onclick=()=>{
   toast("Les lieux fermés sont affichés"); rendre();
 };
 
-/* Démarrage immédiat : plus rien n'attend un clic ni une permission.
-
-   La géolocalisation part EN MÊME TEMPS que l'interface, pas après elle. Elle
-   était lancée à la fin de `demarrer()`, donc derrière la carte, le cache et
-   les premières requêtes : sur un téléphone, la permission n'était demandée
-   qu'une seconde après l'ouverture, et la position n'arrivait qu'une seconde
-   plus tard encore. Elle ne bloque rien — l'écran démarre sur la dernière
-   position connue et se corrige silencieusement quand la vraie arrive. */
+/* Démarrage immédiat : l'interface s'affiche sans attendre l'onboarding ni la
+   permission. La demande navigateur reste un geste explicite ; une permission
+   déjà accordée peut seulement être rafraîchie ensuite en silence. */
 performance.mark("autour:script");
 PERF.jalon("script");
 /* `demarrer()` peut appeler majEnteteLieu immédiatement en mode de test : ce
@@ -12358,8 +12953,8 @@ PERF.jalon("script");
    bas avec les gestionnaires de navigation. */
 const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
 const positionTest = positionLocaleDeTest();
-if(!positionTest) demarrerLocalisation();
 demarrer(positionTest || positionMemorisee());
+if(!positionTest) demarrerLocalisation();
 PERF.mesure("boot UI", "script", "ui_ready");
 /* La recherche est désormais toujours visible : elle porte l'intention
    («&nbsp;que veux-tu faire&nbsp;?»), elle ne se déplie plus. La croix
@@ -12880,7 +13475,7 @@ $("#btnPoseOk").onclick=validerPose;
    filtre. C'était la condition posée — une seule porte, dans un sens comme
    dans l'autre. */
 function revenirAutourDeMoi(){
-  if(!positionMoi || !positionConnue()) { suivreMaPosition(); return; }
+  if(!positionMoi || !positionPrecise()) { suivreMaPosition({reproposer:true}); return; }
   definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
   annulerChargementsZone();
   rechercheGeo = null;
@@ -13171,6 +13766,12 @@ async function ouvrirFavoris(){
    point affiché est « autour de toi ». */
 function majEnteteLieu(){
   const v = $("#hdVille");
+  const avatar = $("#hdAvatar");
+  if(avatar){
+    const choix = avatarChoisi();
+    avatar.textContent = choix;
+    avatar.hidden = !choix;
+  }
   if(!v) return;
   if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
   /* Une ville déduite d'une adresse IP ne s'écrit JAMAIS dans cette pastille.
@@ -13314,7 +13915,7 @@ $("#btnLieu").onclick = ()=>{
      approchée, et plus rien dans l'écran ne permettait de demander la vraie
      position. Quelqu'un que le navigateur n'a jamais localisé restait sur une
      ville à plusieurs kilomètres, sans aucun moyen d'y remédier. */
-  if(!positionPrecise()){ suivreMaPosition(); return; }
+  if(!positionPrecise()){ suivreMaPosition({reproposer:true}); return; }
   if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
   allerVers(positionMoi, 16, {duration:.6});
 };

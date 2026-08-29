@@ -71,6 +71,128 @@ export function lire(objet, cles) {
   return null;
 }
 
+/* ---- Images DATAtourisme : seulement une représentation déclarée --------
+
+   Le catalogue ne promet pas une forme unique : selon le producteur, la
+   représentation est un objet ou un tableau, l'URL est directe ou sous
+   `resourceLocator`, et les droits sont un texte ou un objet JSON-LD.
+
+   On ne parcourt QUE `hasMainRepresentation` et `hasRelatedResource`. Le
+   titre, la description, le lieu et le nom d'un organisateur ne peuvent donc
+   jamais devenir par accident l'origine d'une image. Une URL sans licence
+   explicite est refusée : aucun auteur, aucune licence, aucune attribution
+   n'est inventée. */
+const CLES_URL_IMAGE = [
+  "url", "uri", "contentUrl", "schema:contentUrl", "schema:url", "@id",
+  "locator", "ebucore:locator",
+];
+const CLES_LOCATEUR = ["resourceLocator", "ebucore:resourceLocator", "locator"];
+const CLES_LICENCE_IMAGE = [
+  "license", "licence", "rights", "dc:rights", "schema:license",
+  "copyrightNotice", "schema:copyrightNotice",
+];
+const CLES_AUTEUR_IMAGE = [
+  "author", "creator", "dc:creator", "credit", "credits", "attribution",
+  "copyrightHolder", "schema:copyrightHolder",
+];
+const CLES_TYPE_IMAGE = [
+  "encodingFormat", "mediaType", "mimeType", "contentType", "fileFormat",
+  "format",
+];
+const LICENCES_IMAGE_EXPLICITES =
+  /(creativecommons\.org|\bcc[ -]?0\b|\bcc[ -]?by(?:[ -]?sa)?(?:[ -]?\d(?:\.\d)?)?\b|public[ -]domain|domaine[ -]public|licen[cs]e ouverte|open[ -]licen[cs]e|open[ -]data|etalab|odbl)/i;
+const LICENCES_IMAGE_REFUSEES =
+  /(fair[ -]use|non[ -]free|nc[ -]nd|by[ -]nc|tous droits|all rights reserved|copyright(ed)?\b(?![ -]free))/i;
+
+function urlImageDatatourisme(brut) {
+  const url = texte(brut).trim();
+  if (!/^https:\/\//i.test(url)) return "";
+  try {
+    const parsed = new URL(url);
+    const chemin = parsed.pathname.replace(/\/+$/, "");
+    if (!chemin || parsed.pathname === "/") return "";
+    return parsed.href;
+  } catch { return ""; }
+}
+
+function chercherUrlImage(brut, profondeur = 0) {
+  if (profondeur > 6 || brut == null) return "";
+  const directe = urlImageDatatourisme(brut);
+  if (directe) return directe;
+  if (Array.isArray(brut)) {
+    for (const item of brut) {
+      const trouve = chercherUrlImage(item, profondeur + 1);
+      if (trouve) return trouve;
+    }
+    return "";
+  }
+  if (typeof brut !== "object") return "";
+  for (const cle of CLES_URL_IMAGE) {
+    const trouve = chercherUrlImage(brut[cle], profondeur + 1);
+    if (trouve) return trouve;
+  }
+  for (const cle of CLES_LOCATEUR) {
+    const trouve = chercherUrlImage(brut[cle], profondeur + 1);
+    if (trouve) return trouve;
+  }
+  return "";
+}
+
+function champImageProfond(brut, cles, profondeur = 0) {
+  if (profondeur > 6 || brut == null) return "";
+  if (Array.isArray(brut)) {
+    for (const item of brut) {
+      const trouve = champImageProfond(item, cles, profondeur + 1);
+      if (trouve) return trouve;
+    }
+    return "";
+  }
+  if (typeof brut !== "object") return "";
+  for (const cle of cles) {
+    if (brut[cle] == null) continue;
+    const valeurBrute = brut[cle];
+    const trouve = valeurBrute && typeof valeurBrute === "object"
+      ? texte(lire(valeurBrute, ["name", "label", "@value", "value", "@id"]))
+      : texte(valeurBrute);
+    if (trouve) return trouve;
+  }
+  for (const valeurBrute of Object.values(brut)) {
+    const trouve = champImageProfond(valeurBrute, cles, profondeur + 1);
+    if (trouve) return trouve;
+  }
+  return "";
+}
+
+function licenceImageExplicite(licence) {
+  const texteLicence = texte(licence);
+  return !!texteLicence && !LICENCES_IMAGE_REFUSEES.test(texteLicence)
+    && LICENCES_IMAGE_EXPLICITES.test(texteLicence);
+}
+
+export function imageDatatourisme(poi, options = {}) {
+  if (!poi || typeof poi !== "object") return null;
+  for (const cle of ["hasMainRepresentation", "hasRelatedResource"]) {
+    for (const representation of liste(lire(poi, [cle]))) {
+      const imageUrl = chercherUrlImage(representation);
+      const imageLicense = champImageProfond(representation, CLES_LICENCE_IMAGE);
+      const imageType = champImageProfond(representation, CLES_TYPE_IMAGE);
+      if (!imageUrl || (imageType && !/^image\//i.test(imageType))
+          || !licenceImageExplicite(imageLicense)) continue;
+      return {
+        image_url: imageUrl,
+        image_source: "datatourisme",
+        image_source_url: texte(options.sourceUrl),
+        image_author: champImageProfond(representation, CLES_AUTEUR_IMAGE),
+        image_license: imageLicense,
+        image_updated_at: texte(options.updatedAt),
+        image_type: "event_poster",
+        image_confidence: "high",
+      };
+    }
+  }
+  return null;
+}
+
 export function nombre(brut, maximum) {
   if (brut == null || brut === "") return null;
   const n = Number(valeur(brut));
@@ -327,10 +449,18 @@ export function normaliserEvenement(poi, options = {}) {
   const description = texte(lire(poi, ["hasDescription", "description", "shortDescription"]));
   const ou = analyserAdresse(position.lieu || {});
   const placeName = texte(lire(position.lieu || {}, ["label", "name", "schema:name"]));
+  const sourceUrl = texte(lire(poi, ["url", "sameAs", "source"]));
+  const lastSourceUpdate = analyserDate(
+    lire(poi, ["lastUpdate", "lastUpdateDatatourisme", "dc:modified"]),
+  )?.iso || null;
+  const image = imageDatatourisme(poi, {
+    sourceUrl,
+    updatedAt: lastSourceUpdate,
+  });
   const annonce = normaliserAnnonce(poi, {
     source: "datatourisme",
     externalId,
-    sourceUrl: texte(lire(poi, ["url", "sameAs", "source"])),
+    sourceUrl,
   });
   const rawEvent = annonce.tagEvidence?.length
     ? {...poi, announcement_tag_evidence: annonce.tagEvidence}
@@ -357,21 +487,54 @@ export function normaliserEvenement(poi, options = {}) {
       lat: position.lat,
       lng: position.lng,
       primary_source: "datatourisme",
-      source_url: null,
-      image_url: null,
+      source_url: sourceUrl || null,
+      image_url: image?.image_url || null,
+      image_source: image?.image_source || null,
+      image_source_url: image?.image_source_url || null,
+      image_author: image?.image_author || null,
+      image_license: image?.image_license || null,
+      image_updated_at: image?.image_updated_at || null,
       cancelled: false,
-      last_source_update: analyserDate(
-        lire(poi, ["lastUpdate", "lastUpdateDatatourisme", "dc:modified"]))?.iso || null,
+      last_source_update: lastSourceUpdate,
       ...annonce.fields,
     },
   };
 }
 
-/* ---- La zone décide de ce qui la concerne ------------------------------- */
-export function dansLaZone(lat, lng, area) {
+/* ---- La zone décide de ce qui la concerne -------------------------------
+
+   LE RECTANGLE NE SUFFIT PAS À DIRE « MÉTROPOLE ».
+
+   Un rectangle assez large pour contenir Halluin au nord et Carnin au sud
+   contient aussi Orchies, Cysoing, Bailleul et un morceau de Belgique. Le
+   rectangle sert donc à INTERROGER le catalogue ; ce qui décide de garder,
+   c'est la liste des communes de la zone, quand elle existe.
+
+   On compare des NOMS, pas des codes INSEE : `insee_code` est NULL sur la
+   totalité des événements de la base — aucune source amont ne le fournit —
+   tandis que `city` est toujours renseigné. Une zone sans `commune_keys`
+   garde le comportement d'avant : le rectangle seul. */
+export function cleCommune(nom) {
+  return String(nom || "")
+    .toLowerCase()
+    .replace(/œ/g, "oe").replace(/æ/g, "ae")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+export function communeDeLaZone(ville, area) {
+  const liste = area && Array.isArray(area.commune_keys) ? area.commune_keys : null;
+  if (!liste || !liste.length) return true;   // zone sans liste : le rectangle décide seul
+  const cle = cleCommune(ville);
+  return cle ? liste.includes(cle) : false;
+}
+
+export function dansLaZone(lat, lng, area, ville) {
   if (!area || lat == null || lng == null) return false;
-  return lat >= area.min_lat && lat <= area.max_lat
-    && lng >= area.min_lng && lng <= area.max_lng;
+  if (lat < area.min_lat || lat > area.max_lat) return false;
+  if (lng < area.min_lng || lng > area.max_lng) return false;
+  return communeDeLaZone(ville, area);
 }
 
 /* ===========================================================================
@@ -537,8 +700,11 @@ export function normaliserLot(pois, area, options = {}) {
       continue;
     }
     if (!normalise) { rejets.push({ raison: "inexploitable" }); continue; }
-    if (!dansLaZone(normalise.event.lat, normalise.event.lng, area)) {
-      rejets.push({ raison: "hors_zone" });
+    if (!dansLaZone(normalise.event.lat, normalise.event.lng, area, normalise.event.city)) {
+      rejets.push({
+        raison: communeDeLaZone(normalise.event.city, area) ? "hors_rectangle" : "hors_communes",
+        ville: normalise.event.city || null,
+      });
       continue;
     }
     retenus.push(normalise);
