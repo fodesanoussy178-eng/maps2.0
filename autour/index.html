@@ -312,7 +312,7 @@ input{font-family:inherit;font-size:16px}
 
 /* Les bandeaux se posent SOUS l'en-tête : sa hauteur est mesurée, donc ils
    ne recouvrent plus la recherche quel que soit l'appareil. */
-#bandeauGeo,#bandeauVide{position:absolute;left:16px;right:16px;
+#bandeauGeo,#bandeauVide,#onboardingLocalisation{position:absolute;left:16px;right:16px;
   top:calc(var(--header-bas) + 10px);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
@@ -321,6 +321,18 @@ input{font-family:inherit;font-size:16px}
 #bandeauOk,#videOk{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
   color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase}
+#onboardingLocalisation{z-index:655}
+#onboardingLocalisation{flex-wrap:wrap}
+#onboardingLocalisation button{flex-shrink:0;min-height:44px;padding:8px 14px;border:0;border-radius:99px;background:var(--signal);
+  color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+#onboardingTxt{flex:1;min-width:0}
+#onboardingAvatars{display:flex;flex:1 0 100%;align-items:center;justify-content:center;gap:4px}
+#onboardingAvatars button{width:36px;min-height:36px;padding:0;border:1px solid var(--bord);border-radius:50%;
+  background:#fff;color:var(--ink);font-family:inherit;font-size:22px;line-height:1;letter-spacing:normal;
+  text-transform:none;cursor:pointer}
+#onboardingAvatars button[aria-pressed="true"]{border-color:var(--signal);box-shadow:0 0 0 2px rgba(255,74,23,.16)}
+#hdAvatar{display:inline-block;flex:0 0 auto;font-size:20px;line-height:1}
 #charge{position:absolute;top:calc(var(--header-bas) + 10px);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
@@ -554,6 +566,44 @@ input{font-family:inherit;font-size:16px}
 .aide-couverture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .aide-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:1;max-width:75%;padding:3px 6px;
   border-radius:5px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.2}
+
+/* ---- Visuel d'événement : le ratio décide, pas un bandeau universel -----
+   Une affiche verticale se lit entière. Une petite source garde sa taille
+   naturelle : elle ne devient jamais un grand bitmap flou. */
+.event-couverture{position:relative;display:grid;place-items:center;min-height:230px;
+  margin:-18px -18px 18px;padding:12px;overflow:hidden;border-radius:18px 18px 13px 13px;
+  background:color-mix(in srgb,var(--teinte) 12%,#fff)}
+.event-couverture img{position:relative;z-index:2;display:block;width:auto;height:auto;max-width:100%;max-height:430px;
+  object-fit:contain;opacity:0;transition:opacity .18s ease}
+.event-couverture img.image-ready{opacity:1}
+.event-couverture.event-couverture-paysage{height:min(42vw,330px);min-height:205px;padding:0}
+.event-couverture.event-couverture-paysage img{width:100%;height:100%;max-height:none;object-fit:cover}
+.event-couverture.event-couverture-portrait{min-height:270px;max-height:min(500px,62vh)}
+.event-couverture.event-couverture-portrait img{max-height:min(500px,62vh)}
+.event-couverture.event-couverture-carre{height:min(72vw,310px);min-height:230px}
+.event-couverture.event-couverture-carre img{max-height:100%}
+.event-couverture.event-couverture-basse img{width:auto!important;height:auto!important;max-width:100%;max-height:100%;object-fit:contain}
+.event-couverture figcaption{position:absolute;right:8px;bottom:8px;z-index:4;max-width:75%;padding:3px 6px;
+  border-radius:5px;background:rgba(20,30,25,.72);color:#fff;font-size:11px;line-height:1.2}
+.event-couverture figcaption a{color:inherit;text-decoration:underline}
+.event-fallback{position:absolute;inset:0;z-index:1;display:grid;place-items:center;align-content:center;gap:5px;
+  padding:10px;color:var(--ink);text-align:center;transition:opacity .18s ease}
+.event-fallback i{font-style:normal;font-size:42px;line-height:1;filter:saturate(.85)}
+.event-fallback small{font-size:11px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;opacity:.66}
+.event-couverture.image-ready>.event-fallback,.event-image-shell.image-ready>.event-fallback,
+.pt-image-shell.image-ready>.event-fallback,.npt-image-shell.image-ready>.event-fallback{opacity:0}
+.event-fallback-concert{background:linear-gradient(145deg,#fbe4ef,#f7d0e2)}
+.event-fallback-cinema{background:linear-gradient(145deg,#e7ddff,#d9cbff)}
+.event-fallback-manga{background:linear-gradient(145deg,#fff0c8,#ffe2a0)}
+.event-fallback-exposition{background:linear-gradient(145deg,#d9f5f0,#b9e6df)}
+.event-fallback-sport{background:linear-gradient(145deg,#e1f4df,#c4e8c1)}
+.event-fallback-theatre{background:linear-gradient(145deg,#f5e2d8,#ecc9b9)}
+.event-fallback-festival{background:linear-gradient(145deg,#ffe4c8,#ffd0a4)}
+.event-fallback-food{background:linear-gradient(145deg,#ffe6d4,#ffd0ad)}
+.event-fallback-nightlife{background:linear-gradient(145deg,#e8d9f7,#d7c0ec)}
+.event-fallback-event{background:linear-gradient(145deg,#e8eee9,#d5dfd8)}
+.event-couverture.image-absente>.event-fallback{opacity:1}
+.event-couverture.image-absente figcaption{display:none}
 dl.faits-aide>div{align-items:start}
 dl.faits-aide dd{max-width:63%;line-height:1.4}
 .as-plus{width:100%;min-height:48px;margin-top:12px;border:1px solid var(--bord);
@@ -1540,7 +1590,7 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   body.sheet-open #ficheCompacte{
     left:calc((100vw + var(--decalage-desktop)) / 2);}
 
-  #bandeauGeo,#bandeauVide{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
+  #bandeauGeo,#bandeauVide,#onboardingLocalisation{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
   #charge{left:50%}
   #filtresHumains{width:auto;max-width:none}
   /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
@@ -1682,6 +1732,14 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .npt-img{flex:0 0 auto;width:52px;height:52px;border-radius:13px;object-fit:cover;
   background:#fff}
 .npt-img-vide{display:inline-flex;align-items:center;justify-content:center;font-size:24px}
+.npt-image-shell{position:relative;display:block;flex:0 0 52px;width:52px;height:52px;border-radius:13px;
+  overflow:hidden;background:var(--paper)}
+.npt-image-shell .event-fallback{padding:3px;gap:1px}
+.npt-image-shell .event-fallback i{font-size:23px}
+.npt-image-shell .event-fallback small{font-size:11px;letter-spacing:.02em}
+.npt-image-shell img{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;opacity:0;
+  transition:opacity .18s ease}
+.npt-image-shell img.image-ready{opacity:1}
 .npt-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
 .npt-txt b{font-size:15.5px;font-weight:750;line-height:1.25}
 .npt-txt i{font-style:normal;font-size:13px;color:var(--ink2)}
@@ -1734,11 +1792,20 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 
 .pt-carte{display:flex;gap:13px;padding:14px;margin-bottom:12px;
   border:1px solid rgba(20,30,25,.10);border-radius:16px;background:#fff;
-  box-shadow:0 1px 2px rgba(20,30,25,.04)}
+  box-shadow:0 1px 2px rgba(20,30,25,.04);cursor:pointer}
+.pt-carte:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 .pt-vu{opacity:.62}
 .pt-img{flex:0 0 auto;width:72px;height:88px;border-radius:12px;object-fit:cover;
   background:var(--paper)}
 .pt-img-vide{display:inline-flex;align-items:center;justify-content:center;font-size:30px}
+.pt-image-shell{position:relative;display:block;flex:0 0 72px;width:72px;height:88px;border-radius:12px;
+  overflow:hidden;background:var(--paper)}
+.pt-image-shell .event-fallback{padding:5px;gap:3px}
+.pt-image-shell .event-fallback i{font-size:30px}
+.pt-image-shell .event-fallback small{font-size:11px;letter-spacing:.02em}
+.pt-image-shell img{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;opacity:0;
+  transition:opacity .18s ease}
+.pt-image-shell img.image-ready{opacity:1}
 .pt-txt{flex:1 1 auto;min-width:0}
 .pt-haut{display:flex;align-items:center;gap:8px;margin-bottom:5px;
   font-size:11px;color:var(--ink2)}
@@ -1757,10 +1824,13 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   font-size:12.5px;font-weight:700;text-decoration:none}
 .pt-voir{min-height:36px;padding:0 12px;border:0;border-radius:99px;background:transparent;
   color:#5B3FC4;font-size:13px;font-weight:750;cursor:pointer}
+.pt-action{min-height:34px;padding:0 10px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;color:var(--ink2);font-size:11.5px;font-weight:700;cursor:pointer}
+.pt-action-discret{border-color:transparent;background:transparent}
 .pt-vide{padding:18px 14px;border-radius:14px;background:var(--paper);
   font-size:13.5px;line-height:1.5;color:var(--ink2)}
 
-.pt-envies{margin-top:16px;padding-top:14px;border-top:1px solid rgba(20,30,25,.10)}
+.pt-envies{margin:0 0 16px;padding:0 0 14px;border-bottom:1px solid rgba(20,30,25,.10)}
 .pt-envies-tete{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
 .pt-envies-tete strong{font-size:15px;font-weight:750}
 #ptGerer{border:0;background:transparent;color:#5B3FC4;font-size:12.5px;font-weight:700;
@@ -2005,6 +2075,12 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <button id="bandeauOk">Activer</button>
 </div>
 
+<div id="onboardingLocalisation" hidden role="status" aria-live="polite">
+  <span id="onboardingTxt"></span>
+  <div id="onboardingAvatars" hidden role="group" aria-label="Choisir ton avatar"></div>
+  <button id="onboardingAction" type="button"></button>
+</div>
+
 <div id="bandeauVide" hidden>
   <span id="videTxt">Rien d’ouvert autour de toi en ce moment.</span>
   <button id="videOk">Tout voir</button>
@@ -2037,13 +2113,14 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
        feuille) et brouillait la seule question qu'elle doit répondre : où
        est-ce que je regarde ? Un appui recentre, ou demande où regarder. -->
   <button id="btnLieu" title="Recentrer sur ma position">
-    ⌖ <b id="hdVille">Autour de toi</b>
+    ⌖ <span id="hdAvatar" hidden aria-hidden="true"></span><b id="hdVille">Autour de toi</b>
   </button>
   <button class="hd-icone" id="btnLoupe" aria-label="Rechercher">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
   </button>
-  <button class="hd-icone" id="btnNotifs" aria-label="Notifications">
+  <button class="hd-icone" id="btnNotifs" aria-label="Pour toi">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    <span class="notif-texte">Pour toi</span>
     <i id="notifPastille" hidden></i>
   </button>
 </header>
@@ -2238,7 +2315,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="temporel.js?v=956a7024" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=2a03415f" defer></script>
-<script src="images.js?v=159d48a4" defer></script>
+<script src="images.js?v=a6ad2a55" defer></script>
 <script src="core.js?v=8e9d739b" defer></script>
 <script src="providers/normaliser.js?v=b35171d0" defer></script>
 <script src="providers/googlePlaces.js?v=70338a03" defer></script>
@@ -2246,6 +2323,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/decouvertes.js?v=e089f93c" defer></script>
 <script src="providers/osm.js?v=ce966e3f" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=c461da0c" defer></script>
+<script src="app.js?v=b25a252b" defer></script>
 </body>
 </html>

@@ -205,10 +205,11 @@ test("une image déclarée générée par un modèle ne représente jamais un li
   assert.equal(IMAGES.sentIA("Photographie de la façade"), false);
 });
 
-test("une source inconnue n'entre pas — `image_source` n'a que sept valeurs", () => {
+test("une source inconnue n'entre pas — `image_source` reste borné au vocabulaire connu", () => {
   const IMAGES = resolveur();
   assert.deepEqual([...IMAGES.SOURCES], ["openagenda", "datatourisme", "structure", "autour",
-    "site_officiel", "wikimedia_commons", "google_places"]);
+    "site_officiel", "wikimedia_commons", "artist_official", "organizer_official",
+    "venue_official", "institutional", "google_places"]);
   assert.equal(IMAGES.visuel({ image_url: "https://x.test/a.jpg", image_source: "gemini" }), null);
   assert.equal(IMAGES.visuel({ image_url: "https://x.test/a.jpg", image_source: "" }), null);
 });
@@ -434,6 +435,45 @@ test("une photo de bâtiment ne remplace jamais une affiche déjà posée", () =
   assert.equal(sansAffiche.imageSource, "wikimedia_commons");
 });
 
+test("le contrat événement refuse Google Places et classe les sources fiables", () => {
+  const IMAGES = resolveur();
+  assert.equal(IMAGES.visuelEvenement({
+    image_url: "https://places.googleapis.com/v1/places/X/photos/Y/media?key=k",
+    image_source: "google_places",
+  }), null);
+  assert.equal(IMAGES.visuelEvenement({
+    image_url: "https://img.openagenda.com/main/affiche.jpg",
+    image_source: "openagenda",
+  }).image_type, "event_poster");
+  assert.equal(IMAGES.visuelEvenement({
+    image_url: "https://cdn.exemple.fr/organisateur.jpg",
+    image_source: "organizer_official",
+  }).image_type, "organizer");
+  assert.equal(IMAGES.visuelEvenement({
+    image_url: "https://salle.exemple.fr/affiche.jpg",
+    image_source: "",
+    source: "venue_official",
+  }).image_type, "venue");
+});
+
+test("les fallbacks sont graphiques et déterminés par la catégorie", () => {
+  const IMAGES = resolveur();
+  assert.equal(IMAGES.fallbackEvenement("cinema").key, "cinema");
+  assert.equal(IMAGES.fallbackEvenement("cinema").emoji, "🎬");
+  assert.equal(IMAGES.fallbackEvenement("manga").key, "manga");
+  assert.equal(IMAGES.fallbackEvenement("manga").emoji, "🎯");
+  assert.equal(IMAGES.fallbackEvenement("autre").key, "event");
+});
+
+test("le ratio distingue paysage, affiche, carré et petite source sans l'upscaler", () => {
+  const IMAGES = resolveur();
+  assert.equal(IMAGES.ratioImage(1600, 900), "event-couverture-paysage");
+  assert.equal(IMAGES.ratioImage(600, 900), "event-couverture-portrait");
+  assert.equal(IMAGES.ratioImage(1000, 1000), "event-couverture-carre");
+  assert.equal(IMAGES.ratioImage(320, 480), "event-couverture-portrait event-couverture-basse");
+  assert.equal(IMAGES.ratioImage(500, 1200), "event-couverture-portrait");
+});
+
 /* ======================================================================== */
 /*  7. Le contrat, et ce qu'il ne fait pas                                  */
 /* ======================================================================== */
@@ -512,6 +552,18 @@ test("les emplacements, le repli teinté et le crédit sont exactement ceux d'av
   // la ligne de résultat : même tuile, même émoji de repli
   assert.match(html, /<span class="ac-photo" style="--teinte:/);
   // et rien n'est attendu : lazy + async, comme avant
+  assert.match(html, /loading="lazy" decoding="async"/);
+});
+
+test("Pour toi et la fiche retirent une URL cassée sans bloquer le rendu", () => {
+  assert.match(html, /function imageEvenementErreur\(img\)/);
+  assert.match(html, /onerror="imageEvenementErreur\(this\)"/);
+  assert.match(html, /function couvertureEvenement\(l, c\)/);
+  assert.match(html, /function provenanceImage\(l\)/);
+  assert.match(html, /Source : /);
+  assert.match(html, /event-couverture-paysage/);
+  assert.match(html, /event-couverture-portrait/);
+  assert.match(html, /event-couverture-basse/);
   assert.match(html, /loading="lazy" decoding="async"/);
 });
 

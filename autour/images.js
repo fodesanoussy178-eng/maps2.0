@@ -72,6 +72,10 @@
     "autour",              // publiée dans Autour par quelqu'un du quartier
     "site_officiel",       // tag OSM `image` pointant le site du lieu lui-même
     "wikimedia_commons",   // Commons, atteint par tag ou par Wikidata
+    "artist_official",     // visuel officiel lié explicitement à l'artiste
+    "organizer_official",  // visuel officiel lié explicitement à l'organisateur
+    "venue_official",      // visuel officiel lié explicitement au lieu
+    "institutional",       // source institutionnelle déclarée
     "google_places",       // repli, affiché selon les règles Google
   ]);
 
@@ -79,6 +83,30 @@
      doit jamais être remplacée par une photo du bâtiment, et une photo de
      bâtiment ne doit jamais se faire passer pour l'affiche. */
   const PORTEES = Object.freeze({LIEU: "lieu", EVENEMENT: "evenement"});
+
+  /* Une image d'événement n'est pas une image de lieu. Ce vocabulaire reste
+     côté rendu tant que la base ne porte pas de colonne `image_type` : on ne
+     crée pas de migration pour déduire après coup une information que la
+     source n'a pas fournie. */
+  const TYPES_EVENEMENT = Object.freeze([
+    "event_poster", "artist", "organizer", "venue", "institutional", "fallback",
+  ]);
+
+  /* Fallbacks graphiques Autour. Ils sont volontairement déterminés par la
+     catégorie canonique, jamais par le titre : une image de concert ne doit
+     pas apparaître parce qu'un mot ressemble à un autre événement. */
+  const FALLBACKS_EVENEMENT = Object.freeze({
+    concert: {key: "concert", emoji: "🎤", label: "Concert"},
+    cinema: {key: "cinema", emoji: "🎬", label: "Cinéma"},
+    manga: {key: "manga", emoji: "🎯", label: "Manga / anime"},
+    exposition: {key: "exposition", emoji: "🖼", label: "Exposition"},
+    sport: {key: "sport", emoji: "⚽", label: "Sport"},
+    theatre: {key: "theatre", emoji: "🎭", label: "Théâtre"},
+    festival: {key: "festival", emoji: "🎪", label: "Festival"},
+    food: {key: "food", emoji: "🍜", label: "Food"},
+    nightlife: {key: "nightlife", emoji: "🌙", label: "Vie nocturne"},
+    event: {key: "event", emoji: "✨", label: "Événement"},
+  });
 
   /* Une image Commons se sert en miniature : la version d'origine d'une photo
      de façade pèse régulièrement plusieurs mégaoctets, et une carte de 74 px
@@ -299,6 +327,10 @@
     if (SOURCES.indexOf(declaree) >= 0) return declaree;
     if (declaree === "datatourisme_licence") return "datatourisme";
     if (declaree === "autour_verifie") return "structure";
+    /* Les deux étiquettes existaient avant le vocabulaire commun. Elles sont
+       des alias de provenance, pas de nouvelles sources acceptées. */
+    if (declaree === "venue_official") return "site_officiel";
+    if (declaree === "organizer_official") return "structure";
     const h = hote(l.image || l.image_url);
     if (/openagenda\.com$/.test(h)) return "openagenda";
     if (/wikimedia\.org$/.test(h) || /wikipedia\.org$/.test(h)) return "wikimedia_commons";
@@ -306,8 +338,75 @@
     if (/supabase\.(co|in)$/.test(h)) return l.verifie ? "structure" : "autour";
     const provenance = texte(l.source || (l.sources || [])[0]);
     if (provenance === "openagenda" || provenance === "datatourisme") return provenance;
+    if (provenance === "venue_official") return "site_officiel";
+    if (provenance === "organizer_official") return "structure";
     if (provenance === "autour") return l.verifie ? "structure" : "autour";
     return "";
+  }
+
+  function typeImageEvenement(source, declare) {
+    if (TYPES_EVENEMENT.indexOf(texte(declare)) >= 0 && texte(declare) !== "fallback") {
+      return texte(declare);
+    }
+    if (source === "structure") return "organizer";
+    if (source === "site_officiel") return "venue";
+    if (source === "artist_official") return "artist";
+    if (source === "organizer_official") return "organizer";
+    if (source === "venue_official") return "venue";
+    if (source === "institutional") return "institutional";
+    if (source === "datatourisme") return "institutional";
+    if (source === "wikimedia_commons") return "institutional";
+    return "event_poster";
+  }
+
+  /* Entrée dédiée aux événements : elle ne consulte aucune recherche, ne
+     remonte pas les photos Google Places et exige une provenance déclarée.
+     Le résolveur de lieux conserve son comportement historique séparément. */
+  function visuelEvenement(entree) {
+    const e = entree || {};
+    const declaree = texte(e.image_source || e.imageSource).trim();
+    if (declaree === "google_places") return null;
+    const source = SOURCES.indexOf(declaree) >= 0
+      ? declaree
+      : normaliserAncienneSource({image_source: declaree, image: e.image_url || e.image,
+        source: e.source || e.primary_source});
+    if (!source || source === "google_places") return null;
+    const v = visuel({...e, image_source: source, image_scope: PORTEES.EVENEMENT});
+    if (!v) return null;
+    return {
+      ...v,
+      image_type: typeImageEvenement(source, e.image_type || e.imageType),
+      image_confidence: source === "autour" ? "medium" : "high",
+    };
+  }
+
+  function fallbackEvenement(categorie) {
+    const cat = texte(categorie).toLowerCase().normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (/manga|anime/.test(cat)) return FALLBACKS_EVENEMENT.manga;
+    if (/concert|musique|rap|artiste/.test(cat)) return FALLBACKS_EVENEMENT.concert;
+    if (/cinema|film|projection/.test(cat)) return FALLBACKS_EVENEMENT.cinema;
+    if (/exposition|expo|musee|galerie/.test(cat)) return FALLBACKS_EVENEMENT.exposition;
+    if (/football|sport|match|tournoi/.test(cat)) return FALLBACKS_EVENEMENT.sport;
+    if (/theatre|spectacle|danse|opera/.test(cat)) return FALLBACKS_EVENEMENT.theatre;
+    if (/festival/.test(cat)) return FALLBACKS_EVENEMENT.festival;
+    if (/food|gastronomie|resto|restaurant/.test(cat)) return FALLBACKS_EVENEMENT.food;
+    if (/nocturne|nightlife|club|bar/.test(cat)) return FALLBACKS_EVENEMENT.nightlife;
+    return FALLBACKS_EVENEMENT.event;
+  }
+
+  /* Classe de présentation pure : elle est partagée par le rendu et les
+     tests. Une petite image ne devient jamais un grand fond flou. */
+  function ratioImage(width, height) {
+    const w = Number(width), h = Number(height);
+    if (!(w > 0) || !(h > 0)) return "event-couverture-inconnue";
+    const ratio = w / h;
+    const forme = ratio >= 1.35 ? "paysage" : ratio <= 0.75 ? "portrait" : "carre";
+    /* Une seule dimension courte ne suffit pas à signaler un upscale visible :
+       une affiche 500×1200 est affichée en réduction dans son cadre portrait.
+       On réserve donc l'état « basse » aux sources dont les deux dimensions
+       sont inférieures au seuil de rendu. */
+    return "event-couverture-" + forme + (w < 600 && h < 600 ? " event-couverture-basse" : "");
   }
 
   /* Ce qu'on peut affirmer sans le lire : une affiche déposée par l'organisme
@@ -712,7 +811,8 @@
     TAGS_INTERDITS,
     /* décisions pures — éprouvables sans réseau */
     urlImageValide, licenceLibre, sentIA, visuel, creditObligatoire, persistable,
-    depuisSourceExistante, normaliserAncienneSource, depuisTagsOsm, imageOsmAutorisee,
+    depuisSourceExistante, normaliserAncienneSource, visuelEvenement, typeImageEvenement,
+    fallbackEvenement, ratioImage, TYPES_EVENEMENT, depuisTagsOsm, imageOsmAutorisee,
     depuisPhotoAutour, depuisGoogle, fichierCommonsDepuisUrl, licenceImplicite,
     lireCommons, lireCategorieCommons, lireWikidata,
     urlApiCommons, urlApiCommonsCategorie, urlApiWikidata, pageCommons,

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   analyserDate, analyserHeure, instantLocal, analyserPeriode,
   analyserPosition, analyserAdresse, estEvenement, normaliserEvenement,
+  imageDatatourisme,
   titreNormalise, cleDedup, similariteTitre, memeEvenement,
   dedupliquer, normaliserLot, dansLaZone, cleCommune, communeDeLaZone,
 } from "../supabase/functions/sync-datatourisme/normalisation.mjs";
@@ -166,6 +167,65 @@ test("un événement normalisé porte sa confiance de date et sa source", () => 
   assert.equal(n.event.date_confidence, "day");
   assert.equal(n.event.cancelled, false);
   assert.equal(n.event.timezone, "Europe/Paris");
+});
+
+test("une représentation principale avec licence explicite devient le visuel", () => {
+  const n = normaliserEvenement(poi({
+    url: "https://www.exemple.fr/evenements/concert-abc",
+    lastUpdate: "2026-08-01T10:00:00Z",
+    hasMainRepresentation: {
+      resourceLocator: {contentUrl: "https://cdn.exemple.fr/affiche-abc.jpg"},
+      license: "https://creativecommons.org/licenses/by/4.0/",
+      author: {name: "Organisateur ABC"},
+    },
+  }));
+  assert.equal(n.event.image_url, "https://cdn.exemple.fr/affiche-abc.jpg");
+  assert.equal(n.event.image_source, "datatourisme");
+  assert.equal(n.event.image_source_url, "https://www.exemple.fr/evenements/concert-abc");
+  assert.equal(n.event.image_license, "https://creativecommons.org/licenses/by/4.0/");
+  assert.equal(n.event.image_author, "Organisateur ABC");
+  assert.equal(n.event.image_updated_at, "2026-08-01T10:00:00.000Z");
+});
+
+test("une ressource liée est un repli seulement si ses droits sont explicites", () => {
+  const n = normaliserEvenement(poi({
+    hasMainRepresentation: {contentUrl: "https://cdn.exemple.fr/sans-droit.jpg"},
+    hasRelatedResource: [{
+      resourceLocator: {locator: "https://cdn.exemple.fr/affiche-liee.webp"},
+      rights: {label: "Licence Ouverte 2.0"},
+    }],
+  }));
+  assert.equal(n.event.image_url, "https://cdn.exemple.fr/affiche-liee.webp");
+  assert.equal(n.event.image_license, "Licence Ouverte 2.0");
+});
+
+test("un lien d'image DATAtourisme sans licence ne produit rien", () => {
+  const p = poi({
+    hasMainRepresentation: {contentUrl: "https://cdn.exemple.fr/affiche-sans-droit.jpg"},
+  });
+  assert.equal(imageDatatourisme(p), null);
+  assert.equal(normaliserEvenement(p).event.image_url, null);
+});
+
+test("une ressource liée explicitement non image reste ignorée", () => {
+  assert.equal(imageDatatourisme(poi({
+    hasRelatedResource: {
+      contentUrl: "https://cdn.exemple.fr/programme.pdf",
+      encodingFormat: "application/pdf",
+      license: "Licence Ouverte 2.0",
+    },
+  })), null);
+});
+
+test("les champs de représentation sont lus seulement dans les deux emplacements prévus", () => {
+  const p = poi({
+    hasDescription: {fr: "https://cdn.exemple.fr/ceci-n-est-pas-une-image.jpg"},
+    isLocatedAt: [{
+      geo: {latitude: "50.6292", longitude: "3.0573"},
+      label: {fr: "https://cdn.exemple.fr/ceci-n-est-pas-un-lieu.jpg"},
+    }],
+  });
+  assert.equal(imageDatatourisme(p), null);
 });
 
 /* ---- La clé de rapprochement doit être celle de Postgres ---------------- */

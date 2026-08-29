@@ -220,7 +220,32 @@ function pageDeLaZone(zone: Zone, page: number): string {
     lang: "fr",
     fields: [
       "uuid", "label", "type", "hasDescription", "lastUpdate",
-      "isLocatedAt", "takesPlaceAt",
+      "isLocatedAt", "takesPlaceAt", "url", "sameAs",
+      /* DATAtourisme n'a pas une forme unique : on demande explicitement les
+         deux emplacements documentés, sans wildcard. Le normaliseur vérifie
+         ensuite l'URL et la licence avant de produire un visuel. */
+      "hasMainRepresentation", "hasMainRepresentation.url",
+      "hasMainRepresentation.uri", "hasMainRepresentation.contentUrl",
+      "hasMainRepresentation.schema:contentUrl", "hasMainRepresentation.schema:url",
+      "hasMainRepresentation.resourceLocator", "hasMainRepresentation.license",
+      "hasMainRepresentation.licence", "hasMainRepresentation.rights",
+      "hasMainRepresentation.dc:rights", "hasMainRepresentation.schema:license",
+      "hasMainRepresentation.encodingFormat", "hasMainRepresentation.mediaType",
+      "hasMainRepresentation.mimeType", "hasMainRepresentation.contentType",
+      "hasMainRepresentation.format",
+      "hasMainRepresentation.credits", "hasMainRepresentation.credit",
+      "hasMainRepresentation.author", "hasMainRepresentation.creator",
+      "hasRelatedResource", "hasRelatedResource.url", "hasRelatedResource.uri",
+      "hasRelatedResource.contentUrl", "hasRelatedResource.schema:contentUrl",
+      "hasRelatedResource.schema:url", "hasRelatedResource.resourceLocator",
+      "hasRelatedResource.license", "hasRelatedResource.licence",
+      "hasRelatedResource.rights", "hasRelatedResource.dc:rights",
+      "hasRelatedResource.schema:license", "hasRelatedResource.credits",
+      "hasRelatedResource.encodingFormat", "hasRelatedResource.mediaType",
+      "hasRelatedResource.mimeType", "hasRelatedResource.contentType",
+      "hasRelatedResource.format",
+      "hasRelatedResource.credit", "hasRelatedResource.author",
+      "hasRelatedResource.creator",
     ].join(","),
   });
   return `${CATALOGUE}?${params}`;
