@@ -2443,6 +2443,16 @@ async function chargerEvenementsCanoniques(lat,lng){
       return;
     }
     bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
+    /* LE DÉCLENCHEMENT EST ICI, ET PAS AILLEURS. La résolution du territoire
+       n'est pas attendue — pour ne pas retarder Explorer — mais le bassin ne
+       porte un nom qu'une fois qu'elle a répondu. Le seul appel qui existait
+       partait à la fin du chargement des couches : il arrivait presque
+       toujours AVANT cette réponse, trouvait `bassinTerritorialActif` à null,
+       sortait aussitôt, et rien ne réessayait jamais. « Pour toi » restait
+       vide en permanence. On déclenche donc au moment exact où le bassin
+       devient connu. `rafraichirMetropole` est idempotente, l'autre appel
+       reste sans effet quand il double celui-ci. */
+    rafraichirMetropole();
   }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
   const fini = PERF.requete("supabase_evenements");
   try{
@@ -6272,10 +6282,39 @@ function horaireDuJour(l){
   return ligne.replace(/^[^:]*:\s*/, "");        // « Lundi : 9h–18h » → « 9h–18h »
 }
 
+/* UN ÉVÉNEMENT PORTE SES HEURES DANS SES DATES, PAS DANS `opening_hours`.
+
+   `libelleHoraires` ne connaissait que deux sources : la grille hebdomadaire
+   d'un commerce, et le `quand` d'une fiche OSM. Un événement canonique n'a ni
+   l'une ni l'autre — `versEvenementCanonique` pose `debutLe` et `finLe`, et
+   rien ne les traduisait. Le vide-greniers du Touquet Saint-Gérard s'affichait
+   donc « Horaires inconnus » alors que la base connaît 12h00–18h00 avec
+   `date_confidence = exact`.
+
+   Quand la source ne donne que le jour, on écrit le jour et on s'arrête :
+   inventer une heure serait pire que de n'en donner aucune. */
+function horairesEvenement(l){
+  if(!l || !l.isTemporary) return "";
+  const debut = Number(l.debutLe != null ? l.debutLe : l.startsAt);
+  if(!Number.isFinite(debut)) return "";
+  const zone = l.timezone || "Europe/Paris";
+  const jour = new Intl.DateTimeFormat("fr-FR",
+    {weekday:"long", day:"numeric", month:"long", timeZone:zone}).format(new Date(debut));
+  const majuscule = jour.charAt(0).toUpperCase() + jour.slice(1);
+  if(l.dateConfidence && l.dateConfidence !== "exact") return majuscule;
+  const heure = (t)=> new Intl.DateTimeFormat("fr-FR",
+    {hour:"2-digit", minute:"2-digit", timeZone:zone}).format(new Date(t)).replace(":","h");
+  const fin = Number(l.finLe != null ? l.finLe : l.endsAt);
+  return majuscule + " · " + (Number.isFinite(fin) && fin > debut
+    ? heure(debut) + "–" + heure(fin) : heure(debut));
+}
+
 function libelleHoraires(l){
   const horaire = horaireDuJour(l);
   if(horaire) return horaire;
   if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/i.test(l.quand)) return l.quand;
+  const evenement = horairesEvenement(l);
+  if(evenement) return evenement;
   return "Horaires inconnus";
 }
 
@@ -7988,7 +8027,7 @@ const POIDS = {
 /* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé --------
    L'avatar est uniquement un repère visuel choisi dans une liste fermée : il
    ne constitue pas un champ démographique et ne quitte jamais le navigateur. */
-const AVATARS_ONBOARDING = Object.freeze(["🧑🏻", "🧑🏼", "🧑🏽", "🧑🏾", "🧑🏿"]);
+const AVATARS_ONBOARDING = Object.freeze(["🧍🏻", "🧍🏼", "🧍🏽", "🧍🏾", "🧍🏿"]);
 const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
                       ignores:{}, vu:0, avatar:"" };
 let PROFIL = (()=>{

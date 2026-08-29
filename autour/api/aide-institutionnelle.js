@@ -297,9 +297,11 @@ export default async function handler(requete) {
       recherches.join(" or ") + ')');
     q.searchParams.set("limit", String(LIMITE));
     q.searchParams.set("select", fields);
+    let panneAmont = null;
     try {
       resultats = await jsonAmont(q, requete.signal);
     } catch (e) {
+      panneAmont = e;
       let base;
       try {
         base = await baseLocale(endpointLieu(commune, requete.signal), commune);
@@ -308,7 +310,27 @@ export default async function handler(requete) {
         if (!base) throw fallbackError;
       }
       resultats = base.records;
+      panneAmont = null;
     }
+
+    /* LE SNAPSHOT LOCAL N'EST PLUS UN PLAN DE SECOURS.
+       Il n'était lu que dans le `catch` : une réponse amont parfaitement
+       valide mais INCOMPLÈTE effaçait donc des structures que la base DILA
+       connaît. C'est ce qui faisait sortir Wattrelos et Marcq sans jamais
+       proposer la Mission Emploi Lys de Tourcoing, pourtant présente dans
+       l'export communal avec ses coordonnées.
+
+       On verse donc toujours l'export local. Il est embarqué, donc gratuit :
+       aucun aller-retour réseau n'est ajouté au chemin nominal. La
+       déduplication par identifiant, juste en dessous, garde une seule fiche
+       par structure, et `projection` applique ensuite rayon et classement à
+       l'ensemble — l'origine d'une fiche ne lui donne aucun privilège. */
+    const statique = baseLocaleStatique(commune);
+    if (statique && statique.records && statique.records.length) {
+      resultats = resultats.concat(statique.records);
+    }
+    if (panneAmont && !resultats.length) throw panneAmont;
+
     const uniques = new Map();
     resultats.forEach((record) => {
       const item = projection(record, lat, lng, rayon);

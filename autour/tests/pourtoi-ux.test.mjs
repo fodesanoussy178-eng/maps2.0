@@ -76,7 +76,7 @@ test("les deux fonctions de l'avatar existent vraiment", () => {
 });
 
 test("l'avatar est un choix visuel local réutilisé près de la ville", () => {
-  assert.match(source, /const AVATARS_ONBOARDING = Object\.freeze\(\["🧑🏻", "🧑🏼", "🧑🏽", "🧑🏾", "🧑🏿"\]\)/);
+  assert.match(source, /const AVATARS_ONBOARDING = Object\.freeze\(\["🧍🏻", "🧍🏼", "🧍🏽", "🧍🏾", "🧍🏿"\]\)/);
   assert.match(source, /avatar:\"\"/);
   assert.match(source, /localStorage\.setItem\(\"autour:profil\", JSON\.stringify\(PROFIL\)\)/);
   assert.match(source, /id="onboardingAvatars" hidden role="group"/);

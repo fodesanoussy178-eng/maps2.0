@@ -417,6 +417,28 @@
     merged.endsAt = preferred.endsAt != null ? preferred.endsAt : fallback.endsAt;
     merged.debutLe = merged.startsAt;
     merged.finLe = merged.endsAt;
+
+    /* CE QUI QUALIFIE LES DATES SUIT LES DATES.
+
+       Les deux bornes étaient déjà protégées : un `null` ne les écrasait pas.
+       Mais ce qui les QUALIFIE ne l'était pas, et passait dans l'`Object.assign`
+       plus haut. Une fiche OSM mieux notée — elle a un nom, une adresse, des
+       horaires d'ouverture — imposait donc son `quand` de remplissage
+       (« Voir sur place ») et son absence de confiance temporelle à un
+       événement dont la base connaît pourtant le jour et l'heure. `libelleHoraires`
+       rejette explicitement ce placeholder et retombait sur « Horaires
+       inconnus » : même affiche, même description — celles-là sont protégées —
+       mais plus d'horaire.
+
+       La règle est donc : le côté qui APPORTE la date apporte aussi ce qui la
+       décrit. Quand aucun des deux n'a de date, on retrouve le comportement
+       d'avant. */
+    const cotéTemporel = [preferred, fallback].find((c) => c && c.startsAt != null) || preferred;
+    const autreCoté = cotéTemporel === preferred ? fallback : preferred;
+    ["quand", "dateConfidence", "temporalStatus", "date_confidence", "temporal_status"]
+      .forEach((field) => {
+        merged[field] = renseigne(cotéTemporel[field]) ? cotéTemporel[field] : autreCoté[field];
+      });
     return merged;
   }
 
