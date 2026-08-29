@@ -2141,8 +2141,11 @@ test("Overpass et Nominatim passent par notre propre origine",()=>{
 });
 
 test("le relais Overpass n'est pas un relais ouvert",()=>{
-  assert.match(apiLieux,/const FORME = \//);
-  assert.match(apiLieux,/if \(!FORME\.test\(q\)\) return refus/);
+  // la forme est construite en RegExp, et le refus passe par `formeAcceptee` :
+  // une aire rappelée sans être déclarée est refusée elle aussi
+  assert.match(apiLieux,/const FORME = new RegExp\(/);
+  assert.match(apiLieux,/if \(!FORME\.test\(q\)\) return false;/);
+  assert.match(apiLieux,/if \(!formeAcceptee\(q\)\) return refus/);
   assert.match(apiLieux,/if \(q\.length > LONGUEUR_MAX\)/);
   assert.match(apiLieux,/if \(!sortie \|\| sortie > SORTIE_MAX\)/);
   // et il mutualise : c'est tout l'intérêt

@@ -34,9 +34,16 @@ test("aucune envie n'est cochée par défaut", () => {
 test("le catalogue couvre les envies demandées", () => {
   const {E} = bac();
   const labels = E.CATALOGUE.map(e=>e.label);
-  ["Rap","Concerts","Cinéma","Manga / Anime","Expositions","Sport","Football",
+  ["Rap","Artistes & concerts","Cinéma","Manga / Anime","Expositions","Sport","Football",
    "Mode","Food","Vie nocturne","Famille","Théâtre","Festivals"]
     .forEach(l=>assert.ok(labels.includes(l), "manque : "+l));
+  // les genres sont des enfants de « Artistes & concerts », pas des envies de même rang
+  ["rap","rnb","pop","afro","rock","electro","jazz","reggae","kpop","classical"]
+    .forEach(id=>{
+      const e = E.CATALOGUE.find(x=>x.id===id);
+      assert.ok(e, "genre absent du catalogue : "+id);
+      assert.equal(e.parent, "concerts", id+" doit pendre de concerts");
+    });
   // chaque entrée porte de quoi s'afficher et de quoi reconnaître
   E.CATALOGUE.forEach(e=>{
     assert.ok(e.id && e.label && e.emoji, JSON.stringify(e));

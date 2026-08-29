@@ -4,15 +4,20 @@ Dix-huit migrations ont été appliquées à la production ce jour-là. Elles so
 enregistrées dans `supabase_migrations.schema_migrations` du projet
 `sxnzyvcgwbwnpjnqmpkp`, qui en porte le SQL exact.
 
-**Elles ne sont pas recopiées ici.** Les retranscrire à la main exposerait le
-dépôt à une faute de frappe dans du SQL que `supabase db push` rejouerait un
-jour sur la production. Le geste juste est de les tirer :
+Les dix-huit fichiers `.sql` sont maintenant dans ce dossier. Ils n'ont pas été
+retranscrits à la main : chacun a été tiré de la base, puis vérifié octet par
+octet contre le registre de production — l'empreinte MD5 du fichier, moins son
+saut de ligne final, égale `md5(array_to_string(statements, E'\n'))` de la
+ligne correspondante. Dix-huit sur dix-huit, zéro écart. C'est ce qui permet de
+les rejouer sans craindre qu'une faute de frappe atteigne la production.
+
+Pour revérifier :
 
 ```
-supabase db pull --project-ref sxnzyvcgwbwnpjnqmpkp
+printf %s "$(cat 20260829124906_evenements_du_bassin.sql)" | md5sum
 ```
 
-Ce fichier existe pour qu'on sache quoi tirer, et pourquoi.
+Ce fichier dit ce que chaque migration fait, et pourquoi elle existe.
 
 | version | nom | ce qu'elle fait |
 |---|---|---|
