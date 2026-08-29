@@ -2019,42 +2019,37 @@ async function chargerAnnoncesCanoniques(lat, lng) {
    faire : un événement du MÊME bassin que la personne échappe au plafond de
    distance, quel que soit le nombre de kilomètres. La règle existait, il lui
    manquait la donnée. */
-const RAYON_METROPOLE_M = 25e3;
 const METROPOLE_LIMITE = 300;
 let evenementsMetropole = [];
 let metropoleEnCours = null;
-function empriseMetropole(lat, lng) {
-  const dLat = RAYON_METROPOLE_M / 111320;
-  const dLng = RAYON_METROPOLE_M / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
-  return { s: lat - dLat, n: lat + dLat, o: lng - dLng, e: lng + dLng };
-}
-async function chargerEvenementsMetropole(lat, lng) {
-  if (!sbLecture) return [];
-  const b = empriseMetropole(lat, lng);
-  const params = { p_sud: Number(b.s), p_ouest: Number(b.o), p_nord: Number(b.n), p_est: Number(b.e), p_limite: METROPOLE_LIMITE };
+async function chargerEvenementsMetropole(bassin) {
+  if (!sbLecture || !bassin) return [];
+  /* On ne demande plus un rectangle de 25 km — on demandait bien 25 km, et
+     `evenements_proches` les ramenait à 5 : elle recalcule son rayon d'après
+     le territoire qui contient le centre, et pour quelqu'un à Tourcoing c'est
+     Tourcoing, rayon 5 km. Le bassin métropolitain n'existait donc pas à
+     l'exécution.
+
+     `evenements_bassin` pose l'autre question : non pas « qu'y a-t-il à moins
+     de N kilomètres » mais « qu'y a-t-il dans MON bassin ». L'appartenance
+     territoriale décide, la distance ne plafonne plus rien — c'est le
+     classement qui la pondère ensuite. `Maintenant` continue de passer par
+     `evenements_proches`, inchangée. */
   const fini = PERF.requete("supabase_metropole");
   try {
-    const [base, annonces] = await Promise.all([
-      sbLecture.rpc("evenements_proches", params),
-      sbLecture.rpc("annonces_proches", params)
-    ]);
-    if (base.error) {
-      journal.warn("Bassin m\xE9tropolitain indisponible :", base.error.message);
+    const { data, error } = await sbLecture.rpc("evenements_bassin", {
+      p_group_slug: String(bassin),
+      p_limite: METROPOLE_LIMITE
+    });
+    if (error) {
+      journal.warn("Bassin m\xE9tropolitain indisponible :", error.message);
       return [];
     }
-    const parId = new Map((Array.isArray(annonces.data) ? annonces.data : []).map((e) => [String(e.id), e]));
-    /* Le bassin de l'événement est celui de la personne : il vient d'être lu
-       dans la même emprise, il ne peut pas en être ailleurs. C'est ce qui
-       autorise `classerPourToi` à ignorer la distance. */
-    const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
-    return (Array.isArray(base.data) ? base.data : []).map((event) => {
-      const canonique = versEvenementCanonique({ ...event, ...parId.get(String(event.id)) || {} });
-      if (canonique && bassin) {
-        canonique.metro_area = bassin;
-        canonique.metro_area_label = bassinTerritorialActif?.name || bassinTerritorialActif?.nom || "";
-      }
-      return canonique;
-    }).filter(Boolean);
+    /* `metro_area` vient de la base, qui sait à quel territoire l'événement
+       appartient. On ne l'écrase plus par le bassin de la personne : affirmer
+       que tout ce qui est à 25 km est « du même bassin » faisait passer pour
+       métropolitain ce qui ne l'est pas, et levait son plafond de distance. */
+    return (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter(Boolean);
   } catch (error) {
     journal.warn("Bassin m\xE9tropolitain indisponible :", error?.message || error);
     return [];
@@ -2062,15 +2057,21 @@ async function chargerEvenementsMetropole(lat, lng) {
     fini();
   }
 }
-function rafraichirMetropole(lat, lng) {
-  const cle = Number(lat).toFixed(2) + "," + Number(lng).toFixed(2);
-  if (metropoleEnCours === cle) return;
-  metropoleEnCours = cle;
-  chargerEvenementsMetropole(lat, lng).then((liste) => {
+
+function rafraichirMetropole() {
+  /* Le bassin ne dépend plus de l'endroit exact où l'on se tient : se
+     déplacer de Tourcoing à Lille ne change pas la métropole. La clé de
+     cache est donc le bassin lui-même, et non des coordonnées. */
+  const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+  if (!bassin || metropoleEnCours === bassin) return;
+  metropoleEnCours = bassin;
+  chargerEvenementsMetropole(bassin).then((liste) => {
     if (!liste.length) return;
     evenementsMetropole = liste;
     majPourToi();
-  }).catch(() => {});
+  }).catch(() => {
+    metropoleEnCours = null;
+  });
 }
 async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee) {
   if (requetesCouchesSupabase.has(cle)) return requetesCouchesSupabase.get(cle);
@@ -2104,7 +2105,7 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee) {
     /* Hors du chemin critique, et après la couche locale : le bassin ne fait
        attendre personne, et le territoire vient d'être résolu — c'est lui qui
        donne son nom au bassin. */
-    rafraichirMetropole(lat, lng);
+    rafraichirMetropole();
     return entree;
   })().finally(() => {
     if (requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
