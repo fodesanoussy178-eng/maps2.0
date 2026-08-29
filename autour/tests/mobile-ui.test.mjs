@@ -396,7 +396,7 @@ test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa haut
   // selon le breakpoint. S'accrocher à --header-height le recouvrait.
   assert.match(html,/--header-bas:calc\(var\(--safe-t\) \+ 54px\)/);
   assert.match(html,/setProperty\("--header-bas",\s*\n?\s*Math\.round\(h\.getBoundingClientRect\(\)\.bottom\)\+"px"\)/);
-  for(const sel of ["#bandeauGeo,#bandeauVide","#charge"])
+  for(const sel of ["#bandeauGeo,#bandeauVide,#onboardingLocalisation","#charge"])
     assert.ok(html.includes(sel+"{position:absolute;top:calc(var(--header-bas) + 10px)") ||
               html.includes(sel+"{position:absolute;left:16px;right:16px;\n  top:calc(var(--header-bas) + 10px)"),
               sel+" doit s'accrocher au bord bas de l'en-tête");
@@ -1433,16 +1433,16 @@ test("aucune explication n'est écrite pour une ville en particulier",()=>{
 
 /* ---- Passe de finition produit ------------------------------------------ */
 
-test("sans position connue, l'application ne prétend pas savoir où on est",()=>{
-  // elle affichait Paris, l'annonçait « autour de toi », puis « rien d'ouvert
-  // autour de toi » : deux affirmations fausses d'affilée
+test("sans position GPS, l'application garde un repli de ville honnête",()=>{
+  // le refus de la permission garde une ville utilisable sans prétendre à un
+  // point précis ni bloquer la possibilité d'en choisir une autre
   assert.match(html,/let originePosition = null;/);
   assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
-  // trois provenances, aucune ne devine : la dernière mesure du navigateur,
-  // la zone déduite de l'adresse IP, ou rien du tout
+  // trois provenances : la dernière mesure du navigateur, la zone déduite de
+  // l'adresse IP, ou le repli de ville explicite
   assert.match(html,/originePosition = "gps"; precisionPosition = "point"; positionMoi = coords;/);
   assert.match(html,/originePosition = "server"; precisionPosition = "ville";/);
-  assert.match(html,/else \{ originePosition = null; precisionPosition = null;/);
+  assert.match(html,/originePosition = "manual"; precisionPosition = "ville";\s+positionMoi = \[\.\.\.POSITION_REPLI\]; commune = "Tourcoing";/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
   assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
@@ -1862,7 +1862,7 @@ test("sur desktop, les recommandations tiennent la gauche et la carte la droite"
   assert.match(desktop,/#navBas\{top:auto;bottom:var\(--marge-desktop\);left:var\(--decalage-desktop\)/);
   // les flottants et l'attribution longent le bord droit
   assert.match(desktop,/#attribution\{left:auto;right:var\(--marge-desktop\)/);
-  assert.match(desktop,/#bandeauGeo,#bandeauVide\{left:auto;right:var\(--marge-desktop\)/);
+  assert.match(desktop,/#bandeauGeo,#bandeauVide,#onboardingLocalisation\{left:auto;right:var\(--marge-desktop\)/);
   // l'organisation mobile ne bouge pas : la feuille monte toujours du bas
   assert.match(html,/#feuilleBesoins\{position:absolute;left:8px;right:8px;bottom:0/);
 });
@@ -2023,18 +2023,18 @@ test("les SDK cartographiques ne retiennent pas la première peinture",()=>{
   assert.doesNotMatch(demarrage,/^\s*preparerCarteGoogle\(/m);
 });
 
-test("la géolocalisation part avec l'interface et se voit à l'arrivée",()=>{
-  // lancée AVANT demarrer(), pas après
+test("l'onboarding laisse l'interface démarrer avant la géolocalisation",()=>{
+  // l'interface démarre avant l'éventuel rafraîchissement silencieux
   const geo = html.indexOf("if(!positionTest) demarrerLocalisation();");
   const dem = html.indexOf("demarrer(positionTest || positionMemorisee());");
-  assert.ok(geo > 0 && dem > 0 && geo < dem, "la position est demandée en parallèle");
+  assert.ok(geo > 0 && dem > 0 && geo > dem, "l'onboarding ne bloque pas l'interface");
   // plus de bandeau « Recherche de ta position… » à côté d'un bouton « Activer »
   assert.doesNotMatch(html,/etat\("Recherche de ta position…", true\);/);
   // à l'arrivée, l'écran change : en-tête, ville, point bleu, propositions
   assert.match(html,/\$\("#bandeauGeo"\)\.hidden = true;/);
   assert.match(html,/majEnteteLieu\(\);\s*\n\s*detecterVille\(c\[0\], c\[1\]\);/);
   assert.match(html,/planifierRendu\(\{accueil:true, carte:true, feuille:true, filtres:true\}\);/);
-  assert.match(html,/else if\(!o\.discret && \(premiereFois \|\| venaitDeLApproximation\)\)\s*\n\s*toast\("Position trouvée · autour de toi"\);/);
+  assert.match(html,/if\(o\.onboarding \|\| o\.reproposer\) terminerOnboardingLocalisation\("ok"\);/);
   // et le quartier réel se charge
   assert.match(html,/chargerZone\(c\[0\], c\[1\], \{delai:OVERPASS_DELAI_BOOT\}\);/);
 });
@@ -2235,7 +2235,7 @@ test("une ville déduite de l'IP ne coupe pas l'accès à la vraie position",()=
   // IP. La pastille de l'en-tête — le seul bouton toujours visible — testait
   // ça et se contentait alors de recentrer : plus aucun moyen, dans tout
   // l'écran, de demander la vraie position.
-  assert.match(html,/if\(!positionPrecise\(\)\)\{ suivreMaPosition\(\); return; \}/);
+  assert.match(html,/if\(!positionPrecise\(\)\)\{ suivreMaPosition\(\{reproposer:true\}\); return; \}/);
   assert.doesNotMatch(html,/if\(!positionConnue\(\)\)\{ suivreMaPosition\(\); return; \}/);
   // et le message d'échec ne prétend pas garder un quartier qu'on n'a jamais eu
   assert.match(html,/"Zone approximative · active ta position pour être précis\."/);
@@ -2287,10 +2287,11 @@ test("la permission décide du démarrage, et Safari n'est pas oublié",()=>{
   assert.match(html,/noterAutorisationGeo\(true\);/);
   // un refus efface la trace et n'est pas redemandé au démarrage
   assert.match(html,/if\(err && err\.code === 1\) noterAutorisationGeo\(false\);/);
-  assert.match(html,/if\(etatPerm === "denied"\)\{ proposerPosition\(\); return; \}/);
-  // accordée ou encore à demander : la boîte part dès le démarrage
+  assert.doesNotMatch(html,/if\(etatPerm === "denied"\)\{ proposerPosition\(\); return; \}/);
+  // l'onboarding part au premier passage ; ensuite seule une permission déjà
+  // accordée peut être rafraîchie sans geste
   assert.match(html,/if\(!positionTest\) demarrerLocalisation\(\);/);
-  assert.match(html,/suivreMaPosition\(\);\s*\n\}/);
+  assert.match(html,/if\(etatPerm === "granted"\) suivreMaPosition\(\{silencieux:true\}\);/);
   // bouton, démarrage et retour au premier plan ne lancent pas trois mesures
   assert.match(html,/let localisationEnCours = false;/);
   assert.match(html,/if\(localisationEnCours\) return;\s*\n\s*localisationEnCours = true;/);

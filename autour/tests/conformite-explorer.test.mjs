@@ -152,8 +152,9 @@ test("le rang d'actions existe déjà, prêt à en accueillir un", () => {
 test("« Voir → » ouvre bien la fiche", () => {
   const liant = /querySelectorAll\("\[data-pt-voir\]"\)[\s\S]{0,320}?\}\);/.exec(html);
   assert.ok(liant);
-  assert.match(liant[0], /ouvrirDetail\(id\)/);
-  assert.match(liant[0], /marquerVu\(\[id\]\)/);
+  assert.match(liant[0], /ouvrirDetailPourToi\(b\.dataset\.ptVoir\)/);
+  assert.match(liant[0], /stopPropagation\(\)/);
+  assert.match(html, /const ouvrirDetailPourToi = \(id\)=>\{[\s\S]{0,220}marquerVu\(\[id\]\)[\s\S]{0,240}ouvrirDetail\(id\)/);
 });
 
 /* ======================================================================== */

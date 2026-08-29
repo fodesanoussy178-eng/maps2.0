@@ -4489,6 +4489,12 @@ function positionMemorisee(){
   return null;
 }
 
+/* Repli explicite quand personne n'a encore choisi de ville et que la
+   géolocalisation n'est pas disponible. Tourcoing est le territoire par
+   défaut de l'application ; cela évite de faire croire à une position à Paris
+   et laisse toujours la recherche de ville accessible. */
+const POSITION_REPLI = [50.7236, 3.1610];
+
 /* Point reproductible pour les contrôles locaux. Ignoré sur le site public,
    il permet de tester Tourcoing sans détourner la vraie géolocalisation. */
 function positionLocaleDeTest(){
@@ -4521,6 +4527,78 @@ function noterAutorisationGeo(ok){
 }
 function geoDejaAutorisee(){
   try{ return localStorage.getItem(CLE_GEO_OK) === "1"; }catch(e){ return false; }
+}
+
+/* L'onboarding reste volontairement distinct de l'autorisation navigateur :
+   une seule petite valeur locale suffit à ne pas rejouer la séquence à chaque
+   ouverture. Les coordonnées et le reste du fonctionnement de la carte ne
+   dépendent pas de cette valeur. */
+const CLE_ONBOARDING_LOCALISATION = "autour:onboarding-localisation";
+const ETAPES_ONBOARDING = Object.freeze({BIENVENUE:"bienvenue", LOCALISATION:"localisation", TERMINE:"termine"});
+let etapeOnboarding = null;
+
+function lireEtapeOnboarding(){
+  try{
+    const etape = localStorage.getItem(CLE_ONBOARDING_LOCALISATION);
+    return Object.values(ETAPES_ONBOARDING).includes(etape) ? etape : null;
+  }catch(e){ return null; }
+}
+function memoriserEtapeOnboarding(etape){
+  etapeOnboarding = etape;
+  try{ localStorage.setItem(CLE_ONBOARDING_LOCALISATION, etape); }catch(e){}
+}
+
+const TEXTES_ONBOARDING = Object.freeze({
+  bienvenue: {texte:"👋 Bienvenue sur Autour", action:"Commencer"},
+  localisation: {texte:"📍 Autoriser votre localisation", action:"Autoriser"},
+  preparation: {texte:"Autour prépare déjà autour de toi", action:null},
+});
+let onboardingTimer = null;
+
+function afficherOnboarding(etape){
+  const panneau = $("#onboardingLocalisation");
+  const texte = $("#onboardingTxt");
+  const action = $("#onboardingAction");
+  const avatars = $("#onboardingAvatars");
+  const contenu = TEXTES_ONBOARDING[etape];
+  if(!panneau || !texte || !action || !contenu) return;
+  clearTimeout(onboardingTimer);
+  etapeOnboarding = etape;
+  texte.textContent = contenu.texte;
+  action.textContent = contenu.action || "";
+  action.hidden = !contenu.action;
+  if(avatars){
+    if(!avatars.childElementCount){
+      avatars.innerHTML = AVATARS_ONBOARDING.map((avatar)=>
+        '<button type="button" data-avatar="'+esc(avatar)+'" ' +
+          'aria-label="Choisir cet avatar" aria-pressed="false">'+avatar+'</button>'
+      ).join("");
+      avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
+        bouton.onclick = ()=>sauvegarderAvatar(bouton.dataset.avatar);
+      });
+    }
+    avatars.hidden = etape !== "bienvenue";
+    avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
+      bouton.setAttribute("aria-pressed", String(bouton.dataset.avatar === avatarChoisi()));
+    });
+  }
+  panneau.hidden = false;
+  if(etape === "preparation"){
+    onboardingTimer = setTimeout(()=>{
+      if(etapeOnboarding === "preparation") panneau.hidden = true;
+    }, 1600);
+  }
+}
+function cacherOnboarding(){
+  clearTimeout(onboardingTimer);
+  etapeOnboarding = lireEtapeOnboarding();
+  const panneau = $("#onboardingLocalisation");
+  if(panneau) panneau.hidden = true;
+}
+function terminerOnboardingLocalisation(resultat){
+  memoriserEtapeOnboarding(ETAPES_ONBOARDING.TERMINE);
+  cacherOnboarding();
+  toast(resultat === "ok" ? "✓ C’est prêt" : "🧭 On continue sans position précise");
 }
 
 /* L'état réel de la permission, avec le repli qu'impose Safari. */
@@ -4841,7 +4919,10 @@ async function demarrer(coords){
     if(duServeur.ville) commune = duServeur.ville;
     PERF.jalon("position_server");
   }
-  else { originePosition = null; precisionPosition = null; positionMoi = [48.8566,2.3522]; }
+  else {
+    originePosition = "manual"; precisionPosition = "ville";
+    positionMoi = [...POSITION_REPLI]; commune = "Tourcoing";
+  }
   PERF.jalon("position_" + (originePosition || "inconnue"));
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
@@ -7819,9 +7900,12 @@ const POIDS = {
   SEUIL_NIVEAU_B:    45,   // en dessous, le lieu passe en niveau C (masqué)
 };
 
-/* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé ---- */
+/* ---- Profil local : des compteurs, rien de sensible, rien d'envoyé --------
+   L'avatar est uniquement un repère visuel choisi dans une liste fermée : il
+   ne constitue pas un champ démographique et ne quitte jamais le navigateur. */
+const AVATARS_ONBOARDING = Object.freeze(["🧑🏻", "🧑🏼", "🧑🏽", "🧑🏾", "🧑🏿"]);
 const PROFIL_VIDE = { categories:{}, recherches:[], heures:{}, rayon:1200,
-                      ignores:{}, vu:0 };
+                      ignores:{}, vu:0, avatar:"" };
 let PROFIL = (()=>{
   try{ return Object.assign({}, PROFIL_VIDE,
        JSON.parse(localStorage.getItem("autour:profil")||"{}")); }
@@ -10099,6 +10183,7 @@ const ORDO = window.AutourOrdonnanceur || null;
 
 const ENVIES = window.AutourEnvies || null;
 const CLE_POURTOI_VU = "autour:pourtoi-vu:v1";
+const CLE_POURTOI_MASQUES = "autour:pourtoi-masque:v1";
 const POURTOI_MAX = 6;
 /* « Détecté il y a… » n'a de sens que sur une découverte récente. Au-delà,
    l'événement n'est plus une nouvelle : il est simplement au programme. */
@@ -10113,6 +10198,23 @@ function marquesVues(){
 function ecrireMarquesVues(ids){
   try{ localStorage.setItem(CLE_POURTOI_VU, JSON.stringify([...ids].slice(-200))); }
   catch(e){}
+}
+
+function marquesMasquees(){
+  try{ const v = JSON.parse(localStorage.getItem(CLE_POURTOI_MASQUES) || "[]");
+    return new Set(Array.isArray(v) ? v.map(String) : []); }
+  catch(e){ return new Set(); }
+}
+
+function ecrireMarquesMasquees(ids){
+  try{ localStorage.setItem(CLE_POURTOI_MASQUES, JSON.stringify([...ids].slice(-200))); }
+  catch(e){}
+}
+
+function masquerPourToi(id){
+  const masquees = marquesMasquees();
+  masquees.add(String(id));
+  ecrireMarquesMasquees(masquees);
 }
 
 /* Depuis combien de temps Autour connaît cet événement. La date vient de la
@@ -10231,11 +10333,17 @@ function carteProposition(x){
     ? visuelCarteEvenement(l, c, "pt")
     : '<span class="pt-img pt-img-vide pt-image-shell event-fallback-carte" aria-hidden="true">'+
       fallbackVisuelEvenement(l, c, "")+'</span>';
-  return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'">'+
+  const statut = x.groupe === "nouvelles_annonces"
+    ? (x.nouveau
+      ? '<b class="pt-neuf">NOUVELLE ANNONCE</b><span>'+esc(x.nouveau)+'</span>'
+      : '<b class="pt-neuf">ANNONCE PUBLIÉE</b>')
+    : '<b class="pt-neuf">À NE PAS MANQUER</b>';
+  return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'"'+
+    ' role="button" tabindex="0" aria-label="Ouvrir '+esc(l.titre)+'">'+
     visuel+
     '<div class="pt-txt">'+
       '<p class="pt-haut">'+
-        (x.nouveau ? '<b class="pt-neuf">NOUVEAU</b><span>'+esc(x.nouveau)+'</span>' : '')+
+        statut+
       '</p>'+
       '<h3>'+esc(l.titre)+'</h3>'+
       (date ? '<p class="pt-date">'+esc(date)+'</p>' : '')+
@@ -10267,6 +10375,10 @@ function actionsProposition(l){
     (l.ticket_url
       ? '<a class="pt-billet" href="'+esc(l.ticket_url)+'" target="_blank" rel="noopener">'+
         'Billetterie</a>' : '')+
+    '<button class="pt-action" data-pt-save="'+esc(l.id)+'" aria-label="Enregistrer">'+
+      (estFavori(l) ? "Enregistré" : "Enregistrer")+'</button>'+
+    '<button class="pt-action" data-pt-share="'+esc(l.id)+'" aria-label="Partager">Partager</button>'+
+    '<button class="pt-action pt-action-discret" data-pt-hide="'+esc(l.id)+'" aria-label="Masquer">Masquer</button>'+
     '<button class="pt-voir" data-pt-voir="'+esc(l.id)+'">Voir →</button>'+
   '</p>';
 }
@@ -10312,7 +10424,7 @@ function majPourToi(){
   }else{
     contenu = propositions.map(carteProposition).join("");
   }
-  corps.innerHTML = contenu + blocSurveillances();
+  corps.innerHTML = blocSurveillances() + contenu;
 
   const nonVues = propositions.filter(x=>!x.vu).length;
   const toutVu = $("#ptToutVu");
@@ -10326,12 +10438,71 @@ function majPourToi(){
 function brancherPourToi(propositions){
   const corps = $("#ptCorps");
   if(!corps) return;
-  corps.querySelectorAll("[data-pt-voir]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.ptVoir;
+  const ouvrirDetailPourToi = (id)=>{
     marquerVu([id]);
     if(!NAV_FLOTTANTE.matches) fermerPourToi();
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(id));
+  };
+  /* Un clic standard est volontaire ici : il couvre souris, pointer et tap
+     Safari sans ajouter un `pointerup` concurrent qui ouvrirait la fiche deux
+     fois sur les navigateurs mobiles. Les contrôles internes sortent avant la
+     porte de la carte et gardent leur propre action. */
+  corps.querySelectorAll("[data-pt]").forEach((carte)=>{
+    carte.onclick = (event)=>{
+      const cible = event.target;
+      if(cible && cible.closest && cible.closest("a,button")) return;
+      ouvrirDetailPourToi(carte.dataset.pt);
+    };
+    carte.onkeydown = (event)=>{
+      const cible = event.target;
+      if(cible && cible.closest && cible.closest("a,button")) return;
+      if(event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      ouvrirDetailPourToi(carte.dataset.pt);
+    };
+  });
+  corps.querySelectorAll(".pt-billet").forEach((lien)=>lien.onclick=(event)=>{
+    event.stopPropagation();
+  });
+  corps.querySelectorAll("[data-pt-voir]").forEach((b)=>b.onclick=(event)=>{
+    event.stopPropagation();
+    ouvrirDetailPourToi(b.dataset.ptVoir);
+  });
+  corps.querySelectorAll("[data-pt-expand]").forEach((b)=>{
+    b.onclick = (event)=>{
+      event.stopPropagation();
+      const groupe = b.closest(".pt-groupe");
+      const suite = groupe ? groupe.querySelector("[data-pt-suite]") : null;
+      if(!suite) return;
+      suite.hidden = false;
+      b.hidden = true;
+      b.setAttribute("aria-expanded", "true");
+    };
+  });
+  corps.querySelectorAll("[data-pt-save]").forEach((b)=>{
+    b.onclick = async (event)=>{
+      event.stopPropagation();
+      const item = propositions.find((x)=>String(x.l.id) === String(b.dataset.ptSave));
+      if(!item) return;
+      await basculerFavori(item.l);
+      b.textContent = estFavori(item.l) ? "Enregistré" : "Enregistrer";
+    };
+  });
+  corps.querySelectorAll("[data-pt-share]").forEach((b)=>{
+    b.onclick = async (event)=>{
+      event.stopPropagation();
+      const item = propositions.find((x)=>String(x.l.id) === String(b.dataset.ptShare));
+      if(item) await partagerLieu(item.l);
+    };
+  });
+  corps.querySelectorAll("[data-pt-hide]").forEach((b)=>{
+    b.onclick = (event)=>{
+      event.stopPropagation();
+      masquerPourToi(b.dataset.ptHide);
+      majPourToi();
+      toast("Annonce masquée");
+    };
   });
   const gerer = ()=>ouvrirEnvies();
   if($("#ptGerer")) $("#ptGerer").onclick = gerer;
@@ -12352,13 +12523,15 @@ function suivreMaPosition(opts){
   const o = opts || {};
   if(!navigator.geolocation){
     definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-    etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
+    if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("refus");
+    else etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
     return;
   }
   // Le démarrage, le bouton et le retour au premier plan peuvent se croiser.
   // Une seule demande navigateur à la fois évite les réponses dans le désordre.
   if(localisationEnCours) return;
   localisationEnCours = true;
+  if(o.onboarding || o.reproposer) afficherOnboarding("preparation");
   definirEtatRecherche("location",SEARCH_STATES.REQUESTING_LOCATION);
   PERF.jalon("geolocation_demandee");
   navigator.geolocation.getCurrentPosition(
@@ -12366,7 +12539,8 @@ function suivreMaPosition(opts){
       localisationEnCours = false;
       PERF.jalon("geolocation_ready");
       PERF.mesure("géolocalisation", "geolocation_demandee", "geolocation_ready");
-      appliquerPosition(p, {discret: !!o.silencieux});
+      appliquerPosition(p, {discret: !!o.silencieux || !!o.onboarding || !!o.reproposer});
+      if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("ok");
       // une fois la permission acquise, on ne la redemande plus : on veille
       veillerSurLaPosition();
     },
@@ -12375,7 +12549,8 @@ function suivreMaPosition(opts){
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
       if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
-      if(!o.silencieux) proposerPosition();
+      if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("refus");
+      else if(!o.silencieux) proposerPosition();
     },
     /* Trente secondes, pas deux minutes. Un relevé récent rend la réponse
        instantanée — c'est tout l'intérêt du cache — mais au-delà d'une demi-
@@ -12397,20 +12572,37 @@ function proposerPosition(){
       : "Active ta position ou choisis un endroit sur la carte.", true);
 }
 
-/* La demande part dès l'ouverture, en parallèle du premier rendu. Le temps de
-   répondre au navigateur, la coquille, la carte et les caches se stabilisent.
-   Une permission déjà refusée n'est jamais redemandée : le bandeau conserve
-   alors le choix manuel. Safari ne répondant pas toujours à
-   `permissions.query`, notre trace locale distingue une autorisation déjà
-   obtenue d'un premier démarrage. */
+/* La demande ne part qu'après le geste d'onboarding. Une autorisation déjà
+   obtenue peut ensuite être rafraîchie silencieusement, mais un premier écran
+   ou un refus ne relance jamais la permission tout seul. */
 async function demarrerLocalisation(){
+  etapeOnboarding = lireEtapeOnboarding();
+  if(etapeOnboarding !== ETAPES_ONBOARDING.TERMINE){
+    afficherOnboarding(etapeOnboarding === ETAPES_ONBOARDING.LOCALISATION
+      ? "localisation" : "bienvenue");
+    return;
+  }
   const etatPerm = await permissionPosition();
   PERF.jalon("permission_" + etatPerm);
-  if(etatPerm === "denied"){ proposerPosition(); return; }
-  suivreMaPosition();
+  if(etatPerm === "granted") suivreMaPosition({silencieux:true});
 }
 
-$("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition(); };
+function lancerOnboardingLocalisation(){
+  memoriserEtapeOnboarding(ETAPES_ONBOARDING.LOCALISATION);
+  afficherOnboarding("localisation");
+  /* Laisser une peinture passer rend la transition perceptible, puis réutilise
+     exactement la même porte `suivreMaPosition` que les autres gestes. */
+  requestAnimationFrame(()=>suivreMaPosition({onboarding:true}));
+}
+
+$("#onboardingAction").onclick=()=>{
+  if(etapeOnboarding === ETAPES_ONBOARDING.LOCALISATION){
+    suivreMaPosition({onboarding:true});
+    return;
+  }
+  lancerOnboardingLocalisation();
+};
+$("#bandeauOk").onclick=()=>{ $("#bandeauGeo").hidden = true; suivreMaPosition({reproposer:true}); };
 $("#bandeauOk").textContent = "Utiliser ma position";
 $("#videOk").onclick=()=>{
   $("#bandeauVide").hidden = true;
@@ -12424,14 +12616,9 @@ $("#videOk").onclick=()=>{
   toast("Les lieux fermés sont affichés"); rendre();
 };
 
-/* Démarrage immédiat : plus rien n'attend un clic ni une permission.
-
-   La géolocalisation part EN MÊME TEMPS que l'interface, pas après elle. Elle
-   était lancée à la fin de `demarrer()`, donc derrière la carte, le cache et
-   les premières requêtes : sur un téléphone, la permission n'était demandée
-   qu'une seconde après l'ouverture, et la position n'arrivait qu'une seconde
-   plus tard encore. Elle ne bloque rien — l'écran démarre sur la dernière
-   position connue et se corrige silencieusement quand la vraie arrive. */
+/* Démarrage immédiat : l'interface s'affiche sans attendre l'onboarding ni la
+   permission. La demande navigateur reste un geste explicite ; une permission
+   déjà accordée peut seulement être rafraîchie ensuite en silence. */
 performance.mark("autour:script");
 PERF.jalon("script");
 /* `demarrer()` peut appeler majEnteteLieu immédiatement en mode de test : ce
@@ -12439,8 +12626,8 @@ PERF.jalon("script");
    bas avec les gestionnaires de navigation. */
 const ETIQUETTES_LIEU = ["Choisir un endroit", "Zone approximative", "Autour de toi"];
 const positionTest = positionLocaleDeTest();
-if(!positionTest) demarrerLocalisation();
 demarrer(positionTest || positionMemorisee());
+if(!positionTest) demarrerLocalisation();
 PERF.mesure("boot UI", "script", "ui_ready");
 /* La recherche est désormais toujours visible : elle porte l'intention
    («&nbsp;que veux-tu faire&nbsp;?»), elle ne se déplie plus. La croix
@@ -12961,7 +13148,7 @@ $("#btnPoseOk").onclick=validerPose;
    filtre. C'était la condition posée — une seule porte, dans un sens comme
    dans l'autre. */
 function revenirAutourDeMoi(){
-  if(!positionMoi || !positionConnue()) { suivreMaPosition(); return; }
+  if(!positionMoi || !positionPrecise()) { suivreMaPosition({reproposer:true}); return; }
   definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
   annulerChargementsZone();
   rechercheGeo = null;
@@ -13252,6 +13439,12 @@ async function ouvrirFavoris(){
    point affiché est « autour de toi ». */
 function majEnteteLieu(){
   const v = $("#hdVille");
+  const avatar = $("#hdAvatar");
+  if(avatar){
+    const choix = avatarChoisi();
+    avatar.textContent = choix;
+    avatar.hidden = !choix;
+  }
   if(!v) return;
   if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
   /* Une ville déduite d'une adresse IP ne s'écrit JAMAIS dans cette pastille.
@@ -13395,7 +13588,7 @@ $("#btnLieu").onclick = ()=>{
      approchée, et plus rien dans l'écran ne permettait de demander la vraie
      position. Quelqu'un que le navigateur n'a jamais localisé restait sur une
      ville à plusieurs kilomètres, sans aucun moyen d'y remédier. */
-  if(!positionPrecise()){ suivreMaPosition(); return; }
+  if(!positionPrecise()){ suivreMaPosition({reproposer:true}); return; }
   if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
   allerVers(positionMoi, 16, {duration:.6});
 };
