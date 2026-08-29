@@ -34,6 +34,32 @@
     if (typeof v === "string") return texte(v);
     return texte(v && (v.valeur || v.value || v.url || v.site || ""));
   }
+  /* Les jours arrivent en anglais dans l'export DILA. On les rend une seule
+     fois, ici, plutôt que de laisser « Monday » traverser jusqu'à l'écran. La
+     table accepte aussi les formes déjà françaises : appliquée deux fois, elle
+     ne change rien. */
+  const JOURS_FR = Object.freeze({
+    monday: "lundi", tuesday: "mardi", wednesday: "mercredi", thursday: "jeudi",
+    friday: "vendredi", saturday: "samedi", sunday: "dimanche",
+    lundi: "lundi", mardi: "mardi", mercredi: "mercredi", jeudi: "jeudi",
+    vendredi: "vendredi", samedi: "samedi", dimanche: "dimanche"
+  });
+
+  function jourFrancais(value) {
+    const brut = texte(value).toLowerCase();
+    if (!brut) return "";
+    /* Le champ peut porter « Nord/Monday » : seul le dernier segment nomme
+       le jour. */
+    const dernier = brut.split("/").pop().trim();
+    return JOURS_FR[dernier] || dernier;
+  }
+
+  /* L'export DILA nomme ses colonnes `nom_jour_debut`, `valeur_heure_debut_1`,
+     `valeur_heure_fin_1`, et une seconde plage en `_2` pour les structures qui
+     ferment le midi. Rien de tout cela n'était lu : la fonction cherchait
+     `nom_jour`, `heure_debut`, `heure_fin`, qui n'existent pas dans cet
+     export — d'où une liste vide et « horaires inconnus » sur des structures
+     dont la base connaît pourtant les heures. */
   function horaires(record) {
     const lignes = [];
     liste(record && record.plage_ouverture).forEach((x) => {
@@ -42,10 +68,16 @@
         return;
       }
       if (!x || typeof x !== "object") return;
-      const jour = texte(x.nom_jour || x.jour || x.day || x.dayOfWeek);
-      const debut = texte(x.heure_debut || x.debut || x.start || x.opens);
-      const fin = texte(x.heure_fin || x.fin || x.end || x.closes);
-      if (jour && debut && fin) lignes.push(jour + " " + debut + "-" + fin);
+      const debutJour = jourFrancais(x.nom_jour_debut || x.nom_jour || x.jour || x.day || x.dayOfWeek);
+      const finJour = jourFrancais(x.nom_jour_fin);
+      if (!debutJour) return;
+      const jour = finJour && finJour !== debutJour ? debutJour + " à " + finJour : debutJour;
+      const plages = [
+        [texte(x.valeur_heure_debut_1 || x.heure_debut || x.debut || x.start || x.opens),
+         texte(x.valeur_heure_fin_1 || x.heure_fin || x.fin || x.end || x.closes)],
+        [texte(x.valeur_heure_debut_2), texte(x.valeur_heure_fin_2)]
+      ].filter(([d, f]) => d && f).map(([d, f]) => d + "-" + f);
+      if (plages.length) lignes.push(jour + " " + plages.join(", "));
     });
     return [...new Set(lignes)];
   }
@@ -147,6 +179,6 @@
     return (data.items || []).map(normaliser).filter(Boolean);
   }
   root.AutourProviders = Object.assign(root.AutourProviders || {}, {
-    aideInstitutionnelle: Object.freeze({ nearby, normaliser, typeStructure })
+    aideInstitutionnelle: Object.freeze({ nearby, normaliser, typeStructure, horaires, jourFrancais })
   });
 })(window);
