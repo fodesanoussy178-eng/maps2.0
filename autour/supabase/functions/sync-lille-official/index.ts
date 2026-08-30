@@ -4,6 +4,7 @@
    journalisée puis les autres continuent. */
 
 import {fusionnerAnnonceFields, normaliserAnnonce} from "../shared/annonces.mjs";
+import {fusionnerEvenementFaits} from "../shared/evenements-canoniques.mjs";
 import {discoverLinks, extractJsonLd, htmlEventCandidates, jsonLdEvents, normalizeDirectEvent} from "./normalize.mjs";
 
 type Json = Record<string, any>;
@@ -102,8 +103,10 @@ async function persist(normalized: Json): Promise<{inserted: number; updated: nu
     : normalized.raw_event;
   if (eventId) {
     const current = (await read(`events?id=eq.${encodeURIComponent(eventId)}&select=*&limit=1`))[0] ?? {};
-    const merged = fusionnerAnnonceFields(current, {...normalized.event, ...announcement.fields});
-    await write(`events?id=eq.${encodeURIComponent(eventId)}`, {...normalized.event, ...announcement.fields, ...merged, primary_source: source, last_synced_at: new Date().toISOString()}, "PATCH");
+    const incoming = {...normalized.event, ...announcement.fields};
+    const faits = fusionnerEvenementFaits(current, incoming);
+    const merged = fusionnerAnnonceFields(current, faits);
+    await write(`events?id=eq.${encodeURIComponent(eventId)}`, {...faits, ...merged, primary_source: source, last_synced_at: new Date().toISOString()}, "PATCH");
   } else {
     const rows = await write("events", {...normalized.event, ...announcement.fields, last_synced_at: new Date().toISOString()});
     eventId = rows[0]?.id ?? null;

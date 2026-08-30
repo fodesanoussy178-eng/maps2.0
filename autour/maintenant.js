@@ -473,8 +473,8 @@
   }
 
   function evenementDansSoir(item, ctx, bornes) {
-    const debut = horodatageSoir(item && (item.debutLe ?? item.start_at ?? item.startAt ?? item.startsAt));
-    const fin = horodatageSoir(item && (item.finLe ?? item.end_at ?? item.endAt ?? item.endsAt));
+    const debut = horodatageSoir(item && (item.start_at ?? item.startAt ?? item.startsAt ?? item.debutLe));
+    const fin = horodatageSoir(item && (item.end_at ?? item.endAt ?? item.endsAt ?? item.finLe));
     if (debut == null || fin == null || fin <= debut) return false;
     if (debut >= bornes.fin || fin <= bornes.debut) return false;
     const verdict = typeof ctx.statutTemporel === "function"
@@ -503,8 +503,8 @@
   }
 
   function trierSoir(a, b) {
-    const da = horodatageSoir(a.item && (a.item.debutLe ?? a.item.start_at ?? a.item.startsAt));
-    const db = horodatageSoir(b.item && (b.item.debutLe ?? b.item.start_at ?? b.item.startsAt));
+    const da = horodatageSoir(a.item && (a.item.start_at ?? a.item.startAt ?? a.item.startsAt ?? a.item.debutLe));
+    const db = horodatageSoir(b.item && (b.item.start_at ?? b.item.startAt ?? b.item.startsAt ?? b.item.debutLe));
     return (a.distance - b.distance) || ((da == null ? Infinity : da) - (db == null ? Infinity : db));
   }
 

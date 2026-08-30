@@ -36,6 +36,7 @@ const COMPRENDRE = window.AutourComprendre;
 const SIGNAUX = window.AutourSignaux;
 const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
+const EVENEMENTS = window.AutourEvenements;
 /* LE RÉSOLVEUR D'IMAGE. IL N'Y EN A QU'UN.
 
    Toute question « quelle photo pour ce lieu, et de quel droit ? » passe par
@@ -157,7 +158,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d15a5c6f"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=8b6d88d7"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -687,6 +688,11 @@ function dispoDe(l, arrivee, quand){
 /* Le libellé exact demandé par cas : « Ouvert • ferme à 23:30 », « Fermé •
    ouvre à 14:00 », « Fermé aujourd'hui », « Horaires non renseignés »… */
 function badgeDispo(l){
+  if(estTemporaire(l)){
+    const quand = horairesEvenement(l);
+    return '<span class="'+(quand === "Horaires à vérifier" ? "inconnu" : "ouvert")+'">'+
+      esc(quand || "Horaires à vérifier")+'</span>';
+  }
   const d = dispoDe(l);
   if(!d) return "";
   const classe = d.status === "open" || d.status === "closing_soon" ? "ouvert"
@@ -1081,7 +1087,37 @@ if(window.ResizeObserver){
 }
 
 function normaliserItem(item, source){
-  return toCommonItem(item, {source});
+  const normalise = toCommonItem(item, {source});
+  if(normalise.isTemporary && EVENEMENTS && EVENEMENTS.normaliserEvenement){
+    normalise.eventCanonical = normalise.eventCanonical || EVENEMENTS.normaliserEvenement(Object.assign({}, normalise, {
+      title:normalise.title || normalise.titre,
+      event_source:normalise.event_source || normalise.primary_source || source,
+      event_source_url:normalise.event_source_url || normalise.source_url || null,
+    }));
+    if(normalise.eventCanonical.title){
+      normalise.title = normalise.titre = normalise.eventCanonical.title;
+    }
+    if(normalise.eventCanonical.description){
+      normalise.description = normalise.eventCanonical.description;
+    }
+  }
+  return normalise;
+}
+
+/* Toutes les vues passent par ce pointeur. Le repli ne sert qu'aux
+   publications anciennes ou aux tests chargés sans le module événementiel. */
+function donneesEvenement(l){
+  if(!l || !l.isTemporary) return null;
+  if(l.eventCanonical) return l.eventCanonical;
+  if(EVENEMENTS && EVENEMENTS.normaliserEvenement){
+    l.eventCanonical = EVENEMENTS.normaliserEvenement(Object.assign({}, l, {
+      title:l.title || l.titre,
+      event_source:l.event_source || l.primary_source || null,
+      event_source_url:l.event_source_url || l.source_url || null,
+    }));
+    return l.eventCanonical;
+  }
+  return l;
 }
 
 function correspondCategorie(item, categorie){
@@ -2301,6 +2337,10 @@ function signatureCoucheSupabase(entree){
     l && l.id, l && l.titre, l && l.title,
     l && l.debutLe, l && l.finLe, l && l.start_at, l && l.end_at,
     l && l.temporalStatus, l && l.temporal_status,
+    l && l.price_amount, l && l.price_text, l && l.is_free, l && l.audience,
+    l && l.min_age, l && l.reservation_required, l && l.reservation_text,
+    l && l.event_source, l && l.event_source_url, l && l.place_source,
+    l && l.description,
     l && l.status, l && l.annule, l && l.cancelled,
     l && l.lat, l && l.lng, l && l.majLe, l && l.last_synced_at,
   ].join("~");
@@ -2420,6 +2460,8 @@ function versEvenementCanonique(e){
     lat:e.lat, lng:e.lng,
     debutLe:debut, finLe:fin,
     timezone:e.timezone || "Europe/Paris",
+    start_at:e.start_at || null,
+    end_at:e.end_at || null,
     /* Le verdict de la base, transmis intact. C'est lui qui décide de
        « Maintenant », pas la date ci-dessus. */
     temporalStatus:e.temporal_status,
@@ -2456,6 +2498,19 @@ function versEvenementCanonique(e){
     tickets_open_at:e.tickets_open_at || null,
     date_confidence:e.date_confidence,
     temporal_status:e.temporal_status,
+    price_amount:e.price_amount,
+    price_text:e.price_text,
+    is_free:e.is_free,
+    price_confidence:e.price_confidence,
+    audience:e.audience,
+    min_age:e.min_age,
+    reservation_required:e.reservation_required,
+    reservation_text:e.reservation_text,
+    venue_name:e.venue_name || e.place_name || null,
+    organizer_name:e.organizer_name || e.organizer || null,
+    event_source:e.event_source || e.primary_source || null,
+    event_source_url:e.event_source_url || e.source_url || null,
+    place_source:e.place_source || null,
     primary_source:e.primary_source || null,
     primarySource:e.primary_source || null,
     lastSourceUpdate:e.last_source_update || null,
@@ -2465,7 +2520,9 @@ function versEvenementCanonique(e){
     isTemporary:true,
     annule:!!e.cancelled,
     status:e.cancelled ? "cancelled" : "active",
-    par:e.primary_source === "datatourisme" ? "DATAtourisme" : "Autour",
+    par:e.event_source === "openagenda" ? "OpenAgenda"
+      : e.event_source === "datatourisme" ? "DATAtourisme"
+        : e.event_source || e.primary_source || "Source à vérifier",
     url:"",   // une fiche Autour ne redirige pas vers une URL fournisseur
     /* L'AFFICHE DE L'ÉVÉNEMENT, AVEC SA VRAIE PROVENANCE.
 
@@ -5485,8 +5542,27 @@ function sectionDe(l, quand){
    là-dessus. Un seul point d'entrée pour toute l'application : la carte, les
    cartes du carousel et les sections doivent lire la même chose. */
 function statutTemps(l, quand){
-  return TEMPS.statutTemporel(l, quand == null ? Date.now() : quand,
-    {disponibilite:(x,t)=>dispoDe(x, null, t)});
+  const t = quand == null ? Date.now() : quand;
+  const disponibilite = (x,q)=>dispoDe(x, null, q);
+  if(estTemporaire(l) && TEMPS.etatTemporalEvenement)
+    return TEMPS.etatTemporalEvenement(donneesEvenement(l), t, {disponibilite});
+  return TEMPS.statutTemporel(l, t, {disponibilite});
+}
+
+function libelleTemporelDe(l, quand, options){
+  const t = quand == null ? Date.now() : quand;
+  const etat = options && options.statut ? options.statut : statutTemps(l, t);
+  const cible = estTemporaire(l) ? donneesEvenement(l) : l;
+  return TEMPS.libelleTemporel(cible, t, Object.assign({}, options || {}, {
+    disponibilite:(x,q)=>dispoDe(x, null, q), statut:etat,
+  }));
+}
+
+function libelleDateDe(l, quand, options){
+  const t = quand == null ? Date.now() : quand;
+  const etat = options && options.statut ? options.statut : statutTemps(l, t);
+  const cible = estTemporaire(l) ? donneesEvenement(l) : l;
+  return TEMPS.libelleDate(cible, t, Object.assign({}, options || {}, {statut:etat}));
 }
 
 function estVivant(l){
@@ -5602,7 +5678,7 @@ function ouvrirPileCompacte(g){
     const c = categorieAffichee(l);
     const etat = statutTemps(l, t);
     const quand = l.annule ? "Annulé"
-      : TEMPS.libelleTemporel(l, t, {disponibilite:(x,q)=>dispoDe(x, null, q), statut:etat});
+      : libelleTemporelDe(l, t, {statut:etat});
     const dist = positionPrecise()
       ? formatDist(distanceDepuisZone(l)) : "";
     return '<button class="pl-l" data-pile="'+esc(l.id)+'">'+
@@ -5643,8 +5719,7 @@ function sousTitreMarqueur(l){
   // pas le début de la période de récurrence
   if(estTemporaire(l)){
     const etat = statutTemps(l);
-    const libelle = TEMPS.libelleTemporel(l, Date.now(),
-      {disponibilite:(x,t)=>dispoDe(x, null, t), statut: etat});
+    const libelle = libelleTemporelDe(l, Date.now(), {statut: etat});
     if(libelle) return '<span'+(etat.statut===TEMPS.STATUTS.EN_COURS?' class="ouvre"':'')+'>'+
       esc(libelle)+(trajet ? " · "+trajet : "")+'</span>';
   }
@@ -5696,6 +5771,7 @@ function htmlMarqueur(l){
      passé par la carte blanche ci-dessus — la question n'est plus « combien
      ça coûte » mais « jusqu'à quand ça dure ». */
   if(estTemporaire(l)){
+    const evenement = donneesEvenement(l);
     const tilt = ((hash(l.id)%700)/100-3.5).toFixed(2);
     // annulé : l'affiche reste, mais elle ne peut pas se lire comme un
     // événement qui a lieu — c'est tout l'intérêt de ne pas le supprimer
@@ -5706,10 +5782,12 @@ function htmlMarqueur(l){
     const envoi = l.envoi === "retard" ? '<span class="a-envoi">Envoi…</span>'
       : l.envoi === "echec" ? '<span class="a-envoi a-echec">Non publié · Réessayer</span>'
       : '';
-    return '<span class="mk-in"><div class="affiche '+(l.gratuit?'gratuit':'payant')+
+    const tarif = EVENEMENTS && evenement ? EVENEMENTS.tarifEvenement(evenement) :
+      (l.gratuit ? "Entrée libre" : (l.prix == null ? "Tarif à vérifier" : l.prix+" €"));
+    return '<span class="mk-in"><div class="affiche '+((evenement ? evenement.is_free === true : l.gratuit)?'gratuit':'payant')+
       (l.annule?' annulee':'')+(l.envoi==="echec"?' a-rate':'')+'" style="--tilt:'+tilt+'deg">'+
       '<span class="a-haut"><span>'+c.emoji+'</span><span>'+
-        (l.annule?'ANNULÉ':(l.gratuit?'GRATUIT':l.prix+' €'))+'</span>'+
+        (l.annule?'ANNULÉ':tarif)+'</span>'+
       (l.places!=null && !l.annule?'<span class="a-places">· '+l.places+' pl.</span>':'')+
       envoi+'</span>'+
       '<span class="a-titre">'+esc(l.titre)+'</span>'+
@@ -6374,24 +6452,19 @@ function horairesEvenement(l){
   if(!l || !l.isTemporary) return "";
   const T = (typeof window !== "undefined" && window.AutourTemps) ||
     (typeof globalThis !== "undefined" && globalThis.AutourTemps);
+  const evenement = (typeof donneesEvenement === "function" ? donneesEvenement(l) : null) || l;
   const libelle = T && T.libelleDate
-    ? T.libelleDate(l, Date.now(), {ignoreStatus:true}) : "";
-  return libelle !== "Date à vérifier" ? libelle : "";
+    ? T.libelleDate(evenement, Date.now(), {ignoreStatus:true}) : "";
+  return libelle && libelle !== "Date à vérifier" ? libelle : "Horaires à vérifier";
 }
 
 function libelleHoraires(l){
   /* Une fiche d'événement ne lit jamais son horaire dans le texte historique
      d'un lieu : la période structurée, et elle seule, décide. */
   const evenement = horairesEvenement(l);
-  if(evenement){
-    const T = (typeof window !== "undefined" && window.AutourTemps) ||
-      (typeof globalThis !== "undefined" && globalThis.AutourTemps);
-    const etat = T && T.statutTemporel ? T.statutTemporel(l, Date.now()) : null;
-    return etat && etat.statut === "past" && T.libelleTemporel
-      ? T.libelleTemporel(l, Date.now(), {statut:etat}) : evenement;
-  }
+  if(evenement && evenement !== "Horaires à vérifier") return evenement;
   if(!l) return "Horaires inconnus";
-  if(l.isTemporary) return "Date à vérifier";
+  if(l.isTemporary) return "Horaires à vérifier";
   /* Pour un lieu permanent, le badge et le détail doivent parler au même
      résolveur. Cela empêche un `24/7` OSM suspect de réapparaître comme une
      ouverture certaine dans la fiche. */
@@ -6432,6 +6505,7 @@ function basculerGarde(id){
    ce type de structure. La provenance est écrite : une explication de réseau
    ne doit pas se lire comme une phrase écrite par l'antenne du coin. */
 function blocExplication(l){
+  if(estTemporaire(l)) return "";
   if(!EXPLIQUE) return "";
   const e = EXPLIQUE.explication(l);
   if(!e.texte && !e.public) return "";
@@ -6448,6 +6522,7 @@ function blocExplication(l){
    des conditions d'accès, un public accueilli ou une gratuité. */
 function completerExplication(l){
   if(!l || !l.idGoogle || estFicheAide(l) || l.description) return;
+  if(estTemporaire(l)) return;
   descriptifGoogle(l.idGoogle).then(texte=>{
     if(!texte) return;
     l.description=texte;
@@ -6562,6 +6637,18 @@ function sourceAide(l){
     autour:"Autour", openagenda:"Agenda officiel",
   };
   return libelles[source] || (l && l.par) || "Source non renseignée";
+}
+
+function libelleSourceEvenement(source){
+  const libelles = {
+    openagenda:"OpenAgenda",
+    datatourisme:"DATAtourisme",
+    venue_official:"Site officiel du lieu",
+    organizer_official:"Site officiel de l’organisateur",
+    openstreetmap:"OpenStreetMap",
+    autour:"Autour",
+  };
+  return libelles[source] || source || "Source à vérifier";
 }
 
 function dateMiseAJourAide(l){
@@ -10499,8 +10586,13 @@ function evenementsMaintenant(){
    contraire de la vérité. */
 function tempsMaintenant(l){
   const M = window.AutourMaintenant;
-  if(M && l.nature === M.NATURES.SEANCE && l.debutLe){
-    const dans = Math.round((l.debutLe - Date.now()) / 60000);
+  const evenement = estTemporaire(l) ? donneesEvenement(l) : null;
+  const debutLe = evenement && evenement.start_at != null
+    ? new Date(evenement.start_at).getTime() : l.debutLe;
+  const finLe = evenement && evenement.end_at != null
+    ? new Date(evenement.end_at).getTime() : l.finLe;
+  if(M && l.nature === M.NATURES.SEANCE && debutLe){
+    const dans = Math.round((debutLe - Date.now()) / 60000);
     return dans > 0 ? "commence dans "+dans+" min" : "commence maintenant";
   }
   if(M && (l.nature === M.NATURES.OUVERT || l.nature === M.NATURES.ACTIVITE)){
@@ -10510,7 +10602,7 @@ function tempsMaintenant(l){
     if(d && d.closesAtTime) return "ouvert jusqu’à "+d.closesAtTime;
     return "ouvert";
   }
-  return l.finLe ? "jusqu’à "+heureLocale(l.finLe, l) : "";
+  return finLe ? "jusqu’à "+heureLocale(finLe, l) : "";
 }
 
 function ligneMaintenant(l){
@@ -10770,7 +10862,8 @@ function propositionsPourToi(limite = POURTOI_MAX){
    partout ailleurs dans Autour. Sans date exploitable, la ligne disparaît. */
 function dateProposition(l){
   const T = window.AutourTemps;
-  const libelle = T && T.libelleDate ? T.libelleDate(l, Date.now()) : "";
+  const cible = estTemporaire(l) ? donneesEvenement(l) : l;
+  const libelle = T && T.libelleDate ? T.libelleDate(cible, Date.now()) : "";
   return libelle && libelle !== "Date à vérifier" ? libelle : "";
 }
 
@@ -11357,6 +11450,14 @@ function versItemMaintenant(l, t){
      c'est `temporel.js` qui connaît le vocabulaire du backend, et lui seul. */
   const statut = statutTemps(l, t).statut;
   const evenement = estTemporaire(l);
+  const canonique = evenement ? donneesEvenement(l) : null;
+  const epoch = (value) => {
+    if(value == null || value === "") return null;
+    const parsed = typeof value === "number" ? value : new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const debutLe = canonique ? epoch(canonique.start_at) : l.debutLe;
+  const finLe = canonique ? epoch(canonique.end_at) : l.finLe;
 
   /* Pour un LIEU, c'est `availability.js` qui fait autorité — et lui seul.
      Il distingue quatre états là où un booléen n'en distingue que deux :
@@ -11377,7 +11478,9 @@ function versItemMaintenant(l, t){
     id:l.id, estEvenement:evenement, annule:!!l.annule,
     enCours: TEMPS.estMaintenant(statut),
     dateIncertaine: statut === "unknown",
-    debutLe:l.debutLe, finLe:l.finLe, lat:l.lat, lng:l.lng,
+    start_at:canonique ? canonique.start_at : null,
+    end_at:canonique ? canonique.end_at : null,
+    debutLe, finLe, lat:l.lat, lng:l.lng,
     ferme:estFerme(l),
     categorie:l.cat, ouvert, ouvertALArrivee,
     /* Le calque vérifié, transmis tel quel. Le moteur en fait ce qu'il veut —
@@ -11873,6 +11976,8 @@ function fermeDansMoinsDUneHeure(d){
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
 function carteRecommandation(l){
   favorisEnMemoire.set(cleFavori(l), l);
+  const evenement = estTemporaire(l) ? donneesEvenement(l) : null;
+  const cibleTemporel = evenement || l;
   const c = categorieAffichee(l, {emoji:"📍"});
   // même règle que pour les cartes d'aide : aucune durée tant que le point
   // n'est pas mesuré par le navigateur
@@ -11924,7 +12029,7 @@ function carteRecommandation(l){
   // Sur un lieu permanent la ligne n'apporte rien (« Maintenant » sur une
   // boulangerie ouverte est du bruit) : on la réserve aux événements.
   const quand = estTemporaire(l)
-    ? TEMPS.libelleTemporel(l, instantCreneau().getTime(),
+    ? TEMPS.libelleTemporel(cibleTemporel, instantCreneau().getTime(),
         {disponibilite:(x,t)=>dispoDe(x, null, t), statut: statutTemps(l, instantCreneau().getTime())})
     : "";
   const etatQuand = quand ? statutTemps(l, instantCreneau().getTime()).statut : "";

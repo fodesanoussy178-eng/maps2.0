@@ -146,7 +146,8 @@ function ouvrirFicheCompacte(l){
   if(!responsiveLayoutState.isDesktop && feuilleNiveau !== null)
     reglerEtatFeuille("reduite");
   favorisEnMemoire.set(cleFavori(l), l);
-  const d = dispoDe(l);
+  const event = estTemporaire(l) ? donneesEvenement(l) : null;
+  const d = event ? null : dispoDe(l);
   const centre = positionMoi;
   const dist = centre ? distanceM(centre[0],centre[1],l.lat,l.lng) : null;
   const min = (kmh)=> dist == null ? null : tempsTrajetMinutes(dist, kmh);
@@ -161,10 +162,8 @@ function ouvrirFicheCompacte(l){
   // puis la date réelle de l'événement, puis seulement la distance
   const quandFiche = estTemporaire(l) && !l.annule
     ? (TEMPS.libelleDate
-        ? TEMPS.libelleDate(l, instantCreneau().getTime(),
-            {disponibilite:(x,t)=>dispoDe(x, null, t)})
-        : TEMPS.libelleTemporel(l, instantCreneau().getTime(),
-            {disponibilite:(x,t)=>dispoDe(x, null, t)}))
+        ? libelleDateDe(l, instantCreneau().getTime())
+        : libelleTemporelDe(l, instantCreneau().getTime()))
     : null;
   const ligne3 = [
     l.annule ? "Annulé" : (quandFiche || (d && d.status !== "unknown" ? d.label : null)),
@@ -252,7 +251,10 @@ function ouvrirDetail(id){
   const c = categorieAffichee(l);
   const mien = estPublicationAMoi(l);
   const ficheAide = estFicheAide(l);
-  const prix = l.gratuit === true ? "Gratuit" : Number.isFinite(Number(l.prix)) ? Number(l.prix)+" €" : "";
+  const evenement = estTemporaire(l) ? donneesEvenement(l) : null;
+  const prix = evenement ? EVENEMENTS.tarifEvenement(evenement)
+    : l.gratuit === true ? "Gratuit" : Number.isFinite(Number(l.prix)) ? Number(l.prix)+" €" : "";
+  const eventSourceUrl = evenement ? urlSiteSure(evenement.event_source_url) : "";
   const site = urlSiteSure(l.url);
 
   /* DEUX PANNEAUX, UNE SEULE FEUILLE.
@@ -269,7 +271,7 @@ function ouvrirDetail(id){
     (ficheAide ? couvertureAide(l, c) : (estTemporaire(l)
       ? couvertureEvenement(l, c) : couvertureLieu(l, c)))+
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
-    (prix ? '<span class="prix-tag '+(l.gratuit?'g':'')+'">'+esc(prix)+'</span>' : '')+'</div>'+
+    (prix ? '<span class="prix-tag '+((evenement ? evenement.is_free === true : l.gratuit === true)?'g':'')+'">'+esc(prix)+'</span>' : '')+'</div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
     (l.annule ? '<p class="non-verifie"><b>Annulé par l’organisateur.</b> '+
       'La publication reste visible pour éviter un déplacement inutile.</p>' : '')+
@@ -299,6 +301,8 @@ function ouvrirDetail(id){
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Favori ajouté':'Favori')+'</button>'+
     '</div>'+
     (l.service ? '<p class="service-bloc">'+esc(l.service)+'</p>' : '')+
+    (evenement && evenement.description
+      ? '<section class="event-description"><p>'+esc(evenement.description)+'</p></section>' : '')+
     // « CCAS », « Mission locale », « Banque alimentaire » : des noms qui ne
     // disent rien à qui n'a jamais eu à s'en servir — c'est-à-dire à qui ouvre
     // cet écran. Chaque fiche explique donc ce qu'on y fait.
@@ -313,13 +317,22 @@ function ouvrirDetail(id){
     '<address class="adresse"><span class="ad-rue">'+esc(l.adresse || "")+'</span>'+
     '<span class="ad-ville">'+esc(l.cp || "")+'</span>'+
     '</address>'+
-    (ficheAide ? faitsAide(l) : '<dl class="faits">'+
+    (ficheAide ? faitsAide(l) : evenement ?
+      '<dl class="faits faits-evenement">'+
+        '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+'</dd></div>'+
+        '<div><dt>Tarif</dt><dd>'+esc(EVENEMENTS.tarifEvenement(evenement))+'</dd></div>'+
+        '<div><dt>Public</dt><dd>'+esc(EVENEMENTS.publicEvenement(evenement))+'</dd></div>'+
+        '<div><dt>Réservation</dt><dd>'+esc(EVENEMENTS.reservationEvenement(evenement))+'</dd></div>'+
+        (evenement.event_source ? '<div><dt>Source événement</dt><dd>'+esc(libelleSourceEvenement(evenement.event_source))+
+          (eventSourceUrl ? ' · <a href="'+esc(eventSourceUrl)+'" target="_blank" rel="noopener">Voir la source</a>' : '')+'</dd></div>' : '')+
+        (evenement.place_source ? '<div><dt>Source lieu</dt><dd>'+esc(libelleSourceEvenement(evenement.place_source))+'</dd></div>' : '')+
+      '</dl>' : '<dl class="faits">'+
       '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
       '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
     '</dl>')+
     horairesSemaine(l)+
-    (l.gratuit ? '' :
+    ((!evenement && l.gratuit) || evenement ? '' :
       '<div class="sans-billet">Le paiement se fait sur place, entre vous. '+
       'L’app n’encaisse rien.</div>')+
     // annonces du canal : d'abord ce qui a changé, car c'est ce qui décide

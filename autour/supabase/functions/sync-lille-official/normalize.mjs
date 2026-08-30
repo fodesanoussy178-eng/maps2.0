@@ -1,4 +1,5 @@
 import {normaliserAnnonce} from "../shared/annonces.mjs";
+import {normaliserEvenementCanonique} from "../shared/evenements-canoniques.mjs";
 
 /* Normalisation pure des pages officielles Lille/MEL.
    Le connecteur ne déduit pas une date d'annonce depuis la date de mise à
@@ -276,6 +277,7 @@ export function normalizeDirectEvent(raw, {config, pageUrl}) {
   const performer = list(raw.performer ?? raw.performers).map((item) => text(item?.name ?? item)).filter(Boolean);
   const organizer = text(raw.organizer?.name ?? raw.organizer);
   const sourceUrl = absoluteUrl(raw.url, pageUrl) || pageUrl;
+  const imageUrl = directImage(list(raw.image)[0] || raw.image, pageUrl);
   const rawEvent = {
     ...raw,
     announcement_tags: [...(config.defaultTags || []), ...list(raw.genre), ...list(raw.keywords)],
@@ -288,6 +290,21 @@ export function normalizeDirectEvent(raw, {config, pageUrl}) {
     sourceUrl,
   });
   const cancelled = /cancel/i.test(text(raw.eventStatus));
+  const description = htmlText(raw.description);
+  const canonical = normaliserEvenementCanonique({
+    ...rawEvent,
+    title: title.slice(0, 200),
+    description,
+    start_at: start.iso,
+    end_at: end?.iso || null,
+    timezone: config.timezone || "Europe/Paris",
+    venue_name: location.name,
+    source_url: sourceUrl,
+  }, {
+    source: config.source,
+    sourceUrl,
+    placeSource: config.source,
+  });
   return {
     source: config.source,
     source_name: config.name,
@@ -295,8 +312,9 @@ export function normalizeDirectEvent(raw, {config, pageUrl}) {
     source_url: sourceUrl,
     raw_event: rawEvent,
     event: {
-      title: title.slice(0, 200),
-      description: text(raw.description) || null,
+      ...canonical,
+      title: canonical.title || title.slice(0, 200),
+      description: canonical.description,
       category: config.category || null,
       start_at: start.iso,
       end_at: end?.iso || null,
@@ -310,7 +328,9 @@ export function normalizeDirectEvent(raw, {config, pageUrl}) {
       lng: location.lng,
       primary_source: config.source,
       source_url: sourceUrl,
-      image_url: directImage(list(raw.image)[0] || raw.image, pageUrl),
+      image_url: imageUrl,
+      image_source: imageUrl ? config.source : null,
+      image_source_url: imageUrl ? sourceUrl : null,
       cancelled,
       last_source_update: null,
       ...annonce.fields,

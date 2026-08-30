@@ -26,6 +26,7 @@
    ======================================================================== */
 
 import {normaliserAnnonce, fusionnerAnnonceFields} from "../shared/annonces.mjs";
+import {normaliserEvenementCanonique} from "../shared/evenements-canoniques.mjs";
 
 /* ---- Lecture défensive du JSON-LD ---------------------------------------
    DATAtourisme rend du JSON-LD : une même information s'y présente comme
@@ -465,6 +466,20 @@ export function normaliserEvenement(poi, options = {}) {
   const rawEvent = annonce.tagEvidence?.length
     ? {...poi, announcement_tag_evidence: annonce.tagEvidence}
     : poi;
+  const canonical = normaliserEvenementCanonique({
+    ...poi,
+    title: title.slice(0, 200),
+    description,
+    start_at: periode.start_at,
+    end_at: periode.end_at,
+    timezone: timeZone,
+    venue_name: placeName,
+    source_url: sourceUrl,
+  }, {
+    source: "datatourisme",
+    sourceUrl,
+    placeSource: "datatourisme",
+  });
 
   return {
     external_id: externalId,
@@ -473,8 +488,9 @@ export function normaliserEvenement(poi, options = {}) {
     raw_event: rawEvent,
     announcement_provenance: annonce.provenance,
     event: {
-      title: title.slice(0, 200),
-      description: description || null,
+      ...canonical,
+      title: canonical.title || title.slice(0, 200),
+      description: canonical.description,
       category: analyserCategorie(poi, title, description),
       start_at: periode.start_at,
       end_at: periode.end_at,

@@ -208,3 +208,15 @@ test("un objet sans temporalStatus suit le moteur local, inchangé", () => {
     "le moteur local garde sa fenêtre d'imminence pour ce qui ne vient pas de la base");
   assert.equal(etat.canonique, undefined);
 });
+
+test("l'état temporel canonique lit start_at/end_at et alimente le même libellé détaillé", () => {
+  const event = {
+    title: "Paysage", isTemporary: true, timezone: "Europe/Paris",
+    start_at: "2026-08-30T14:00:00.000Z", end_at: "2026-08-30T15:30:00.000Z",
+    date_confidence: "exact", temporal_status: "upcoming",
+  };
+  const now = Date.parse("2026-08-20T10:00:00.000Z");
+  const etat = T.etatTemporalEvenement(event, now);
+  assert.equal(etat.statut, STATUTS.A_VENIR);
+  assert.equal(T.libelleDate(event, now, {statut: etat}), "Dimanche 30 août · 16h00–17h30");
+});

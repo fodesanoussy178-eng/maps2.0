@@ -14,6 +14,7 @@ import {
 } from "./config.mjs";
 import {fetchEventsPage, OpenAgendaConfigurationError} from "./client.mjs";
 import {eventDedupKey} from "./dedup.mjs";
+import {fusionnerEvenementFaits} from "../shared/evenements-canoniques.mjs";
 import {listOpenAgendaEvents} from "./pagination.mjs";
 import {isTargetEvent, normalizeOpenAgendaEvent} from "./normalize.mjs";
 import {fusionnerAnnonceFields} from "../shared/annonces.mjs";
@@ -321,7 +322,9 @@ async function readCanonicalAnnouncement(eventId: string): Promise<Json> {
     const path = "events?id=" + encodeURIComponent(eventId) +
       "&select=primary_source,source_url,announced_at,presale_at,tickets_open_at," +
       "ticket_url,announcement_tags,performers,artist_names,music_genres,event_kind," +
-      "organizer,announcement_provenance&limit=1";
+      "organizer,announcement_provenance,venue_name,organizer_name,price_amount,price_text,is_free," +
+      "price_confidence,audience,min_age,reservation_required,reservation_text,event_source,event_source_url," +
+      "place_source&limit=1";
     const rows = await readRows(path);
     return rows[0] ?? {};
   } catch {
@@ -349,7 +352,7 @@ async function persistEvent(normalized: NormalizedEvent, state: ExistingState): 
   if (eventId) {
     const canonical = await readCanonicalAnnouncement(eventId);
     const eventBody = {
-      ...normalized.event,
+      ...fusionnerEvenementFaits(canonical, normalized.event),
       ...fusionnerAnnonceFields(canonical, normalized.event),
       area_id: null, last_synced_at: syncedAt,
     };
@@ -378,6 +381,7 @@ async function persistEvent(normalized: NormalizedEvent, state: ExistingState): 
         method: "PATCH",
         body: JSON.stringify({
           ...normalized.event,
+          ...fusionnerEvenementFaits(canonical, normalized.event),
           ...fusionnerAnnonceFields(canonical, normalized.event),
           area_id: null, last_synced_at: syncedAt,
         }),

@@ -46,6 +46,7 @@
 
 import {normaliserLot, cleDedup} from "./normalisation.mjs";
 import {fusionnerAnnonceFields, normaliserAnnonce} from "../shared/annonces.mjs";
+import {fusionnerEvenementFaits} from "../shared/evenements-canoniques.mjs";
 
 /* L'endpoint dédié aux événements plutôt que le catalogue générique filtré :
    c'est la même sélection, demandée à l'API dans les termes où elle la
@@ -131,7 +132,8 @@ async function lireAnnonceCanonique(eventId: string): Promise<Json> {
     const path = "events?id=" + encodeURIComponent(eventId) +
       "&select=primary_source,source_url,description,announced_at,presale_at," +
       "tickets_open_at,ticket_url,announcement_tags,performers,organizer," +
-      "artist_names,music_genres,event_kind,announcement_provenance&limit=1";
+      "artist_names,music_genres,event_kind,announcement_provenance,venue_name,organizer_name,price_amount,price_text," +
+      "is_free,price_confidence,audience,min_age,reservation_required,reservation_text,event_source,event_source_url,place_source&limit=1";
     const response = await rest(path);
     if (!response.ok) return {};
     const rows = await response.json();
@@ -345,8 +347,9 @@ async function enregistrer(entree: Json, zone: Zone) {
       ...(evenement.description ? {} : (canonique.description ? {description: canonique.description} : {})),
       ...enrichissementCanonique.fields,
     };
+    const faits = fusionnerEvenementFaits(canonique, entrant);
     const corps = {
-      ...entrant, ...fusionnerAnnonceFields(canonique, entrant),
+      ...faits, ...fusionnerAnnonceFields(canonique, faits),
       area_id: zone.id, last_synced_at: synchroniseLe,
     };
     const maj = await rest(`events?id=eq.${eventId}`, {
@@ -368,8 +371,9 @@ async function enregistrer(entree: Json, zone: Zone) {
     }
     if (eventId) {
       const canonique = await lireAnnonceCanonique(eventId);
+      const faits = fusionnerEvenementFaits(canonique, evenement);
       const corps = {
-        ...evenement, ...fusionnerAnnonceFields(canonique, evenement),
+        ...faits, ...fusionnerAnnonceFields(canonique, faits),
         area_id: zone.id, last_synced_at: synchroniseLe,
       };
       const maj = await rest(`events?id=eq.${eventId}`, {

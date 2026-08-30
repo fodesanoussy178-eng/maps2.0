@@ -1,6 +1,7 @@
 import {imageOpenAgenda} from "./image.mjs";
 import {extractOccurrences} from "./occurrences.mjs";
 import {normaliserAnnonce} from "../shared/annonces.mjs";
+import {normaliserEvenementCanonique} from "../shared/evenements-canoniques.mjs";
 
 function list(value) {
   return Array.isArray(value) ? value : (value == null ? [] : [value]);
@@ -137,6 +138,23 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
   const rawEvent = annonce.tagEvidence?.length
     ? {...event, announcement_tag_evidence: annonce.tagEvidence}
     : event;
+  const canonical = normaliserEvenementCanonique({
+    ...event,
+    title: title.slice(0, 200),
+    description,
+    start_at: firstOccurrence.start_at,
+    end_at: firstOccurrence.end_at,
+    timezone,
+    venue_name: location.venueName,
+    source_url: sourceUrl(event, source, externalId),
+  }, {
+    source: "openagenda",
+    sourceUrl: sourceUrl(event, source, externalId),
+    /* La localisation est issue de la fiche OpenAgenda. Une éventuelle
+       fusion avec un lieu OSM peut fournir explicitement `place_source` et
+       prendra alors la priorité dans l'objet canonique. */
+    placeSource: text(event?.place_source ?? event?.placeSource) || "openagenda",
+  });
   const normalized = {
     source: "openagenda",
     source_agenda: source.sourceAgenda,
@@ -163,8 +181,9 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
   return {
     ...normalized,
     event: {
-      title: normalized.title,
-      description,
+      ...canonical,
+      title: canonical.title || normalized.title,
+      description: canonical.description,
       category: normalized.category,
       start_at: normalized.start_at,
       end_at: normalized.end_at,

@@ -76,7 +76,7 @@ test("sans heure fiable, on donne le jour et on n'invente rien", () => {
 
 test("un lieu permanent ne passe pas par le rendu événementiel", () => {
   assert.equal(horairesEvenement({ isTemporary: false, debutLe: Date.now() }), "");
-  assert.equal(horairesEvenement({ isTemporary: true }), "");
+  assert.equal(horairesEvenement({ isTemporary: true }), "Horaires à vérifier");
 });
 
 test("libelleHoraires consulte les dates avant d'abandonner", () => {

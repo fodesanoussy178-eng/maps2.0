@@ -448,6 +448,16 @@
     return Object.assign({ statut: STATUTS.A_VENIR }, commun);
   }
 
+  /* Point d'entrée unique pour les événements. L'objet canonique ne porte pas
+     les attributs historiques d'un lieu permanent (`isTemporary`, `debutLe`),
+     donc on lui donne seulement ce marqueur technique avant de déléguer au
+     même moteur. Aucun horaire d'ouverture du lieu ne peut ainsi remplacer les
+     bornes start_at/end_at de l'événement. */
+  function etatTemporalEvenement(event, now, options) {
+    const source = Object.assign({}, event || {}, {isTemporary: true});
+    return statutTemporel(source, now, options);
+  }
+
   /* Les seuls statuts qui ont leur place dans « Maintenant ». Le ranking ne
      décide pas de ça : la proximité ou les goûts ne doivent jamais y faire
      entrer un événement de la semaine prochaine. */
@@ -574,6 +584,7 @@
     normaliserTemporalite,
     prochaineOccurrence,
     statutTemporel,
+    etatTemporalEvenement,
     estMaintenant,
     libelleTemporel,
     libelleDate,

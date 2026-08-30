@@ -19,7 +19,7 @@ export const MODULES = [
   "annonces-taxonomie.js", "annonces-classement.js",
   "aide-taxonomie.js", "aide-classement.js", "aide-structures.js", "aide-rayon.js", "aide-contexte-ia.js",
   "aide.js",
-  "signaux.js", "temporel.js", "explications.js", "events.js", "images.js", "core.js",
+  "signaux.js", "temporel.js", "evenements-canoniques.js", "explications.js", "events.js", "images.js", "core.js",
   "providers/normaliser.js", "providers/googlePlaces.js", "providers/datatourisme.js",
   "providers/osm.js", "providers/decouvertes.js", "providers/aideInstitutionnelle.js",
   "providers/aideAutour.js", "providers/aideDora.js", "providers/aideFiness.js",
