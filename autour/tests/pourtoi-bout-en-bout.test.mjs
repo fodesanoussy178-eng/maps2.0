@@ -14,6 +14,12 @@ import "../core.js";
 const lire = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const app = lire("../app.js");
 
+/* Le chemin du navigateur charge les deux contrats avant l'application. Le
+   test les installe aussi afin que la trace ci-dessous ne s'arrête pas au
+   simple `toCommonItem`. */
+new Function("globalThis", lire("../evenements-canoniques.js"))(globalThis);
+new Function("globalThis", lire("../entites-canoniques.js"))(globalThis);
+
 /* Les deux modules sont des IIFE : la taxonomie d'abord, le classement la lit
    à son chargement. */
 new Function("globalThis", lire("../annonces-taxonomie.js"))(globalThis);
@@ -32,7 +38,13 @@ function extraireVersEvenement() {
   }
   return new Function("normaliserItem", "visuelEvenement", "commune",
     app.slice(i, fin) + "; return versEvenementCanonique;")(
-      (item, source) => globalThis.AutourCore.toCommonItem(item, { source }),
+      (item, source) => {
+        const commun = globalThis.AutourCore.toCommonItem(item, { source });
+        return Object.assign(commun, {
+          entity_type: "event",
+          eventCanonical: globalThis.AutourEntites.CanonicalEvent(commun),
+        });
+      },
       () => null,
       "Tourcoing");
 }
@@ -118,7 +130,7 @@ test("un chargement métropolitain vide libère la clé pour un nouvel essai", (
    limité au clic sur la carte. */
 
 function extraireFonction(source, nom) {
-  const i = source.search(new RegExp("^function " + nom + "\\(", "m"));
+  const i = source.search(new RegExp("^(?:async )?function " + nom + "\\(", "m"));
   assert.ok(i >= 0, nom + " est introuvable");
   let prof = 0, fin = -1;
   for (let n = source.indexOf("{", i); n < source.length; n += 1) {
@@ -167,4 +179,110 @@ test("ouvrirDetail passe par le résolveur et non par `lieux` seul", () => {
   const bloc = extraireFonction(ecrans, "ouvrirDetail").slice(0, 200);
   assert.match(bloc, /const l = lieuParId\(id\);/,
     "ouvrirDetail doit résoudre l'identifiant sur le bassin complet");
+});
+
+test("Pour toi suit réellement bassin → CanonicalEvent → tags → matching → rendu", async () => {
+  const trace = [];
+  const lecture = {
+    async rpc(nom, parametres) {
+      trace.push({nom, parametres});
+      return {data: [ligneRpc], error: null};
+    },
+  };
+  const chargeur = new Function(
+    "sbLecture", "PERF", "journal", "METROPOLE_LIMITE", "versEvenementCanonique",
+    extraireFonction(app, "chargerEvenementsMetropole") +
+      "; return chargerEvenementsMetropole;")(
+    lecture, {requete: () => () => {}}, {warn: () => {}}, 300, versEvenementCanonique);
+
+  /* 1. Chargement du bassin réel, avec le même mapper que l'application. */
+  const bassin = await chargeur("mel");
+  assert.deepEqual(trace.map((appel) => appel.nom), ["evenements_bassin"]);
+  assert.equal(trace[0].parametres.p_group_slug, "mel");
+  assert.equal(bassin.length, 1);
+  const event = bassin[0];
+
+  /* 2–3. Le contrat est bien un événement canonique et ses faits de
+     recommandation sont encore disponibles au moment du matching. */
+  assert.equal(event.entity_type, "event");
+  assert.equal(event.eventCanonical.entity_type, "event");
+  assert.ok(TAXONOMIE.tagsDe(event).includes("rap"));
+  assert.ok(TAXONOMIE.tagsDe(event).includes("concert"));
+
+  /* 4–5. Surveillances actives, classement, puis groupement et rendu de la
+     carte : un événement compatible ne doit jamais disparaître entre deux
+     étapes parce qu'un champ a changé de nom. */
+  const classes = ANNONCES.classerPourToi(bassin, {
+    now: Date.now(), interests: ["rap", "concerts"], seenIds: [], hiddenIds: [],
+    limit: 6, distanceFor: () => 2000, metroArea: "mel", territorySlug: "tourcoing",
+  });
+  assert.equal(classes.length, 1);
+  assert.deepEqual(classes[0].matched_interests, ["rap", "concerts"]);
+
+  const propositions = classes.map((classe) => ({
+    l: classe.event,
+    pourquoi: {texte: classe.reason},
+    groupe: classe.group,
+    groupeLabel: ANNONCES.libelleGroupe(classe.group),
+    matchedInterests: classe.matched_interests,
+    score: classe.score,
+  }));
+  const echapper = (value) => String(value == null ? "" : value)
+    .replace(/[&<>\"]/g, (character) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[character]));
+  const renderers = new Function(
+    "TAXONOMIE_ANNONCES", "ENVIES", "carteProposition", "esc",
+    extraireFonction(app, "groupesInteretsPourToi") +
+      extraireFonction(app, "rendreGroupePourToi") +
+      "; return {groupesInteretsPourToi, rendreGroupePourToi};")(
+    TAXONOMIE,
+    {choisies: () => ["rap", "concerts"]},
+    (proposition) => '<article data-pt="' + echapper(proposition.l.id) + '">' +
+      echapper(proposition.l.title) + '</article>',
+    echapper
+  );
+  const groupes = renderers.groupesInteretsPourToi(propositions);
+  assert.deepEqual(groupes.map((groupe) => groupe.id), ["rap", "concerts"]);
+  const html = groupes.map((groupe) => renderers.rendreGroupePourToi(
+    groupe.label + " · " + groupe.propositions.length,
+    "pourtoi-interet-" + groupe.id,
+    groupe.propositions,
+  )).join("");
+  assert.match(html, /data-testid="pourtoi-interet-rap"/);
+  assert.match(html, new RegExp('data-pt="' + event.id + '"'));
+});
+
+test("l'audit Paris conserve le bassin demandé sans dépendre d'un cas de titre", () => {
+  const item = versEvenementCanonique(Object.assign({}, ligneRpc, {
+    id: "22222222-3333-4444-5555-666666666666",
+    title: "Concert rap à Paris",
+    city: "Paris",
+    lat: 48.8566,
+    lng: 2.3522,
+    metro_area: "paris",
+    territory_slug: "paris",
+  }));
+  const classes = ANNONCES.classerPourToi([item], {
+    now: Date.now(), interests: ["rap"], seenIds: [], hiddenIds: [], limit: 6,
+    distanceFor: () => 1500, metroArea: "paris", territorySlug: "paris",
+  });
+  assert.equal(classes.length, 1, "un événement futur du bassin de Paris doit rester recommandable");
+  assert.equal(classes[0].event.metro_area, "paris");
+  assert.match(classes[0].event.cp, /^Paris/);
+});
+
+test("un changement de zone invalide aussi les réponses de bassin arrivées en retard", () => {
+  const zone = app.slice(app.indexOf("function definirZoneActive"), app.indexOf("function dansZoneActive"));
+  assert.match(zone, /bassinTerritorialActif = null;/);
+  assert.match(zone, /evenementsMetropole = \[\];/);
+  assert.match(zone, /metropoleEnCours = null;/);
+
+  const events = app.slice(app.indexOf("async function chargerEvenementsCanoniques"),
+    app.indexOf("async function rafraichirCoucheSupabase"));
+  assert.match(events, /async function chargerEvenementsCanoniques\(lat,lng,portee = porteeCourante\)/);
+  assert.match(events, /if\(porteeEvenements !== porteeCourante\) return;/);
+  assert.match(app, /chargerEvenementsCanoniques\(lat,lng,portee\)/);
+
+  const metro = app.slice(app.indexOf("function rafraichirMetropole"),
+    app.indexOf("function bassinPourToi"));
+  assert.match(metro, /porteeMetropole !== porteeCourante \|\| bassinCourant !== bassin/);
 });
