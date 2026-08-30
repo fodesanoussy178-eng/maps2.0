@@ -66,7 +66,7 @@ test("l'ouvrir le marque lu, comme à droite — une seule notion de « lu »", 
 test("il n'affiche que ce qui existe vraiment", () => {
   const bloc = /function blocNouveauPourToi\(\)\{[\s\S]*?\n\}/.exec(html)[0];
   // pas d'image : le pictogramme de la catégorie, jamais une photo d'ailleurs
-  assert.match(bloc, /l\.image\s*\n?\s*\?/);
+  assert.match(bloc, /imageDe\(l\)\s*\n?\s*\?/);
   assert.match(bloc, /categorieAffichee\(l\)/);
   // sans date ni lieu exploitables, la ligne disparaît
   assert.match(bloc, /\.filter\(Boolean\)\.join\(" · "\)/);

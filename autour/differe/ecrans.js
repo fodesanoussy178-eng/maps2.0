@@ -252,8 +252,10 @@ function ouvrirDetail(id){
   const mien = estPublicationAMoi(l);
   const ficheAide = estFicheAide(l);
   const evenement = estTemporaire(l) ? donneesEvenement(l) : null;
+  const lieu = evenement ? null : donneesLieu(l);
   const prix = evenement ? EVENEMENTS.tarifEvenement(evenement)
-    : l.gratuit === true ? "Gratuit" : Number.isFinite(Number(l.prix)) ? Number(l.prix)+" €" : "";
+    : lieu && (lieu.is_free === true || lieu.price_amount != null || lieu.price_text)
+      ? ENTITES.tarifLieu(lieu) : "";
   const eventSourceUrl = evenement ? urlSiteSure(evenement.event_source_url) : "";
   const site = urlSiteSure(l.url);
 
@@ -271,7 +273,7 @@ function ouvrirDetail(id){
     (ficheAide ? couvertureAide(l, c) : (estTemporaire(l)
       ? couvertureEvenement(l, c) : couvertureLieu(l, c)))+
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+
-    (prix ? '<span class="prix-tag '+((evenement ? evenement.is_free === true : l.gratuit === true)?'g':'')+'">'+esc(prix)+'</span>' : '')+'</div>'+
+    (prix ? '<span class="prix-tag '+((evenement ? evenement.is_free === true : lieu && lieu.is_free === true)?'g':'')+'">'+esc(prix)+'</span>' : '')+'</div>'+
     '<h2 class="titre">'+esc(l.titre)+'</h2>'+
     (l.annule ? '<p class="non-verifie"><b>Annulé par l’organisateur.</b> '+
       'La publication reste visible pour éviter un déplacement inutile.</p>' : '')+
@@ -326,13 +328,13 @@ function ouvrirDetail(id){
         (evenement.event_source ? '<div><dt>Source événement</dt><dd>'+esc(libelleSourceEvenement(evenement.event_source))+
           (eventSourceUrl ? ' · <a href="'+esc(eventSourceUrl)+'" target="_blank" rel="noopener">Voir la source</a>' : '')+'</dd></div>' : '')+
         (evenement.place_source ? '<div><dt>Source lieu</dt><dd>'+esc(libelleSourceEvenement(evenement.place_source))+'</dd></div>' : '')+
-      '</dl>' : '<dl class="faits">'+
+    '</dl>' : '<dl class="faits">'+
       '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+'</dd></div>'+
-      '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
-      '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
+      (l.places != null ? '<div><dt>Places</dt><dd>'+esc(l.places+' places')+'</dd></div>' : '')+
+      '<div><dt>Posté par</dt><dd>'+esc(ENTITES.organisateurLieu(lieu || l))+'</dd></div>'+
     '</dl>')+
     horairesSemaine(l)+
-    ((!evenement && l.gratuit) || evenement ? '' :
+    ((evenement || !lieu || lieu.is_free !== false) ? '' :
       '<div class="sans-billet">Le paiement se fait sur place, entre vous. '+
       'L’app n’encaisse rien.</div>')+
     // annonces du canal : d'abord ce qui a changé, car c'est ce qui décide

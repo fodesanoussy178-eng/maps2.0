@@ -37,6 +37,7 @@ const SIGNAUX = window.AutourSignaux;
 const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
 const EVENEMENTS = window.AutourEvenements;
+const ENTITES = window.AutourEntites;
 /* LE RÉSOLVEUR D'IMAGE. IL N'Y EN A QU'UN.
 
    Toute question « quelle photo pour ce lieu, et de quel droit ? » passe par
@@ -158,7 +159,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=8b6d88d7"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c1ddb950"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -242,15 +243,70 @@ function prechargerEcrans(){
 
 const PLAF = window.AutourPlafonds || null;
 let zoneActive = null;
+/* Contrat unique des résultats : tous les écrans lisent ce contexte, jamais
+   le GPS brut. La position physique reste dans `positionMoi` pour le point
+   bleu, les itinéraires et le bouton « revenir autour de moi » ; elle ne peut
+   pas remettre des données dans une destination choisie. */
+let activeLocationContext = null;
 let porteeCourante = 0;
 const porteeValide = (p)=> p === porteeCourante;
+
+function contexteDepuisZone(zone){
+  if(!zone) return null;
+  const recherche = !!(zone.type === "recherche" ||
+    (CTX && zone.type === CTX.TYPES.RECHERCHE));
+  return Object.freeze({
+    mode: recherche ? "destination" : "gps",
+    source: recherche ? "search" : "gps",
+    key: CTX ? CTX.idZone(zone) : zone.type+":"+zone.lat.toFixed(2)+","+zone.lng.toFixed(2),
+    lat: zone.lat, lng: zone.lng,
+    city: zone.nom || null,
+    zone,
+  });
+}
+
+function contexteLocalisationActif(){ return activeLocationContext; }
+function destinationActive(){ return activeLocationContext?.mode === "destination"; }
+
+/* Changer de destination doit être une frontière de données, pas seulement
+   un filtre d'affichage. Les caches par coordonnées restent valides, mais les
+   collections en mémoire sont vidées afin qu'aucun ancien objet ne puisse
+   atteindre une surface avant la réponse de la nouvelle zone. */
+function viderDonneesContexte(){
+  permanentPlaces = [];
+  datatourismePlaces = [];
+  externalEvents = [];
+  userPublications = [];
+  lieux = [];
+  publies = userPublications;
+  dernierClassement = [];
+  revisionLieux += 1;
+  indexCategories.clear();
+  zonesVues.clear();
+  chargementsTemporaires.clear();
+  derniersChargementsTemporaires.clear();
+  requetesCouchesSupabase.clear();
+  signaturesCouchesPubliees.clear();
+  zonesResto.clear();
+  restaurationsEnCours.clear();
+  prechargementFait = false;
+  prechargementEnCours = false;
+  recoCache = null;
+  recoBurstCache = null;
+  generationAccueil += 1;
+}
 
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
    d'un coup tout travail en vol — et rend le nouveau numéro à l'appelant. */
 function definirZoneActive(zone){
-  if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)) return porteeCourante;
+  if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)){
+    activeLocationContext = activeLocationContext || contexteDepuisZone(zone);
+    return porteeCourante;
+  }
   zoneActive = zone || null;
+  activeLocationContext = contexteDepuisZone(zoneActive);
   porteeCourante += 1;
+  viderDonneesContexte();
   /* Les mémoires qui portent sur « les lieux qu'on montre » ne valent plus
      rien : elles ont été calculées pour l'autre ville. */
   oublierItemsMaintenant();
@@ -259,6 +315,15 @@ function definirZoneActive(zone){
   // les cartes d'une ville qu'on vient de quitter serait afficher du faux
   dernierRecoRendu = null;
   selectionAccueil = null;
+  /* Le bassin est une donnée de la zone, pas une préférence globale. Tant que
+     la nouvelle résolution n'a pas répondu, conserver celui de la ville
+     précédente permettait à « Pour toi » d'afficher des événements d'un autre
+     bassin — particulièrement visible lors d'un Paris demandé depuis la MEL.
+     Les réponses en vol sont en plus gardées sous la portée ci-dessous et ne
+     pourront donc pas repeupler ces mémoires périmées. */
+  bassinTerritorialActif = null;
+  evenementsMetropole = [];
+  metropoleEnCours = null;
   return porteeCourante;
 }
 
@@ -266,8 +331,16 @@ function definirZoneActive(zone){
    — tout début de session, avant la géolocalisation — on ne filtre rien :
    mieux vaut montrer ce qu'on a que de vider l'écran par principe. */
 function dansZoneActive(l){
-  if(!CTX || !zoneActive) return true;
-  return CTX.dansZone(l, zoneActive, {vue: bornesVue()});
+  const zone = activeLocationContext?.zone || zoneActive;
+  if(!CTX || !zone) return true;
+  return CTX.dansZone(l, zone, {vue: bornesVue()});
+}
+
+/* Entonnoir commun des trois surfaces géographiques : carte/Explorer,
+   Maintenant et Pour toi partent tous du même ensemble avant d'appliquer
+   leurs règles propres (temps, catégories ou surveillance). */
+function elementsDuContexte(items){
+  return (items || []).filter(dansZoneActive);
 }
 /* CE FILTRE EST APPELÉ UNE FOIS PAR LIEU, ET IL Y EN A CENT TRENTE.
 
@@ -299,10 +372,13 @@ function bornesVue(){
 /* Le centre dont TOUT parle : classement, distances, sélection. Il vaut la
    ville cherchée dès qu'il y en a une, et la position physique sinon. */
 function centreZoneActive(){
+  if(activeLocationContext) return [activeLocationContext.lat, activeLocationContext.lng];
   if(zoneActive) return [zoneActive.lat, zoneActive.lng];
   return positionMoi;
 }
-const idZoneActive = ()=> CTX ? CTX.idZone(zoneActive) : "sans-zone";
+const idZoneActive = ()=> CTX
+  ? CTX.idZone(activeLocationContext?.zone || zoneActive)
+  : (activeLocationContext?.key || "sans-zone");
 
 /* LA DISTANCE AUSSI PART DE LA ZONE.
 
@@ -315,14 +391,14 @@ const idZoneActive = ()=> CTX ? CTX.idZone(zoneActive) : "sans-zone";
 /* Le point de départ de toute REQUÊTE de données. Même règle que pour
    l'affichage : on demande à la zone dont on parle, jamais à celle qu'on a
    quittée. */
-function centreDonnees(){ return centreZoneActive() || positionMoi || null; }
+function centreDonnees(){ return centreZoneActive() || null; }
 function chargerAideZone(options){
   const c = centreDonnees();
   return c ? chargerAide(c[0], c[1], options) : Promise.resolve([]);
 }
 
 function distanceDepuisZone(l){
-  const c = centreZoneActive() || positionMoi;
+  const c = centreZoneActive();
   if(!c || !l) return NaN;
   return distanceM(c[0], c[1], l.lat, l.lng);
 }
@@ -397,17 +473,33 @@ function regimeZone(zone, depuis, mesuree){
    Ici la distance suffit : il ne s'agit pas de dire à quelqu'un où il est,
    seulement de décider combien on va demander. */
 function regimePoint(lat, lng){
-  if(!positionMoi) return "local";   // on ne charge que là où l'on se croit
-  const d = distanceM(positionMoi[0], positionMoi[1], lat, lng);
+  /* Une carte déplacée après une recherche reste dans la destination
+     choisie : le GPS ne doit pas réduire Paris à un chargement « lointain »
+     depuis Tourcoing. Au repos, le point physique et le contexte GPS
+     coïncident, donc le comportement local reste inchangé. */
+  const reference = destinationActive() ? centreZoneActive() : positionMoi;
+  if(!reference) return "local";
+  const d = distanceM(reference[0], reference[1], lat, lng);
   if(d <= SEUIL_LOCAL_M)   return "local";
   if(d <= SEUIL_PROCHE_M)  return "proche";
   if(d <= SEUIL_VOISINE_M) return "voisine";
   return "loin";
 }
-const reglagesZone = (zone)=> REGIMES[regimeZone(zone)];
+/* `regimeZone` reste la mesure de présence physique utilisée uniquement par
+   la veille GPS. Les résultats, eux, ont leur propre régime : une destination
+   volontaire est locale pour le calcul demandé, quelle que soit la position
+   réelle conservée pour le retour. */
+function regimeZoneResultats(zone){
+  const active = activeLocationContext;
+  const memeDestination = destinationActive() && zone && (
+    zone === rechercheGeo || (active.zone &&
+      active.zone.lat === zone.lat && active.zone.lng === zone.lng));
+  return memeDestination ? "local" : regimeZone(zone);
+}
+const reglagesZone = (zone)=> REGIMES[regimeZoneResultats(zone)];
 const plafondPour = (zone)=> reglagesZone(zone).resultats;
 const plafondResultats = ()=> plafondPour(rechercheGeo);
-const surPlace = ()=> regimeZone(rechercheGeo) === "local";
+const surPlace = ()=> regimeZoneResultats(rechercheGeo) === "local";
 
 /* Une requête est géographique si elle n'est pas, EXACTEMENT, un mot du
    vocabulaire de l'application : on ne géocode pas « pizza », mais on géocode
@@ -695,8 +787,9 @@ function badgeDispo(l){
   }
   const d = dispoDe(l);
   if(!d) return "";
+  if(d.status === "unknown") return '<span class="inconnu">'+esc(libelleHoraires(l))+'</span>';
   const classe = d.status === "open" || d.status === "closing_soon" ? "ouvert"
-    : d.status === "unknown" ? "inconnu" : "ferme";
+    : "ferme";
   return '<span class="'+classe+'">'+esc(d.label)+'</span>';
 }
 
@@ -1088,8 +1181,9 @@ if(window.ResizeObserver){
 
 function normaliserItem(item, source){
   const normalise = toCommonItem(item, {source});
-  if(normalise.isTemporary && EVENEMENTS && EVENEMENTS.normaliserEvenement){
-    normalise.eventCanonical = normalise.eventCanonical || EVENEMENTS.normaliserEvenement(Object.assign({}, normalise, {
+  if(normalise.isTemporary && ENTITES && ENTITES.normaliserEvenement){
+    normalise.entity_type = "event";
+    normalise.eventCanonical = normalise.eventCanonical || ENTITES.normaliserEvenement(Object.assign({}, normalise, {
       title:normalise.title || normalise.titre,
       event_source:normalise.event_source || normalise.primary_source || source,
       event_source_url:normalise.event_source_url || normalise.source_url || null,
@@ -1100,6 +1194,9 @@ function normaliserItem(item, source){
     if(normalise.eventCanonical.description){
       normalise.description = normalise.eventCanonical.description;
     }
+  }else if(ENTITES && ENTITES.normaliserLieu){
+    normalise.entity_type = "place";
+    normalise.placeCanonical = normalise.placeCanonical || ENTITES.normaliserLieu(normalise);
   }
   return normalise;
 }
@@ -1107,10 +1204,11 @@ function normaliserItem(item, source){
 /* Toutes les vues passent par ce pointeur. Le repli ne sert qu'aux
    publications anciennes ou aux tests chargés sans le module événementiel. */
 function donneesEvenement(l){
-  if(!l || !l.isTemporary) return null;
+  if(!l || !estTemporaire(l)) return null;
   if(l.eventCanonical) return l.eventCanonical;
-  if(EVENEMENTS && EVENEMENTS.normaliserEvenement){
-    l.eventCanonical = EVENEMENTS.normaliserEvenement(Object.assign({}, l, {
+  if(ENTITES && ENTITES.normaliserEvenement){
+    l.entity_type = "event";
+    l.eventCanonical = ENTITES.normaliserEvenement(Object.assign({}, l, {
       title:l.title || l.titre,
       event_source:l.event_source || l.primary_source || null,
       event_source_url:l.event_source_url || l.source_url || null,
@@ -1118,6 +1216,50 @@ function donneesEvenement(l){
     return l.eventCanonical;
   }
   return l;
+}
+
+/* Même règle pour les lieux permanents : le renderer ne relit pas les champs
+   historiques quand une fiche a été normalisée. La séparation est
+   intentionnelle : un lieu peut avoir une photo et des horaires, mais jamais
+   les dates, le tarif ou la provenance d'un événement voisin. */
+function donneesLieu(l){
+  if(!l || estTemporaire(l)) return null;
+  if(l.placeCanonical) return l.placeCanonical;
+  if(ENTITES && ENTITES.normaliserLieu){
+    l.entity_type = "place";
+    l.placeCanonical = ENTITES.normaliserLieu(l);
+    return l.placeCanonical;
+  }
+  return l;
+}
+
+/* Le renderer ne choisit plus entre `image`, `image_url` et une image du
+   fournisseur. Il reçoit le média du même objet canonique que le reste de la
+   fiche, avec sa portée et sa provenance intactes. */
+function mediaDe(l){
+  if(!l) return {image_url:null,image_source:null,image_scope:"place",image_type:null};
+  const canonique = estTemporaire(l) ? donneesEvenement(l) : donneesLieu(l);
+  if(ENTITES && ENTITES.mediaCanonique && canonique) return ENTITES.mediaCanonique(canonique);
+  return {
+    image_url:l.image || l.image_url || null,
+    image_source:l.imageSource || l.image_source || null,
+    image_source_url:l.image_source_url || "",
+    image_author:l.image_author || "",
+    image_license:l.image_license || "",
+    image_type:l.image_type || null,
+    image_scope:estTemporaire(l) ? "event" : "place",
+  };
+}
+
+function imageDe(l){
+      const media = mediaDe(l);
+  return media && media.image_url ? media.image_url : "";
+}
+
+function gratuitDe(l){
+  if(!l) return false;
+  const canonique = estTemporaire(l) ? donneesEvenement(l) : donneesLieu(l);
+  return !!(canonique && canonique.is_free === true);
 }
 
 function correspondCategorie(item, categorie){
@@ -1129,7 +1271,7 @@ function correspondUneCategorie(item, categories){
 }
 
 function estTemporaire(item){
-  return !!(item && item.isTemporary);
+  return !!(item && (item.entity_type === "event" || item.isTemporary === true));
 }
 
 /* ================================================================== */
@@ -2188,6 +2330,8 @@ function visuelPublication(p){
     image_url:v.image_url, image_source:v.image_source,
     image_source_url:v.image_source_url, image_author:v.image_author,
     image_license:v.image_license, image_updated_at:v.image_updated_at,
+    image_type:v.image_type, image_confidence:v.image_confidence,
+    image_width:v.image_width, image_height:v.image_height,
     image_scope:"evenement",
   };
 }
@@ -2210,7 +2354,8 @@ function versLieu(p){
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
+    description:p.description || "", adresse:p.adresse || "",
+    cp:p.cp || (destinationActive() ? (activeLocationContext?.city || "") : commune),
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
     creatorId:createdBy, creatorName:p.creator_name || "",
@@ -2421,6 +2566,10 @@ function visuelEvenement(e){
     image_author:e.image_author || "",
     image_license:e.image_license || "",
     image_updated_at:e.image_updated_at || e.last_synced_at || null,
+    image_type:e.image_type || e.imageType || "",
+    image_confidence:e.image_confidence || e.imageConfidence || "",
+    image_width:e.image_width || e.imageWidth || null,
+    image_height:e.image_height || e.imageHeight || null,
     image_scope:"evenement",
   });
   if(!v) return {image:"", imageSource:"", image_scope:"evenement"};
@@ -2432,6 +2581,7 @@ function visuelEvenement(e){
     image_source_url:v.image_source_url, image_author:v.image_author,
     image_license:v.image_license, image_updated_at:v.image_updated_at,
     image_type:v.image_type, image_confidence:v.image_confidence,
+    image_width:v.image_width, image_height:v.image_height,
     image_scope:"evenement",
   };
 }
@@ -2450,13 +2600,15 @@ function versEvenementCanonique(e){
   const finBrut = premiere(["end_at", "endAt", "fin_le", "finLe"]);
   const debut = debutBrut != null && debutBrut !== "" ? new Date(debutBrut).getTime() : null;
   const fin = finBrut != null && finBrut !== "" ? new Date(finBrut).getTime() : null;
+  const villeContexte = (typeof activeLocationContext !== "undefined" && activeLocationContext?.city) ||
+    ((typeof activeLocationContext !== "undefined" && activeLocationContext?.mode === "gps") ? commune : "");
   return normaliserItem({
     id:"evt"+e.id, dbId:e.id,
     cat:e.category || "event",
     titre:e.title,
     description:e.description || "",
     adresse:e.place_name || e.address || "",
-    cp:[e.city, e.insee_code].filter(Boolean).join(" ") || commune,
+    cp:[e.city, e.insee_code].filter(Boolean).join(" ") || villeContexte,
     lat:e.lat, lng:e.lng,
     debutLe:debut, finLe:fin,
     timezone:e.timezone || "Europe/Paris",
@@ -2541,9 +2693,10 @@ function versEvenementCanonique(e){
   }, e.primary_source || "datatourisme");
 }
 
-async function chargerEvenementsCanoniques(lat,lng){
+async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
   if(!sbLecture) return null;
   const b = emprisePublications(lat, lng);
+  const porteeEvenements = portee;
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
      de cette requête ; une zone inconnue devient seulement un candidat DB. */
@@ -2551,6 +2704,7 @@ async function chargerEvenementsCanoniques(lat,lng){
   void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
     p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
   })).then(({data, error})=>{
+    if(porteeEvenements !== porteeCourante) return;
     /* La résolution servait uniquement à mutualiser la synchronisation ; on
        retient désormais son résultat, parce que c'est lui qui nomme le bassin
        dans lequel « Pour toi » a le droit de chercher. */
@@ -2570,7 +2724,9 @@ async function chargerEvenementsCanoniques(lat,lng){
        devient connu. `rafraichirMetropole` est idempotente, l'autre appel
        reste sans effet quand il double celui-ci. */
     rafraichirMetropole();
-  }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
+  }).catch(()=>{
+    if(porteeEvenements === porteeCourante) bassinTerritorialActif = null;
+  }).finally(finTerritoire);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2595,7 +2751,7 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       t:0, publications:[], evenements:[], okPublications:false, okEvenements:false,
     };
     const [publications, evenements] = await Promise.all([
-      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng)
+      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng,portee)
     ]);
     const okPublications = Array.isArray(publications);
     const okEvenements = Array.isArray(evenements);
@@ -2860,7 +3016,7 @@ const $=(s)=>document.querySelector(s);
 const NAV_FLOTTANTE = matchMedia("(min-width:1100px)");
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc=(s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function alea(seed){let h=hash(String(seed))||1;return()=>{h=(h*1103515245+12345)&0x7fffffff;return (h>>8)%10000/10000;}}
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(el._t);el._t=setTimeout(()=>el.hidden=true,2400)}
 /* Les messages d'état s'écrivaient dans l'écran d'accueil, qui ne s'affiche
@@ -3199,7 +3355,8 @@ async function vraisLieux(lat,lng,bornes,opts){
       type:t.amenity || t.leisure || t.tourism || t.office || "",
       sansNom: !nom,                         // « un résultat sans nom exploitable »
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || nom,
-      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
+      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") ||
+        (destinationActive() ? (activeLocationContext?.city || "") : commune),
       quand: t.opening_hours || "Voir sur place",
       cuisine: t.cuisine || "",              // turkish, african, pizza…
       tel: t.phone || t["contact:phone"] || "",
@@ -3547,7 +3704,7 @@ function remettreFondAutonome(){
   // Le repli suit toujours la zone déjà affichée. On ne fabrique jamais une
   // ville par défaut : sans position connue, la carte Leaflet a déjà un
   // centre, qui est le seul repère honnête à conserver.
-  const centre = positionMoi || [map.getCenter().lat,map.getCenter().lng];
+  const centre = centreZoneActive() || [map.getCenter().lat,map.getCenter().lng];
   if(!centre || !Number.isFinite(centre[0]) || !Number.isFinite(centre[1])) return Promise.resolve(null);
   fondAutonomePose = true;
   return poserFond().then(fond=>{
@@ -3870,7 +4027,8 @@ function fusionnerFichesFournisseurs(candidats){
    l'auteur et la licence. */
 function visuelPrefere(a, b){
   const champs = ["image","imageSource","imageAttribution","image_url","image_source",
-    "image_source_url","image_author","image_license","image_updated_at","image_scope"];
+    "image_source_url","image_author","image_license","image_updated_at","image_scope",
+    "image_type","image_confidence","image_width","image_height","image_fallback_reason"];
   const sources = IMAGES ? IMAGES.SOURCES : [];
   /* Plus le rang est bas, mieux c'est. Pas d'image du tout : hors concours.
      Une provenance qu'on ne reconnaît pas passe derrière toutes celles qu'on
@@ -3936,7 +4094,11 @@ function fusionner(nouveaux, flux, opts){
   const source = nouveaux[0] && nouveaux[0].source || type;
   const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source))
     // une annulation reste une information utile et distincte d'une suppression
-    .filter(l=>l.annule || !estPasse(l));
+    .filter(l=>l.annule || !estPasse(l))
+    /* Toutes les sources passent par la même frontière géographique. Une
+       tâche différée du bassin GPS peut encore terminer après une recherche
+       Paris ; elle ne doit jamais repeupler la collection de Paris. */
+    .filter(l=>dansZoneActive(l));
   const courant = type === "external" ? externalEvents
     : type === "user" ? userPublications
     : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
@@ -4108,13 +4270,18 @@ const RAPIDE_RAYON_M = 2000;
 /* Les champs qui servent à dessiner une carte et à la reclasser. Le reste
    (description, mots-clés, géométrie) pèse sans rien apporter au premier
    affichage : on ne l'écrit pas. */
-const CHAMPS_RAPIDE = ["id","autourId","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
+const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
   /* La provenance suit la photo jusque dans le cache. Une image sans son
      origine ne peut plus dire de quel droit on l'affiche à la réouverture :
      elle serait alors une image de source inconnue, donc à ne pas montrer. */
   "image_url","image_source","image_source_url","image_author","image_license","image_updated_at","image_scope",
+  "image_type","image_confidence","image_width","image_height","image_fallback_reason",
   "note","avis","prix","gratuit","quand","cuisine","tags","pmr","source","sourceRefs",
-  "par","isTemporary","debutLe","finLe","service","solidaire","sansNom"];
+  "par","isTemporary","debutLe","finLe","service","solidaire","sansNom","description",
+  "event_kind","eventKind","start_at","end_at","timezone","temporal_status","temporalStatus",
+  "date_confidence","dateConfidence","price_amount","price_text","is_free","price_confidence",
+  "audience","min_age","reservation_required","reservation_text","venue_name","organizer_name",
+  "event_source","event_source_url","place_source","place_source_url","entity_type"];
 
 function estContenuGoogle(l){
   return !!(l && (l.source === "google_places" || (l.sourceRefs && l.sourceRefs.googlePlaceId)));
@@ -4137,7 +4304,8 @@ function alleger(l){
 function sansPhotoGoogle(l){
   if(!l || l.imageSource !== "google_places") return l;
   ["image","imageSource","imageAttribution","image_url","image_source",
-   "image_source_url","image_author","image_license","image_updated_at"].forEach(k=>{ delete l[k]; });
+   "image_source_url","image_author","image_license","image_updated_at","image_type",
+   "image_confidence","image_width","image_height","image_fallback_reason"].forEach(k=>{ delete l[k]; });
   return l;
 }
 
@@ -4373,6 +4541,11 @@ function cleZone(lat, lng, z, cats){
 
 function chargerZone(lat, lng, opts){
   const o = opts || {};
+  /* Un appel ancien peut connaître les coordonnées du GPS sans connaître la
+     destination choisie entre-temps. Refuser ce travail ici protège aussi les
+     chemins différés qui ne passent pas par le chargeur de recherche. */
+  if(destinationActive() && CTX && !CTX.dansZone([lat,lng], activeLocationContext.zone))
+    return Promise.resolve([]);
   /* LE ZOOM D'UNE CARTE QUI VOLE N'EST PAS CELUI QU'ELLE VISE.
 
      Ce garde-fou existe pour une bonne raison : vue de très loin, une carte
@@ -4569,6 +4742,8 @@ const chargementsTemporaires = new Map();
 const derniersChargementsTemporaires = new Map();
 function chargerDonneesTemporaires(lat, lng, opts){
   const o = opts || {};
+  if(destinationActive() && CTX && !CTX.dansZone([lat,lng], activeLocationContext.zone))
+    return Promise.resolve([]);
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(!o.force && chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
   const dernier = derniersChargementsTemporaires.get(cle) || 0;
@@ -5372,7 +5547,8 @@ function chargerLeDemarrage(rapide){
      dans le premier `requestIdleCallback` ajoutait plusieurs requêtes pendant
      que Google, Supabase et DATAtourisme étaient encore en vol. */
   setTimeout(()=>{
-    if(positionMoi && distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
+    if(porteeValide(generation.portee) && !destinationActive() && positionMoi &&
+       distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
       quandLibre(()=>chargerDonneesTemporaires(lat,lng,{sansPublications:true}));
   },5000);
 
@@ -5430,7 +5606,7 @@ const FILTRES_HUMAINS = [
       return d ? d.isOpenNow : l.ouvert === true;
     } },
   { id:"proche",  label:"< 15 min à pied", test:(l,d)=>d < 1200 },
-  { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
+  { id:"gratuit", label:"Gratuit",         test:l=>gratuitDe(l) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
   { id:"famille", label:"En famille",      test:l=>
       correspondCategorie(l,"family") || FAMILY_CATEGORIES.some(c=>correspondCategorie(l,c)) },
@@ -5752,15 +5928,16 @@ function htmlMarqueur(l){
      Le statut vient du moteur temporel, donc de Postgres pour les événements
      canoniques : un événement de demain ne peut pas prendre cette carte. */
   if(estTemporaire(l) && !l.annule && TEMPS.estMaintenant(statutTemps(l).statut)){
+    const evenement = donneesEvenement(l);
     const dist = positionPrecise()
       ? formatDist(distanceDepuisZone(l)) : "";
-    const fin = l.finLe ? heureLocale(l.finLe, l) : "";
+    const fin = evenement && evenement.end_at ? heureLocale(evenement.end_at, l) : "";
     const bas = [dist, fin ? "jusqu’à "+fin : ""].filter(Boolean).join(" · ");
     const lieu = l.adresse || l.cp || "";
     return '<span class="mk-in"><div class="evc">'+
       '<span class="evc-rond" style="background:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
         c.emoji+'</span>'+
-      '<span class="evc-txt"><b>'+esc(l.titre)+'</b>'+
+      '<span class="evc-txt"><b>'+esc((evenement && evenement.title) || l.titre)+'</b>'+
         (lieu ? '<i>'+esc(lieu)+'</i>' : '')+
         (bas ? '<u>'+esc(bas)+'</u>' : '')+
       '</span></div></span>';
@@ -6449,7 +6626,8 @@ function horaireDuJour(l){
    Quand la source ne donne que le jour, on écrit le jour et on s'arrête :
    inventer une heure serait pire que de n'en donner aucune. */
 function horairesEvenement(l){
-  if(!l || !l.isTemporary) return "";
+  const estUnEvenement = l && (l.isTemporary === true || l.entity_type === "event" || l.eventCanonical);
+  if(!estUnEvenement) return "";
   const T = (typeof window !== "undefined" && window.AutourTemps) ||
     (typeof globalThis !== "undefined" && globalThis.AutourTemps);
   const evenement = (typeof donneesEvenement === "function" ? donneesEvenement(l) : null) || l;
@@ -6464,7 +6642,7 @@ function libelleHoraires(l){
   const evenement = horairesEvenement(l);
   if(evenement && evenement !== "Horaires à vérifier") return evenement;
   if(!l) return "Horaires inconnus";
-  if(l.isTemporary) return "Horaires à vérifier";
+  if(estTemporaire(l)) return "Horaires à vérifier";
   /* Pour un lieu permanent, le badge et le détail doivent parler au même
      résolveur. Cela empêche un `24/7` OSM suspect de réapparaître comme une
      ouverture certaine dans la fiche. */
@@ -6474,14 +6652,16 @@ function libelleHoraires(l){
   const horaire = horaireDuJour(l);
   if(horaire) return horaire;
   if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/i.test(l.quand)) return l.quand;
-  return "Horaires inconnus";
+  const lieu = donneesLieu(l);
+  return ENTITES && ENTITES.horaireLieu && lieu
+    ? ENTITES.horaireLieu(lieu) : "Horaires inconnus";
 }
 
 function horairesSemaine(l){
   if(!l.horaires || !l.horaires.length) return "";
   const dispo = dispoDe(l);
-  if(dispo && (dispo.conflict || dispo.suspect24h7))
-    return '<p class="horaires-verif">'+esc(dispo.label)+'</p>';
+  if(dispo && (dispo.conflict || dispo.suspect24h7 || dispo.status === "unknown"))
+    return '<p class="horaires-verif">'+esc(libelleHoraires(l))+'</p>';
   const aujourdhui = (new Date().getDay() + 6) % 7;
   return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
     l.horaires.map((h,i)=>
@@ -6564,16 +6744,17 @@ function attributionPhoto(l){
 
 function provenanceImage(l){
   if(!l) return "";
+  const media = mediaDe(l);
   const photo = l.imageAttribution ? attributionPhoto(l) : "";
   if(photo) return "Photo : "+photo;
-  const url = urlSiteSure(l.image_source_url || l.imageSourceUrl);
+  const url = urlSiteSure(media.image_source_url || l.imageSourceUrl);
   if(!url) return "";
   const noms = {
     openagenda:"Agenda officiel", datatourisme:"DATAtourisme",
     structure:"Organisateur", site_officiel:"Lieu officiel",
     autour:"Autour", wikimedia_commons:"Wikimedia Commons",
   };
-  const nom = noms[l.image_source || l.imageSource] || "Source déclarée";
+  const nom = noms[media.image_source || l.imageSource] || "Source déclarée";
   return '<a href="'+esc(url)+'" target="_blank" rel="noopener">Source : '+esc(nom)+'</a>';
 }
 
@@ -6608,11 +6789,13 @@ function couvertureAide(l, c){
 }
 
 function couvertureEvenement(l, c){
-  const photo = l && l.image ? l.image : "";
+  const media = mediaDe(l);
+  const photo = media && media.image_url ? media.image_url : "";
   const teinte = COULEURS_CAT[l && l.cat] || "#E23A8C";
-  const typeImage = l && (l.image_type || l.imageType) || "";
+  const typeImage = media && media.image_type || "";
   return '<figure class="event-couverture'+(photo?'':' image-absente')+'"'+
     (typeImage ? ' data-image-type="'+esc(typeImage)+'"' : '')+
+    ' data-image-scope="evenement"'+
     ' style="--teinte:'+teinte+'">'+
     fallbackVisuelEvenement(l, c, "event-fallback-detail")+
     (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
@@ -6623,11 +6806,16 @@ function couvertureEvenement(l, c){
 
 function couvertureLieu(l, c){
   if(!l) return "";
-  return '<figure class="aide-couverture'+(l.image?'':' sans-photo')+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+  const media = mediaDe(l);
+  const photo = media && media.image_url ? media.image_url : "";
+  return '<figure class="aide-couverture'+(photo?'':' sans-photo')+'"'+
+    (media.image_type ? ' data-image-type="'+esc(media.image_type)+'"' : '')+
+    ' data-image-scope="lieu"'+
+    ' style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
-    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt=""'+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
       ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
-    (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
+    (photo && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
 }
 
 function sourceAide(l){
@@ -7198,7 +7386,7 @@ async function notesGoogle(lat,lng,opts){
 const zonesResto = new Set();
 const restaurationsEnCours = new Map();
 function completerRestauration(opts){
-  if(!positionMoi) return Promise.resolve([]);
+  if(!centreDonnees()) return Promise.resolve([]);
   /* La restauration se complète dans la zone dont on parle, pas là où l'on
      dort : chercher Lille depuis Tourcoing allait chercher les restaurants de
      Tourcoing et les versait dans la carte de Lille. */
@@ -7360,7 +7548,7 @@ function distancePourListe(l){
 
 /* événements éphémères qui se passent dans un lieu donné */
 function evenementsDe(lieu){
-  return lieux.filter(l=>estTemporaire(l) && l.adresse === lieu.titre);
+  return lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && l.adresse === lieu.titre);
 }
 
 /* "auto" = pertinence · "note" = les mieux notés · "distance" = les plus proches */
@@ -7373,7 +7561,7 @@ function classerLieux(liste, sansPalmares){
      dans cette ville-là n'arrive jamais en tête. Chez soi les deux points
      coïncident, et rien ne change. */
   const [lat,lng] = pointDeReference() || positionMoi;
-  const dedans = liste.map(l=>{
+  const dedans = (liste || []).filter(dansZoneActive).map(l=>{
     const d = distanceM(lat,lng,l.lat,l.lng);
     const evs = estTemporaire(l) ? [] : evenementsDe(l);
     return Object.assign({}, l, {dist:d, evs:evs.length, mien:!!l.mien});
@@ -7417,7 +7605,7 @@ function ouvrirListe(cat){
   mettreAJourProfil("categorie", cat);
   // l'aide n'est cherchée que si quelqu'un la demande : dix recherches
   // facturées à chaque ouverture de l'app seraient absurdes
-  if(SANS_CLASSEMENT.has(cat) && positionMoi)
+  if(SANS_CLASSEMENT.has(cat) && centreDonnees())
     chargerAideZone().then(()=>{
       if(filtreActif === cat) ouvrirListe(cat);
     });
@@ -7451,6 +7639,11 @@ function suitesUtiles(connus, montres){
 }
 
 function afficherListe(emoji, titre, l, sansPalmares, redessiner, connus){
+  /* Une liste peut être recalculée après l'arrivée d'une réponse réseau. Le
+     garde-fou reste ici aussi : aucune porte de rendu ne peut réintroduire un
+     élément de la ville quittée, même si son appelant possède encore une
+     référence ancienne. */
+  l = (l || []).filter(dansZoneActive);
   const avecNotes = l.some(x=>x.note);
   const avecPrix  = l.some(x=>x.prixN != null);
   const critere = sansPalmares
@@ -7555,7 +7748,7 @@ function ouvrirResultats(q){
   const cat = categorieRecherchee(q);
   if(cat){
     filtreActif = cat; dessinerFiltres(); rendre();
-    if(SANS_CLASSEMENT.has(cat) && positionMoi) chargerAideZone();
+    if(SANS_CLASSEMENT.has(cat) && centreDonnees()) chargerAideZone();
     pileEcrans = [];
     pousserEcran(()=>ouvrirListe(cat));
     // OSM ignore beaucoup d'équipements publics : on demande à Google et on
@@ -8071,31 +8264,40 @@ async function rechercherAilleurs(phrase, ville){
     const zone = await geocoderVille(ville,null,generation.signal);
     if(!generationCourante(generation)) return;
     const pos = zone ? [zone.lat, zone.lng] : null;
-    const depuis = pos || positionMoi;
+    if(zone){
+      /* Ce chemin historique (« restaurant à Paris ») doit avoir exactement
+         le même contexte que la recherche directe d'une ville. Sinon Google
+         ramenait bien Paris, mais le reste de l'interface restait au GPS. */
+      rechercheGeo = {nom:ville, lat:zone.lat, lng:zone.lng, emprise:zone.emprise || null};
+      definirZoneActive(CTX ? CTX.zoneRecherche(ville, pos, zone.emprise || null) : null);
+      if(generationsActives.get(generation.canal) === generation)
+        generation.portee = porteeCourante;
+      annulerChargementsZone("recherche:ailleurs");
+      allerVers(pos, 13, {duration:.8});
+    }
+    const depuis = pos || centreDonnees();
+    if(!depuis) return;
     const res = await chercherGoogle(phrase, depuis[0], depuis[1],{signal:generation.signal});
     if(!generationCourante(generation)) return;
     charge(null);
     if(!res.length){ toast("Rien trouvé à "+ville); return; }
 
-    if(pos) allerVers(pos, 13, {duration:.8});
     ajouterLieuxGoogle(res, "commerce");
 
     // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
     const ids = new Set(res.map(f=>"g"+hash(f.nom+f.lat)));
-    const trouves = lieux.filter(l=>ids.has(l.id));
+    const trouves = lieux.filter(l=>ids.has(l.id) && dansZoneActive(l));
     if(!trouves.length){ toast("Rien trouvé à "+ville); return; }
 
-    // le classement se fait depuis la ville visée, pas depuis ta position
-    const vrai = positionMoi;
-    positionMoi = depuis;
+    // `classerLieux` lit le contexte actif : le GPS n'est jamais remplacé,
+    // même temporairement, pour calculer une liste distante.
     const classes = classerLieux(trouves, false);
-    positionMoi = vrai;
 
     /* Même règle que pour les résultats de zone : « restaurant à Lille » tapé
        depuis Tourcoing est une question posée de loin, et on y répond par un
        aperçu. Ce chemin-ci affiche une liste plein écran — sans ce plafond, la
        même recherche donnait cinq résultats par une porte et trente par l'autre. */
-    const montres = classes.slice(0, plafondPour(zone));
+    const montres = classes.slice(0, plafondPour(rechercheGeo));
 
     selectionAccueil = false;
     fermerFeuille2();
@@ -8112,9 +8314,10 @@ async function rechercherAilleurs(phrase, ville){
 
 /* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
 function completerParGoogle(q, catDefaut, redessiner){
-  if(!positionMoi) return;
+  const centre = centreDonnees();
+  if(!centre) return;
   const generation = nouvelleGeneration("recherche:complement",q+"|"+(catDefaut||""),true);
-  chercherGoogle(q, positionMoi[0], positionMoi[1],{signal:generation.signal}).then(res=>{
+  chercherGoogle(q, centre[0], centre[1],{signal:generation.signal}).then(res=>{
     if(!generationCourante(generation) || !res.length) return;
     if(ajouterLieuxGoogle(res, catDefaut)) redessiner();
   }).finally(()=>terminerGeneration(generation));
@@ -8214,7 +8417,7 @@ function appliquerSuggestion(s){
   if(s.cats.includes("family")) chargerEditorial("family");
   else if(s.cats.includes("cinema")) chargerEditorial("cinema");
   else if(s.cats.includes("event")) chargerEditorial("events");
-  if(s.aide && positionMoi) chargerAideZone();
+  if(s.aide && centreDonnees()) chargerAideZone();
   mettreAJourProfil("categorie", s.cats[0]);
   dessinerFiltres(); majFiltres(); rendre();
   toast(s.t);
@@ -8719,8 +8922,9 @@ let rayonRecherche = 2500;
    La zone est le périmètre ; le rayon sert à classer ce qui est proche, pas à
    décider ce qui existe. */
 function rayonDeLaZone(){
-  if(!CTX || !zoneActive) return rayonRecherche;
-  return Math.max(rayonRecherche, CTX.rayonZone(zoneActive) + CTX.MARGE_M);
+  const zone = activeLocationContext?.zone || zoneActive;
+  if(!CTX || !zone) return rayonRecherche;
+  return Math.max(rayonRecherche, CTX.rayonZone(zone) + CTX.MARGE_M);
 }
 
 /* L'intention structurée de la recherche en cours, telle que `comprendre.js`
@@ -8741,9 +8945,10 @@ function elargirZone(){
    Sert à ne jamais afficher une catégorie à zéro. */
 function compterCats(cats){
   const set = new Set(cats);
-  const [lat,lng] = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  const [lat,lng] = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
   let n = 0;
   for(const l of lieux){
+    if(!dansZoneActive(l)) continue;
     if(!correspondUneCategorie(l,set)) continue;
     if(!nomExploitable(l)) continue;
     if(filtreMaintenant && !estVivant(l)) continue;
@@ -8775,8 +8980,8 @@ function categoriesClassementFeuille(){
 
 function classementFeuille(){
   if(feuilleNiveau === null || feuilleNiveau === "racine" || feuilleNiveau === "plus") return [];
-  const centre = positionMoi || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
-  let candidats = lieux.filter(nomExploitable);
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
+  let candidats = lieux.filter(l=>dansZoneActive(l) && nomExploitable(l));
   if(feuilleNiveau === "aide"){
     const choix = sousAideChoisi();
     if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
@@ -9245,7 +9450,7 @@ function statutRechercheHTML(nombreResultats){
 function selectionResultatsFeuille(classement, limite){
   const items = classement.slice(0, limite);
   if(feuilleNiveau !== "manger" || items.length < limite) return items;
-  const complet = l=>!!(l && l.image && Number.isFinite(Number(l.note)) &&
+  const complet = l=>!!(l && imageDe(l) && Number.isFinite(Number(l.note)) &&
     Number(l.avis) > 0 && Array.isArray(l.horaires) && l.horaires.length);
   const objectif = Math.min(2, classement.filter(complet).length);
   let presents = items.filter(complet).length;
@@ -9295,11 +9500,13 @@ function blocResultats(){
        ne nomme plus Google : elle vaut pour Places comme pour une CC-BY de
        Commons, et laisse passer ce qui n'a rien à créditer — CC0, domaine
        public, photo déposée par la structure elle-même. */
-    const photoVisible = l.image && !(IMAGES && IMAGES.creditObligatoire(l));
+    const media = mediaDe(l);
+    const photoVisible = media.image_url && !(IMAGES && IMAGES.creditObligatoire(media));
     const photo = photoVisible
-      ? '<span class="ac-photo" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+      ? '<span class="ac-photo" data-image-type="'+esc(media.image_type||"")+'" data-image-scope="'+
+          esc(media.image_scope||"")+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
           '<i>'+c.emoji+'</i><img loading="lazy" decoding="async" fetchpriority="low" alt="" '+
-          'src="'+esc(l.image)+'" onload="this.classList.add(\'vue\')" onerror="this.remove()"></span>'
+          'src="'+esc(media.image_url)+'" onload="this.classList.add(\'vue\');imageEvenementChargee(this)" onerror="this.remove()"></span>'
       : '';
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+(index+1)+'</span>'+
@@ -9581,7 +9788,7 @@ function lancerBesoinAide(phrase){
 }
 
 function chargerAideSiBesoin(force){
-  if(!positionMoi) return;
+  if(!centreDonnees()) return;
   chargerAideZone({force:!!force}).catch(()=>{});
 }
 
@@ -9765,7 +9972,7 @@ function enteteBesoinAide(titre){
    repeint de l'écran — un onglet, un défilement, une carte qui reçoit sa photo
    — relancerait un appel de modèle pour un résultat identique. */
 function cleOrdreAide(candidats){
-  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
   return [
     besoinsSelectionnesAide().join("+"),
     phraseAideCourante || "",
@@ -9783,7 +9990,7 @@ function demanderOrdreAide(candidats){
      appliquerait à cette liste-ci un classement calculé pour une autre — la
      panne la plus discrète possible, et la plus fausse. */
   ordreModeleAide = null;
-  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre) return;
 
   const contexte = IA_AIDE.contexte({
@@ -9837,7 +10044,7 @@ function demanderOrdreAide(candidats){
 /* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
    contraintes dures, distance — plus la pertinence du besoin. */
 function solutionsAide(limite){
-  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre || !AIDE) return [];
   const besoins = besoinsSelectionnesAide();
   const choix = sousAideChoisi();
@@ -10526,7 +10733,7 @@ function besoinsRapidesHTML(){
    demandée : « Maintenant » ne se remplit jamais artificiellement. */
 function compterMaintenant(){
   const t = Date.now();
-  return lieux.reduce((n,l)=>{
+  return elementsDuContexte(lieux).reduce((n,l)=>{
     if(!estTemporaire(l) || l.annule) return n;
     return TEMPS.estMaintenant(statutTemps(l, t).statut) ? n+1 : n;
   }, 0);
@@ -10577,7 +10784,7 @@ function majBadgeMaintenant(){
    « À venir », il parlerait d'autre chose que de l'onglet ouvert. */
 function evenementsMaintenant(){
   const t = Date.now();
-  return lieux.filter(l=>estTemporaire(l) && !l.annule &&
+  return elementsDuContexte(lieux).filter(l=>estTemporaire(l) && !l.annule &&
     TEMPS.estMaintenant(statutTemps(l, t).statut));
 }
 
@@ -10753,25 +10960,38 @@ function rafraichirMetropole(){
      le bassin lui-même, et non des coordonnées. */
   const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
   if(!bassin || metropoleEnCours === bassin) return;
+  const porteeMetropole = porteeCourante;
   metropoleEnCours = bassin;
   chargerEvenementsMetropole(bassin).then((liste)=>{
+    /* Un changement de ville peut arriver pendant la lecture du bassin. Une
+       réponse MEL arrivée après une recherche Paris ne doit jamais repeupler
+       « Pour toi » ; la portée et le nom du bassin doivent encore être ceux
+       qui ont lancé cette requête. */
+    const bassinCourant = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+    if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
     /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
        ramené, souvent parce que le réseau a flanché. Garder la clé de cache
        interdirait tout nouvel essai jusqu'au rechargement de la page. */
     if(!liste.length){ metropoleEnCours = null; return; }
     evenementsMetropole = liste;
     majPourToi();
-  }).catch(()=>{ metropoleEnCours = null; });
+  }).catch(()=>{
+    if(porteeMetropole === porteeCourante) metropoleEnCours = null;
+  });
 }
 
 function bassinPourToi(){
   /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
      puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
      identifiant déjà présent n'est jamais remplacé. */
-  const locaux = lieux.filter(estCanonique);
+  /* Le bassin est chargé en dehors du rayon local : il doit néanmoins rester
+     borné par le contexte de destination. Sinon une réponse MEL ou un cache
+     de la ville précédente pouvait traverser jusqu'à « Pour toi ». */
+  const locaux = elementsDuContexte(lieux).filter(estCanonique);
   if(!evenementsMetropole.length) return locaux;
   const vus = new Set(locaux.map((l)=> l && l.id));
-  return locaux.concat(evenementsMetropole.filter((l)=> l && !vus.has(l.id) && estCanonique(l)));
+  return locaux.concat(elementsDuContexte(evenementsMetropole)
+    .filter((l)=>l && !vus.has(l.id) && estCanonique(l)));
 }
 
 function lieuParId(id){
@@ -10789,8 +11009,9 @@ function lieuParId(id){
      d'abord, qui porte l'état le plus frais, la métropole ensuite. */
   if(id == null) return null;
   const cle = String(id);
-  return lieux.find((x)=> x && String(x.id) === cle)
-      || evenementsMetropole.find((x)=> x && String(x.id) === cle)
+  const dansContexte = typeof dansZoneActive === "function" ? dansZoneActive : ()=>true;
+  return lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
+      || evenementsMetropole.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || null;
 }
 
@@ -10896,11 +11117,28 @@ function imageEvenementChargee(img){
   const parent = img.parentElement;
   if(parent) parent.classList.add("image-ready");
   img.classList.add("image-ready");
-  const figure = img.closest ? img.closest(".event-couverture") : null;
+  const figure = img.closest ? img.closest("figure") : null;
+  const cadre = img.closest ? img.closest("[data-image-type],[data-image-scope]") : parent;
+  const type = cadre && cadre.dataset ? cadre.dataset.imageType : "";
+  const scope = cadre && cadre.dataset && cadre.dataset.imageScope ||
+    (figure && figure.classList.contains("event-couverture") ? "evenement" : "lieu");
+  const presentation = IMAGES && IMAGES.modeImage
+    ? IMAGES.modeImage({image_type:type, image_scope:scope,
+        image_width:img.naturalWidth, image_height:img.naturalHeight}) : null;
+  if(presentation){
+    img.style.objectFit = presentation.object_fit;
+    if(!presentation.can_upscale){
+      img.style.width = "auto";
+      img.style.height = "auto";
+      img.style.maxWidth = "100%";
+      img.style.maxHeight = "100%";
+      img.style.margin = "auto";
+    }
+  }
   if(!figure) return;
-  const classes = IMAGES && IMAGES.ratioImage
+  const classes = figure.classList.contains("event-couverture") && IMAGES && IMAGES.ratioImage
     ? IMAGES.ratioImage(img.naturalWidth, img.naturalHeight,
-        figure.dataset ? figure.dataset.imageType : "").split(/\s+/).filter(Boolean)
+        type).split(/\s+/).filter(Boolean)
     : [];
   figure.classList.remove("event-couverture-paysage", "event-couverture-portrait",
     "event-couverture-carre", "event-couverture-inconnue", "event-couverture-basse",
@@ -10911,9 +11149,11 @@ function imageEvenementChargee(img){
 function visuelCarteEvenement(l, c, taille){
   const classeImage = taille === "npt" ? "npt-img" : "pt-img";
   const classeConteneur = taille === "npt" ? "npt-image-shell" : "pt-image-shell";
-  return '<span class="'+classeConteneur+'" aria-hidden="true">'+
+  const media = mediaDe(l);
+  return '<span class="'+classeConteneur+'" data-image-type="'+esc(media.image_type||"")+
+    '" data-image-scope="'+esc(media.image_scope||"")+'" aria-hidden="true">'+
     fallbackVisuelEvenement(l, c, "event-fallback-carte")+
-    '<img class="'+classeImage+'" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async"'+
+    '<img class="'+classeImage+'" src="'+esc(media.image_url)+'" alt="" loading="lazy" decoding="async"'+
       ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">'+
     '</span>';
 }
@@ -10927,7 +11167,7 @@ function carteProposition(x){
   const c = categorieAffichee(l);
   /* L'image est celle de la source, sous licence. Sans image, un pictogramme
      de catégorie — jamais une photo d'illustration prise ailleurs. */
-  const visuel = l.image
+  const visuel = imageDe(l)
     ? visuelCarteEvenement(l, c, "pt")
     : '<span class="pt-img pt-img-vide pt-image-shell event-fallback-carte" aria-hidden="true">'+
       fallbackVisuelEvenement(l, c, "")+'</span>';
@@ -11515,6 +11755,10 @@ function versItemMaintenant(l, t){
    carte est centrée sur soi et les deux coïncident ; ailleurs, c'est la ville
    qu'on regarde qui commande. */
 function pointDeReference(){
+  /* Une destination est un contexte explicite : même pendant l'animation de
+     la carte, les scores, distances et surfaces parlent déjà de cette ville.
+     Pour le mode GPS, on conserve la liberté d'explorer la vue courante. */
+  if(destinationActive()) return centreZoneActive();
   const c = centreCarte();
   return (Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]))
     ? c : positionMoi;
@@ -11525,6 +11769,7 @@ function pointDeReference(){
    d'afficher une distance plutôt que d'en afficher une fausse. */
 const SEUIL_MEME_ZONE_M = 30000;
 function jeSuisDansLaZoneRegardee(){
+  if(destinationActive()) return !!centreZoneActive();
   if(!positionPrecise() || !positionMoi) return false;
   const r = pointDeReference();
   if(!Array.isArray(r)) return false;
@@ -11743,7 +11988,7 @@ function blocNouveauPourToi(){
   if(!x) return "";
   const l = x.l;
   const c = categorieAffichee(l);
-  const visuel = l.image
+  const visuel = imageDe(l)
     ? visuelCarteEvenement(l, c, "npt")
     : '<span class="npt-img npt-img-vide npt-image-shell event-fallback-carte" aria-hidden="true">'+
       fallbackVisuelEvenement(l, c, "")+'</span>';
@@ -11985,6 +12230,7 @@ function carteRecommandation(l){
   const dispo = l.rankAvailability;
   const cats = etiquettesLisibles(l).join(" • ")
     || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
+  const media = mediaDe(l);
 
   // Une vraie photo si on en a une ; sinon une tuile teintée par la catégorie.
   // Jamais un gros emoji en guise d'image : ça se lit comme une image manquante.
@@ -11992,14 +12238,15 @@ function carteRecommandation(l){
   // <img loading="lazy"> plutôt qu'un background : le navigateur ne télécharge
   // que ce qui approche du viewport, et les résultats s'affichent sans
   // attendre la moindre image. La tuile teintée sert de placeholder.
-  const visuel = '<figure class="rc-photo rc-photo-vide" style="--teinte:'+teinte+'">'+
+  const visuel = '<figure class="rc-photo rc-photo-vide" data-image-type="'+esc(media.image_type||"")+
+      '" data-image-scope="'+esc(media.image_scope||"")+'" style="--teinte:'+teinte+'">'+
       '<i>'+c.emoji+'</i>'+
-      (l.image
-        ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image)+'" '+
-          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')" '+
+      (media.image_url
+        ? '<img loading="lazy" decoding="async" alt="" src="'+esc(media.image_url)+'" '+
+          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\');imageEvenementChargee(this)" '+
           'onerror="imageEvenementErreur(this)">'
         : '')+
-      (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
+      (media.image_url && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
     '</figure>';
 
   const minutes = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";
@@ -12344,6 +12591,7 @@ function brancherFeuille2(){
   corps.querySelectorAll("[data-tterr-recentrer]").forEach(b=>b.onclick=()=>{
     if(!contexteTerritorial || !contexteTerritorial.zones.length) return;
     const z = contexteTerritorial.zones[0];
+    rechercheGeo = {nom:contexteTerritorial.nom, lat:z.lat, lng:z.lng, emprise:null};
     if(CTX) definirZoneActive(CTX.zoneRecherche(contexteTerritorial.nom, [z.lat, z.lng], null));
     allerVers([z.lat, z.lng], 15);
     reevaluerTerritorial({ouverture:true});
@@ -12670,7 +12918,7 @@ function basculerAide(){
   // sont déjà en cache. La carte se reclasse juste après le premier paint.
   requestAnimationFrame(()=>setTimeout(()=>{ rendre(); majAccueil(); },0));
 
-  if(modeAide && positionMoi){
+  if(modeAide && centreDonnees()){
     // les réseaux d'aide arrivent après coup, la carte est déjà utilisable
     chargerAideZone()
       .then(()=>{ rendre(); majAccueil(); majFeuille2(); });
@@ -12686,9 +12934,10 @@ function basculerMaintenant(){
    comptage de ce que l'app connaît réellement autour de toi ; le libellé le
    dit, pour qu'on ne le prenne pas pour une mesure. */
 function vitalite(){
-  if(!positionMoi) return null;
-  const [lat,lng] = positionMoi;
-  const proches = lieux.filter(l=>distanceM(lat,lng,l.lat,l.lng) < 900);
+  const centre = centreZoneActive();
+  if(!centre) return null;
+  const [lat,lng] = centre;
+  const proches = lieux.filter(l=>dansZoneActive(l) && distanceM(lat,lng,l.lat,l.lng) < 900);
   const ouverts = proches.filter(l=>l.ouvert === true).length;
   const evs = proches.filter(l=>estTemporaire(l) && !estPasse(l)).length;
   const score = ouverts + evs*5;
@@ -12925,7 +13174,7 @@ function majAccueil(){
      lieux et de la position. Les faire attendre Leaflet rendait l'application
      entièrement vide quand le CDN toussait. */
   majBadgeMaintenant();
-  if(!positionMoi || modeNav){ PERF.travail("accueil", debutCpu); return; }
+  if(!centreDonnees() || modeNav){ PERF.travail("accueil", debutCpu); return; }
   if(selectionAccueil === false){ PERF.travail("accueil", debutCpu); return; }
   const ctx = contexteActuel();
   /* Le point de référence est celui du classement — soi, ou la zone qu'on est
@@ -13073,6 +13322,7 @@ function dessinerFiltres(){ majRaccourcis(); }
 function appliquerPosition(p, opts){
   const o = opts || {};
   const c = [p.coords.latitude, p.coords.longitude];
+  const destinationAvant = destinationActive();
   noterAutorisationGeo(true);
   memoriserPosition(c, "gps");
 
@@ -13087,7 +13337,7 @@ function appliquerPosition(p, opts){
   const regimeAvant = regimeZone(rechercheGeo);
   const bouge = premiereFois || venaitDeLApproximation || !positionMoi
     || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
-  if(bouge){
+  if(bouge && !destinationAvant){
     annulerGeneration("demarrage");
     annulerGeneration("zone:precalculee");
   }
@@ -13116,7 +13366,7 @@ function appliquerPosition(p, opts){
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
 
-  if(bouge){
+  if(bouge && !destinationAvant){
     // le quartier réel se charge — court délai : on est encore au
     // démarrage, et l'écran montre déjà quelque chose
     chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
@@ -13750,7 +14000,7 @@ function ouvrirResultatsZone(nom, intention){
    tout seul une fois sur place. Rien à faire, aucun bouton — la promesse est
    tenue par la géolocalisation, pas par un réglage. */
 function noteApercu(nom){
-  const r = regimeZone(rechercheGeo);
+  const r = regimeZoneResultats(rechercheGeo);
   if(r === "local") return "";
   /* On dit la distance dans les mots, pas en kilomètres : « un peu plus loin »
      se comprend sans calcul, et c'est bien de cela qu'il s'agit. */

@@ -726,7 +726,7 @@ test("une zone ne possède qu'une requête Supabase en vol", () => {
   const bloc = html.slice(html.indexOf("async function rafraichirCoucheSupabase"),
     html.indexOf("function chargerCoucheSupabase", html.indexOf("async function rafraichirCoucheSupabase")));
   assert.match(bloc, /if\(requetesCouchesSupabase\.has\(cle\)\) return requetesCouchesSupabase\.get\(cle\);/);
-  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng\)/);
+  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng(?:,portee)?\)/);
   assert.match(bloc, /if\(okPublications \|\| okEvenements\)/,
     "une panne totale ne doit jamais remplacer le cache par du vide");
 });

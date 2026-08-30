@@ -91,6 +91,7 @@
   const TYPES_EVENEMENT = Object.freeze([
     "event_poster", "artist", "organizer", "venue", "institutional", "fallback",
   ]);
+  const TYPES_LIEU = Object.freeze(["place_photo", "institutional", "wikimedia", "fallback"]);
 
   /* Fallbacks graphiques Autour. Ils sont volontairement déterminés par la
      catégorie canonique, jamais par le titre : une image de concert ne doit
@@ -249,11 +250,18 @@
 
     return {
       image_url: url,
+      image_type: texte(e.image_type || e.imageType) ||
+        (e.image_scope === PORTEES.EVENEMENT ? "event_poster" : "place_photo"),
       image_source: source,
       image_source_url: pageSource || "",
       image_author: auteur || "",
       image_license: licence || "",
       image_updated_at: texte(e.image_updated_at || e.updatedAt) || new Date().toISOString(),
+      image_confidence: texte(e.image_confidence || e.imageConfidence) ||
+        (source === "autour" ? "medium" : "high"),
+      image_width: Number.isFinite(Number(e.image_width || e.width)) ? Number(e.image_width || e.width) : null,
+      image_height: Number.isFinite(Number(e.image_height || e.height)) ? Number(e.image_height || e.height) : null,
+      image_fallback_reason: texte(e.image_fallback_reason || e.fallbackReason) || null,
       image_scope: e.image_scope === PORTEES.EVENEMENT ? PORTEES.EVENEMENT : PORTEES.LIEU,
     };
   }
@@ -293,7 +301,9 @@
   function depuisSourceExistante(l) {
     if (!l) return null;
     /* Déjà résolu dans cette session : on ne rejoue pas la chaîne. */
-    if (l.image_url && l.image_source) return visuel(l);
+    if (l.image_url && l.image_source) return visuel({...l,
+      image_scope: estEvenement(l) ? PORTEES.EVENEMENT : PORTEES.LIEU,
+    });
 
     const url = texte(l.image || l.image_url);
     if (!url) return null;
@@ -376,8 +386,66 @@
     return {
       ...v,
       image_type: typeImageEvenement(source, e.image_type || e.imageType),
-      image_confidence: source === "autour" ? "medium" : "high",
+      image_confidence: texte(e.image_confidence || e.imageConfidence) ||
+        (source === "autour" ? "medium" : "high"),
+      image_width: Number.isFinite(Number(e.image_width || e.width)) ? Number(e.image_width || e.width) : null,
+      image_height: Number.isFinite(Number(e.image_height || e.height)) ? Number(e.image_height || e.height) : null,
+      image_fallback_reason: texte(e.image_fallback_reason || e.fallbackReason) || null,
     };
+  }
+
+  /* Les médias d'un événement sont cherchés dans sa propre source. Une photo
+     de salle n'est admissible qu'à travers un champ de fallback explicite ;
+     le simple fait qu'un événement partage un lieu ne suffit pas. */
+  function depuisMediaEvenement(l) {
+    if (!l) return null;
+    const declaredSource = texte(l.image_source || l.imageSource).trim();
+    const declaredType = texte(l.image_type || l.imageType).trim();
+    const sourcePublieeCommeMediaEvenement = ["openagenda", "datatourisme", "structure",
+      "artist_official", "organizer_official", "institutional"].includes(declaredSource) ||
+      (declaredSource === "venue_official" && declaredType === "event_poster");
+    const mediaEvenementExplicite = l.image_scope !== PORTEES.LIEU &&
+      l.image_scope !== "place" && !!(l.event_image_url || l.eventImageUrl || l.event_image_source ||
+        l.eventImageSource || l.image_scope === PORTEES.EVENEMENT || sourcePublieeCommeMediaEvenement);
+    const direct = visuelEvenement({
+      image_url: l.event_image_url || l.eventImageUrl ||
+        (mediaEvenementExplicite ? (l.image_url || l.image) : ""),
+      image_source: l.event_image_source || l.eventImageSource ||
+        (mediaEvenementExplicite ? (l.image_source || l.imageSource) : ""),
+      image_source_url: l.event_image_source_url || l.eventImageSourceUrl || l.image_source_url,
+      image_author: l.event_image_author || l.eventImageAuthor || l.image_author,
+      image_license: l.event_image_license || l.eventImageLicense || l.image_license,
+      image_type: l.event_image_type || l.eventImageType || l.image_type,
+      image_width: l.event_image_width || l.eventImageWidth || l.image_width,
+      image_height: l.event_image_height || l.eventImageHeight || l.image_height,
+      image_scope: PORTEES.EVENEMENT,
+      source: l.event_source || l.primary_source || l.source,
+    });
+    if (direct) return direct;
+
+    const candidates = [l.event_media, l.eventMedia, l.official_event_media,
+      l.officialEventMedia].flatMap((value) => Array.isArray(value) ? value : [value])
+      .filter(Boolean);
+    for (const candidate of candidates) {
+      const v = visuelEvenement({...candidate, image_scope: PORTEES.EVENEMENT,
+        image_source: candidate.image_source || candidate.source});
+      if (v) return v;
+    }
+
+    const venueUrl = l.venue_image_url || l.venueImageUrl || l.place_image_url || l.placeImageUrl;
+    if (!venueUrl) return null;
+    const venue = visuelEvenement({
+      image_url: venueUrl,
+      image_source: l.venue_image_source || l.venueImageSource || l.place_image_source || l.placeImageSource,
+      image_source_url: l.venue_image_source_url || l.venueImageSourceUrl || l.place_image_source_url,
+      image_author: l.venue_image_author || l.venueImageAuthor,
+      image_license: l.venue_image_license || l.venueImageLicense,
+      image_type: "venue",
+      image_width: l.venue_image_width || l.venueImageWidth,
+      image_height: l.venue_image_height || l.venueImageHeight,
+      image_scope: PORTEES.EVENEMENT,
+    });
+    return venue ? {...venue, image_fallback_reason: "venue_fallback", image_confidence: "medium"} : null;
   }
 
   function fallbackEvenement(categorie) {
@@ -417,6 +485,24 @@
     return "event-couverture-" + forme + (w < 600 && h < 600 ? " event-couverture-basse" : "") + affiche;
   }
 
+  /* Le ratio décrit la géométrie ; le type et la provenance décrivent la
+     manière de la montrer. Une affiche ne peut pas être recadrée comme une
+     photo de façade, même lorsqu'elle est plus large que haute. */
+  function modeImage(media) {
+    const m = media || {};
+    const type = texte(m.image_type || m.imageType);
+    const scope = texte(m.image_scope || m.imageScope);
+    const eventScope = scope === PORTEES.EVENEMENT || scope === "event";
+    const fit = eventScope || type === "event_poster"
+      ? "contain" : "cover";
+    const width = Number(m.image_width || m.width), height = Number(m.image_height || m.height);
+    return {
+      object_fit: fit,
+      low_resolution: width > 0 && height > 0 && width < 600 && height < 600,
+      can_upscale: !(width > 0 && height > 0 && width < 600 && height < 600),
+    };
+  }
+
   /* Ce qu'on peut affirmer sans le lire : une affiche déposée par l'organisme
      qui organise l'événement est publiée par lui pour être vue. On ne lui
      invente pas une licence Creative Commons — on dit d'où elle vient. */
@@ -438,7 +524,9 @@
   }
 
   function estEvenement(l) {
-    return !!(l && (l.isTemporary || l.debutLe || l.debut_le || l.start_at));
+    return !!(l && (l.entity_type === "event" || l.entityType === "event" ||
+      l.isTemporary === true || l.temporaire === true || l.eventCanonical ||
+      l.image_scope === PORTEES.EVENEMENT));
   }
 
   /* ==================================================================== */
@@ -655,12 +743,13 @@
 
   function cle(l) {
     if (!l) return "";
-    if (l.autourId) return String(l.autourId);
-    if (l.id) return String(l.id);
+    const prefixe = estEvenement(l) ? "event:" : "place:";
+    if (l.autourId) return prefixe + String(l.autourId);
+    if (l.id) return prefixe + String(l.id);
     const nom = texte(l.titre || l.title).toLowerCase();
     const y = Number(l.lat), x = Number(l.lng);
     if (!nom || !Number.isFinite(y) || !Number.isFinite(x)) return "";
-    return nom + "@" + y.toFixed(4) + "," + x.toFixed(4);
+    return prefixe + nom + "@" + y.toFixed(4) + "," + x.toFixed(4);
   }
 
   async function json(url, options) {
@@ -696,18 +785,39 @@
     return fichier ? resoudreCommons(fichier, options) : null;
   }
 
-  /* LA CHAÎNE. Elle s'arrête au premier visuel valide, et elle ne demande
-     rien de ce qui vient après. Un lieu déjà illustré ne coûte aucun appel. */
-  async function resoudre(lieu, options) {
+  /* Chaîne événementielle : seules les images attachées à l'événement ou
+     explicitement fournies comme fallback de sa salle sont admissibles. */
+  async function resoudreEvenement(lieu, options) {
+    const o = options || {};
+    const k = cle(lieu);
+    if (k && memoire.has(k)) return memoire.get(k);
+    if (k && enVol.has(k)) return enVol.get(k);
+
+    const travail = (async () => depuisMediaEvenement(lieu))();
+
+    if (k) enVol.set(k, travail);
+    try {
+      const v = await travail;
+      if (k) memoire.set(k, v);
+      return v;
+    } finally { if (k) enVol.delete(k); }
+  }
+
+  /* Chaîne lieu permanent : références portées par le lieu, Commons, Autour,
+     puis Google. Ce chemin ne peut jamais être utilisé par un événement. */
+  async function resoudreLieu(lieu, options) {
     const o = options || {};
     const k = cle(lieu);
     if (k && memoire.has(k)) return memoire.get(k);
     if (k && enVol.has(k)) return enVol.get(k);
 
     const travail = (async () => {
-      /* 1. la source existante — affiche officielle comprise */
       const existante = depuisSourceExistante(lieu);
-      if (existante) return existante;
+      /* Une photo Autour est le rang 4 : si le lieu porte aussi un média
+         officiel exploitable dans ses tags, laisser l'ancienne photo gagner
+         ici inverserait l'ordre de priorité. Elle sera reprise après les
+         sources institutionnelles et Commons. */
+      if (existante && existante.image_source !== "autour") return existante;
 
       /* 2. et 3. les tags OSM, puis ce qu'ils désignent chez Wikimedia */
       const tags = depuisTagsOsm(lieu);
@@ -745,6 +855,10 @@
       if (k) memoire.set(k, v);
       return v;
     } finally { if (k) enVol.delete(k); }
+  }
+
+  function resoudre(lieu, options) {
+    return estEvenement(lieu) ? resoudreEvenement(lieu, options) : resoudreLieu(lieu, options);
   }
 
   /* Une vague : au plus `MAX_CANDIDATS` lieux, au plus `MAX_SIMULTANEES`
@@ -795,6 +909,11 @@
        qu'elle arrivera, puisqu'elle sera de portée « evenement ». */
     if (lieu.image && lieu.image_scope === PORTEES.EVENEMENT
         && v.image_scope !== PORTEES.EVENEMENT) return false;
+    /* Une fiche événement canonique ne prend jamais une image de lieu à la
+       faveur d'une fusion. Le seul repli autorisé est celui que le résolveur
+       a marqué `venue_fallback`. */
+    if (estEvenement(lieu) && lieu.entity_type === "event" &&
+        v.image_scope !== PORTEES.EVENEMENT && v.image_fallback_reason !== "venue_fallback") return false;
     if (lieu.image === v.image_url && lieu.image_source === v.image_source) return false;
 
     lieu.image_url = v.image_url;
@@ -804,6 +923,25 @@
     lieu.image_license = v.image_license;
     lieu.image_updated_at = v.image_updated_at;
     lieu.image_scope = v.image_scope;
+    lieu.image_type = v.image_type || null;
+    lieu.image_confidence = v.image_confidence || null;
+    lieu.image_width = v.image_width || null;
+    lieu.image_height = v.image_height || null;
+    lieu.image_fallback_reason = v.image_fallback_reason || null;
+
+    const canonique = lieu.eventCanonical || lieu.placeCanonical;
+    if (canonique) Object.assign(canonique, {
+      image_url: v.image_url,
+      image_type: v.image_type || null,
+      image_source: v.image_source,
+      image_source_url: v.image_source_url || "",
+      image_author: v.image_author || "",
+      image_license: v.image_license || "",
+      image_confidence: v.image_confidence || null,
+      image_width: v.image_width || null,
+      image_height: v.image_height || null,
+      image_scope: canonique.entity_type === "event" ? PORTEES.EVENEMENT : PORTEES.LIEU,
+    });
 
     lieu.image = v.image_url;
     lieu.imageSource = v.image_source;
@@ -820,12 +958,13 @@
     /* décisions pures — éprouvables sans réseau */
     urlImageValide, licenceLibre, sentIA, visuel, creditObligatoire, persistable,
     depuisSourceExistante, normaliserAncienneSource, visuelEvenement, typeImageEvenement,
-    fallbackEvenement, ratioImage, TYPES_EVENEMENT, depuisTagsOsm, imageOsmAutorisee,
+    fallbackEvenement, ratioImage, modeImage, TYPES_EVENEMENT, TYPES_LIEU,
+    depuisMediaEvenement, depuisTagsOsm, imageOsmAutorisee,
     depuisPhotoAutour, depuisGoogle, fichierCommonsDepuisUrl, licenceImplicite,
     lireCommons, lireCategorieCommons, lireWikidata,
     urlApiCommons, urlApiCommonsCategorie, urlApiWikidata, pageCommons,
     /* enchaînement */
-    cle, resoudre, resoudreLot, resoudreCommons, resoudreWikidata, appliquer,
+    cle, resoudre, resoudreEvenement, resoudreLieu, resoudreLot, resoudreCommons, resoudreWikidata, appliquer,
     _oublier: oublier,
     _etat: () => ({memoire: memoire.size, enVol: enVol.size, sorties}),
   };
