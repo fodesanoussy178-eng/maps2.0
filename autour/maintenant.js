@@ -411,6 +411,143 @@
   }
 
   /* ===================================================================
+     3 bis. CE SOIR
+
+     « Ce soir » n'est pas un filtre d'agenda. Il répond par couches : ce qui
+     se passe, une séance, une activité ouverte, puis un lieu pertinent ouvert.
+     Le point important est l'instant de contrôle : le matin, on sonde la plage
+     de ce soir, jamais l'état à l'heure où la personne consulte.
+     =================================================================== */
+  const UTILITAIRES_SOIR = new Set([
+    "commerce", "supermarche", "sante", "pharmacie",
+    "station_service", "essence", "metro", "bus", "tram",
+    "train", "velo", "recharge", "toilettes", "mairie", "administration",
+    "banque", "ecole", "emploi", "france_travail", "caf",
+  ]);
+  const LIEUX_PERTINENTS_SOIR = new Set([
+    "resto", "restaurant", "fastfood", "food", "cafe", "bar", "cinema",
+    "musee", "museum", "biblio", "bibliotheque", "library", "parc", "terrain",
+    "piscine", "sport", "spectacle", "concert", "coworking",
+  ]);
+
+  function horodatageSoir(value) {
+    if (value == null || value === "") return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const t = new Date(value).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+
+  function bornesSoir(ctx) {
+    const o = ctx || {};
+    if (Number.isFinite(Number(o.soirDebut)) && Number.isFinite(Number(o.soirFin)))
+      return {debut:Number(o.soirDebut), fin:Number(o.soirFin)};
+    const T = root.AutourTemps;
+    if (T && typeof T.fenetreSoir === "function")
+      return T.fenetreSoir(Number(o.maintenant) || Date.now(), o.timeZone || "Europe/Paris");
+    /* Repli uniquement pour les tests/consommateurs qui chargent ce module seul.
+       L'application charge temporel.js et prend le chemin au-dessus, qui gère
+       aussi les changements d'heure. */
+    const d = new Date(Number(o.maintenant) || Date.now());
+    const debut = new Date(d);
+    debut.setHours(18, 0, 0, 0);
+    const fin = new Date(debut);
+    fin.setDate(fin.getDate() + 1);
+    fin.setHours(0, 0, 0, 0);
+    return {debut:debut.getTime(), fin:fin.getTime()};
+  }
+
+  function evenementDe(item) {
+    return !!(item && (item.estEvenement || item.isTemporary || item.event === true));
+  }
+
+  function seanceDe(item) {
+    if (!item) return false;
+    const nature = String(item.nature || item.kind || item.type || "").toLowerCase();
+    return item.session === true || nature === "session" || nature === "screening" ||
+      nature === NATURES.SEANCE || item.isSession === true;
+  }
+
+  function categorieDe(item) {
+    return String(item && (item.categorie || item.category || item.cat) || "").toLowerCase()
+      .replace(/[ -]+/g, "_");
+  }
+
+  function evenementDansSoir(item, ctx, bornes) {
+    const debut = horodatageSoir(item && (item.debutLe ?? item.start_at ?? item.startAt ?? item.startsAt));
+    const fin = horodatageSoir(item && (item.finLe ?? item.end_at ?? item.endAt ?? item.endsAt));
+    if (debut == null || fin == null || fin <= debut) return false;
+    if (debut >= bornes.fin || fin <= bornes.debut) return false;
+    const verdict = typeof ctx.statutTemporel === "function"
+      ? ctx.statutTemporel(item, Math.max(bornes.debut, Math.min(Number(ctx.maintenant) || bornes.debut, bornes.fin - 1))) : null;
+    const statut = verdict && String(verdict.statut || verdict).toLowerCase();
+    if (["past", "unknown", "unknown_date", "annule", "cancelled"].includes(statut)) return false;
+    return true;
+  }
+
+  function disponiblePendantSoir(item, ctx, bornes) {
+    const tester = ctx && (ctx.disponibilite || ctx.disponibiliteA || ctx.availabilityAt);
+    if (typeof tester !== "function") return null;
+    /* Tous les appels portent sur ce soir. On ne demande jamais l'état à
+       ctx.maintenant, ce qui était la cause du vide observé le matin. */
+    const premier = tester(item, bornes.debut);
+    if (!premier || premier.status === "unknown" || premier.status === "permanently_closed") return null;
+    const ouvert = premier.status === "open" || premier.status === "closing_soon";
+    if (ouvert) return premier;
+    const prochaine = premier.opensAt ? new Date(premier.opensAt).getTime() : NaN;
+    if (!Number.isFinite(prochaine) || prochaine >= bornes.fin) return null;
+    const apresOuverture = tester(item, prochaine + 60000);
+    if (!apresOuverture || apresOuverture.status === "unknown" ||
+        apresOuverture.status === "permanently_closed") return null;
+    return (apresOuverture.status === "open" || apresOuverture.status === "closing_soon")
+      ? apresOuverture : null;
+  }
+
+  function trierSoir(a, b) {
+    const da = horodatageSoir(a.item && (a.item.debutLe ?? a.item.start_at ?? a.item.startsAt));
+    const db = horodatageSoir(b.item && (b.item.debutLe ?? b.item.start_at ?? b.item.startsAt));
+    return (a.distance - b.distance) || ((da == null ? Infinity : da) - (db == null ? Infinity : db));
+  }
+
+  function selectionCeSoir(items, contexte) {
+    const ctx = contexte || {};
+    const bornes = bornesSoir(ctx);
+    const couches = [[], [], [], []];
+    for (const item of (items || [])) {
+      if (!item) continue;
+      const distance = distanceDe(item, ctx);
+      if (distance == null || !Number.isFinite(distance) || distance > rayonDe(ctx)) continue;
+      if (evenementDe(item) && evenementDansSoir(item, ctx, bornes)) {
+        const session = seanceDe(item);
+        (session ? couches[1] : couches[0]).push({item, distance,
+          nature:session ? NATURES.SEANCE : NATURES.EVENEMENT});
+        continue;
+      }
+      if (evenementDe(item)) continue;
+      const categorie = categorieDe(item);
+      if (UTILITAIRES_SOIR.has(categorie)) continue;
+      const dispo = disponiblePendantSoir(item, ctx, bornes);
+      if (!dispo) continue;
+      const cleProgrammeProchain = "programme_" + "soon";
+      const activite = ACTIVITES.includes(categorie) ||
+        (Array.isArray(item[cleProgrammeProchain]) && item[cleProgrammeProchain].length > 0);
+      if (activite) couches[2].push({item, distance, nature:NATURES.ACTIVITE, dispo});
+      else if (LIEUX_PERTINENTS_SOIR.has(categorie))
+        couches[3].push({item, distance, nature:NATURES.OUVERT, dispo});
+    }
+    const max = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
+    const resultat = [];
+    for (const couche of couches) {
+      couche.sort(trierSoir);
+      for (const candidat of couche) {
+        if (resultat.length >= max)
+          return resultat.map((x) => Object.assign({}, x.item, {nature:x.nature}));
+        resultat.push(candidat);
+      }
+    }
+    return resultat.map((x) => Object.assign({}, x.item, {nature:x.nature}));
+  }
+
+  /* ===================================================================
      3. LA SÉLECTION
 
      Trois règles, dans cet ordre :
@@ -562,7 +699,7 @@
     ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES,
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
     SEANCE_MIN_MS, SEANCE_MAX_MS,
-    fiable, disponible, candidats, selection, total, etat, textes,
+    fiable, disponible, candidats, selection, selectionCeSoir, total, etat, textes,
     distanceM, familleDe,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

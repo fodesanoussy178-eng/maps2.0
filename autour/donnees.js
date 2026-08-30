@@ -122,22 +122,33 @@
   function normaliserHoraires(lieu, at, disponibilite) {
     const l = lieu || {};
     const dispo = typeof disponibilite === "function" ? disponibilite(l, at) : disponibilite;
-    if (!dispo || dispo.status === "unknown") return HORAIRES_INCONNUS;
+    if (!dispo || dispo.status === "unknown") return Object.assign({}, HORAIRES_INCONNUS, {
+      status: "unknown",
+      label: dispo && dispo.label ? dispo.label : "Horaires non renseignés",
+      source: dispo && dispo.source || null,
+      provenance: dispo && dispo.provenance || null,
+    });
 
     const confiance = dispo.source === "declaree" ? CONFIANCE.habitant
-      : dispo.source === "officielle" ? CONFIANCE.habitant_verifie
+      : dispo.source === "officielle" || dispo.source === "fermeture-officielle" ? CONFIANCE.habitant_verifie
+      : dispo.source === "structure-verifiee" ? CONFIANCE.habitant_verifie
       : dispo.source === "google" ? CONFIANCE.google
+      : dispo.source === "structure" || dispo.source === "explicite" ? CONFIANCE.google
       : CONFIANCE.osm;
 
     return {
       open_now: dispo.status === "permanently_closed" ? false : !!dispo.isOpenNow,
       next_open: dispo.opensAt || null,
       next_close: dispo.closesAt || null,
-      source: dispo.source === "declaree" ? SOURCES.HABITANT
-        : dispo.source === "google" ? SOURCES.GOOGLE : SOURCES.OSM,
+      source: dispo.source === "declaree" || dispo.source === "officielle" ||
+        dispo.source === "fermeture-officielle" || dispo.source === "structure-verifiee"
+        ? SOURCES.HABITANT
+        : dispo.source === "google" || dispo.source === "structure" || dispo.source === "explicite"
+          ? SOURCES.GOOGLE : SOURCES.OSM,
       confidence: confiance,
       updated_at: l.horairesVusLe || null,
       status: dispo.status,
+      label: dispo.label || null,
       closesAtTime: dispo.closesAtTime || null,
       opensAtTime: dispo.opensAtTime || null,
     };

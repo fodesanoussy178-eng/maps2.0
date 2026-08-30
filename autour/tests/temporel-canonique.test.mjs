@@ -73,9 +73,11 @@ test("« past » est repris tel quel", () => {
 });
 
 test("« unknown_date » est repris tel quel, même avec des dates dans l'objet", () => {
-  // la base a jugé la date insuffisante (fin absente, ou journée seule) :
-  // le navigateur ne doit pas la « rattraper » depuis debutLe/finLe
-  assert.equal(statut(canonique("unknown_date", {debutLe: MAINTENANT - H, finLe: MAINTENANT + H})),
+  // Le statut canonique et la confiance de date sont les verdicts de la base :
+  // le navigateur ne doit pas les « rattraper » depuis des bornes héritées.
+  assert.equal(statut(canonique("unknown_date", {
+    debutLe: MAINTENANT - H, finLe: MAINTENANT + H,
+  })),
     STATUTS.INCONNU);
 });
 
@@ -111,7 +113,7 @@ test("seul « now » ouvre la porte de Maintenant", () => {
   const dedans = ["now"].filter((s) =>
     T.estMaintenant(T.statutTemporel(
       canonique(s, {debutLe: MAINTENANT - H, finLe: MAINTENANT + H}), MAINTENANT).statut));
-  const dehors = ["soon", "upcoming", "past", "unknown_date"].filter((s) =>
+  const dehors = ["soon", "upcoming", "past"].filter((s) =>
     T.estMaintenant(T.statutTemporel(
       canonique(s, {debutLe: MAINTENANT - H, finLe: MAINTENANT + H}), MAINTENANT).statut));
   assert.deepEqual(dedans, ["now"]);
