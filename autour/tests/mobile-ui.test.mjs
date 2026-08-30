@@ -1438,11 +1438,12 @@ test("sans position GPS, l'application garde un repli de ville honnête",()=>{
   // point précis ni bloquer la possibilité d'en choisir une autre
   assert.match(html,/let originePosition = null;/);
   assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
-  // trois provenances : la dernière mesure du navigateur, la zone déduite de
-  // l'adresse IP, ou le repli de ville explicite
+  // deux provenances de démarrage : la dernière mesure du navigateur ou la
+  // zone déduite de l'adresse IP. Sans les deux, aucune ville n'est inventée.
   assert.match(html,/originePosition = "gps"; precisionPosition = "point"; positionMoi = coords;/);
   assert.match(html,/originePosition = "server"; precisionPosition = "ville";/);
-  assert.match(html,/originePosition = "manual"; precisionPosition = "ville";\s+positionMoi = \[\.\.\.POSITION_REPLI\]; commune = "Tourcoing";/);
+  assert.match(html,/originePosition = null; precisionPosition = null;\s+positionMoi = null; commune = COMMUNE_INCONNUE;/);
+  assert.match(html,/const CENTRE_CARTE_FRANCE = \[46\.603354, 1\.888334\];/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
   assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
   assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);

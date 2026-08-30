@@ -394,6 +394,25 @@
     merged.categories = sortByWeight(categoryWeights);
     merged.sources = unique([...(left.sources || [left.source]), ...(right.sources || [right.source])]);
     merged.sourceRefs = Object.assign({}, left.sourceRefs || {}, right.sourceRefs || {});
+    /* Les métadonnées canoniques d'une manifestation doivent survivre à la
+       fusion avec une autre source : le meilleur représentant peut être le
+       plus complet sur l'adresse ou l'image, sans être celui qui connaît
+       l'artiste. On réunit donc les preuves au lieu de laisser Object.assign
+       écraser un tableau renseigné par un tableau vide. */
+    for(const champ of ["announcement_tags", "performers", "artist_names", "music_genres"]){
+      const alias = champ === "announcement_tags" ? "announcementTags"
+        : champ === "artist_names" ? "artistNames"
+        : champ === "music_genres" ? "musicGenres" : null;
+      const valeurs = [left[champ], right[champ], alias && left[alias], alias && right[alias]]
+        .flatMap((valeur)=>Array.isArray(valeur) ? valeur : []);
+      if(valeurs.length){
+        const uniques = unique(valeurs);
+        merged[champ] = uniques;
+        if(alias) merged[alias] = uniques;
+      }
+    }
+    const typeEvenement = left.event_kind || right.event_kind || left.eventKind || right.eventKind || null;
+    if(typeEvenement){ merged.event_kind = typeEvenement; merged.eventKind = typeEvenement; }
     merged.source = preferred.source || fallback.source;
     /* LE VRAI NOM SURVIT TOUJOURS À LA FUSION.
 

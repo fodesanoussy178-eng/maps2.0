@@ -98,8 +98,31 @@ La synchronisation itère sur cette table et applique `syncArea(zone)`. Elle ne
 sait pas laquelle est Lille. Ouvrir une ville, c'est un `INSERT` ; la fermer,
 c'est `enabled = false`.
 
-Les six zones ouvertes : `lille`, `paris`, `lyon`, `marseille`, `bordeaux`,
-`toulouse`.
+Les zones d'acceptation couvrent notamment `tourcoing`, `paris`, `marseille`,
+`rennes` et `angers`. Elles utilisent le même flux national DATAtourisme et
+les mêmes providers de lieux ; aucune liste d'événements n'est codée par ville.
+
+## Artistes, genres et types de manifestation
+
+Chaque événement canonique peut porter quatre niveaux complémentaires :
+
+| Champ | Contrat |
+|---|---|
+| `artist_names` | artistes normalisés, avec aliases et noms de scène |
+| `music_genres` | zéro, un ou plusieurs genres connus |
+| `event_kind` | type temporaire canonique (`concert`, `fete_foraine`, `braderie`, etc.) |
+| `announcement_tags` | tags consommés directement par `Pour toi` |
+
+Les métadonnées structurées du fournisseur priment. Le référentiel d'aliases
+ne complète un artiste connu annoncé dans un contexte musical que lorsqu'un
+genre structuré manque ; un artiste inconnu reste sans genre inventé. Ainsi
+`Ninho en concert` conserve `artist_names = ['Ninho']`, `music_genres = ['rap']`,
+`event_kind = 'concert'` et les tags `concert`, `rap`, `artist_ninho`.
+
+Une fête foraine, une braderie ou un vide-grenier reste une manifestation
+temporaire : le type n'est jamais converti en lieu permanent. Les
+synchroniseurs OpenAgenda, DATAtourisme et les pages officielles passent tous
+par le même normaliseur partagé.
 
 ## Le sens de la flèche
 

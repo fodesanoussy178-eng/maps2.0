@@ -131,7 +131,7 @@ async function lireAnnonceCanonique(eventId: string): Promise<Json> {
     const path = "events?id=" + encodeURIComponent(eventId) +
       "&select=primary_source,source_url,description,announced_at,presale_at," +
       "tickets_open_at,ticket_url,announcement_tags,performers,organizer," +
-      "announcement_provenance&limit=1";
+      "artist_names,music_genres,event_kind,announcement_provenance&limit=1";
     const response = await rest(path);
     if (!response.ok) return {};
     const rows = await response.json();

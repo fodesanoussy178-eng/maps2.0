@@ -2437,6 +2437,13 @@ function versEvenementCanonique(e){
        et qu'aucune n'est plus canonique que l'autre à cet endroit. */
     announcement_tags:Array.isArray(e.announcement_tags) ? e.announcement_tags : [],
     announcementTags:Array.isArray(e.announcement_tags) ? e.announcement_tags : [],
+    artist_names:Array.isArray(e.artist_names) ? e.artist_names : [],
+    artistNames:Array.isArray(e.artist_names) ? e.artist_names : [],
+    music_genres:Array.isArray(e.music_genres) ? e.music_genres : [],
+    musicGenres:Array.isArray(e.music_genres) ? e.music_genres : [],
+    event_kind:e.event_kind || null,
+    eventKind:e.event_kind || null,
+    performers:Array.isArray(e.performers) ? e.performers : [],
     metro_area:e.metro_area || null,
     metroArea:e.metro_area || null,
     territory_slug:e.territory_slug || null,
@@ -4617,11 +4624,10 @@ function positionMemorisee(){
   return null;
 }
 
-/* Repli explicite quand personne n'a encore choisi de ville et que la
-   géolocalisation n'est pas disponible. Tourcoing est le territoire par
-   défaut de l'application ; cela évite de faire croire à une position à Paris
-   et laisse toujours la recherche de ville accessible. */
-const POSITION_REPLI = [50.7236, 3.1610];
+/* Repli cartographique neutre quand aucune position, IP ou ville n'est connue.
+   Ce point ne sert jamais à demander ou classer des données : il permet juste
+   à la carte et à la recherche de rester utilisables sans favoriser une ville. */
+const CENTRE_CARTE_FRANCE = [46.603354, 1.888334];
 
 /* Point reproductible pour les contrôles locaux. Ignoré sur le site public,
    il permet de tester Tourcoing sans détourner la vraie géolocalisation. */
@@ -4890,12 +4896,17 @@ function installerCarte(){
   PERF.mesure("carte", "map_init_debut", "map_ready");
   coucheVille = L.layerGroup().addTo(map);
 
-  moi = L.marker(positionMoi,{
-    icon:L.divIcon({className:"mk mk-user",
-      html:'<span class="moi-in"><i></i><b></b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
-    interactive:true, keyboard:true, title:"Vous êtes ici", zIndexOffset:400
-  }).addTo(map);
-  moi.on("click", ()=>toast("Vous êtes ici"));
+  /* Sans GPS, IP ou ville choisie, la carte reste consultable mais le point
+     bleu n'est pas inventé. Il était auparavant posé à Tourcoing, ce qui
+     transformait un simple repli technique en localisation affirmée. */
+  if(positionMoi){
+    moi = L.marker(positionMoi,{
+      icon:L.divIcon({className:"mk mk-user",
+        html:'<span class="moi-in"><i></i><b></b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
+      interactive:true, keyboard:true, title:"Vous êtes ici", zIndexOffset:400
+    }).addTo(map);
+    moi.on("click", ()=>toast("Vous êtes ici"));
+  }
 
   document.body.classList.toggle("loin", map.getZoom() < 15);
   let minuteurRendu;
@@ -4979,7 +4990,6 @@ function installerCarte(){
      s'affichait (c'est notre propre élément), et aucune tuile n'était jamais
      réclamée. On revient au comportement d'avant : `poserFond()` est appelé
      dans la foulée de `L.map()`, exactement comme il l'était dans `demarrer()`. */
-  const [lat,lng] = positionMoi;
   (promesseCarteGoogle || Promise.resolve(false)).then(googleActif=>{
     const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
     if(googleActif && fournisseur && fournisseur.estActif && fournisseur.estActif()) return;
@@ -5048,8 +5058,8 @@ async function demarrer(coords){
     PERF.jalon("position_server");
   }
   else {
-    originePosition = "manual"; precisionPosition = "ville";
-    positionMoi = [...POSITION_REPLI]; commune = "Tourcoing";
+    originePosition = null; precisionPosition = null;
+    positionMoi = null; commune = COMMUNE_INCONNUE;
   }
   PERF.jalon("position_" + (originePosition || "inconnue"));
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
@@ -5057,7 +5067,7 @@ async function demarrer(coords){
   // un lien vers un événement ne porte pas de coordonnées : on reste sur la
   // position connue et c'est `ouvrirLieuPartage` qui recadre à l'arrivée
   const centre = partage && partage.lat != null
-    ? [partage.lat, partage.lng] : positionMoi;
+    ? [partage.lat, partage.lng] : (positionMoi || CENTRE_CARTE_FRANCE);
   carteEnAttente = {centre, partage};
   // Google Maps est un décor optionnel. Sa demande part après la première
   // peinture, afin que son SDK ne concurrence pas l'interface sur mobile.
@@ -5090,9 +5100,9 @@ async function demarrer(coords){
      autour de moi » pour qu'elle bouge. Elle est posée AVANT le jeu rapide :
      celui-ci vient de la session précédente, et si la personne a déménagé de
      ville entre-temps, ses lieux ne doivent pas s'afficher ici. */
-  if(CTX && !zoneActive) definirZoneActive(CTX.zoneMoi(positionMoi, commune));
+  if(CTX && positionMoi && !zoneActive) definirZoneActive(CTX.zoneMoi(positionMoi, commune));
 
-  const rapide = lireJeuRapide(positionMoi[0], positionMoi[1]);
+  const rapide = positionMoi ? lireJeuRapide(positionMoi[0], positionMoi[1]) : null;
   if(rapide){
     if(rapide.commune) commune = rapide.commune;
     fusionner(rapide.lieux, "permanent", {silencieux:true});
@@ -5202,6 +5212,11 @@ function avecDelai(promesse, ms, valeur, signal){
 /* Tout ce qui a besoin du réseau ou d'un vrai calcul, une fois l'écran peint.
    Les sources partent ENSEMBLE : aucune n'attend le résultat d'une autre. */
 function chargerLeDemarrage(rapide){
+  if(!positionMoi){
+    attendreLeaflet();
+    proposerPosition();
+    return;
+  }
   const [lat,lng] = positionMoi;
   const generation = nouvelleGeneration("demarrage",lat.toFixed(3)+","+lng.toFixed(3));
   const signal = generation.signal;
@@ -13001,6 +13016,12 @@ function appliquerPosition(p, opts){
     // démarrage, et l'écran montre déjà quelque chose
     chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
     chargerDonneesTemporaires(c[0], c[1]);
+    /* Le GPS peut répondre avant Leaflet. `chargerZone` sait alors attendre
+       sans carte, mais l'ancien chemin de démarrage quittait la zone avant
+       de lancer Google/DATAtourisme/Supabase : les événements arrivaient,
+       les lieux permanents non. Rejouer le démarrage après la peinture garde
+       le premier écran tactile rapide et garantit toutes les sources. */
+    if(!map) apresPeinture(()=>chargerLeDemarrage(null));
     // le nom de commune n'est redemandé que si on a réellement changé de
     // coin : deux appels au démarrage pour la même ville, c'est un de trop
     if(venaitDeLApproximation ||

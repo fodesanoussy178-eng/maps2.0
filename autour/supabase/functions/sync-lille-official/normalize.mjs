@@ -1,3 +1,5 @@
+import {normaliserAnnonce} from "../shared/annonces.mjs";
+
 /* Normalisation pure des pages officielles Lille/MEL.
    Le connecteur ne déduit pas une date d'annonce depuis la date de mise à
    jour HTML : seule une datePublished explicite et horodatée peut entrer dans
@@ -280,6 +282,11 @@ export function normalizeDirectEvent(raw, {config, pageUrl}) {
     performers: performer,
     organizer: organizer || undefined,
   };
+  const annonce = normaliserAnnonce(rawEvent, {
+    source: config.source,
+    externalId: eventId(raw, pageUrl, config),
+    sourceUrl,
+  });
   const cancelled = /cancel/i.test(text(raw.eventStatus));
   return {
     source: config.source,
@@ -306,6 +313,7 @@ export function normalizeDirectEvent(raw, {config, pageUrl}) {
       image_url: directImage(list(raw.image)[0] || raw.image, pageUrl),
       cancelled,
       last_source_update: null,
+      ...annonce.fields,
     },
   };
 }

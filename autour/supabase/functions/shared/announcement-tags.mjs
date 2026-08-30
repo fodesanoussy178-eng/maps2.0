@@ -48,6 +48,8 @@ const TAGS = new Set([
   "dance_party", "family", "kids", "children", "family_event", "young_audience", "workshop_children", "family_show",
   "parenting_event", "local", "braderie", "neighbourhood_party", "market", "street_festival", "association_event",
   "local_festival", "automobile",
+  "open_air", "fete", "fete_populaire", "fete_foraine", "carnaval", "kermesse", "guinguette", "bal",
+  "feu_artifice", "brocante", "vide_grenier", "marche_de_noel", "fete_de_la_musique", "fan_zone",
 ]);
 
 const TIERS = Object.freeze([
@@ -82,7 +84,11 @@ function normalizeTag(value) {
   const normalized = normalizeText(value);
   const alias = TAG_ALIASES[normalized] || normalized;
   const tag = alias.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  return TAGS.has(tag) ? tag : null;
+  return TAGS.has(tag) || /^artist_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(tag) ? tag : null;
+}
+
+function tagAutorise(tag) {
+  return TAGS.has(tag) || /^artist_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(String(tag || ""));
 }
 
 function unique(values) {
@@ -294,7 +300,7 @@ export function fusionnerPreuvesTags(...values) {
         tag: String(entry.tag), source: String(entry.source), evidence: String(entry.evidence).slice(0, 280),
         confidence: Number(entry.confidence), extracted_at: String(entry.extracted_at || ""),
       };
-      if (!TAGS.has(safe.tag) || !Number.isFinite(safe.confidence) || !safe.extracted_at) continue;
+      if (!tagAutorise(safe.tag) || !Number.isFinite(safe.confidence) || !safe.extracted_at) continue;
       const key = [safe.tag, safe.source, safe.evidence, safe.extracted_at].join("\u0000");
       if (seen.has(key)) continue;
       seen.add(key);

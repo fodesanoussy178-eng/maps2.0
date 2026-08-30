@@ -24,7 +24,9 @@
       "live_music",
       "gig",
       "performance_music",
-      "music_festival"
+      "music_festival",
+      "open_air",
+      "fete_de_la_musique"
     ]),
     culture: Object.freeze([
       "cinema",
@@ -57,7 +59,15 @@
       "standup",
       "artist_meeting",
       "festival",
-      "cultural_festival"
+      "cultural_festival",
+      "carnaval",
+      "kermesse",
+      "guinguette",
+      "bal",
+      "feu_artifice",
+      "fete_foraine",
+      "marche_de_noel",
+      "fan_zone"
     ]),
     manga_anime_gaming: Object.freeze([
       "manga",
@@ -151,7 +161,11 @@
       "street_festival",
       "association_event",
       "festival",
-      "local_festival"
+      "local_festival",
+      "fete",
+      "fete_populaire",
+      "brocante",
+      "vide_grenier"
     ])
   });
   const TAGS = Object.freeze(Object.keys(DOMAINES).concat(
@@ -168,7 +182,10 @@
       "showcase",
       "gig",
       "performance_music",
-      "music_festival"
+      "music_festival",
+      "open_air",
+      "fete_de_la_musique",
+      "dj_set"
     ]),
     cinema: Object.freeze([
       "cinema",
@@ -290,7 +307,8 @@
       "food_festival",
       "cultural_festival",
       "manga_festival",
-      "local_festival"
+      "local_festival", "fete_de_la_musique", "carnaval", "kermesse", "guinguette",
+      "fete_foraine", "marche_de_noel", "fan_zone"
     ]),
     rnb: Object.freeze(["rnb"]),
     pop: Object.freeze(["pop"]),
@@ -305,6 +323,8 @@
   const INTEREST_ALIASES = Object.freeze({
     rap: "rap",
     concerts: "concerts",
+    "artistes_concerts": "concerts",
+    "artists_concerts": "concerts",
     cinema: "cinema",
     manga: "manga_anime",
     manga_anime: "manga_anime",
@@ -426,6 +446,15 @@
     live: "Live",
     showcase: "Showcase",
     dj_set: "DJ set",
+    open_air: "Open air",
+    fete: "Fête",
+    fete_populaire: "Fête populaire",
+    fete_foraine: "Fête foraine",
+    carnaval: "Carnaval",
+    kermesse: "Kermesse",
+    guinguette: "Guinguette",
+    bal: "Bal",
+    feu_artifice: "Feu d’artifice",
     cinema: "Cin\xE9ma",
     exhibition: "Exposition",
     vernissage: "Vernissage",
@@ -433,6 +462,11 @@
     dance: "Danse",
     standup: "Stand-up",
     festival: "Festival",
+    brocante: "Brocante",
+    vide_grenier: "Vide-grenier",
+    marche_de_noel: "Marché de Noël",
+    fete_de_la_musique: "Fête de la musique",
+    fan_zone: "Fan zone",
     manga: "Manga",
     anime: "Anime",
     convention: "Convention",
@@ -538,7 +572,7 @@
     const brut = texte(value).replace(/\s+/g, " ");
     const alias = ALIASES[brut] || brut;
     const tag = alias.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    return TAG_SET.has(tag) ? tag : "";
+    return TAG_SET.has(tag) || /^artist_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(tag) ? tag : "";
   }
   function normaliserTags(values) {
     const liste = Array.isArray(values) ? values : values == null ? [] : [values];
@@ -559,6 +593,10 @@
     const alias = ALIASES[brut] || brut;
     return alias.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
   }
+  function artisteTag(value) {
+    const tag = normaliserTagSouple(value);
+    return tag ? "artist_"+tag : "";
+  }
   function tagsDe(event) {
     const e = event || {};
     const explicites = [
@@ -568,14 +606,20 @@
       e.interestTags
     ].flatMap((value) => Array.isArray(value) ? value : value == null ? [] : [value]).map(normaliserTagSouple).filter(Boolean);
     const annonces = normaliserTags(e.announcement_tags || e.announcementTags || e.taxonomy_tags || e.taxonomyTags || e.event_tags || e.eventTags);
-    return [.../* @__PURE__ */ new Set([...explicites, ...annonces])];
+    const canoniques = [
+      ...(Array.isArray(e.music_genres) ? e.music_genres : []).map(normaliserTagSouple),
+      ...(Array.isArray(e.artist_names) ? e.artist_names : []).map(artisteTag),
+      e.event_kind ? normaliserTagSouple(e.event_kind) : "",
+    ].filter(Boolean);
+    return [.../* @__PURE__ */ new Set([...explicites, ...annonces, ...canoniques])];
   }
   function correspondances(event, interests) {
     const tags = new Set(tagsDe(event));
     const ids = Array.isArray(interests) ? interests : [];
     return ids.flatMap((id) => {
       const canonique = normaliserInteret(id);
-      const suivis = INTEREST_MATCHING[canonique] || [normaliserTagSouple(canonique)];
+      const artiste = artisteTag(canonique);
+      const suivis = INTEREST_MATCHING[canonique] || [normaliserTagSouple(canonique), artiste].filter(Boolean);
       const matches = suivis.filter((tag) => tags.has(tag));
       return matches.length ? [{ id, tags: matches }] : [];
     });
@@ -585,7 +629,8 @@
     return Object.entries(DOMAINES).filter(([, values]) => values.some((tag) => tags.has(tag))).map(([domain]) => domain);
   }
   function libelles(tags) {
-    return normaliserTags(tags).map((tag) => LABELS[tag] || tag);
+    return normaliserTags(tags).map((tag) => LABELS[tag] ||
+      (tag.indexOf("artist_") === 0 ? "Artiste : "+tag.slice(7).replace(/_/g, " ") : tag));
   }
   root.AutourAnnoncesTaxonomie = Object.freeze({
     DOMAINES,

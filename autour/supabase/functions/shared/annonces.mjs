@@ -1,4 +1,5 @@
 import {enrichirTagsAnnonce, fusionnerPreuvesTags} from "./announcement-tags.mjs";
+import {normaliserEvenementCanonique} from "./evenements-canoniques.mjs";
 
 /* Contrat serveur des annonces. Ce module ne scrappe rien : il ne fait que
    lire des champs structurés fournis par un connecteur autorisé et conserver
@@ -72,7 +73,9 @@ const ALLOWED_TAGS = new Set([
   "nightlife", "club", "nightclub", "party", "night_event", "afterparty", "rave", "dance_party",
   "family", "kids", "children", "family_event", "young_audience", "workshop_children", "family_show",
   "parenting_event", "local", "braderie", "neighbourhood_party", "market", "street_festival",
-  "association_event", "local_festival", "automobile",
+  "association_event", "local_festival", "automobile", "open_air", "fete", "fete_populaire",
+  "fete_foraine", "carnaval", "kermesse", "guinguette", "bal", "feu_artifice", "brocante",
+  "vide_grenier", "marche_de_noel", "fete_de_la_musique", "fan_zone",
 ]);
 
 const SOURCE_ALIASES = Object.freeze({
@@ -101,7 +104,7 @@ function directTag(raw, source) {
     .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
   const alias = SOURCE_ALIASES[normalizedText] || normalizedText;
   const normalized = alias.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  if (ALLOWED_TAGS.has(normalized)) return [normalized];
+  if (ALLOWED_TAGS.has(normalized) || /^artist_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(normalized)) return [normalized];
 
   /* Les connecteurs ne donnent pas tous la taxonomie canonique. Ces ponts ne
      lisent que des champs catégoriels fournis par la source, jamais le titre
@@ -160,7 +163,8 @@ function tags(value, source = "unknown") {
     const raw = item.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .toLowerCase().trim();
     const normalized = aliases[raw] || raw.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    return ALLOWED_TAGS.has(normalized) ? [normalized] : directTag(item, source);
+    return ALLOWED_TAGS.has(normalized) || /^artist_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(normalized)
+      ? [normalized] : directTag(item, source);
   }).filter((tag, index, all) => all.indexOf(tag) === index);
 }
 
@@ -221,8 +225,19 @@ export function normaliserAnnonce(raw, {source = "unknown", externalId = null, s
     record.ticketing?.opensAt ?? record.offers?.availabilityStarts);
   const ticketUrl = explicitTicketUrl(record);
   const tagData = enrichirTagsAnnonce(record, {source});
-  const announcementTags = tagData.tags;
-  const performerValues = list(record.performers ?? record.performer ?? record.artists ?? record.artist)
+  const canonical = normaliserEvenementCanonique(record, {baseTags: tagData.tags});
+  const announcementTags = [...new Set(canonical.announcement_tags)];
+  const canonicalEvidence = canonical.announcement_tags
+    .filter((tag) => !tagData.tags.includes(tag))
+    .map((tag) => ({
+      tag, source, source_tier: "canonical_metadata",
+      evidence: tag === canonical.event_kind ? String(record.event_kind || record.eventKind || record.type || record.category || "") :
+        tag.startsWith("artist_") ? canonical.artist_names.join(" · ") : canonical.music_genres.join(" · "),
+      confidence: .98, extracted_at: new Date().toISOString(),
+    }))
+    .filter((entry) => entry.evidence);
+  const tagEvidence = [...tagData.evidence, ...canonicalEvidence];
+  const performerValues = (canonical.artist_names.length ? canonical.artist_names : list(record.performers ?? record.performer ?? record.artists ?? record.artist))
     .map(text).filter(Boolean).filter((item, index, all) => all.indexOf(item) === index);
   const organizer = text(record.organizer?.name ?? record.organizer ?? record.promoter?.name ??
     record.promoter) || null;
@@ -231,7 +246,7 @@ export function normaliserAnnonce(raw, {source = "unknown", externalId = null, s
     importance: record.importance_score ?? record.importanceScore,
   });
   const hasData = announcedAt || presaleAt || ticketsOpenAt || ticketUrl || announcementTags.length ||
-    performerValues.length || organizer;
+    performerValues.length || organizer || canonical.event_kind || canonical.music_genres.length;
   if (!hasData) return {fields: {}, provenance: null};
   const provenance = {
     source, external_id: externalId == null ? null : String(externalId), source_url: sourceUrl,
@@ -240,7 +255,7 @@ export function normaliserAnnonce(raw, {source = "unknown", externalId = null, s
     presale_at: presaleAt,
     tickets_open_at: ticketsOpenAt,
     ticket_url: ticketUrl,
-    announcement_tags: tagData.evidence,
+    announcement_tags: tagEvidence,
   };
   const fields = {};
   const fieldProvenance = {};
@@ -250,16 +265,19 @@ export function normaliserAnnonce(raw, {source = "unknown", externalId = null, s
   if (ticketUrl) { fields.ticket_url = ticketUrl; fieldProvenance.ticket_url = provenance; }
   if (announcementTags.length) fields.announcement_tags = announcementTags;
   if (performerValues.length) fields.performers = performerValues;
+  if (canonical.artist_names.length) fields.artist_names = canonical.artist_names;
+  if (canonical.music_genres.length) fields.music_genres = canonical.music_genres;
+  if (canonical.event_kind) fields.event_kind = canonical.event_kind;
   if (organizer) fields.organizer = organizer;
   if (hasData) Object.assign(fields, importance);
   if (Object.keys(fieldProvenance).length) fields.announcement_provenance = fieldProvenance;
-  if (tagData.evidence.length) {
+  if (tagEvidence.length) {
     fields.announcement_provenance = {
       ...(fields.announcement_provenance || {}),
-      announcement_tags: tagData.evidence,
+      announcement_tags: tagEvidence,
     };
   }
-  return {fields, provenance, tagEvidence: tagData.evidence};
+  return {fields, provenance, tagEvidence};
 }
 
 export function choisirAnnonceCanonique(records) {
@@ -332,11 +350,12 @@ export function fusionnerAnnonceFields(existing, incoming) {
       ...(tagEvidence.length ? {announcement_tags: tagEvidence} : {}),
     };
   }
-  ["announcement_tags", "performers"].forEach((field) => {
+  ["announcement_tags", "performers", "artist_names", "music_genres"].forEach((field) => {
     const values = [...(Array.isArray(current[field]) ? current[field] : []),
       ...(Array.isArray(next[field]) ? next[field] : [])];
     if (values.length) merged[field] = [...new Set(values)];
   });
+  if (next.event_kind || current.event_kind) merged.event_kind = next.event_kind || current.event_kind;
   const importance = calculerImportance({
     source: String(next.primary_source || next.source || current.primary_source || current.source || "unknown"),
     tags: merged.announcement_tags || [], ticketUrl: merged.ticket_url || null,
@@ -357,7 +376,7 @@ export function annonceDedupKey(event) {
   const e = event || {};
   const normalize = (value) => text(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const performer = list(e.performers ?? e.performer ?? e.artist).map(normalize).filter(Boolean).join(",");
+  const performer = list(e.artist_names ?? e.performers ?? e.performer ?? e.artist).map(normalize).filter(Boolean).join(",");
   const title = normalize(e.title ?? e.name);
   const venue = normalize(e.venue_name ?? e.place_name ?? e.venue);
   const city = normalize(e.city);

@@ -320,7 +320,8 @@ async function readCanonicalAnnouncement(eventId: string): Promise<Json> {
   try {
     const path = "events?id=" + encodeURIComponent(eventId) +
       "&select=primary_source,source_url,announced_at,presale_at,tickets_open_at," +
-      "ticket_url,announcement_tags,performers,organizer,announcement_provenance&limit=1";
+      "ticket_url,announcement_tags,performers,artist_names,music_genres,event_kind," +
+      "organizer,announcement_provenance&limit=1";
     const rows = await readRows(path);
     return rows[0] ?? {};
   } catch {
