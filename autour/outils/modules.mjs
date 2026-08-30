@@ -14,7 +14,7 @@
    déclare. Chacun est servi en cache immuable, donc chacun porte l'empreinte
    de son contenu dans son URL. */
 export const MODULES = [
-  "availability.js", "comprendre.js", "donnees.js", "intentions.js", "comptes.js",
+  "availability.js", "comprendre.js", "donnees.js", "aide-intentions.js", "intentions.js", "comptes.js",
   "maintenant.js", "ordonnanceur.js", "contexte.js", "territoire.js", "plafonds.js",
   "annonces-taxonomie.js", "annonces-classement.js",
   "aide-taxonomie.js", "aide-classement.js", "aide-rayon.js", "aide-contexte-ia.js",

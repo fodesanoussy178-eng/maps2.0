@@ -361,7 +361,7 @@
   function besoinsDepuisPhrase(phrase) {
     const t = sansAccents(phrase);
     if (!t) return [];
-    const trouves = [];
+    const trouvesLegacy = [];
     BESOINS.forEach((b) => {
       // l'expression la plus longue d'abord : « pas de travail » avant « travail »
       const mots = b.mots.slice().sort((x, y) => y.length - x.length);
@@ -373,8 +373,35 @@
         const p = m.includes(" ") ? 1 + Math.min(.4, m.length / 100) : .8;
         if (p > poids) { poids = p; vu = m; }
       });
-      if (poids > 0) trouves.push({ id: b.id, poids, mot: vu });
+      if (poids > 0) trouvesLegacy.push({ id: b.id, poids, mot: vu });
     });
+
+    /* Le lexique du texte libre vit dans son propre module. Le repli legacy
+       ci-dessus reste volontairement présent : il protège les besoins
+       internes `hygiene`, `vetements` et `mobilite`, ainsi que le démarrage
+       d'une page qui aurait encore un cache de scripts ancien. Aucun lieu ne
+       passe par cette couche : elle ne reçoit que la phrase de l'utilisateur. */
+    const MOTEUR = root.AutourAideIntentions;
+    const analyse = MOTEUR && typeof MOTEUR.analyserBesoins === "function"
+      ? MOTEUR.analyserBesoins(phrase) : null;
+    const parBesoin = new Map((analyse && analyse.besoins || [])
+      .map((x) => [x.besoin, x]));
+    const legacyParBesoin = new Map(trouvesLegacy.map((x) => [x.id, x]));
+    const trouves = BESOINS.map((b) => {
+      const moderne = parBesoin.get(b.id);
+      const legacy = legacyParBesoin.get(b.id);
+      if (!moderne && !legacy) return null;
+      if (!moderne) return legacy;
+      /* `poids` conserve la convention historique : une expression reconnue
+         vaut au moins 1 et déclenche le domaine Aide avant les réparations.
+         Le score de confiance public reste, lui, celui du moteur dédié. */
+      return {
+        id: b.id,
+        poids: moderne.score >= .78 ? Math.max(1, moderne.score) : moderne.score,
+        score: moderne.score,
+        mot: moderne.signaux && moderne.signaux[0] || (legacy && legacy.mot) || null,
+      };
+    }).filter(Boolean);
     // « autre » ne se déclenche que si rien de plus précis n'a été trouvé
     const precis = trouves.filter((x) => x.id !== "autre");
     const liste = precis.length ? precis : trouves;
@@ -720,7 +747,12 @@
     return age >= cond.age.min && age <= cond.age.max;
   }
 
-  const estUrgent = (phrase) => URGENCE.test(String(phrase || ""));
+  const estUrgent = (phrase) => {
+    const MOTEUR = root.AutourAideIntentions;
+    if (MOTEUR && typeof MOTEUR.detecterUrgence === "function" &&
+        MOTEUR.detecterUrgence(phrase)) return true;
+    return URGENCE.test(String(phrase || ""));
+  };
 
 /* Ce vers quoi Aide sait réellement orienter. Écrit ici plutôt que dans
    l'interface : c'est une propriété du modèle, et l'écran qui l'affiche doit
@@ -936,6 +968,8 @@
     SOUS_INTENTIONS_SANTE, besoinsDepuisPhrase, intentionsSanteDepuisPhrase,
     ageDepuisPhrase, pertinence, pertinenceSante, pourquoi, capacitesDe,
     intentions, MAX_SECONDAIRES,
+    detecterBesoins: root.AutourAideIntentions && root.AutourAideIntentions.detecterBesoins,
+    analyserBesoins: root.AutourAideIntentions && root.AutourAideIntentions.analyserBesoins,
     conditionDe, convient, estSolution, estSolutionSante, accesAdapteSante,
     estFournisseurAide, categoriesAideDocumentees,
     rendezVousDe, estUrgent, PERIMETRE,
