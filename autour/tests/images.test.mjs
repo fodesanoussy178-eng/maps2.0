@@ -18,6 +18,7 @@
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -472,6 +473,20 @@ test("le ratio distingue paysage, affiche, carré et petite source sans l'upscal
   assert.equal(IMAGES.ratioImage(1000, 1000), "event-couverture-carre");
   assert.equal(IMAGES.ratioImage(320, 480), "event-couverture-portrait event-couverture-basse");
   assert.equal(IMAGES.ratioImage(500, 1200), "event-couverture-portrait");
+
+  /* UNE AFFICHE SE LIT EN ENTIER, QUELLE QUE SOIT SA FORME.
+     Le ratio seul envoyait tout ce qui dépasse 1.35 en `cover`, donc recadré :
+     sur une affiche paysage, cela coupe le titre, la date ou le nom de la
+     salle — l'information même. Le type déclaré tranche avant le ratio. */
+  assert.equal(IMAGES.ratioImage(1600, 900, "event_poster"),
+    "event-couverture-paysage event-couverture-affiche");
+  assert.equal(IMAGES.ratioImage(600, 900, "event_poster"),
+    "event-couverture-portrait event-couverture-affiche");
+  assert.equal(IMAGES.ratioImage(0, 0, "event_poster"),
+    "event-couverture-inconnue event-couverture-affiche");
+  /* Une vraie photo garde son recadrage : on ne change que les affiches. */
+  assert.equal(IMAGES.ratioImage(1600, 900, "venue"), "event-couverture-paysage");
+  assert.equal(IMAGES.ratioImage(1600, 900), "event-couverture-paysage");
 });
 
 /* ======================================================================== */
@@ -585,4 +600,21 @@ test("les jeux de zone transportent enfin les tags qui portent une photo", () =>
 test("une photo Places ne se glisse pas dans le cache local", () => {
   assert.match(html, /function sansPhotoGoogle\(l\)\{/);
   assert.match(html, /garder\.push\(sansPhotoGoogle\(alleger\(l\)\)\)/);
+});
+
+test("l'affiche est rendue entière, sans toucher aux dimensions du cadre", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  /* La règle vient APRÈS celle du paysage — même spécificité, c'est l'ordre
+     qui tranche — et ne touche QUE l'ajustement. */
+  const paysage = html.indexOf(".event-couverture.event-couverture-paysage img");
+  const affiche = html.indexOf(".event-couverture.event-couverture-affiche img");
+  assert.ok(affiche > paysage, "la règle affiche doit suivre celle du paysage");
+  assert.match(html, /\.event-couverture\.event-couverture-affiche img\{object-fit:contain/);
+
+  const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /data-image-type="/, "le type doit être posé sur la figure");
+  assert.match(app, /figure\.dataset \? figure\.dataset\.imageType : ""/,
+    "et relu au chargement de l'image");
+  assert.match(app, /"event-couverture-affiche"\)/,
+    "la classe doit être retirée avant d'être reposée");
 });

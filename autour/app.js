@@ -2398,6 +2398,33 @@ function versEvenementCanonique(e){
        « Maintenant », pas la date ci-dessus. */
     temporalStatus:e.temporal_status,
     dateConfidence:e.date_confidence,
+    /* LES MÉTADONNÉES DE RECOMMANDATION, TRANSMISES EXPLICITEMENT.
+
+       `classerPourToi` ne travaille pas sur le titre : il apparie les
+       `announcement_tags` aux envies suivies, borne par le bassin et pondère
+       par l'importance. Aucun de ces champs n'était recopié ici — la fiche
+       arrivait donc au classement sans un seul tag, `correspondances()` ne
+       trouvait rien, et `classer()` rejetait TOUT. « Pour toi » était vide par
+       construction, même une fois la course du territoire corrigée.
+
+       Les deux graphies sont posées parce que les modules acceptent les deux
+       et qu'aucune n'est plus canonique que l'autre à cet endroit. */
+    announcement_tags:Array.isArray(e.announcement_tags) ? e.announcement_tags : [],
+    announcementTags:Array.isArray(e.announcement_tags) ? e.announcement_tags : [],
+    metro_area:e.metro_area || null,
+    metroArea:e.metro_area || null,
+    territory_slug:e.territory_slug || null,
+    importance_level:e.importance_level || "local",
+    importanceLevel:e.importance_level || "local",
+    importance_score:e.importance_score != null ? e.importance_score : null,
+    announced_at:e.announced_at || null,
+    announcedAt:e.announced_at || null,
+    presale_at:e.presale_at || null,
+    tickets_open_at:e.tickets_open_at || null,
+    date_confidence:e.date_confidence,
+    temporal_status:e.temporal_status,
+    primary_source:e.primary_source || null,
+    primarySource:e.primary_source || null,
     lastSourceUpdate:e.last_source_update || null,
     lastSyncedAt:e.last_synced_at || null,
     last_source_update:e.last_source_update || null,
@@ -6446,7 +6473,10 @@ function couvertureAide(l, c){
 function couvertureEvenement(l, c){
   const photo = l && l.image ? l.image : "";
   const teinte = COULEURS_CAT[l && l.cat] || "#E23A8C";
-  return '<figure class="event-couverture'+(photo?'':' image-absente')+'" style="--teinte:'+teinte+'">'+
+  const typeImage = l && (l.image_type || l.imageType) || "";
+  return '<figure class="event-couverture'+(photo?'':' image-absente')+'"'+
+    (typeImage ? ' data-image-type="'+esc(typeImage)+'"' : '')+
+    ' style="--teinte:'+teinte+'">'+
     fallbackVisuelEvenement(l, c, "event-fallback-detail")+
     (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
       ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
@@ -10447,7 +10477,10 @@ function rafraichirMetropole(){
   if(!bassin || metropoleEnCours === bassin) return;
   metropoleEnCours = bassin;
   chargerEvenementsMetropole(bassin).then((liste)=>{
-    if(!liste.length) return;
+    /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
+       ramené, souvent parce que le réseau a flanché. Garder la clé de cache
+       interdirait tout nouvel essai jusqu'au rechargement de la page. */
+    if(!liste.length){ metropoleEnCours = null; return; }
     evenementsMetropole = liste;
     majPourToi();
   }).catch(()=>{ metropoleEnCours = null; });
@@ -10569,10 +10602,12 @@ function imageEvenementChargee(img){
   const figure = img.closest ? img.closest(".event-couverture") : null;
   if(!figure) return;
   const classes = IMAGES && IMAGES.ratioImage
-    ? IMAGES.ratioImage(img.naturalWidth, img.naturalHeight).split(/\s+/).filter(Boolean)
+    ? IMAGES.ratioImage(img.naturalWidth, img.naturalHeight,
+        figure.dataset ? figure.dataset.imageType : "").split(/\s+/).filter(Boolean)
     : [];
   figure.classList.remove("event-couverture-paysage", "event-couverture-portrait",
-    "event-couverture-carre", "event-couverture-inconnue", "event-couverture-basse");
+    "event-couverture-carre", "event-couverture-inconnue", "event-couverture-basse",
+    "event-couverture-affiche");
   figure.classList.add(...classes, "image-ready");
 }
 

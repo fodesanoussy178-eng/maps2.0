@@ -397,16 +397,24 @@
 
   /* Classe de présentation pure : elle est partagée par le rendu et les
      tests. Une petite image ne devient jamais un grand fond flou. */
-  function ratioImage(width, height) {
+  /* UNE AFFICHE N'EST PAS UNE PHOTO, ET SON RATIO NE DIT PAS QUOI EN FAIRE.
+
+     La forme seule décidait : tout ce qui dépasse 1.35 partait en `cover`,
+     donc recadré. Sur une photo de salle c'est le bon choix ; sur une affiche
+     paysage, cela coupe le titre, la date ou le nom du lieu — c'est-à-dire
+     l'information elle-même. Le type déclaré tranche donc avant le ratio, et
+     la forme continue d'être posée pour que le cadre garde sa hauteur. */
+  function ratioImage(width, height, type) {
+    const affiche = String(type || "") === "event_poster" ? " event-couverture-affiche" : "";
     const w = Number(width), h = Number(height);
-    if (!(w > 0) || !(h > 0)) return "event-couverture-inconnue";
+    if (!(w > 0) || !(h > 0)) return "event-couverture-inconnue" + affiche;
     const ratio = w / h;
     const forme = ratio >= 1.35 ? "paysage" : ratio <= 0.75 ? "portrait" : "carre";
     /* Une seule dimension courte ne suffit pas à signaler un upscale visible :
        une affiche 500×1200 est affichée en réduction dans son cadre portrait.
        On réserve donc l'état « basse » aux sources dont les deux dimensions
        sont inférieures au seuil de rendu. */
-    return "event-couverture-" + forme + (w < 600 && h < 600 ? " event-couverture-basse" : "");
+    return "event-couverture-" + forme + (w < 600 && h < 600 ? " event-couverture-basse" : "") + affiche;
   }
 
   /* Ce qu'on peut affirmer sans le lire : une affiche déposée par l'organisme
