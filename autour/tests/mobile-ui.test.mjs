@@ -178,7 +178,7 @@ test("la carte est un décor : ni zoom Leaflet, ni attribution posée dessus",()
 
 test("le repli cartographique ne fabrique pas une ville par défaut",()=>{
   assert.doesNotMatch(html,/positionMoi \|\| \[50\.6292,3\.0573\]/);
-  assert.match(html,/const centre = positionMoi \|\| \[map\.getCenter\(\)\.lat,map\.getCenter\(\)\.lng\];/);
+  assert.match(html,/const centre = centreZoneActive\(\) \|\| \[map\.getCenter\(\)\.lat,map\.getCenter\(\)\.lng\];/);
 });
 
 test("une fiche dont le code postal manque ne rend jamais « undefined »",()=>{
@@ -2010,7 +2010,7 @@ test("la carte est une couche, pas une condition",()=>{
   assert.doesNotMatch(html,/panne\("Carte indisponible"/);
   assert.match(html,/Carte indisponible · les propositions restent affichées/);
   // les recommandations ne dépendent plus de la carte
-  assert.match(html,/function majAccueil\(\)\{[\s\S]{0,400}if\(!positionMoi \|\| modeNav\)\{ PERF\.travail\("accueil", debutCpu\); return; \}/);
+  assert.match(html,/function majAccueil\(\)\{[\s\S]{0,400}if\(!centreDonnees\(\) \|\| modeNav\)\{ PERF\.travail\("accueil", debutCpu\); return; \}/);
   // et la feuille de style de Leaflet ne bloque plus la première peinture
   assert.match(html,/<link rel="stylesheet" media="print" data-leaflet-css/);
 });
