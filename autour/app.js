@@ -11200,13 +11200,20 @@ function rafraichirMetropole(){
 }
 
 function bassinPourToi(){
-  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
-     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
-     identifiant déjà présent n'est jamais remplacé. */
-  const locaux = lieux.filter(estCanonique);
-  if(!evenementsMetropole.length) return locaux;
-  const metropole = evenementsMetropole.filter((l)=> l && estCanonique(l));
-  return dedupeItems(locaux.concat(metropole), distanceM);
+  /* Le bassin est chargé en dehors du rayon local : il doit néanmoins rester
+     borné par le contexte de destination. Sinon une réponse MEL ou un cache
+     de la ville précédente pouvait traverser jusqu'à « Pour toi ».
+
+     Les deux collections peuvent contenir la même occurrence. Il ne faut pas
+     laisser `lieux` gagner par ordre d'arrivée : la version locale est parfois
+     la moins enrichie (notamment sans `announcement_tags`) alors que la
+     version du bassin porte les artistes, les tags et la provenance. Le
+     dédoublonnage commun fusionne d'abord les preuves et reconstruit le
+     `CanonicalEvent`; le classement Pour toi ne voit ensuite qu'une fiche. */
+  const locaux = elementsDuContexte(lieux).filter(estCanonique);
+  const bassin = elementsDuContexte(evenementsMetropole).filter(estCanonique);
+  return dedupeItems([...locaux, ...bassin], distanceM)
+    .filter(estCanonique);
 }
 
 function lieuParId(id){
