@@ -4092,7 +4092,11 @@ function fusionner(nouveaux, flux, opts){
   const source = nouveaux[0] && nouveaux[0].source || type;
   const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source))
     // une annulation reste une information utile et distincte d'une suppression
-    .filter(l=>l.annule || !estPasse(l));
+    .filter(l=>l.annule || !estPasse(l))
+    /* Toutes les sources passent par la même frontière géographique. Une
+       tâche différée du bassin GPS peut encore terminer après une recherche
+       Paris ; elle ne doit jamais repeupler la collection de Paris. */
+    .filter(l=>dansZoneActive(l));
   const courant = type === "external" ? externalEvents
     : type === "user" ? userPublications
     : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
@@ -4535,6 +4539,11 @@ function cleZone(lat, lng, z, cats){
 
 function chargerZone(lat, lng, opts){
   const o = opts || {};
+  /* Un appel ancien peut connaître les coordonnées du GPS sans connaître la
+     destination choisie entre-temps. Refuser ce travail ici protège aussi les
+     chemins différés qui ne passent pas par le chargeur de recherche. */
+  if(destinationActive() && CTX && !CTX.dansZone([lat,lng], activeLocationContext.zone))
+    return Promise.resolve([]);
   /* LE ZOOM D'UNE CARTE QUI VOLE N'EST PAS CELUI QU'ELLE VISE.
 
      Ce garde-fou existe pour une bonne raison : vue de très loin, une carte
@@ -4731,6 +4740,8 @@ const chargementsTemporaires = new Map();
 const derniersChargementsTemporaires = new Map();
 function chargerDonneesTemporaires(lat, lng, opts){
   const o = opts || {};
+  if(destinationActive() && CTX && !CTX.dansZone([lat,lng], activeLocationContext.zone))
+    return Promise.resolve([]);
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(!o.force && chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
   const dernier = derniersChargementsTemporaires.get(cle) || 0;
@@ -5534,7 +5545,8 @@ function chargerLeDemarrage(rapide){
      dans le premier `requestIdleCallback` ajoutait plusieurs requêtes pendant
      que Google, Supabase et DATAtourisme étaient encore en vol. */
   setTimeout(()=>{
-    if(positionMoi && distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
+    if(porteeValide(generation.portee) && !destinationActive() && positionMoi &&
+       distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
       quandLibre(()=>chargerDonneesTemporaires(lat,lng,{sansPublications:true}));
   },5000);
 
