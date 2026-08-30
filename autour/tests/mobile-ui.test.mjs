@@ -1634,7 +1634,7 @@ test("Aide commence par la question, jamais par des structures",()=>{
   assert.match(html,/: sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
   assert.match(html,/<p class="ab-titre">De quoi as-tu besoin&nbsp;\?<\/p>/);
   // entrer dans l'aide repart toujours de la question
-  assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsAide = \[\]; intentionsSanteAide = \[\]; \}/);
+  assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsExprimesAide = \[\]; besoinsAide = \[\]; besoinsSecondairesAide = \[\]; intentionsSanteAide = \[\]; \}/);
   assert.match(html,/\/\/ on repart toujours de la question/);
   // dix besoins, dans les mots de tout le monde, plus l'urgence à part
   assert.match(html,/const AIDE_URGENCE = \{id:"urgence"/);
@@ -1713,8 +1713,8 @@ test("aucune solution trouvée n'est jamais une impasse",()=>{
 test("le mode Aide ne journalise aucune phrase",()=>{
   assert.match(html,/if\(st\.reste && !modeAide\) COMPRENDRE\.noterReste\(st\.reste\);/);
   assert.match(html,/jamais en mode Aide/);
-  // la phrase d'aide ne produit que des besoins normalisés
-  assert.match(html,/const trouves = AIDE\.besoinsDepuisPhrase\(phrase\);/);
+  // la phrase d'aide ne produit que les besoins exprimés normalisés
+  assert.match(html,/const exprimes = lecture && Array\.isArray\(lecture\.besoinsExprimes\)/);
   assert.match(html,/Ce que tu écris ici reste sur ton téléphone/);
   // le journal filtre ce qui ressemble à une donnée personnelle
   assert.match(comprendre,/const SENSIBLE = /);

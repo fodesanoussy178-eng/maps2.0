@@ -155,3 +155,19 @@ test("l'intégration garde les identifiants et le classement Aide existants", ()
   assert.equal(AIDE.intentions("j'ai 19 ans et je trouve pas de travail").primaryNeed, "travail");
   assert.equal(AIDE.estUrgent("mon ex me suit"), true);
 });
+
+test("sépare strictement les besoins exprimés des secondaires taxonomiques", () => {
+  const logement = AIDE.intentions("ma mère m'a viré");
+  assert.deepEqual(logement.besoinsExprimes, ["logement"]);
+  assert.deepEqual(logement.besoins, ["logement"]);
+  assert.equal(logement.primaryNeed, "logement");
+  assert.deepEqual(logement.secondaryNeeds, logement.besoinsSecondaires);
+  assert.ok(logement.secondaryNeeds.every((id) => !logement.besoinsExprimes.includes(id)));
+
+  const multi = AIDE.intentions("je suis étudiant j'ai plus d'argent et rien à manger");
+  assert.equal(multi.primaryNeed, "manger");
+  assert.deepEqual(multi.besoinsExprimes, ["manger", "travail", "jeunes"]);
+  assert.ok(!multi.besoinsExprimes.includes("vetements"));
+  assert.ok(multi.besoinsExprimesAvecScores.every((x) => typeof x.score === "number"));
+  assert.ok(multi.secondaryNeeds.every((id) => !multi.besoinsExprimes.includes(id)));
+});

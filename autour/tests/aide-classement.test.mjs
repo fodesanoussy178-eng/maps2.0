@@ -17,6 +17,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import "../comprendre.js";
+import "../aide-intentions.js";
 import "../aide-taxonomie.js";
 import "../aide-classement.js";
 import "../aide-rayon.js";
@@ -442,7 +443,9 @@ test("une phrase qui demande plusieurs choses les obtient toutes", () => {
 
   const jeune = A.intentions("j’ai 19 ans et je trouve pas de travail");
   assert.equal(jeune.primaryNeed, "travail");
-  assert.ok(jeune.secondaryNeeds.includes("jeunes"), "l’âge est dans la phrase");
+  assert.ok(jeune.besoinsExprimes.includes("jeunes"), "l’âge est dans la phrase");
+  assert.ok(!jeune.secondaryNeeds.includes("jeunes"),
+    "un besoin exprimé ne doit pas devenir une suggestion taxonomique");
 });
 
 test("la forme rendue est celle que le modèle rendrait", () => {
@@ -460,6 +463,10 @@ test("un besoin secondaire élargit la recherche sans la détourner", () => {
     "le poids d’un besoin non nommé est réduit au classement");
   assert.match(html, /besoinsAide = dits\.concat\(secondaires\);/,
     "mais il entre bien dans la recherche");
+  assert.match(html, /const besoins = phraseAideCourante\s+\? besoinsExprimesAide/,
+    "Compris n’affiche que les besoins exprimés");
+  assert.match(html, /Number\(b\.exprime\) - Number\(a\.exprime\)/,
+    "les résultats exprimés restent devant les suggestions");
 });
 
 test("« manger » dans Aide ne renvoie pas ce que « manger » renvoie dans Explorer", () => {

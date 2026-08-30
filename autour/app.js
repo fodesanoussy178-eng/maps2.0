@@ -7498,8 +7498,8 @@ const zonesAideChargees = new Map();
 const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
 const RAYON_AIDE = window.AutourAideRayon || null;
-/* Les besoins que la phrase n'a pas nommés mais qu'elle implique. Ils entrent
-   dans la recherche, à poids réduit : élargir n'est pas détourner. */
+/* Les besoins que la phrase n'a pas nommés mais que la taxonomie propose. Ils
+   entrent dans la recherche, à poids réduit : élargir n'est pas détourner. */
 let besoinsSecondairesAide = [];
 const POIDS_BESOIN_SECONDAIRE = .6;
 /* Le palier réellement atteint. L'écran doit pouvoir dire « ces aides sont
@@ -7591,6 +7591,8 @@ let demandeOrdreAideEnCours = false;
    garder. */
 function oublierPhraseAide(){
   phraseAideCourante = null;
+  besoinsExprimesAide = [];
+  besoinsSecondairesAide = [];
   ordreModeleAide = null;
   cleOrdreModeleAide = null;
 }
@@ -8229,8 +8231,10 @@ let sousAide = null;          // id du besoin actif, ou null
    avant que le script n'ait atteint le bas du fichier. Un `let` non encore
    évalué aurait alors levé une ReferenceError au premier rendu. */
 let redirectionExplorer = null;
-/* Les besoins reconnus dans une phrase libre, et l'âge si la personne l'a dit
+/* Les besoins réellement reconnus dans une phrase libre, séparés des
+   suggestions taxonomiques. L'âge est conservé à part s'il a été dit
    d'elle-même. Rien de plus n'est retenu : pas de profil, pas de phrase. */
+let besoinsExprimesAide = [];
 let besoinsAide = [];
 let ageDeclare = null;
 // Sous-intentions normalisées uniquement en mémoire. Elles affinent la
@@ -9272,6 +9276,7 @@ function lancerBesoinAide(phrase){
   const domaine = AIDE.domaineDeLaPhrase ? AIDE.domaineDeLaPhrase(phrase) : {domaine:"aide"};
   if(domaine.domaine === "explorer"){
     redirectionExplorer = domaine;
+    besoinsExprimesAide = [];
     besoinsAide = []; besoinsSecondairesAide = []; sousAide = null;
     intentionsSanteAide = [];
     majFeuille2(); reinitialiserScrollFeuille();
@@ -9283,29 +9288,37 @@ function lancerBesoinAide(phrase){
 
      « mon copain me frappe » ne demande pas une chose mais trois : se mettre
      en sécurité, parler à quelqu'un, et peut-être dormir ailleurs ce soir.
-     `intentions()` rend le besoin principal ET les besoins qui l'accompagnent
-     habituellement — la liste vient de la taxonomie, elle n'est pas devinée.
+     `intentions()` sépare les besoins que la phrase exprime des suggestions
+     qui viennent de la taxonomie.
 
-     Les secondaires ÉLARGISSENT la recherche ; ils ne la détournent pas. Leur
-     poids est réduit au classement (voir `POIDS_BESOIN_SECONDAIRE`), pour
-     qu'une écoute ne passe jamais devant une mise à l'abri quand c'est un
-     hébergement qu'on cherche. */
+     Les suggestions ÉLARGISSENT la recherche ; elles ne la détournent pas.
+     Leur poids est réduit au classement (voir `POIDS_BESOIN_SECONDAIRE`) et
+     elles restent toujours derrière un résultat correspondant à un besoin
+     exprimé. */
   const lecture = AIDE.intentions ? AIDE.intentions(phrase) : null;
-  const trouves = AIDE.besoinsDepuisPhrase(phrase);
+  const exprimes = lecture && Array.isArray(lecture.besoinsExprimes)
+    ? lecture.besoinsExprimes.slice()
+    : lecture && Array.isArray(lecture.besoins)
+      ? lecture.besoins.slice()
+      : AIDE.besoinsDepuisPhrase(phrase).map(x=>x.id);
+  const trouves = exprimes.map(id=>({id}));
   const santeTrouvee = trouves.some(x=>x.id === "sante" || x.id === "parler");
   intentionsSanteAide = santeTrouvee && AIDE.intentionsSanteDepuisPhrase
     ? AIDE.intentionsSanteDepuisPhrase(phrase).map(x=>x.id) : [];
   const age = AIDE.ageDepuisPhrase(phrase);
   if(age != null) ageDeclare = age;
   if(AIDE.estUrgent(phrase) && !trouves.length){
-    sousAide = "urgence"; besoinsAide = [];
-  }else if(trouves.length){
-    const dits = trouves.slice(0,3).map(x=>x.id);
+    sousAide = "urgence";
+    besoinsExprimesAide = [];
+    besoinsAide = []; besoinsSecondairesAide = [];
+  }else if(exprimes.length){
+    const dits = exprimes;
     const secondaires = lecture
       ? lecture.secondaryNeeds.filter(id=>dits.indexOf(id) < 0) : [];
+    besoinsExprimesAide = dits.slice();
     besoinsAide = dits.concat(secondaires);
     besoinsSecondairesAide = secondaires;
-    sousAide = besoinsAide[0];
+    sousAide = dits[0];
   }else{
     /* Rien de reconnu, et ce n'est pas une réparation non plus.
        On affichait alors les structures générales avec un toast « je n'ai pas
@@ -9313,6 +9326,7 @@ function lancerBesoinAide(phrase){
        n'importe quoi, et proposait un CCAS pour une question qui n'a rien de
        social. Il vaut mieux dire ce qu'on sait faire — c'est plus court, plus
        honnête, et ça évite un déplacement inutile. */
+    besoinsExprimesAide = [];
     besoinsAide = []; besoinsSecondairesAide = []; sousAide = null;
     intentionsSanteAide = [];
     /* Mais on ne renvoie pas la personne à un mur. Le routeur d'intentions
@@ -9491,7 +9505,12 @@ function annonceRayonAideHTML(liste){
 }
 
 function enteteBesoinAide(titre){
-  const besoins = besoinsAide.length ? besoinsAide : (sousAide ? [sousAide] : []);
+  /* « Compris » est une transcription de la phrase, jamais la liste élargie
+     pour le classement. Un choix manuel n'a pas de phrase : dans ce seul cas,
+     on affiche le besoin sélectionné comme avant. */
+  const besoins = phraseAideCourante
+    ? besoinsExprimesAide
+    : (besoinsAide.length ? besoinsAide : (sousAide ? [sousAide] : []));
   const puces = besoins.map(id=>{
     const b = AIDE && AIDE.BESOIN_DE(id);
     return b ? '<button class="cp" data-besoin-off="'+esc(id)+'">'+esc(b.label)+
@@ -9617,6 +9636,8 @@ function solutionsAide(limite){
   });
 
   // pertinence du besoin : elle passe devant tout le reste du tri
+  const exprimes = new Set(besoinsExprimesAide.length
+    ? besoinsExprimesAide : besoins);
   const notes = classement.map(l=>{
     /* À poids égal, la raison la plus précise gagne : « tu cherches du
        travail » explique mieux la présence d'une Mission locale que « tu es
@@ -9624,23 +9645,31 @@ function solutionsAide(limite){
        (poids, précision). */
     const vus = besoins.map(id=>{
       const p = AIDE.pertinence(l, id, {large:true});
+      const exprime = exprimes.has(id);
       /* Un besoin que la phrase n'a pas nommé compte, mais moins : une écoute
          ne doit pas passer devant une mise à l'abri quand on cherche où
          dormir. */
-      const facteur = besoinsSecondairesAide.indexOf(id) >= 0
+      const facteur = !exprime && besoinsSecondairesAide.indexOf(id) >= 0
         ? POIDS_BESOIN_SECONDAIRE : 1;
       return {poids:p.poids * facteur, raison:p.raison, sur:!!p.sur,
               direct:!!p.direct,
-              precis: p.sur || (id !== "jeunes" && id !== "autre")};
+              precis: p.sur || (id !== "jeunes" && id !== "autre"), exprime};
     }).filter(x=>x.poids > 0 && x.direct)
       .sort((a,b)=> b.poids - a.poids || (b.precis?1:0) - (a.precis?1:0));
-    const meilleur = vus[0];
+    /* Une structure qui répond à un besoin exprimé reste dans le groupe
+       prioritaire, même si elle répond aussi à une suggestion taxonomique.
+       La distance et l'ouverture ne peuvent pas inverser ces deux groupes. */
+    const meilleur = vus.find(x=>x.exprime) || vus[0];
     if(!besoins.length) return {l, poids: SET_AIDE.has(l.cat) ? .5 : 0, raison:"", sur:false};
     return {l, poids: meilleur ? meilleur.poids : 0,
-            raison: meilleur ? meilleur.raison : "", sur: !!(meilleur && meilleur.sur)};
+            raison: meilleur ? meilleur.raison : "", sur: !!(meilleur && meilleur.sur),
+            exprime: !!(meilleur && meilleur.exprime)};
   }).filter(x=>x.poids > 0);
 
   notes.sort((a,b)=>
+    // Les besoins exprimés sont un groupe prioritaire : une suggestion
+    // taxonomique ne peut jamais les remplacer, même si elle est plus proche.
+    Number(b.exprime) - Number(a.exprime) ||
     // Lien réel au besoin, puis disponibilité / horizon, puis marche : une
     // association voisine ne gagne jamais sur une permanence adaptée.
     b.poids - a.poids ||
@@ -9658,11 +9687,16 @@ function solutionsAide(limite){
      Le second regard est demandé sur la liste ENTIÈRE, pas sur les cinq
      premiers : un modèle qui ne verrait que le haut du classement ne pourrait
      jamais remonter la structure qui répond vraiment. */
-  const ordonnes = notes.map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur}));
+  const ordonnes = notes.map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur,
+                                                     aideExprime:x.exprime}));
   if(IA_AIDE){
     demanderOrdreAide(ordonnes);
-    if(ordreModeleAide && ordreModeleAide.cle === cleOrdreAide(ordonnes))
-      return IA_AIDE.appliquer(ordonnes, ordreModeleAide).slice(0, limite || 5);
+    if(ordreModeleAide && ordreModeleAide.cle === cleOrdreAide(ordonnes)){
+      /* Le modèle peut affiner l'ordre dans chaque groupe, mais ne peut pas
+         mettre une suggestion taxonomique devant un besoin exprimé. */
+      return IA_AIDE.appliquer(ordonnes, ordreModeleAide).sort((a,b)=>
+        Number(b.aideExprime) - Number(a.aideExprime)).slice(0, limite || 5);
+    }
   }
   return ordonnes.slice(0, limite || 5);
 }
@@ -11957,6 +11991,7 @@ function brancherFeuille2(){
     const id = b.dataset.besoinOff;
     if(id === "age"){ ageDeclare = null; }
     else {
+      besoinsExprimesAide = besoinsExprimesAide.filter(x=>x !== id);
       besoinsAide = besoinsAide.filter(x=>x !== id);
       if(sousAide === id) sousAide = besoinsAide[0] || null;
       if(sousAide !== "sante" && sousAide !== "parler") intentionsSanteAide = [];
@@ -12001,6 +12036,7 @@ function brancherFeuille2(){
       return;
     }
     redirectionExplorer = null;
+    oublierPhraseAide();
     besoinsAide = (AIDE && AIDE.BESOIN_DE(id)) ? [id] : [];
     sousAide = besoinsAide[0] || "autre";
     intentionsSanteAide = [];
@@ -12357,7 +12393,9 @@ function basculerAide(){
   modeAide = !modeAide;
   // on repart toujours de la question : « de quoi as-tu besoin ? »
   sousAide = null;
+  besoinsExprimesAide = [];
   besoinsAide = [];
+  besoinsSecondairesAide = [];
   intentionsSanteAide = [];
   redirectionExplorer = null;
   document.body.classList.toggle("aide", modeAide);
@@ -13749,7 +13787,7 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   }
   if(id === "aide"){
     // on repart toujours de la question, jamais d'une liste de structures
-    if(!modeAide) basculerAide(); else { sousAide = null; besoinsAide = []; intentionsSanteAide = []; }
+    if(!modeAide) basculerAide(); else { sousAide = null; besoinsExprimesAide = []; besoinsAide = []; besoinsSecondairesAide = []; intentionsSanteAide = []; }
     ouvrirFeuille2("aide"); return;
   }
   /* Créer et Favoris demandent un compte — mais SEULEMENT ici, au moment du

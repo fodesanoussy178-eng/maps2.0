@@ -559,14 +559,14 @@
 
   /* ---- Une phrase, plusieurs intentions ---------------------------------
 
-     « mon copain me frappe » ne demande pas une chose mais trois : se mettre
-     en sécurité, parler à quelqu'un, et peut-être dormir ailleurs ce soir.
-     Répondre par une seule case, c'est répondre à côté.
+     « mon copain me frappe » ne demande pas une chose mais plusieurs : se
+     mettre en sécurité, parler à quelqu'un, et peut-être dormir ailleurs ce
+     soir. Répondre par une seule case, c'est répondre à côté.
 
-     Le besoin PRINCIPAL vient de la phrase ; les SECONDAIRES viennent de la
-     taxonomie, qui dit pour chaque besoin ceux qui l'accompagnent
-     habituellement. Rien n'est deviné : la liste est écrite, relisible, et se
-     corrige à un seul endroit.
+     Le besoin PRINCIPAL et `besoinsExprimes` viennent exclusivement du moteur
+     de texte libre. `besoinsSecondaires` vient de la taxonomie : ce sont des
+     pistes d'accompagnement, jamais des choses que la personne a dites.
+     Rien n'est deviné à partir d'un nom de structure.
 
      La forme rendue est celle que le modèle rendrait s'il était branché —
      `{primaryNeed, secondaryNeeds}`. C'est voulu : le mode doit répondre
@@ -575,29 +575,45 @@
   const MAX_SECONDAIRES = 3;
 
   function intentions(phrase) {
-    const trouves = besoinsDepuisPhrase(phrase).map((x) => x.id);
-    if (!trouves.length) return { primaryNeed: null, secondaryNeeds: [], besoins: [] };
+    const MOTEUR = root.AutourAideIntentions;
+    const analyse = MOTEUR && typeof MOTEUR.analyserBesoins === "function"
+      ? MOTEUR.analyserBesoins(phrase) : null;
+    const bruts = analyse && Array.isArray(analyse.besoins)
+      ? analyse.besoins.slice().sort((a, z) => (z.score || 0) - (a.score || 0)) : [];
 
-    const principal = trouves[0];
+    /* La liste publique est volontairement séparée des suggestions de la
+       taxonomie. L'ordre du moteur est l'ordre de confiance décroissante :
+       son premier besoin est donc le principal. */
+    const exprimesAvecScores = [];
+    const vus = new Set();
+    bruts.forEach((x) => {
+      if (!x || typeof x.besoin !== "string" || vus.has(x.besoin)) return;
+      vus.add(x.besoin);
+      exprimesAvecScores.push({ besoin: x.besoin, score: x.score });
+    });
+    const besoinsExprimes = exprimesAvecScores.map((x) => x.besoin);
+    const principal = besoinsExprimes[0] || null;
+
     const TAXO = root.AutourAideTaxonomie;
-    const b = TAXO ? TAXO.besoin(principal) : null;
-    const habituels = b ? b.secondaires : [];
-
-    /* Ce que la phrase a dit elle-même passe devant ce que la taxonomie
-       suppose : quelqu'un qui a nommé deux besoins en a nommé deux. */
-    const secondaires = [];
-    trouves.slice(1).forEach((id) => {
-      if (secondaires.indexOf(id) < 0) secondaires.push(id);
+    const b = principal && TAXO ? TAXO.besoin(principal) : null;
+    const besoinsSecondaires = [];
+    (b && Array.isArray(b.secondaires) ? b.secondaires : []).forEach((id) => {
+      if (id !== principal && !vus.has(id) && besoinsSecondaires.indexOf(id) < 0)
+        besoinsSecondaires.push(id);
     });
-    habituels.forEach((id) => {
-      if (id !== principal && secondaires.indexOf(id) < 0) secondaires.push(id);
-    });
+    const secondaires = besoinsSecondaires.slice(0, MAX_SECONDAIRES);
 
     return {
       primaryNeed: principal,
-      secondaryNeeds: secondaires.slice(0, MAX_SECONDAIRES),
-      /* Les identifiants Autour, pour l'appelant qui préfère sa propre forme. */
-      besoins: trouves,
+      /* Identifiants réellement détectés dans la phrase, sans taxonomie. */
+      besoinsExprimes,
+      /* Les scores restent disponibles sans polluer la liste affichée. */
+      besoinsExprimesAvecScores: exprimesAvecScores,
+      /* Suggestions écrites dans aide-taxonomie.js, jamais des expressions. */
+      besoinsSecondaires: secondaires,
+      secondaryNeeds: secondaires,
+      /* Alias historique conservé pour les intégrations existantes. */
+      besoins: besoinsExprimes,
     };
   }
 
