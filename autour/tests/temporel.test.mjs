@@ -191,6 +191,64 @@ test("toutes les sources se ramènent au même modèle", () => {
   assert.deepEqual(T.normaliserPeriodes(null), []);
 });
 
+test("les champs structurés start_at/end_at sont la source commune des écrans", () => {
+  const evenement = evt({
+    start_at: "2026-08-30T12:00:00Z",
+    end_at: "2026-08-30T18:00:00Z",
+    date_confidence: "exact",
+  });
+  const veille = Date.parse("2026-08-29T12:00:00+02:00");
+  const etat = T.statutTemporel(evenement, veille);
+  assert.equal(etat.precision, "exact");
+  assert.equal(T.libelleDate(evenement, veille),
+    "Dimanche 30 août · 14h00–20h00");
+  /* La carte compacte et la fiche utilisent le même libellé contractuel. */
+  assert.equal(T.libelleDate(evenement, veille), T.libelleDate(evenement, veille));
+});
+
+test("un jour connu n'invente pas une heure", () => {
+  const evenement = evt({
+    start_at: "2026-08-30T00:00:00Z",
+    date_confidence: "day",
+  });
+  assert.equal(T.libelleDate(evenement, Date.parse("2026-08-29T12:00:00+02:00")),
+    "Dimanche 30 août");
+});
+
+test("deux bornes calendaires restent un jour, sans heure fabriquée", () => {
+  const evenement = evt({
+    start_at: "2026-08-30",
+    end_at: "2026-08-31",
+  });
+  const veille = Date.parse("2026-08-29T12:00:00+02:00");
+  assert.equal(T.statutTemporel(evenement, veille).precision, "day");
+  assert.equal(T.libelleDate(evenement, veille), "Dimanche 30 août");
+});
+
+test("une date réellement inconnue reste à vérifier", () => {
+  assert.equal(T.libelleDate(evt({date_confidence:"unknown"}), MAINTENANT),
+    "Date à vérifier");
+});
+
+test("un événement structuré passé conserve le statut passé", () => {
+  const evenement = evt({
+    start_at: "2025-08-12T10:00:00+02:00",
+    end_at: "2025-08-12T12:00:00+02:00",
+  });
+  assert.equal(T.statutTemporel(evenement, MAINTENANT).statut, STATUTS.PASSE);
+  assert.equal(T.libelleDate(evenement, MAINTENANT), "Terminé");
+});
+
+test("la date structurée est rendue dans Europe/Paris", () => {
+  const evenement = evt({
+    start_at: "2026-08-30T12:00:00Z",
+    end_at: "2026-08-30T18:00:00Z",
+    date_confidence: "exact",
+  });
+  assert.equal(T.libelleDate(evenement, Date.parse("2026-08-29T12:00:00+02:00")),
+    "Dimanche 30 août · 14h00–20h00");
+});
+
 test("les occurrences sont triées, quel que soit l'ordre reçu", () => {
   const p = T.normaliserPeriodes({timings:[
     {begin:"2025-08-19T18:00:00+02:00"},

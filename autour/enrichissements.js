@@ -142,10 +142,14 @@
         lieu.current_status = e.current_status; change = true;
       }
       if(e.temporary_closed != null){ lieu.temporary_closed = e.temporary_closed; change = true; }
+      if(e.closure_reason){ lieu.closure_reason = e.closure_reason; change = true; }
+      if(e.closure_until){ lieu.closure_until = e.closure_until; change = true; }
       /* Les horaires n'écrasent la donnée existante que si le serveur les a
          jugés dignes de le faire — il a déjà appliqué `peutEcraserOsm` et rend
          `null` sinon. On ne refait pas cet arbitrage ici. */
       if(e.opening_hours){ lieu.quand = e.opening_hours; change = true; }
+      if(e.source_priority){ lieu.source_priority = e.source_priority; change = true; }
+      if(Array.isArray(e.sources)){ lieu.horairesSources = e.sources; change = true; }
       if(e.today_hours){ lieu.horairesDuJour = e.today_hours; change = true; }
       if(e.next_open_at){ lieu.next_open_at = e.next_open_at; change = true; }
       if(Array.isArray(e.programme_now) && e.programme_now.length){

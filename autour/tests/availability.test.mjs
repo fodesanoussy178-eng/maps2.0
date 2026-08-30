@@ -215,6 +215,105 @@ test("la source des horaires suit l’ordre de priorité annoncé", () => {
   assert.equal(vu.opensAtTime, "08:00");
 });
 
+test("les horaires officiels gagnent sur un OSM 24/7", () => {
+  const dimanche = paris(2026, 7, 19, 12, 0);
+  const vu = getPlaceAvailability({
+    cat: "resto",
+    tags: {opening_hours: "24/7"},
+    officialOpeningHours: "Mo-Sa 09:00-18:00; Su off",
+  }, dimanche);
+  assert.equal(vu.source, "officielle");
+  assert.equal(vu.status, "closed");
+  assert.equal(vu.label, "Fermé aujourd’hui");
+});
+
+test("une fermeture exceptionnelle officielle gagne sur une ouverture OSM", () => {
+  const vu = getPlaceAvailability({
+    cat: "resto", quand: "24/7",
+    officialExceptionalClosure: {closed: true, reason: "Fermeture exceptionnelle"},
+  }, MERCREDI_MIDI);
+  assert.equal(vu.status, "closed");
+  assert.equal(vu.source, "fermeture-officielle");
+  assert.equal(vu.label, "Fermé exceptionnellement");
+});
+
+test("un statut officiel ponctuel ne devient pas une promesse pour une heure future", () => {
+  const lieu = {cat: "resto", current_status: "open", source_priority: "site_officiel"};
+  assert.equal(getPlaceAvailability(lieu, MERCREDI_MIDI).status, "open");
+  assert.equal(getPlaceAvailability(lieu, MERCREDI_MIDI, null,
+    {allowPointStatus:false}).status, "unknown");
+});
+
+test("un statut officiel ouvert ne cède pas à une grille OSM plus faible", () => {
+  const lieu = {
+    cat: "resto", current_status: "open", source_priority: "site_officiel",
+    tags: {opening_hours: "Mo-Su off"},
+  };
+  const vu = getPlaceAvailability(lieu, MERCREDI_MIDI);
+  assert.equal(vu.status, "open");
+  assert.equal(vu.source, "officielle");
+});
+
+test("la fermeture exceptionnelle datée de l'enrichissement est respectée", () => {
+  const vu = getPlaceAvailability({
+    cat: "resto", quand: "Mo-Su 09:00-23:00",
+    closure_until: "2026-07-15", source_priority: "site_officiel",
+  }, MERCREDI_MIDI);
+  assert.equal(vu.status, "closed");
+  assert.equal(vu.sourceRank, 6);
+});
+
+test("sans donnée fiable, les horaires restent inconnus", () => {
+  const vu = getPlaceAvailability({
+    cat: "resto",
+    openingHoursExplicit: "Mo sunrise-sunset",
+    tags: {opening_hours: "quand ça ouvre"},
+    ouvert: true,
+  }, MERCREDI_MIDI, undefined, {allowPointStatus: false});
+  assert.equal(vu.status, "unknown");
+  assert.equal(vu.label, "Horaires non renseignés");
+});
+
+test("un lieu normalement ouvert est évalué à l'heure demandée", () => {
+  const matin = getPlaceAvailability({
+    cat: "resto", quand: "Mo-Su 19:00-23:00",
+  }, paris(2026, 7, 15, 8, 0), undefined, {allowPointStatus: false});
+  assert.equal(matin.status, "closed");
+  assert.equal(matin.opensAtTime, "19:00");
+  assert.equal(matin.label, "Fermé • ouvre à 19:00");
+});
+
+test("un 24/7 OSM de bibliothèque demande une vérification de provenance", () => {
+  const vu = getPlaceAvailability({
+    cat: "biblio", titre: "Bibliothèques", adresse: "Bibliothèques",
+    tags: {opening_hours: "24/7"},
+  }, MERCREDI_MIDI);
+  assert.equal(vu.status, "unknown");
+  assert.equal(vu.suspect24h7, true);
+  assert.equal(vu.label, "Horaires à vérifier");
+});
+
+test("un nom générique de restaurant ne devient pas un lieu 24/7", () => {
+  const vu = getPlaceAvailability({
+    cat: "resto", titre: "Restaurants", adresse: "Restaurants",
+    tags: {opening_hours: "24/7"},
+  }, MERCREDI_MIDI);
+  assert.equal(vu.status, "unknown");
+  assert.equal(vu.suspect24h7, true);
+  assert.equal(vu.label, "Horaires à vérifier");
+});
+
+test("deux horaires officiels contradictoires ne produisent pas « Ouvert »", () => {
+  const vu = getPlaceAvailability({
+    cat: "musee",
+    officialOpeningHours: "Mo-Su 09:00-18:00",
+    official_opening_hours: "Mo-Su 12:00-20:00",
+  }, MERCREDI_MIDI);
+  assert.equal(vu.status, "unknown");
+  assert.equal(vu.conflict, true);
+  assert.equal(vu.label, "Horaires à vérifier");
+});
+
 test("parseOpeningHours refuse ce qu’il ne sait pas lire", () => {
   assert.equal(parseOpeningHours("Mo sunrise-sunset"), null);
   assert.equal(parseOpeningHours("week 1-53/2 Mo 09:00-12:00"), null);

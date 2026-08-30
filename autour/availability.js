@@ -210,23 +210,212 @@
   }
 
   /* ---- Sources d'horaires -------------------------------------------------
-     Ordre imposé : horaires explicites du lieu, puis OpenStreetMap, puis
-     source officielle, puis saisie d'un créateur vérifié. Sinon : inconnu. */
-  function resolveSchedule(place) {
-    const candidates = [
-      {spec: place.openingHoursExplicit, source: "explicite"},
-      {spec: (place.tags || {}).opening_hours, source: "osm"},
-      {spec: place.openingHours, source: "osm"},
-      {spec: place.quand, source: "osm"},
-      {spec: place.officialOpeningHours, source: "officielle"},
-      {spec: place.verifie ? place.creatorOpeningHours : null, source: "createur-verifie"},
-    ];
-    for (const candidate of candidates) {
-      if (candidate.spec == null || candidate.spec === "") continue;
-      const parsed = parseOpeningHours(candidate.spec);
-      if (parsed) return {schedule: parsed, source: candidate.source};
+     Une source faible ne doit jamais remplacer une source forte. L'ancien
+     code parcourait les champs dans l'ordre d'arrivée du fournisseur : un
+     `24/7` OSM pouvait donc gagner sur la page officielle, et une fermeture
+     dominicale disparaissait. Le rang est désormais explicite et indépendant
+     de la forme du payload.
+
+       6 fermeture exceptionnelle officielle récente
+       5 horaires officiels
+       4 horaires fournis par une structure vérifiée
+       3 donnée structurée avec provenance connue
+       2 OpenStreetMap
+       1 déclaration ponctuelle sans grille
+       0 inconnu */
+  const SOURCE_PRIORITY = Object.freeze({
+    fermeture_officielle: 6,
+    officielle: 5,
+    structure_verifiee: 4,
+    structure: 3,
+    osm: 2,
+    declaree: 1,
+    inconnue: 0,
+  });
+  const HORAIRES_A_VERIFIER = "Horaires à vérifier";
+
+  function texteNormalise(value) {
+    return String(value == null ? "" : value).normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  const CATEGORIES_24_7_SUSPECTES = new Set([
+    "biblio", "bibliotheque", "library", "mediatheque", "musee", "museum",
+    "mairie", "administration", "mission locale", "caf", "centre social",
+    "ecole", "school", "france travail",
+  ]);
+  const NOMS_24_7_SUSPECTS = new Set([
+    "bibliotheque", "bibliotheques", "mediatheque", "mediatheques",
+    "musee", "musees", "mairie", "mission locale", "caf",
+    "centre social", "ecole", "france travail", "restaurant", "restaurants",
+    "cafe", "cafes", "bar", "bars", "cinema", "cinemas", "musees",
+    "parc", "parcs", "activite", "activites", "sortie", "sorties",
+    "lieu", "lieux",
+  ]);
+
+  function estSuspect24h7(place) {
+    const l = place || {};
+    const categorie = texteNormalise(l.cat || l.categorie || l.category);
+    const titre = texteNormalise(l.titre || l.title || l.name);
+    const adresse = texteNormalise(l.adresse || l.address || l.addr);
+    const categorieSuspecte = CATEGORIES_24_7_SUSPECTES.has(categorie) ||
+      [...CATEGORIES_24_7_SUSPECTES].some((mot) => categorie.includes(mot));
+    const nomGenerique = NOMS_24_7_SUSPECTS.has(titre);
+    /* Un libellé générique sans adresse ne désigne pas un bâtiment. Un id OSM
+       seul est une origine technique, pas une identité physique. */
+    return categorieSuspecte || nomGenerique || (!titre && !adresse);
+  }
+
+  function valeurSource(place) {
+    const l = place || {};
+    const metadata = l.verifie && typeof l.verifie === "object" ? l.verifie : {};
+    return l.source_priority || l.sourcePriority || metadata.priorite ||
+      l.openingHoursProvenance || l.opening_hours_provenance || "";
+  }
+
+  function rangDepuisProvenance(value) {
+    if (Number.isFinite(Number(value))) {
+      const rang = Number(value);
+      if (rang >= SOURCE_PRIORITY.inconnue && rang <= SOURCE_PRIORITY.fermeture_officielle)
+        return rang;
     }
-    return {schedule: null, source: null};
+    const p = texteNormalise(value);
+    if (!p) return 0;
+    if (p.includes("site officiel") || p.includes("agenda officiel") ||
+        p.includes("billetterie officielle") || p === "official" || p === "officielle")
+      return SOURCE_PRIORITY.officielle;
+    if (p.includes("institution") || p.includes("verifie") || p.includes("verified") ||
+        p.includes("verified_structure") || p === "structure verifiee")
+      return SOURCE_PRIORITY.structure_verifiee;
+    if (p.includes("osm") || p.includes("openstreetmap")) return SOURCE_PRIORITY.osm;
+    if (p.includes("google") || p.includes("structured") || p.includes("structure") || p === "tiers")
+      return SOURCE_PRIORITY.structure;
+    return 0;
+  }
+
+  function ajouterCandidat(candidats, spec, source, rang, provenance) {
+    if (spec == null || spec === "") return;
+    candidats.push({spec, source, rang, provenance: provenance || null});
+  }
+
+  function sourcesHoraires(place) {
+    const l = place || {};
+    const candidats = [];
+    const provenance = valeurSource(l);
+    const rangProvenance = rangDepuisProvenance(provenance);
+    const metadataSources = [l.scheduleSources, l.openingHoursSources,
+      l.availabilitySources, l.sourcesHoraires, l.horairesSources]
+      .filter(Array.isArray).flat();
+
+    metadataSources.forEach((entree) => {
+      if (!entree) return;
+      const spec = entree.spec != null ? entree.spec
+        : entree.opening_hours != null ? entree.opening_hours
+          : entree.openingHours != null ? entree.openingHours
+            : entree.value;
+      const rang = Number.isFinite(Number(entree.priority)) ? Number(entree.priority)
+        : rangDepuisProvenance(entree.source || entree.provenance || entree.type);
+      const source = rang >= SOURCE_PRIORITY.officielle ? "officielle"
+        : rang >= SOURCE_PRIORITY.structure_verifiee ? "structure-verifiee"
+          : rang >= SOURCE_PRIORITY.structure ? "structure" : "osm";
+      ajouterCandidat(candidats, spec, source, rang || SOURCE_PRIORITY.inconnue,
+        entree.source || entree.provenance || null);
+    });
+
+    /* La fermeture exceptionnelle est traitée séparément dans
+       `fermetureExceptionnelleActive`. Ces champs-ci sont les grilles
+       normales, mais leur provenance reste prioritaire sur OSM. */
+    [l.officialOpeningHours, l.official_opening_hours, l.officialHours,
+      l.horairesOfficiels, l.horaires_officiels].forEach((spec) =>
+        ajouterCandidat(candidats, spec, "officielle", SOURCE_PRIORITY.officielle, "official"));
+
+    [l.verifiedOpeningHours, l.verified_opening_hours, l.creatorOpeningHours,
+      l.horairesStructureVerifiee, l.horaires_structure_verifies].forEach((spec) =>
+        ajouterCandidat(candidats, spec, "structure-verifiee", SOURCE_PRIORITY.structure_verifiee, "verified_structure"));
+
+    /* `openingHoursExplicit` est la donnée normalisée historique. Elle gagne
+       sur OSM, mais ne se fait passer pour officielle que si sa provenance le
+       dit explicitement. */
+    const rangExplicite = rangProvenance || SOURCE_PRIORITY.structure;
+    ajouterCandidat(candidats, l.openingHoursExplicit, "explicite", rangExplicite, provenance || "structured");
+    [l.openingHoursStructured, l.opening_hours_structured, l.horairesStructures,
+      l.opening_hours_canonical].forEach((spec) =>
+        ajouterCandidat(candidats, spec, "structure", SOURCE_PRIORITY.structure, "structured"));
+
+    /* Quand l'enrichissement officiel a été appliqué sur le champ historique
+       `quand`, son enveloppe `verifie` reste la preuve de provenance. */
+    if (rangProvenance >= SOURCE_PRIORITY.officielle)
+      ajouterCandidat(candidats, l.quand, "officielle", rangProvenance, provenance);
+    else if (rangProvenance >= SOURCE_PRIORITY.structure_verifiee)
+      ajouterCandidat(candidats, l.quand, "structure-verifiee", rangProvenance, provenance);
+
+    ajouterCandidat(candidats, (l.tags || {}).opening_hours, "osm", SOURCE_PRIORITY.osm, "osm");
+    if (rangProvenance < SOURCE_PRIORITY.structure_verifiee)
+      ajouterCandidat(candidats, l.openingHours, "osm", SOURCE_PRIORITY.osm, "osm");
+    ajouterCandidat(candidats, l.opening_hours, "osm", SOURCE_PRIORITY.osm, "osm");
+    ajouterCandidat(candidats, l.quand, "osm", SOURCE_PRIORITY.osm, "osm");
+    return candidats;
+  }
+
+  function signatureSchedule(schedule) {
+    return JSON.stringify(schedule && schedule.days);
+  }
+
+  function resolveSchedule(place) {
+    const candidats = sourcesHoraires(place).map((candidate) =>
+      Object.assign({}, candidate, {parsed: parseOpeningHours(candidate.spec)}))
+      .filter((candidate) => candidate.parsed);
+    if (!candidats.length) return {schedule: null, source: null, rank: 0, candidate: null};
+
+    const meilleurRang = Math.max(...candidats.map((candidate) => candidate.rang));
+    const meilleurs = candidats.filter((candidate) => candidate.rang === meilleurRang);
+    const signatures = new Set(meilleurs.map((candidate) => signatureSchedule(candidate.parsed)));
+    if (signatures.size > 1) {
+      return {schedule: null, source: null, rank: meilleurRang, candidate: null,
+        conflict: true, candidates: meilleurs};
+    }
+    const choisi = meilleurs[0];
+    return {schedule: choisi.parsed, source: choisi.source, rank: choisi.rang,
+      candidate: choisi, candidates: meilleurs, conflict: false};
+  }
+
+  function fermetureExceptionnelleActive(place, instant) {
+    const l = place || {};
+    const provenanceRank = rangDepuisProvenance(valeurSource(l));
+    const jusquau = l.closure_until || l.closureUntil || l.fermeture_jusquau ||
+      l.fermetureJusquau;
+    /* L'enrichissement officiel publie parfois la fermeture sous forme d'une
+       date de fin plutôt que d'un objet. Une date seule couvre toute la
+       journée annoncée, sans être confondue avec un horaire OSM. */
+    if (jusquau && provenanceRank >= SOURCE_PRIORITY.structure_verifiee) {
+      const texte = String(jusquau).trim();
+      const fin = /^\d{4}-\d{2}-\d{2}$/.test(texte)
+        ? Date.parse(texte + "T23:59:59Z") : Date.parse(texte);
+      if (Number.isFinite(fin) && fin > instant)
+        return {active: true, reason: l.closure_reason || l.closureReason ||
+          "Fermeture exceptionnelle officielle"};
+    }
+    const entrees = [l.officialExceptionalClosure, l.official_exceptional_closure,
+      l.fermetureExceptionnelleOfficielle, l.fermeture_exceptionnelle_officielle,
+      l.exceptionalClosure, l.fermetureExceptionnelle, l.officialClosure]
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .filter((value) => value != null && value !== false && value !== "");
+    for (const entree of entrees) {
+      if (entree === true || /^(closed|ferme|fermé|off)$/i.test(String(entree).trim()))
+        return {active: true, reason: "Fermeture exceptionnelle officielle"};
+      if (typeof entree !== "object") continue;
+      if (entree.closed === false || entree.active === false) continue;
+      const debut = entree.from || entree.start || entree.debut || entree.date;
+      const fin = entree.until || entree.to || entree.end || entree.fin;
+      const tDebut = debut ? Date.parse(debut) : -Infinity;
+      const tFin = fin ? Date.parse(fin) : Infinity;
+      if (Number.isFinite(tDebut) && tDebut > instant) continue;
+      if (Number.isFinite(tFin) && tFin <= instant) continue;
+      return {active: true, reason: entree.reason || entree.raison ||
+        "Fermeture exceptionnelle officielle"};
+    }
+    return {active: false, reason: null};
   }
 
   function marginFor(place) {
@@ -278,8 +467,9 @@
   /* ---- Fonction centrale --------------------------------------------------
      `place` : le lieu. `now` : instant courant. `arrival` : heure d'arrivée
      estimée (ETA porte-à-porte) — facultative. */
-  function getPlaceAvailability(place, now, arrival) {
+  function getPlaceAvailability(place, now, arrival, options) {
     const target = place || {};
+    const opts = options || {};
     const timeZone = zoneOf(target);
     const instant = Number.isFinite(Number(now)) ? Number(now) : Date.now();
     const arriveAt = Number.isFinite(Number(arrival)) ? Number(arrival) : null;
@@ -288,6 +478,8 @@
       status: "unknown", isOpenNow: false, isOpenAtArrival: null,
       opensAt: null, closesAt: null, opensAtTime: null, closesAtTime: null,
       label: "Horaires non renseignés", reason: null, source: null,
+      sourceRank: SOURCE_PRIORITY.inconnue, provenance: null,
+      scheduleText: null, conflict: false, suspect24h7: false,
       timeZone, marginMinutes: marginFor(target), meetsMargin: null,
     };
 
@@ -301,7 +493,8 @@
     }
 
     // 2. fermeture temporaire : l'établissement existe et rouvrira
-    if (target.temporarilyClosed === true || target.fermetureTemporaire === true) {
+    if (target.temporarilyClosed === true || target.fermetureTemporaire === true ||
+        target.temporary_closed === true) {
       return Object.assign({}, base, {
         status: "closed", isOpenAtArrival: false,
         label: "Fermé temporairement",
@@ -309,13 +502,86 @@
       });
     }
 
-    const {schedule, source} = resolveSchedule(target);
+    /* Une fermeture exceptionnelle officielle est la seule information qui
+       puisse suspendre une grille habituelle sans l'effacer. Elle est testée
+       avant OSM, avant un booléen « ouvert » et avant tout calcul d'intervalle. */
+    const fermeture = fermetureExceptionnelleActive(target, instant);
+    if (fermeture.active) {
+      return Object.assign({}, base, {
+        status: "closed", isOpenAtArrival: false,
+        label: "Fermé exceptionnellement",
+        reason: fermeture.reason,
+        source: "fermeture-officielle",
+        sourceRank: SOURCE_PRIORITY.fermeture_officielle,
+      });
+    }
+
+    const resolution = resolveSchedule(target);
+    const {schedule, source} = resolution;
+
+    /* Un statut fermé ne peut être pris en compte sans provenance au moins
+       vérifiée. Un « open » faible ne doit pas écraser une grille officielle,
+       mais un état officiel fermé reste une fermeture actuelle explicite. */
+    const provenanceRank = rangDepuisProvenance(valeurSource(target));
+    const statutCourant = texteNormalise(target.current_status || target.currentStatus);
+    const fermetureCourante = (statutCourant === "closed" || statutCourant === "temporary closed" ||
+      statutCourant === "permanently closed") &&
+      provenanceRank >= SOURCE_PRIORITY.structure_verifiee;
+    if (fermetureCourante) {
+      return Object.assign({}, base, {
+        status: statutCourant === "permanently closed" ? "permanently_closed" : "closed",
+        isOpenAtArrival: false,
+        label: statutCourant === "permanently closed" ? "Définitivement fermé" : "Fermé",
+        reason: target.closure_reason || target.closureReason || null,
+        source: provenanceRank >= SOURCE_PRIORITY.officielle ? "officielle" : "structure-verifiee",
+        sourceRank: provenanceRank,
+        provenance: valeurSource(target) || null,
+      });
+    }
+
+    /* Un statut d'ouverture officiel ou vérifié est une observation plus
+       forte qu'une grille OSM. Il reste ponctuel : on ne l'utilise que pour
+       l'instant demandé, jamais pour « Ce soir » quand le résolveur lui
+       interdit les statuts ponctuels. */
+    if (statutCourant === "open" && provenanceRank >= SOURCE_PRIORITY.structure_verifiee &&
+        opts.allowPointStatus !== false &&
+        (!schedule || resolution.rank < provenanceRank)) {
+      return Object.assign({}, base, {
+        status: "open", isOpenNow: true, label: "Ouvert",
+        reason: "Statut vérifié prioritaire sur une source horaire plus faible",
+        source: provenanceRank >= SOURCE_PRIORITY.officielle ? "officielle" : "structure-verifiee",
+        sourceRank: provenanceRank, provenance: valeurSource(target) || null,
+      });
+    }
 
     // 3. aucun horaire lisible : on le dit, on ne suppose rien.
     if (!schedule) {
+      if (resolution.conflict) {
+        return Object.assign({}, base, {
+          label: HORAIRES_A_VERIFIER,
+          reason: "Des sources de même niveau se contredisent",
+          conflict: true,
+          sourceRank: resolution.rank || SOURCE_PRIORITY.inconnue,
+        });
+      }
+      /* Un statut ponctuel issu d'une structure officielle ou vérifiée est
+         exploitable pour l'instant demandé. Il est volontairement consulté
+         avant le booléen historique : une source faible ne peut pas annuler
+         une affirmation plus forte. Il n'est jamais utilisé pour une heure
+         future (« Ce soir »). */
+      if (statutCourant === "open" && provenanceRank >= SOURCE_PRIORITY.structure_verifiee &&
+          opts.allowPointStatus !== false) {
+        return Object.assign({}, base, {
+          status: "open", isOpenNow: true, label: "Ouvert",
+          reason: "Statut vérifié sans grille détaillée",
+          source: provenanceRank >= SOURCE_PRIORITY.officielle ? "officielle" : "structure-verifiee",
+          sourceRank: provenanceRank, provenance: valeurSource(target) || null,
+        });
+      }
       // Google peut savoir « ouvert maintenant » sans nous donner la grille :
       // c'est exploitable pour l'instant présent, jamais pour l'arrivée.
-      if (target.ouvert === true || target.ouvert === false) {
+      if ((target.ouvert === true || target.ouvert === false) &&
+          !resolution.conflict && opts.allowPointStatus !== false) {
         const open = target.ouvert === true;
         return Object.assign({}, base, {
           status: open ? "open" : "closed",
@@ -324,9 +590,23 @@
           label: open ? "Ouvert" : "Fermé",
           reason: "Horaires détaillés non renseignés",
           source: "declaree",
+          sourceRank: SOURCE_PRIORITY.declaree,
         });
       }
       return base;
+    }
+
+    const suspect24h7 = source === "osm" &&
+      String(resolution.candidate && resolution.candidate.spec || "").trim().toLowerCase() === "24/7" &&
+      estSuspect24h7(target);
+    if (suspect24h7) {
+      return Object.assign({}, base, {
+        label: HORAIRES_A_VERIFIER,
+        reason: "Un lieu générique ne peut pas être confirmé comme ouvert 24/7",
+        source, sourceRank: resolution.rank, provenance: resolution.candidate && resolution.candidate.provenance,
+        scheduleText: resolution.candidate && resolution.candidate.spec,
+        suspect24h7: true,
+      });
     }
 
     const intervals = buildIntervals(schedule, instant, timeZone, 9);
@@ -334,7 +614,12 @@
     const upcoming = nextOpening(intervals, instant);
     const margin = base.marginMinutes;
 
-    const result = Object.assign({}, base, {source, isOpenNow: !!current});
+    const result = Object.assign({}, base, {
+      source, sourceRank: resolution.rank || SOURCE_PRIORITY.inconnue,
+      provenance: resolution.candidate && resolution.candidate.provenance,
+      scheduleText: resolution.candidate && resolution.candidate.spec,
+      isOpenNow: !!current,
+    });
 
     if (current) {
       result.status = "open";
@@ -388,7 +673,11 @@
   root.AutourAvailability = Object.freeze({
     DEFAULT_TIMEZONE,
     MARGES_MINUTES,
+    SOURCE_PRIORITY,
+    HORAIRES_A_VERIFIER,
     parseOpeningHours,
+    resolveSchedule,
+    estSuspect24h7,
     getPlaceAvailability,
     marginFor,
     isFrenchHoliday,

@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import "../core.js";
+import "../temporel.js";
 
 const lire = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const app = lire("../app.js");

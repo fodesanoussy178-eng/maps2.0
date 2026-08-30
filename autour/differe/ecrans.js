@@ -160,8 +160,11 @@ function ouvrirFicheCompacte(l){
   // l'annulation passe devant tout le reste : c'est la seule chose qui compte,
   // puis la date réelle de l'événement, puis seulement la distance
   const quandFiche = estTemporaire(l) && !l.annule
-    ? TEMPS.libelleTemporel(l, instantCreneau().getTime(),
-        {disponibilite:(x,t)=>dispoDe(x, null, t)})
+    ? (TEMPS.libelleDate
+        ? TEMPS.libelleDate(l, instantCreneau().getTime(),
+            {disponibilite:(x,t)=>dispoDe(x, null, t)})
+        : TEMPS.libelleTemporel(l, instantCreneau().getTime(),
+            {disponibilite:(x,t)=>dispoDe(x, null, t)}))
     : null;
   const ligne3 = [
     l.annule ? "Annulé" : (quandFiche || (d && d.status !== "unknown" ? d.label : null)),
@@ -311,10 +314,7 @@ function ouvrirDetail(id){
     '<span class="ad-ville">'+esc(l.cp || "")+'</span>'+
     '</address>'+
     (ficheAide ? faitsAide(l) : '<dl class="faits">'+
-      '<div><dt>Quand</dt><dd>'+
-        (l.ouvert === true  ? '<span class="ouvert">Ouvert</span> · ' :
-         l.ouvert === false ? '<span class="ferme">Fermé</span> · '   : '')+
-        esc(libelleHoraires(l))+'</dd></div>'+
+      '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+'</dd></div>'+
       '<div><dt>Places</dt><dd>'+(l.places==null?'Entrée libre':l.places+' places')+'</dd></div>'+
       '<div><dt>Posté par</dt><dd>'+esc(l.par)+'</dd></div>'+
     '</dl>')+

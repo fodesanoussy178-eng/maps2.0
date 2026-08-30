@@ -116,6 +116,15 @@
     return Number.isFinite(time) ? time : null;
   }
 
+  function firstDateValue(item, fields) {
+    const source = item || {};
+    for (const field of fields) {
+      if (source[field] == null || source[field] === "") continue;
+      if (parseTime(source[field]) != null) return source[field];
+    }
+    return null;
+  }
+
   /* Ajoute un jeu de catégories pondérées sans jamais dégrader un poids déjà
      acquis : un lieu classé « cinéma » à 1 par son tag ne redescend pas à .8
      parce qu'une règle textuelle plus faible le mentionne aussi. */
@@ -268,8 +277,16 @@
     const title = raw.title || raw.titre || raw.name || "";
     const latitude = Number(raw.latitude != null ? raw.latitude : raw.lat);
     const longitude = Number(raw.longitude != null ? raw.longitude : raw.lng);
-    const startsAt = parseTime(raw.startsAt != null ? raw.startsAt : (raw.debutLe != null ? raw.debutLe : raw.debut_le));
-    const endsAt = parseTime(raw.endsAt != null ? raw.endsAt : (raw.finLe != null ? raw.finLe : raw.fin_le));
+    /* Les flux canoniques parlent `start_at/end_at`, les publications
+       historiques `debut_le/fin_le` et le modèle commun `startsAt/endsAt`.
+       Tous doivent aboutir au même contrat, sans dépendre d'un champ texte
+       `quand` qui n'est pas une donnée temporelle structurée. */
+    const startsAt = parseTime(firstDateValue(raw, [
+      "start_at", "startAt", "event_start_at", "eventStartAt", "startsAt", "debutLe", "debut_le",
+    ]));
+    const endsAt = parseTime(firstDateValue(raw, [
+      "end_at", "endAt", "event_end_at", "eventEndAt", "endsAt", "finLe", "fin_le",
+    ]));
     const openingHours = raw.openingHours != null ? raw.openingHours : (raw.horaires || raw.quand || null);
     const isTemporary = raw.isTemporary != null
       ? !!raw.isTemporary
@@ -417,6 +434,10 @@
     merged.endsAt = preferred.endsAt != null ? preferred.endsAt : fallback.endsAt;
     merged.debutLe = merged.startsAt;
     merged.finLe = merged.endsAt;
+    ["start_at", "end_at", "startAt", "endAt", "event_start_at", "event_end_at"]
+      .forEach((field) => {
+        merged[field] = renseigne(preferred[field]) ? preferred[field] : fallback[field];
+      });
 
     /* CE QUI QUALIFIE LES DATES SUIT LES DATES.
 

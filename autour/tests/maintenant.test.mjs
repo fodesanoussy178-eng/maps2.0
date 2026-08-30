@@ -191,6 +191,56 @@ test("aucun événement fiable rend une liste vide, pas un remplissage", () => {
   assert.equal(M.total(aucun, ctx()), 0);
 });
 
+test("« Ce soir » parcourt les couches dans l'ordre et sonde l'heure du soir", () => {
+  const soirDebut = T;
+  const soirFin = T + h(4);
+  const consultation = T - h(12); // le matin : open_now serait faux ici
+  const appels = [];
+  const items = [
+    bon({id:"evenement", debutLe:soirDebut + h(1), finLe:soirDebut + h(2)}),
+    bon({id:"seance", nature:"session", session:true,
+      debutLe:soirDebut + h(1.5), finLe:soirDebut + h(2.5)}),
+    lieu({id:"cinema", categorie:"cinema", lat:ICI[0] + 400 / 111320}),
+    lieu({id:"restaurant", categorie:"resto", lat:ICI[0] + 500 / 111320}),
+    lieu({id:"supermarche", categorie:"supermarche", lat:ICI[0] + 100 / 111320}),
+  ];
+  const choix = M.selectionCeSoir(items, {
+    maintenant: consultation, position: ICI, positionConnue:true, rayonMax:3000,
+    soirDebut, soirFin, places:3,
+    disponibilite:(item, instant) => {
+      appels.push({id:item.id, instant});
+      return {status:"open", isOpenNow:true};
+    },
+  });
+  assert.deepEqual(choix.map((x) => x.id), ["evenement", "seance", "cinema"]);
+  assert.ok(appels.length > 0);
+  assert.ok(appels.every((appel) => appel.instant === soirDebut),
+    "les horaires doivent être évalués pendant la plage du soir");
+  assert.ok(!appels.some((appel) => appel.id === "supermarche"),
+    "les commerces utilitaires sont exclus du fallback éditorial");
+});
+
+test("« Ce soir » retombe sur un lieu pertinent, sans transformer l'inconnu en ouvert", () => {
+  const soirDebut = T;
+  const soirFin = T + h(4);
+  const appels = [];
+  const choix = M.selectionCeSoir([
+    lieu({id:"inconnu", categorie:"resto"}),
+    lieu({id:"pharmacie", categorie:"pharmacie"}),
+    lieu({id:"bar", categorie:"bar", lat:ICI[0] + 500 / 111320}),
+  ], {
+    maintenant:T - h(12), position:ICI, positionConnue:true, rayonMax:3000,
+    soirDebut, soirFin,
+    disponibilite:(item, instant) => {
+      appels.push({id:item.id, instant});
+      return item.id === "inconnu" ? {status:"unknown"} : {status:"open"};
+    },
+  });
+  assert.deepEqual(choix.map((x) => x.id), ["bar"]);
+  assert.ok(appels.every((appel) => appel.instant === soirDebut));
+  assert.ok(!choix.some((x) => x.id === "pharmacie"));
+});
+
 /* ==========================================================================
    4. LES QUATRE ÉTATS
 
@@ -586,6 +636,16 @@ test("l'application transmet l'ouverture depuis availability.js, pas d'ailleurs"
   assert.match(versItem, /dispo\.status === "open" \? true/);
   assert.match(versItem, /dispo\.status === "unknown" \? null : false/);
   assert.match(versItem, /ouvertALArrivee = dispo\.isOpenAtArrival/);
+});
+
+test("l'accueil délègue « Ce soir » aux couches temporelles", () => {
+  assert.match(html, /function recommandationsCeSoir\(limite\)\{/);
+  const bloc = html.slice(html.indexOf("function recommandationsCeSoir"),
+    html.indexOf("function recommandationsAccueil", html.indexOf("function recommandationsCeSoir")));
+  assert.match(bloc, /selectionCeSoir/);
+  assert.match(bloc, /soirDebut:soir && soir\.debut/);
+  assert.match(bloc, /allowPointStatus:false/);
+  assert.match(html, /if\(creneau === "soir" && !modeAide\)/);
 });
 
 test("la ligne dit le bon temps selon la nature", () => {

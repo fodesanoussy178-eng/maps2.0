@@ -89,6 +89,68 @@
     return Number.isFinite(t) ? t : null;
   }
 
+  const DEBUTS_STRUCTURES = Object.freeze([
+    "start_at", "startAt", "event_start_at", "eventStartAt",
+    "startsAt", "debutLe", "debut_le",
+  ]);
+  const FINS_STRUCTURES = Object.freeze([
+    "end_at", "endAt", "event_end_at", "eventEndAt",
+    "endsAt", "finLe", "fin_le",
+  ]);
+
+  function premiereValeur(source, champs) {
+    const item = source || {};
+    for (const champ of champs) {
+      if (item[champ] != null && item[champ] !== "") return item[champ];
+    }
+    return null;
+  }
+
+  function premiereDate(source, champs) {
+    const item = source || {};
+    for (const champ of champs) {
+      const valeur = item[champ];
+      if (valeur == null || valeur === "") continue;
+      if (toEpoch(valeur) != null) return valeur;
+    }
+    return null;
+  }
+
+  function confianceDate(source) {
+    const item = source || {};
+    return item.dateConfidence != null ? item.dateConfidence
+      : item.date_confidence != null ? item.date_confidence
+        : item.datePrecision != null ? item.datePrecision : item.date_precision;
+  }
+
+  function precisionDate(source, periode) {
+    const confidence = String(confianceDate(source) || "").toLowerCase();
+    if (["exact", "datetime", "date_time", "full", "precis", "precise"].includes(confidence)) return "exact";
+    if (["day", "date", "jour", "approximate_day", "day_only"].includes(confidence)) return "day";
+    if (["unknown", "unknown_date", "inconnu", "uncertain", "approximate"].includes(confidence)) return "unknown";
+    if (!periode || periode.debut == null) return "unknown";
+    /* En l'absence de l'ancien texte, deux bornes structurées restent une
+       date exploitable. Une valeur numérique est déjà un instant ; une chaîne
+       ISO sans heure, elle, ne doit pas recevoir une heure inventée. */
+    const debutBrut = premiereDate(source, DEBUTS_STRUCTURES);
+    const finBrut = premiereDate(source, FINS_STRUCTURES);
+    const aHeure = (value) => typeof value === "number" || value instanceof Date ||
+      /(?:T|\s)\d{1,2}:\d{2}/.test(String(value || ""));
+    return aHeure(debutBrut) || aHeure(finBrut) ? "exact" : "day";
+  }
+
+  function normaliserTemporalite(source) {
+    const item = source || {};
+    const periodes = normaliserPeriodes(item);
+    return {
+      periodes,
+      dateConfidence: confianceDate(item) || null,
+      precision: precisionDate(item, periodes[0]),
+      temporalStatus: item.temporalStatus || item.temporal_status || null,
+      timeZone: item.timezone || item.timeZone || DEFAULT_TIMEZONE,
+    };
+  }
+
   /* ---- Les occurrences d'un objet, quelle que soit sa source --------------
      Supabase publie debut_le/fin_le, OpenAgenda une liste de `timings`, une
      publication maison debutLe/finLe. On ramène tout à la même forme : une
@@ -104,17 +166,15 @@
       if (!Array.isArray(liste)) return;
       liste.forEach((t) => {
         if (!t) return;
-        const debut = toEpoch(t.start != null ? t.start : (t.begin != null ? t.begin : t.debut));
-        const fin = toEpoch(t.end != null ? t.end : t.fin);
+        const debut = toEpoch(premiereDate(t, ["start_at", "startAt", "start", "begin", "debut"]));
+        const fin = toEpoch(premiereDate(t, ["end_at", "endAt", "end", "fin"]));
         if (debut != null || fin != null) brutes.push({ debut, fin });
       });
     });
 
     if (!brutes.length) {
-      const debut = toEpoch(item.startsAt != null ? item.startsAt
-        : (item.debutLe != null ? item.debutLe : item.debut_le));
-      const fin = toEpoch(item.endsAt != null ? item.endsAt
-        : (item.finLe != null ? item.finLe : item.fin_le));
+      const debut = toEpoch(premiereDate(item, DEBUTS_STRUCTURES));
+      const fin = toEpoch(premiereDate(item, FINS_STRUCTURES));
       if (debut != null || fin != null) brutes.push({ debut, fin });
     }
 
@@ -216,6 +276,15 @@
     return { debut, fin: epochLocal(partiesOrdinal(ordinalLocal(p) + 1, 0, 0), timeZone) };
   }
 
+  function fenetreSoir(epoch, timeZone) {
+    const jour = fenetreJour(epoch, timeZone);
+    const p = partsLocales(jour.debut, timeZone);
+    return {
+      debut: epochLocal(Object.assign({}, p, {heure: 18, minute: 0}), timeZone),
+      fin: jour.fin,
+    };
+  }
+
   function fenetreWeekEnd(epoch, timeZone) {
     const p = partsLocales(epoch, timeZone);
     const ordinal = ordinalLocal(p);
@@ -280,6 +349,7 @@
       const ferme = STATUTS_CANONIQUES[temporalStatus];
       const periodes = normaliserPeriodes(source);
       const occurrence = prochaineOccurrence(periodes, t);
+      const precision = precisionDate(source, occurrence);
       const commun = {
         timeZone,
         debut: occurrence ? occurrence.debut : null,
@@ -287,6 +357,8 @@
         finReelle: occurrence ? occurrence.fin : null,
         occurrence, occurrences: periodes.length,
         canonique: temporalStatus,
+        dateConfidence: confianceDate(source) || null,
+        precision,
       };
       if (source.annule || source.cancelled || source.status === "cancelled") commun.annule = true;
       if (commun.annule) return Object.assign({ statut: STATUTS.PASSE }, commun);
@@ -345,7 +417,17 @@
 
     const debut = occurrence.debut;
     const fin = finEffective(occurrence);
-    const commun = { timeZone, debut, fin, occurrence, occurrences: periodes.length };
+    const commun = { timeZone, debut, fin, occurrence, occurrences: periodes.length,
+      dateConfidence: confianceDate(source) || null,
+      precision: precisionDate(source, occurrence) };
+
+    /* Une confiance explicitement inconnue est un verdict, même si un
+       fournisseur a laissé des bornes qui ressemblent à une date. Cette
+       borne protège la règle « date réellement inconnue » dans le chemin
+       local ; seuls les champs structurés complets sans ce marqueur peuvent
+       rétablir une date exacte. */
+    if (commun.precision === "unknown")
+      return Object.assign({ statut: STATUTS.INCONNU }, commun);
 
     if (fin != null && fin <= t) return Object.assign({ statut: STATUTS.PASSE }, commun);
 
@@ -428,6 +510,34 @@
     }
   }
 
+  /* Libellé descriptif commun aux cartes et aux fiches. `libelleTemporel`
+     reste utile pour les badges (« Maintenant », « Ce soir »), mais il ne doit
+     pas être mélangé à une date détaillée : une vue pouvait afficher l'heure
+     structurée pendant qu'une autre tombait sur « Date à vérifier ». */
+  function libelleDate(item, now, options) {
+    const t = now == null ? Date.now() : Number(now);
+    const etat = (options && options.statut) || statutTemporel(item, t, options);
+    if (!etat || etat.statut === STATUTS.INCONNU) return "Date à vérifier";
+    if (etat.statut === STATUTS.PASSE && !(options && options.ignoreStatus))
+      return etat.annule ? "Annulé" : "Terminé";
+
+    const periode = etat.occurrence || null;
+    const debut = periode && periode.debut != null ? periode.debut : etat.debut;
+    if (debut == null) return "Date à vérifier";
+    const precision = etat.precision || precisionDate(item, periode);
+    const p = partsLocales(debut, etat.timeZone || DEFAULT_TIMEZONE);
+    const date = new Intl.DateTimeFormat("fr-FR", {
+      weekday:"long", day:"numeric", month:"long", timeZone:etat.timeZone || DEFAULT_TIMEZONE,
+    }).format(new Date(debut));
+    const jour = date.charAt(0).toUpperCase() + date.slice(1);
+    if (precision !== "exact") return jour;
+
+    const heure = (epoch) => heureLocale(epoch, etat.timeZone || DEFAULT_TIMEZONE).replace(":", "h");
+    const fin = periode && periode.fin != null ? periode.fin : etat.finReelle;
+    return jour + " · " + heure(debut) +
+      (Number.isFinite(fin) && fin > debut ? "–" + heure(fin) : "");
+  }
+
   /* ---- Où ranger ce qui n'est pas « maintenant » -------------------------
      Un événement futur n'est pas une erreur : il a juste sa place ailleurs.
      Les sections sont calculées dans le fuseau du lieu. */
@@ -461,13 +571,16 @@
     DUREE_SUPPOSEE_MS,
     DEFAULT_TIMEZONE,
     normaliserPeriodes,
+    normaliserTemporalite,
     prochaineOccurrence,
     statutTemporel,
     estMaintenant,
     libelleTemporel,
+    libelleDate,
     sectionTemporelle,
     partsLocales,
     fenetreJour,
+    fenetreSoir,
     fenetreWeekEnd,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

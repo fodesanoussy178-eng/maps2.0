@@ -157,7 +157,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=3e5927cf"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d15a5c6f"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -662,6 +662,7 @@ function instantDisponibilite(){
 function dispoDe(l, arrivee, quand){
   const module = window.AutourAvailability;
   if(!module) return null;
+  const opts = arguments[3] || {};
   // l'instant est paramétrable : le moteur temporel évalue une exposition
   // longue à un moment donné, pas forcément le créneau affiché
   const instant = quand == null ? instantDisponibilite() : quand;
@@ -674,9 +675,10 @@ function dispoDe(l, arrivee, quand){
      arrivée de source. Un événement daté conserve l'instant exact : aucune
      frontière start/end n'est arrondie pour gagner du temps. */
   const cleTemps = estTemporaire(l) ? instant : Math.floor(instant / 60000);
-  const cle = cleTemps+"|"+(arrivee == null ? "" : arrivee);
+  const cle = cleTemps+"|"+(arrivee == null ? "" : arrivee)+
+    "|"+(opts.allowPointStatus === false ? "future" : "instant");
   if(cache.has(cle)) return cache.get(cle);
-  const resultat = module.getPlaceAvailability(l, instant, arrivee);
+  const resultat = module.getPlaceAvailability(l, instant, arrivee, opts);
   if(cache.size >= 4) cache.clear();
   cache.set(cle, resultat);
   return resultat;
@@ -687,7 +689,7 @@ function dispoDe(l, arrivee, quand){
 function badgeDispo(l){
   const d = dispoDe(l);
   if(!d) return "";
-  const classe = d.status === "open" ? "ouvert"
+  const classe = d.status === "open" || d.status === "closing_soon" ? "ouvert"
     : d.status === "unknown" ? "inconnu" : "ferme";
   return '<span class="'+classe+'">'+esc(d.label)+'</span>';
 }
@@ -2154,6 +2156,17 @@ function visuelPublication(p){
   };
 }
 
+function premiereDateObjet(objet, champs){
+  const source = objet || {};
+  for(const champ of champs){
+    const valeur = source[champ];
+    if(valeur == null || valeur === "") continue;
+    const epoch = typeof valeur === "number" ? valeur : new Date(valeur).getTime();
+    if(Number.isFinite(epoch)) return valeur;
+  }
+  return null;
+}
+
 function versLieu(p){
   /* `created_by` est le propriétaire canonique. `creator_id` demeure lu pour
      les réponses RPC antérieures à la migration : il ne sert jamais à donner
@@ -2168,8 +2181,10 @@ function versLieu(p){
     verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
     lat:p.lat, lng:p.lng,
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
-    debutLe: p.debut_le ? new Date(p.debut_le).getTime() : null,
-    finLe: p.fin_le ? new Date(p.fin_le).getTime() : null,
+    debutLe: (()=>{ const v = premiereDateObjet(p, ["start_at", "startAt", "debut_le", "debutLe"]);
+      return v == null ? null : new Date(v).getTime(); })(),
+    finLe: (()=>{ const v = premiereDateObjet(p, ["end_at", "endAt", "fin_le", "finLe"]);
+      return v == null ? null : new Date(v).getTime(); })(),
     isTemporary:true, url:p.url || "",
     /* L'affiche d'une publication appartient à qui l'a déposée : c'est la
        provenance la plus claire qu'Autour possède, et la seule qui n'ait
@@ -2382,8 +2397,19 @@ function visuelEvenement(e){
 }
 
 function versEvenementCanonique(e){
-  const debut = e.start_at ? new Date(e.start_at).getTime() : null;
-  const fin = e.end_at ? new Date(e.end_at).getTime() : null;
+  const premiere = (champs) => {
+    for(const champ of champs){
+      const valeur = e[champ];
+      if(valeur == null || valeur === "") continue;
+      const epoch = typeof valeur === "number" ? valeur : new Date(valeur).getTime();
+      if(Number.isFinite(epoch)) return valeur;
+    }
+    return null;
+  };
+  const debutBrut = premiere(["start_at", "startAt", "debut_le", "debutLe"]);
+  const finBrut = premiere(["end_at", "endAt", "fin_le", "finLe"]);
+  const debut = debutBrut != null && debutBrut !== "" ? new Date(debutBrut).getTime() : null;
+  const fin = finBrut != null && finBrut !== "" ? new Date(finBrut).getTime() : null;
   return normaliserItem({
     id:"evt"+e.id, dbId:e.id,
     cat:e.category || "event",
@@ -6322,31 +6348,43 @@ function horaireDuJour(l){
    inventer une heure serait pire que de n'en donner aucune. */
 function horairesEvenement(l){
   if(!l || !l.isTemporary) return "";
-  const debut = Number(l.debutLe != null ? l.debutLe : l.startsAt);
-  if(!Number.isFinite(debut)) return "";
-  const zone = l.timezone || "Europe/Paris";
-  const jour = new Intl.DateTimeFormat("fr-FR",
-    {weekday:"long", day:"numeric", month:"long", timeZone:zone}).format(new Date(debut));
-  const majuscule = jour.charAt(0).toUpperCase() + jour.slice(1);
-  if(l.dateConfidence && l.dateConfidence !== "exact") return majuscule;
-  const heure = (t)=> new Intl.DateTimeFormat("fr-FR",
-    {hour:"2-digit", minute:"2-digit", timeZone:zone}).format(new Date(t)).replace(":","h");
-  const fin = Number(l.finLe != null ? l.finLe : l.endsAt);
-  return majuscule + " · " + (Number.isFinite(fin) && fin > debut
-    ? heure(debut) + "–" + heure(fin) : heure(debut));
+  const T = (typeof window !== "undefined" && window.AutourTemps) ||
+    (typeof globalThis !== "undefined" && globalThis.AutourTemps);
+  const libelle = T && T.libelleDate
+    ? T.libelleDate(l, Date.now(), {ignoreStatus:true}) : "";
+  return libelle !== "Date à vérifier" ? libelle : "";
 }
 
 function libelleHoraires(l){
+  /* Une fiche d'événement ne lit jamais son horaire dans le texte historique
+     d'un lieu : la période structurée, et elle seule, décide. */
+  const evenement = horairesEvenement(l);
+  if(evenement){
+    const T = (typeof window !== "undefined" && window.AutourTemps) ||
+      (typeof globalThis !== "undefined" && globalThis.AutourTemps);
+    const etat = T && T.statutTemporel ? T.statutTemporel(l, Date.now()) : null;
+    return etat && etat.statut === "past" && T.libelleTemporel
+      ? T.libelleTemporel(l, Date.now(), {statut:etat}) : evenement;
+  }
+  if(!l) return "Horaires inconnus";
+  if(l.isTemporary) return "Date à vérifier";
+  /* Pour un lieu permanent, le badge et le détail doivent parler au même
+     résolveur. Cela empêche un `24/7` OSM suspect de réapparaître comme une
+     ouverture certaine dans la fiche. */
+  const dispo = dispoDe(l);
+  if(dispo && (dispo.status !== "unknown" || dispo.conflict || dispo.suspect24h7))
+    return dispo.label;
   const horaire = horaireDuJour(l);
   if(horaire) return horaire;
   if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/i.test(l.quand)) return l.quand;
-  const evenement = horairesEvenement(l);
-  if(evenement) return evenement;
   return "Horaires inconnus";
 }
 
 function horairesSemaine(l){
   if(!l.horaires || !l.horaires.length) return "";
+  const dispo = dispoDe(l);
+  if(dispo && (dispo.conflict || dispo.suspect24h7))
+    return '<p class="horaires-verif">'+esc(dispo.label)+'</p>';
   const aujourdhui = (new Date().getDay() + 6) % 7;
   return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
     l.horaires.map((h,i)=>
@@ -9157,6 +9195,29 @@ function rechercheTexte(){
   return champ && champ.value ? champ.value.trim() : "";
 }
 
+function recommandationsCeSoir(limite){
+  const M = window.AutourMaintenant;
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!M || typeof M.selectionCeSoir !== "function" || !centre) return [];
+  const soir = TEMPS && TEMPS.fenetreSoir
+    ? TEMPS.fenetreSoir(Date.now(), "Europe/Paris") : null;
+  const choix = M.selectionCeSoir(lieux.filter(dansZoneActive), {
+    maintenant:Date.now(),
+    position:centre,
+    positionConnue:true,
+    rayonMax:rayonDeLaZone(),
+    places:3,
+    soirDebut:soir && soir.debut,
+    soirFin:soir && soir.fin,
+    /* Le matin, ce wrapper interdit à availability.js de transformer un
+       état ponctuel en promesse pour ce soir. Une grille datée, elle, est
+       bien évaluée à l'heure de la plage. */
+    disponibilite:(x,t)=>dispoDe(x, null, t, {allowPointStatus:false}),
+    statutTemporel:(x,t)=>statutTemps(x, t),
+  });
+  return Number.isFinite(limite) ? choix.slice(0, Math.min(3, Math.max(0, limite))) : choix;
+}
+
 function recommandationsAccueil(limite, options){
   const toutMontrer = !!(options && options.tout);
   /* Le classement partait de `positionMoi`. À Tourcoing, chercher Lille
@@ -9170,6 +9231,14 @@ function recommandationsAccueil(limite, options){
   // varié tiré du cache et des favoris, plutôt qu'un écran vide. Il sera
   // remplacé silencieusement dès que le classement complet arrive.
   if(!lieux.length) return [];
+
+  /* « Ce soir » ne s'arrête pas au calendrier. Après les événements et les
+     séances, il sonde les activités puis les lieux pertinents réellement
+     ouverts pendant la plage — même si la consultation a lieu le matin. */
+  if(creneau === "soir" && !modeAide){
+    const couche = recommandationsCeSoir(limite);
+    return couche;
+  }
 
   /* Trois des quatre groupes ne parlent que d'événements : un restaurant n'a
      pas de « ce week-end », il a des horaires. On ne classe donc que les
@@ -9781,7 +9850,8 @@ function carteAide(l){
 /* Ce qu'on sait vraiment de l'ouverture d'un lieu permanent. */
 function libelleOuverture(l){
   const d = dispoDe(l);
-  if(!d || d.status === "unknown") return "Horaires non renseignés";
+  if(!d) return "Horaires non renseignés";
+  if(d.status === "unknown") return d.label || "Horaires non renseignés";
   if(d.status === "permanently_closed") return "Définitivement fermé";
   if(d.isOpenNow) return d.closesAtTime ? "Ouvert jusqu’à "+d.closesAtTime : "Ouvert";
   if(d.opensAtTime) return d.reason || ("Ouvre à "+d.opensAtTime);
@@ -10617,11 +10687,9 @@ function propositionsPourToi(limite = POURTOI_MAX){
 /* La date d'un événement, écrite par le moteur temporel — le même texte que
    partout ailleurs dans Autour. Sans date exploitable, la ligne disparaît. */
 function dateProposition(l){
-  if(!l.debutLe) return "";
-  const jour = new Date(l.debutLe).toLocaleDateString("fr-FR",
-    {day:"numeric", month:"long", year:"numeric"});
-  const heure = heureLocale(l.debutLe, l);
-  return heure ? jour+" · "+heure : jour;
+  const T = window.AutourTemps;
+  const libelle = T && T.libelleDate ? T.libelleDate(l, Date.now()) : "";
+  return libelle && libelle !== "Date à vérifier" ? libelle : "";
 }
 
 function fallbackVisuelEvenement(l, c, classe){
