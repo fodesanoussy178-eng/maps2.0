@@ -134,6 +134,15 @@ test("le suivi GPS ne recharge pas le bassin physique pendant une destination", 
   assert.match(appliquer, /chargerDonneesTemporaires\(c\[0\], c\[1\]\)/);
 });
 
+test("les réponses différées de l'ancien bassin ne peuvent plus polluer la destination", () => {
+  const demarrage = extraireFonction("chargerLeDemarrage");
+  assert.match(demarrage, /porteeValide\(generation\.portee\)/);
+  assert.match(demarrage, /!destinationActive\(\)/);
+  const fusion = extraireFonction("fusionner");
+  assert.match(fusion, /\.filter\(l=>dansZoneActive\(l\)\)/);
+  assert.match(app, /chargerDonneesTemporaires\(lat,lng,\{sansPublications:true\}\)/);
+});
+
 test("un changement de destination vide les mémoires de la ville quittée", () => {
   const vider = extraireFonction("viderDonneesContexte");
   for (const ligne of [
