@@ -245,7 +245,7 @@ function faitsAide(l){
 }
 
 function ouvrirDetail(id){
-  const l = lieux.find(x=>x.id===id); if(!l) return;
+  const l = lieuParId(id); if(!l) return;
   const c = categorieAffichee(l);
   const mien = estPublicationAMoi(l);
   const ficheAide = estFicheAide(l);

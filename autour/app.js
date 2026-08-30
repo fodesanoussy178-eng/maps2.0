@@ -157,7 +157,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=81334446"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=3e5927cf"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -10494,6 +10494,26 @@ function bassinPourToi(){
   if(!evenementsMetropole.length) return locaux;
   const vus = new Set(locaux.map((l)=> l && l.id));
   return locaux.concat(evenementsMetropole.filter((l)=> l && !vus.has(l.id) && estCanonique(l)));
+}
+
+function lieuParId(id){
+  /* OUVRIR CE QU'ON PROPOSE.
+
+     « Pour toi » puise dans `bassinPourToi()`, donc aussi dans ce que le
+     bassin métropolitain a ramené. Ces événements-là ne sont dans `lieux` que
+     s'ils tombaient déjà dans le rayon local ; les autres n'existent que dans
+     `evenementsMetropole`. `ouvrirDetail` ne cherchait que dans `lieux` : la
+     carte se comportait comme un bouton, le gestionnaire partait, et
+     l'ouverture sortait en silence sur son `if(!l) return`. Rien ne se
+     passait, sans la moindre erreur pour le dire.
+
+     La résolution suit désormais le même ordre que `bassinPourToi` : `lieux`
+     d'abord, qui porte l'état le plus frais, la métropole ensuite. */
+  if(id == null) return null;
+  const cle = String(id);
+  return lieux.find((x)=> x && String(x.id) === cle)
+      || evenementsMetropole.find((x)=> x && String(x.id) === cle)
+      || null;
 }
 
 function pourquoiAnnonce(x){
