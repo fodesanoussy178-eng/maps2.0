@@ -102,6 +102,67 @@ test("une ligne RPC taguée rap ressort pour une surveillance Rap", () => {
   assert.ok(classes[0].score > 0);
 });
 
+test("la copie locale sans tags est fusionnée avec la copie MEL enrichie", () => {
+  const {local, enrichie} = lignesDoublons();
+  const fusion = bassinPourToiAvec([local], [enrichie]);
+  assert.equal(fusion.length, 1);
+  assert.deepEqual(fusion[0].announcement_tags, ["rap", "concert", "exposition"]);
+  assert.deepEqual(fusion[0].eventCanonical.announcement_tags, ["rap", "concert", "exposition"]);
+  assert.deepEqual(fusion[0].eventCanonical.artist_names, ["Ninho"]);
+  assert.equal(fusion[0].eventCanonical.image_source, "openagenda");
+  assert.match(fusion[0].eventCanonical.image_url, /affiche-rap\.jpg$/);
+  assert.equal(fusion[0].eventCanonical.reservation_required, false);
+});
+
+test("la fusion reste identique quand la version MEL arrive avant la locale", () => {
+  const {local, enrichie} = lignesDoublons();
+  const fusion = bassinPourToiAvec([enrichie], [local]);
+  assert.equal(fusion.length, 1);
+  assert.deepEqual(fusion[0].eventCanonical.announcement_tags, ["rap", "concert", "exposition"]);
+  assert.deepEqual(fusion[0].eventCanonical.artist_names, ["Ninho"]);
+  assert.match(fusion[0].eventCanonical.image_url, /affiche-rap\.jpg$/);
+});
+
+test("deux sources apportent chacune des faits sans s'effacer", () => {
+  const {local, enrichie} = lignesDoublons();
+  local.eventCanonical.price_text = "4 € par enfant";
+  local.price_text = "4 € par enfant";
+  local.eventCanonical.audience = "Enfants et familles";
+  local.audience = "Enfants et familles";
+  const fusion = bassinPourToiAvec([local], [enrichie]);
+  const event = fusion[0].eventCanonical;
+  assert.equal(event.price_text, "4 € par enfant");
+  assert.equal(event.audience, "Enfants et familles");
+  assert.equal(event.reservation_required, false);
+  assert.ok(event.description.includes("artiste invité"));
+  assert.equal(event.event_source, "openagenda");
+  assert.equal(event.image_source, "openagenda");
+});
+
+test("après un rechargement propre, le même événement MEL est recommandable", () => {
+  const {local, enrichie} = lignesDoublons();
+  const reponseFraiche = bassinPourToiAvec([local], [enrichie]);
+  const classes = ANNONCES.classerPourToi(reponseFraiche, optionsClassement(["rap"]));
+  assert.equal(classes.length, 1);
+  assert.ok(classes[0].matched_interests.includes("rap"));
+  assert.ok(TAXONOMIE.tagsDe(classes[0].event).includes("exposition"));
+});
+
+test("Rap, Artistes & concerts et Expositions matchent séparément et ensemble", () => {
+  const {local, enrichie} = lignesDoublons();
+  const event = bassinPourToiAvec([local], [enrichie])[0];
+  for (const interest of ["rap", "Artistes & concerts", "Expositions"]) {
+    const classes = ANNONCES.classerPourToi([event], optionsClassement([interest]));
+    assert.equal(classes.length, 1, interest);
+  }
+  const ensemble = ANNONCES.classerPourToi([event], optionsClassement([
+    "rap", "Artistes & concerts", "Expositions",
+  ]));
+  assert.equal(ensemble.length, 1);
+  assert.deepEqual(new Set(ensemble[0].matched_interests),
+    new Set(["rap", "Artistes & concerts", "Expositions"]));
+});
+
 test("sans les tags, le classement ne peut rien proposer — la régression d'origine", () => {
   const nu = versEvenementCanonique(Object.assign({}, ligneRpc, { announcement_tags: null }));
   const classes = ANNONCES.classerPourToi([nu], {
@@ -138,6 +199,61 @@ function extraireFonction(source, nom) {
     else if (source[n] === "}") { prof -= 1; if (prof === 0) { fin = n + 1; break; } }
   }
   return source.slice(i, fin);
+}
+
+function bassinPourToiAvec(lieux, evenementsMetropole) {
+  const bassin = extraireFonction(app, "bassinPourToi");
+  return new Function(
+    "lieux", "evenementsMetropole", "elementsDuContexte", "estCanonique", "dedupeItems", "distanceM",
+    bassin + "; return bassinPourToi;")(
+    lieux, evenementsMetropole, (items) => items || [], () => true,
+    globalThis.AutourCore.dedupeItems,
+    (lat1, lng1, lat2, lng2) => Math.hypot((Number(lat1) - Number(lat2)) * 111000,
+      (Number(lng1) - Number(lng2)) * 70000)
+  )();
+}
+
+function lignesDoublons() {
+  const local = Object.assign({}, ligneRpc, {
+    description: "",
+    announcement_tags: null,
+    image_url: null,
+    image_source: null,
+    artist_names: null,
+    music_genres: null,
+  });
+  const enrichie = Object.assign({}, ligneRpc, {
+    description: "Concert rap et exposition avec artiste invité.",
+    announcement_tags: ["rap", "concert", "exposition"],
+    artist_names: ["Ninho"],
+    music_genres: ["rap"],
+    image_url: "https://img.openagenda.com/main/affiche-rap.jpg",
+    image_source: "openagenda",
+    image_source_url: "https://openagenda.com/events/rap",
+    reservation_required: false,
+    reservation_text: "Sans réservation.",
+  });
+  const localCanonique = versEvenementCanonique(local);
+  const enrichieCanonique = versEvenementCanonique(enrichie);
+  /* Le stub de visuelEvenement du test n'a pas besoin de couvrir le renderer;
+     on conserve toutefois ici le contrat RPC complet pour exercer la fusion
+     des médias et de leur provenance, comme le fait l'application réelle. */
+  Object.assign(enrichieCanonique, {
+    image: enrichie.image_url,
+    imageSource: enrichie.image_source,
+    image_url: enrichie.image_url,
+    image_source: enrichie.image_source,
+    image_source_url: enrichie.image_source_url,
+  });
+  enrichieCanonique.eventCanonical = globalThis.AutourEntites.CanonicalEvent(enrichieCanonique);
+  return {local: localCanonique, enrichie: enrichieCanonique};
+}
+
+function optionsClassement(interests) {
+  return {
+    now: Date.now(), interests, seenIds: [], hiddenIds: [], limit: 6,
+    distanceFor: () => 2000, metroArea: "mel", territorySlug: "tourcoing",
+  };
 }
 
 function resolveurAvec(lieux, evenementsMetropole) {
