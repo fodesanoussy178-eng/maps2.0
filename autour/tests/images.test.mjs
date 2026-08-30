@@ -561,11 +561,11 @@ test("le résolveur borne ce qu'il demande", () => {
 
 test("les emplacements, le repli teinté et le crédit sont exactement ceux d'avant", () => {
   // la carte de recommandation : figure teintée, image en surimpression, crédit
-  assert.match(html, /class="rc-photo rc-photo-vide" style="--teinte:/);
+  assert.match(html, /class="rc-photo rc-photo-vide"[^>]*style="--teinte:/);
   assert.match(html, /onload="this\.classList\.add\(\\'vue\\'\);window\.AutourPerf/);
   assert.match(html, /<figcaption>Photo : '\+attributionPhoto\(l\)/);
   // la ligne de résultat : même tuile, même émoji de repli
-  assert.match(html, /<span class="ac-photo" style="--teinte:/);
+  assert.match(html, /<span class="ac-photo"[^>]*style="--teinte:/);
   // et rien n'est attendu : lazy + async, comme avant
   assert.match(html, /loading="lazy" decoding="async"/);
 });
@@ -613,7 +613,7 @@ test("l'affiche est rendue entière, sans toucher aux dimensions du cadre", () =
 
   const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /data-image-type="/, "le type doit être posé sur la figure");
-  assert.match(app, /figure\.dataset \? figure\.dataset\.imageType : ""/,
+  assert.match(app, /cadre && cadre\.dataset \? cadre\.dataset\.imageType : ""/,
     "et relu au chargement de l'image");
   assert.match(app, /"event-couverture-affiche"\)/,
     "la classe doit être retirée avant d'être reposée");

@@ -1,0 +1,57 @@
+/* Fixtures de validation. Le code de production ne connaît aucun de ces noms :
+   ils représentent seulement un événement officiel et un lieu permanent
+   documenté par OpenStreetMap. */
+
+export const AERONEF_ARRESTED_DEVELOPMENT = Object.freeze({
+  id: "aeronef-arrested-development-2026-09-14",
+  title: "Arrested Development + Eesah Yasuke & Awir Leon",
+  event_kind: "concert",
+  start_at: "2026-09-14T18:00:00.000Z",
+  end_at: "2026-09-14T20:30:00.000Z",
+  timezone: "Europe/Paris",
+  event_source: "venue_official",
+  event_source_url: "https://www.aeronef.fr/agenda/arrested-development",
+  place_source: "openstreetmap",
+  venue_name: "L’Aéronef",
+  organizer_name: "L’Aéronef",
+  description: "Concert officiel.",
+  image_url: "https://www.aeronef.fr/sites/default/files/arrested-development.jpg",
+  image_type: "event_poster",
+  image_source: "venue_official",
+  image_source_url: "https://www.aeronef.fr/agenda/arrested-development",
+  image_author: "L’Aéronef",
+  image_license: "média fourni par le site officiel",
+  image_confidence: "high",
+  image_width: 1600,
+  image_height: 900,
+  isTemporary: true,
+});
+
+export const INSTITUT_MONDE_ARABE_TOURCOING = Object.freeze({
+  id: "osmway-institut-monde-arabe-tourcoing",
+  title: "Institut du Monde Arabe - Tourcoing",
+  cat: "museum",
+  isTemporary: false,
+  source: "openstreetmap",
+  place_source: "openstreetmap",
+  place_source_url: "https://www.openstreetmap.org/way/123456",
+  website: "https://www.imarabe.org/",
+  tags: {
+    name: "Institut du Monde Arabe - Tourcoing",
+    tourism: "museum",
+    website: "https://www.imarabe.org/",
+    image: "https://www.imarabe.org/sites/default/files/ima-tourcoing.jpg",
+  },
+  address: "9 rue Gabriel Péri",
+  city: "Tourcoing",
+  lat: 50.7237,
+  lng: 3.1612,
+  description: "Musée et lieu culturel.",
+  openingHours: null,
+  price_amount: null,
+  price_text: null,
+  is_free: null,
+  organizer_name: null,
+  image_url: null,
+  image_source: null,
+});

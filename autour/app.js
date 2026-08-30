@@ -37,6 +37,7 @@ const SIGNAUX = window.AutourSignaux;
 const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
 const EVENEMENTS = window.AutourEvenements;
+const ENTITES = window.AutourEntites;
 /* LE RÉSOLVEUR D'IMAGE. IL N'Y EN A QU'UN.
 
    Toute question « quelle photo pour ce lieu, et de quel droit ? » passe par
@@ -158,7 +159,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=8b6d88d7"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c1ddb950"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -695,8 +696,9 @@ function badgeDispo(l){
   }
   const d = dispoDe(l);
   if(!d) return "";
+  if(d.status === "unknown") return '<span class="inconnu">'+esc(libelleHoraires(l))+'</span>';
   const classe = d.status === "open" || d.status === "closing_soon" ? "ouvert"
-    : d.status === "unknown" ? "inconnu" : "ferme";
+    : "ferme";
   return '<span class="'+classe+'">'+esc(d.label)+'</span>';
 }
 
@@ -1088,8 +1090,9 @@ if(window.ResizeObserver){
 
 function normaliserItem(item, source){
   const normalise = toCommonItem(item, {source});
-  if(normalise.isTemporary && EVENEMENTS && EVENEMENTS.normaliserEvenement){
-    normalise.eventCanonical = normalise.eventCanonical || EVENEMENTS.normaliserEvenement(Object.assign({}, normalise, {
+  if(normalise.isTemporary && ENTITES && ENTITES.normaliserEvenement){
+    normalise.entity_type = "event";
+    normalise.eventCanonical = normalise.eventCanonical || ENTITES.normaliserEvenement(Object.assign({}, normalise, {
       title:normalise.title || normalise.titre,
       event_source:normalise.event_source || normalise.primary_source || source,
       event_source_url:normalise.event_source_url || normalise.source_url || null,
@@ -1100,6 +1103,9 @@ function normaliserItem(item, source){
     if(normalise.eventCanonical.description){
       normalise.description = normalise.eventCanonical.description;
     }
+  }else if(ENTITES && ENTITES.normaliserLieu){
+    normalise.entity_type = "place";
+    normalise.placeCanonical = normalise.placeCanonical || ENTITES.normaliserLieu(normalise);
   }
   return normalise;
 }
@@ -1107,10 +1113,11 @@ function normaliserItem(item, source){
 /* Toutes les vues passent par ce pointeur. Le repli ne sert qu'aux
    publications anciennes ou aux tests chargés sans le module événementiel. */
 function donneesEvenement(l){
-  if(!l || !l.isTemporary) return null;
+  if(!l || !estTemporaire(l)) return null;
   if(l.eventCanonical) return l.eventCanonical;
-  if(EVENEMENTS && EVENEMENTS.normaliserEvenement){
-    l.eventCanonical = EVENEMENTS.normaliserEvenement(Object.assign({}, l, {
+  if(ENTITES && ENTITES.normaliserEvenement){
+    l.entity_type = "event";
+    l.eventCanonical = ENTITES.normaliserEvenement(Object.assign({}, l, {
       title:l.title || l.titre,
       event_source:l.event_source || l.primary_source || null,
       event_source_url:l.event_source_url || l.source_url || null,
@@ -1118,6 +1125,50 @@ function donneesEvenement(l){
     return l.eventCanonical;
   }
   return l;
+}
+
+/* Même règle pour les lieux permanents : le renderer ne relit pas les champs
+   historiques quand une fiche a été normalisée. La séparation est
+   intentionnelle : un lieu peut avoir une photo et des horaires, mais jamais
+   les dates, le tarif ou la provenance d'un événement voisin. */
+function donneesLieu(l){
+  if(!l || estTemporaire(l)) return null;
+  if(l.placeCanonical) return l.placeCanonical;
+  if(ENTITES && ENTITES.normaliserLieu){
+    l.entity_type = "place";
+    l.placeCanonical = ENTITES.normaliserLieu(l);
+    return l.placeCanonical;
+  }
+  return l;
+}
+
+/* Le renderer ne choisit plus entre `image`, `image_url` et une image du
+   fournisseur. Il reçoit le média du même objet canonique que le reste de la
+   fiche, avec sa portée et sa provenance intactes. */
+function mediaDe(l){
+  if(!l) return {image_url:null,image_source:null,image_scope:"place",image_type:null};
+  const canonique = estTemporaire(l) ? donneesEvenement(l) : donneesLieu(l);
+  if(ENTITES && ENTITES.mediaCanonique && canonique) return ENTITES.mediaCanonique(canonique);
+  return {
+    image_url:l.image || l.image_url || null,
+    image_source:l.imageSource || l.image_source || null,
+    image_source_url:l.image_source_url || "",
+    image_author:l.image_author || "",
+    image_license:l.image_license || "",
+    image_type:l.image_type || null,
+    image_scope:estTemporaire(l) ? "event" : "place",
+  };
+}
+
+function imageDe(l){
+      const media = mediaDe(l);
+  return media && media.image_url ? media.image_url : "";
+}
+
+function gratuitDe(l){
+  if(!l) return false;
+  const canonique = estTemporaire(l) ? donneesEvenement(l) : donneesLieu(l);
+  return !!(canonique && canonique.is_free === true);
 }
 
 function correspondCategorie(item, categorie){
@@ -1129,7 +1180,7 @@ function correspondUneCategorie(item, categories){
 }
 
 function estTemporaire(item){
-  return !!(item && item.isTemporary);
+  return !!(item && (item.entity_type === "event" || item.isTemporary === true));
 }
 
 /* ================================================================== */
@@ -2188,6 +2239,8 @@ function visuelPublication(p){
     image_url:v.image_url, image_source:v.image_source,
     image_source_url:v.image_source_url, image_author:v.image_author,
     image_license:v.image_license, image_updated_at:v.image_updated_at,
+    image_type:v.image_type, image_confidence:v.image_confidence,
+    image_width:v.image_width, image_height:v.image_height,
     image_scope:"evenement",
   };
 }
@@ -2421,6 +2474,10 @@ function visuelEvenement(e){
     image_author:e.image_author || "",
     image_license:e.image_license || "",
     image_updated_at:e.image_updated_at || e.last_synced_at || null,
+    image_type:e.image_type || e.imageType || "",
+    image_confidence:e.image_confidence || e.imageConfidence || "",
+    image_width:e.image_width || e.imageWidth || null,
+    image_height:e.image_height || e.imageHeight || null,
     image_scope:"evenement",
   });
   if(!v) return {image:"", imageSource:"", image_scope:"evenement"};
@@ -2432,6 +2489,7 @@ function visuelEvenement(e){
     image_source_url:v.image_source_url, image_author:v.image_author,
     image_license:v.image_license, image_updated_at:v.image_updated_at,
     image_type:v.image_type, image_confidence:v.image_confidence,
+    image_width:v.image_width, image_height:v.image_height,
     image_scope:"evenement",
   };
 }
@@ -2860,7 +2918,7 @@ const $=(s)=>document.querySelector(s);
 const NAV_FLOTTANTE = matchMedia("(min-width:1100px)");
 const hash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=(h<<5)-h+s.charCodeAt(i);return Math.abs(h)};
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc=(s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function alea(seed){let h=hash(String(seed))||1;return()=>{h=(h*1103515245+12345)&0x7fffffff;return (h>>8)%10000/10000;}}
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(el._t);el._t=setTimeout(()=>el.hidden=true,2400)}
 /* Les messages d'état s'écrivaient dans l'écran d'accueil, qui ne s'affiche
@@ -3870,7 +3928,8 @@ function fusionnerFichesFournisseurs(candidats){
    l'auteur et la licence. */
 function visuelPrefere(a, b){
   const champs = ["image","imageSource","imageAttribution","image_url","image_source",
-    "image_source_url","image_author","image_license","image_updated_at","image_scope"];
+    "image_source_url","image_author","image_license","image_updated_at","image_scope",
+    "image_type","image_confidence","image_width","image_height","image_fallback_reason"];
   const sources = IMAGES ? IMAGES.SOURCES : [];
   /* Plus le rang est bas, mieux c'est. Pas d'image du tout : hors concours.
      Une provenance qu'on ne reconnaît pas passe derrière toutes celles qu'on
@@ -4108,13 +4167,18 @@ const RAPIDE_RAYON_M = 2000;
 /* Les champs qui servent à dessiner une carte et à la reclasser. Le reste
    (description, mots-clés, géométrie) pèse sans rien apporter au premier
    affichage : on ne l'écrit pas. */
-const CHAMPS_RAPIDE = ["id","autourId","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
+const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
   /* La provenance suit la photo jusque dans le cache. Une image sans son
      origine ne peut plus dire de quel droit on l'affiche à la réouverture :
      elle serait alors une image de source inconnue, donc à ne pas montrer. */
   "image_url","image_source","image_source_url","image_author","image_license","image_updated_at","image_scope",
+  "image_type","image_confidence","image_width","image_height","image_fallback_reason",
   "note","avis","prix","gratuit","quand","cuisine","tags","pmr","source","sourceRefs",
-  "par","isTemporary","debutLe","finLe","service","solidaire","sansNom"];
+  "par","isTemporary","debutLe","finLe","service","solidaire","sansNom","description",
+  "event_kind","eventKind","start_at","end_at","timezone","temporal_status","temporalStatus",
+  "date_confidence","dateConfidence","price_amount","price_text","is_free","price_confidence",
+  "audience","min_age","reservation_required","reservation_text","venue_name","organizer_name",
+  "event_source","event_source_url","place_source","place_source_url","entity_type"];
 
 function estContenuGoogle(l){
   return !!(l && (l.source === "google_places" || (l.sourceRefs && l.sourceRefs.googlePlaceId)));
@@ -4137,7 +4201,8 @@ function alleger(l){
 function sansPhotoGoogle(l){
   if(!l || l.imageSource !== "google_places") return l;
   ["image","imageSource","imageAttribution","image_url","image_source",
-   "image_source_url","image_author","image_license","image_updated_at"].forEach(k=>{ delete l[k]; });
+   "image_source_url","image_author","image_license","image_updated_at","image_type",
+   "image_confidence","image_width","image_height","image_fallback_reason"].forEach(k=>{ delete l[k]; });
   return l;
 }
 
@@ -5430,7 +5495,7 @@ const FILTRES_HUMAINS = [
       return d ? d.isOpenNow : l.ouvert === true;
     } },
   { id:"proche",  label:"< 15 min à pied", test:(l,d)=>d < 1200 },
-  { id:"gratuit", label:"Gratuit",         test:l=>l.gratuit !== false && (l.prixN==null || l.prixN<=1) },
+  { id:"gratuit", label:"Gratuit",         test:l=>gratuitDe(l) },
   { id:"budget",  label:"Petit budget",    test:l=>l.prixN != null && l.prixN <= 1 },
   { id:"famille", label:"En famille",      test:l=>
       correspondCategorie(l,"family") || FAMILY_CATEGORIES.some(c=>correspondCategorie(l,c)) },
@@ -5752,15 +5817,16 @@ function htmlMarqueur(l){
      Le statut vient du moteur temporel, donc de Postgres pour les événements
      canoniques : un événement de demain ne peut pas prendre cette carte. */
   if(estTemporaire(l) && !l.annule && TEMPS.estMaintenant(statutTemps(l).statut)){
+    const evenement = donneesEvenement(l);
     const dist = positionPrecise()
       ? formatDist(distanceDepuisZone(l)) : "";
-    const fin = l.finLe ? heureLocale(l.finLe, l) : "";
+    const fin = evenement && evenement.end_at ? heureLocale(evenement.end_at, l) : "";
     const bas = [dist, fin ? "jusqu’à "+fin : ""].filter(Boolean).join(" · ");
     const lieu = l.adresse || l.cp || "";
     return '<span class="mk-in"><div class="evc">'+
       '<span class="evc-rond" style="background:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
         c.emoji+'</span>'+
-      '<span class="evc-txt"><b>'+esc(l.titre)+'</b>'+
+      '<span class="evc-txt"><b>'+esc((evenement && evenement.title) || l.titre)+'</b>'+
         (lieu ? '<i>'+esc(lieu)+'</i>' : '')+
         (bas ? '<u>'+esc(bas)+'</u>' : '')+
       '</span></div></span>';
@@ -6449,7 +6515,8 @@ function horaireDuJour(l){
    Quand la source ne donne que le jour, on écrit le jour et on s'arrête :
    inventer une heure serait pire que de n'en donner aucune. */
 function horairesEvenement(l){
-  if(!l || !l.isTemporary) return "";
+  const estUnEvenement = l && (l.isTemporary === true || l.entity_type === "event" || l.eventCanonical);
+  if(!estUnEvenement) return "";
   const T = (typeof window !== "undefined" && window.AutourTemps) ||
     (typeof globalThis !== "undefined" && globalThis.AutourTemps);
   const evenement = (typeof donneesEvenement === "function" ? donneesEvenement(l) : null) || l;
@@ -6464,7 +6531,7 @@ function libelleHoraires(l){
   const evenement = horairesEvenement(l);
   if(evenement && evenement !== "Horaires à vérifier") return evenement;
   if(!l) return "Horaires inconnus";
-  if(l.isTemporary) return "Horaires à vérifier";
+  if(estTemporaire(l)) return "Horaires à vérifier";
   /* Pour un lieu permanent, le badge et le détail doivent parler au même
      résolveur. Cela empêche un `24/7` OSM suspect de réapparaître comme une
      ouverture certaine dans la fiche. */
@@ -6474,14 +6541,16 @@ function libelleHoraires(l){
   const horaire = horaireDuJour(l);
   if(horaire) return horaire;
   if(l.quand && !/^(Voir sur place|Horaires indicatifs)$/i.test(l.quand)) return l.quand;
-  return "Horaires inconnus";
+  const lieu = donneesLieu(l);
+  return ENTITES && ENTITES.horaireLieu && lieu
+    ? ENTITES.horaireLieu(lieu) : "Horaires inconnus";
 }
 
 function horairesSemaine(l){
   if(!l.horaires || !l.horaires.length) return "";
   const dispo = dispoDe(l);
-  if(dispo && (dispo.conflict || dispo.suspect24h7))
-    return '<p class="horaires-verif">'+esc(dispo.label)+'</p>';
+  if(dispo && (dispo.conflict || dispo.suspect24h7 || dispo.status === "unknown"))
+    return '<p class="horaires-verif">'+esc(libelleHoraires(l))+'</p>';
   const aujourdhui = (new Date().getDay() + 6) % 7;
   return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
     l.horaires.map((h,i)=>
@@ -6564,16 +6633,17 @@ function attributionPhoto(l){
 
 function provenanceImage(l){
   if(!l) return "";
+  const media = mediaDe(l);
   const photo = l.imageAttribution ? attributionPhoto(l) : "";
   if(photo) return "Photo : "+photo;
-  const url = urlSiteSure(l.image_source_url || l.imageSourceUrl);
+  const url = urlSiteSure(media.image_source_url || l.imageSourceUrl);
   if(!url) return "";
   const noms = {
     openagenda:"Agenda officiel", datatourisme:"DATAtourisme",
     structure:"Organisateur", site_officiel:"Lieu officiel",
     autour:"Autour", wikimedia_commons:"Wikimedia Commons",
   };
-  const nom = noms[l.image_source || l.imageSource] || "Source déclarée";
+  const nom = noms[media.image_source || l.imageSource] || "Source déclarée";
   return '<a href="'+esc(url)+'" target="_blank" rel="noopener">Source : '+esc(nom)+'</a>';
 }
 
@@ -6608,11 +6678,13 @@ function couvertureAide(l, c){
 }
 
 function couvertureEvenement(l, c){
-  const photo = l && l.image ? l.image : "";
+  const media = mediaDe(l);
+  const photo = media && media.image_url ? media.image_url : "";
   const teinte = COULEURS_CAT[l && l.cat] || "#E23A8C";
-  const typeImage = l && (l.image_type || l.imageType) || "";
+  const typeImage = media && media.image_type || "";
   return '<figure class="event-couverture'+(photo?'':' image-absente')+'"'+
     (typeImage ? ' data-image-type="'+esc(typeImage)+'"' : '')+
+    ' data-image-scope="evenement"'+
     ' style="--teinte:'+teinte+'">'+
     fallbackVisuelEvenement(l, c, "event-fallback-detail")+
     (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
@@ -6623,11 +6695,16 @@ function couvertureEvenement(l, c){
 
 function couvertureLieu(l, c){
   if(!l) return "";
-  return '<figure class="aide-couverture'+(l.image?'':' sans-photo')+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+  const media = mediaDe(l);
+  const photo = media && media.image_url ? media.image_url : "";
+  return '<figure class="aide-couverture'+(photo?'':' sans-photo')+'"'+
+    (media.image_type ? ' data-image-type="'+esc(media.image_type)+'"' : '')+
+    ' data-image-scope="lieu"'+
+    ' style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
     '<span aria-hidden="true">'+c.emoji+'</span>'+
-    (l.image ? '<img src="'+esc(l.image)+'" loading="lazy" decoding="async" alt=""'+
+    (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt=""'+
       ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
-    (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
+    (photo && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+'</figure>';
 }
 
 function sourceAide(l){
@@ -9245,7 +9322,7 @@ function statutRechercheHTML(nombreResultats){
 function selectionResultatsFeuille(classement, limite){
   const items = classement.slice(0, limite);
   if(feuilleNiveau !== "manger" || items.length < limite) return items;
-  const complet = l=>!!(l && l.image && Number.isFinite(Number(l.note)) &&
+  const complet = l=>!!(l && imageDe(l) && Number.isFinite(Number(l.note)) &&
     Number(l.avis) > 0 && Array.isArray(l.horaires) && l.horaires.length);
   const objectif = Math.min(2, classement.filter(complet).length);
   let presents = items.filter(complet).length;
@@ -9295,11 +9372,13 @@ function blocResultats(){
        ne nomme plus Google : elle vaut pour Places comme pour une CC-BY de
        Commons, et laisse passer ce qui n'a rien à créditer — CC0, domaine
        public, photo déposée par la structure elle-même. */
-    const photoVisible = l.image && !(IMAGES && IMAGES.creditObligatoire(l));
+    const media = mediaDe(l);
+    const photoVisible = media.image_url && !(IMAGES && IMAGES.creditObligatoire(media));
     const photo = photoVisible
-      ? '<span class="ac-photo" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+      ? '<span class="ac-photo" data-image-type="'+esc(media.image_type||"")+'" data-image-scope="'+
+          esc(media.image_scope||"")+'" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
           '<i>'+c.emoji+'</i><img loading="lazy" decoding="async" fetchpriority="low" alt="" '+
-          'src="'+esc(l.image)+'" onload="this.classList.add(\'vue\')" onerror="this.remove()"></span>'
+          'src="'+esc(media.image_url)+'" onload="this.classList.add(\'vue\');imageEvenementChargee(this)" onerror="this.remove()"></span>'
       : '';
     return '<button class="ac-item" data-ac="'+esc(l.id)+'">'+
       '<span class="ac-emoji">'+(index+1)+'</span>'+
@@ -10896,11 +10975,28 @@ function imageEvenementChargee(img){
   const parent = img.parentElement;
   if(parent) parent.classList.add("image-ready");
   img.classList.add("image-ready");
-  const figure = img.closest ? img.closest(".event-couverture") : null;
+  const figure = img.closest ? img.closest("figure") : null;
+  const cadre = img.closest ? img.closest("[data-image-type],[data-image-scope]") : parent;
+  const type = cadre && cadre.dataset ? cadre.dataset.imageType : "";
+  const scope = cadre && cadre.dataset && cadre.dataset.imageScope ||
+    (figure && figure.classList.contains("event-couverture") ? "evenement" : "lieu");
+  const presentation = IMAGES && IMAGES.modeImage
+    ? IMAGES.modeImage({image_type:type, image_scope:scope,
+        image_width:img.naturalWidth, image_height:img.naturalHeight}) : null;
+  if(presentation){
+    img.style.objectFit = presentation.object_fit;
+    if(!presentation.can_upscale){
+      img.style.width = "auto";
+      img.style.height = "auto";
+      img.style.maxWidth = "100%";
+      img.style.maxHeight = "100%";
+      img.style.margin = "auto";
+    }
+  }
   if(!figure) return;
-  const classes = IMAGES && IMAGES.ratioImage
+  const classes = figure.classList.contains("event-couverture") && IMAGES && IMAGES.ratioImage
     ? IMAGES.ratioImage(img.naturalWidth, img.naturalHeight,
-        figure.dataset ? figure.dataset.imageType : "").split(/\s+/).filter(Boolean)
+        type).split(/\s+/).filter(Boolean)
     : [];
   figure.classList.remove("event-couverture-paysage", "event-couverture-portrait",
     "event-couverture-carre", "event-couverture-inconnue", "event-couverture-basse",
@@ -10911,9 +11007,11 @@ function imageEvenementChargee(img){
 function visuelCarteEvenement(l, c, taille){
   const classeImage = taille === "npt" ? "npt-img" : "pt-img";
   const classeConteneur = taille === "npt" ? "npt-image-shell" : "pt-image-shell";
-  return '<span class="'+classeConteneur+'" aria-hidden="true">'+
+  const media = mediaDe(l);
+  return '<span class="'+classeConteneur+'" data-image-type="'+esc(media.image_type||"")+
+    '" data-image-scope="'+esc(media.image_scope||"")+'" aria-hidden="true">'+
     fallbackVisuelEvenement(l, c, "event-fallback-carte")+
-    '<img class="'+classeImage+'" src="'+esc(l.image)+'" alt="" loading="lazy" decoding="async"'+
+    '<img class="'+classeImage+'" src="'+esc(media.image_url)+'" alt="" loading="lazy" decoding="async"'+
       ' onload="imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">'+
     '</span>';
 }
@@ -10927,7 +11025,7 @@ function carteProposition(x){
   const c = categorieAffichee(l);
   /* L'image est celle de la source, sous licence. Sans image, un pictogramme
      de catégorie — jamais une photo d'illustration prise ailleurs. */
-  const visuel = l.image
+  const visuel = imageDe(l)
     ? visuelCarteEvenement(l, c, "pt")
     : '<span class="pt-img pt-img-vide pt-image-shell event-fallback-carte" aria-hidden="true">'+
       fallbackVisuelEvenement(l, c, "")+'</span>';
@@ -11743,7 +11841,7 @@ function blocNouveauPourToi(){
   if(!x) return "";
   const l = x.l;
   const c = categorieAffichee(l);
-  const visuel = l.image
+  const visuel = imageDe(l)
     ? visuelCarteEvenement(l, c, "npt")
     : '<span class="npt-img npt-img-vide npt-image-shell event-fallback-carte" aria-hidden="true">'+
       fallbackVisuelEvenement(l, c, "")+'</span>';
@@ -11985,6 +12083,7 @@ function carteRecommandation(l){
   const dispo = l.rankAvailability;
   const cats = etiquettesLisibles(l).join(" • ")
     || (CATS[l.cat] ? CATS[l.cat].nom || l.cat : l.cat);
+  const media = mediaDe(l);
 
   // Une vraie photo si on en a une ; sinon une tuile teintée par la catégorie.
   // Jamais un gros emoji en guise d'image : ça se lit comme une image manquante.
@@ -11992,14 +12091,15 @@ function carteRecommandation(l){
   // <img loading="lazy"> plutôt qu'un background : le navigateur ne télécharge
   // que ce qui approche du viewport, et les résultats s'affichent sans
   // attendre la moindre image. La tuile teintée sert de placeholder.
-  const visuel = '<figure class="rc-photo rc-photo-vide" style="--teinte:'+teinte+'">'+
+  const visuel = '<figure class="rc-photo rc-photo-vide" data-image-type="'+esc(media.image_type||"")+
+      '" data-image-scope="'+esc(media.image_scope||"")+'" style="--teinte:'+teinte+'">'+
       '<i>'+c.emoji+'</i>'+
-      (l.image
-        ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image)+'" '+
-          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\')" '+
+      (media.image_url
+        ? '<img loading="lazy" decoding="async" alt="" src="'+esc(media.image_url)+'" '+
+          'onload="this.classList.add(\'vue\');window.AutourPerf&&AutourPerf.jalon(\'images_ready\');imageEvenementChargee(this)" '+
           'onerror="imageEvenementErreur(this)">'
         : '')+
-      (l.image && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
+      (media.image_url && l.imageAttribution ? '<figcaption>Photo : '+attributionPhoto(l)+'</figcaption>' : '')+
     '</figure>';
 
   const minutes = eta && Number.isFinite(eta.minutes) ? eta.minutes+" min" : "";

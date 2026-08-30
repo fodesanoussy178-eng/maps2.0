@@ -290,7 +290,7 @@
     const openingHours = raw.openingHours != null ? raw.openingHours : (raw.horaires || raw.quand || null);
     const isTemporary = raw.isTemporary != null
       ? !!raw.isTemporary
-      : TEMPORARY_CATEGORIES.includes(raw.cat);
+      : raw.entity_type === "event" || TEMPORARY_CATEGORIES.includes(raw.cat);
     const categoryWeights = classifyPlaceWeighted(Object.assign({}, raw, { title, source, isTemporary }));
     const categories = sortByWeight(categoryWeights);
 
@@ -308,6 +308,7 @@
       endsAt,
       openingHours,
       isTemporary,
+      entity_type: isTemporary ? "event" : "place",
       url: raw.url || "",
       image: raw.image || "",
       imageSource: raw.imageSource || "",
@@ -479,6 +480,25 @@
       .forEach((field) => {
         merged[field] = renseigne(cotéTemporel[field]) ? cotéTemporel[field] : autreCoté[field];
       });
+
+    /* Le modèle canonique est la seule source lue par les écrans. La fusion
+       de deux fournisseurs ne doit donc pas remplacer un fait connu par un
+       `null` de la fiche préférée (ni mélanger événement et lieu). */
+    const fusionnerCanonique = (gauche, droite) => {
+      if (!gauche && !droite) return null;
+      const result = Object.assign({}, gauche || {}, droite || {});
+      const keys = new Set([...(gauche ? Object.keys(gauche) : []), ...(droite ? Object.keys(droite) : [])]);
+      keys.forEach((key) => {
+        const value = droite && droite[key];
+        const fallbackValue = gauche && gauche[key];
+        if (!renseigne(value) && renseigne(fallbackValue)) result[key] = fallbackValue;
+      });
+      return result;
+    };
+    if (left.eventCanonical || right.eventCanonical)
+      merged.eventCanonical = fusionnerCanonique(left.eventCanonical, right.eventCanonical);
+    if (left.placeCanonical || right.placeCanonical)
+      merged.placeCanonical = fusionnerCanonique(left.placeCanonical, right.placeCanonical);
     return merged;
   }
 
@@ -702,6 +722,7 @@
 
   function memeEnregistrement(existing, item, distanceBetween) {
     if (!!existing.isTemporary !== !!item.isTemporary) return false;
+    if (existing.entity_type && item.entity_type && existing.entity_type !== item.entity_type) return false;
     /* Un identifiant fournisseur stable est une preuve plus forte qu'une
        catégorie dérivée. Une fiche en cache peut être « event », puis la
        version fraîche « concert » après enrichissement des mots-clés : ce

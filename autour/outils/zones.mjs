@@ -288,7 +288,10 @@ function versLieu(e, b) {
     lat: p.lat, lng: p.lon,
     quand: t.opening_hours || "Voir sur place",
     cuisine: t.cuisine || "",
-    gratuit: t.fee !== "yes", prix: t.fee === "yes" ? 6 : 0,
+    /* L'absence de `fee` est inconnue : seul `fee=no` prouve la gratuité.
+       Un prix de secours n'est jamais fabriqué pour un lieu OSM. */
+    gratuit: t.fee === "no" ? true : (t.fee === "yes" ? false : undefined),
+    prix: t.fee === "no" ? 0 : (t.fee === "yes" ? 6 : null),
     pmr: t.wheelchair === "yes" ? true : undefined,
     par: "OpenStreetMap", tags,
   };
