@@ -17,11 +17,12 @@ export const MODULES = [
   "availability.js", "comprendre.js", "donnees.js", "aide-intentions.js", "intentions.js", "comptes.js",
   "maintenant.js", "ordonnanceur.js", "contexte.js", "territoire.js", "plafonds.js",
   "annonces-taxonomie.js", "annonces-classement.js",
-  "aide-taxonomie.js", "aide-classement.js", "aide-rayon.js", "aide-contexte-ia.js",
+  "aide-taxonomie.js", "aide-classement.js", "aide-structures.js", "aide-rayon.js", "aide-contexte-ia.js",
   "aide.js",
   "signaux.js", "temporel.js", "explications.js", "events.js", "images.js", "core.js",
   "providers/normaliser.js", "providers/googlePlaces.js", "providers/datatourisme.js",
   "providers/osm.js", "providers/decouvertes.js", "providers/aideInstitutionnelle.js",
+  "providers/aideAutour.js", "providers/aideDora.js", "providers/aideFiness.js",
   "mapProviders/googleMaps.js", "app.js",
 ];
 
