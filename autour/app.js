@@ -260,6 +260,15 @@ function definirZoneActive(zone){
   // les cartes d'une ville qu'on vient de quitter serait afficher du faux
   dernierRecoRendu = null;
   selectionAccueil = null;
+  /* Le bassin est une donnée de la zone, pas une préférence globale. Tant que
+     la nouvelle résolution n'a pas répondu, conserver celui de la ville
+     précédente permettait à « Pour toi » d'afficher des événements d'un autre
+     bassin — particulièrement visible lors d'un Paris demandé depuis la MEL.
+     Les réponses en vol sont en plus gardées sous la portée ci-dessous et ne
+     pourront donc pas repeupler ces mémoires périmées. */
+  bassinTerritorialActif = null;
+  evenementsMetropole = [];
+  metropoleEnCours = null;
   return porteeCourante;
 }
 
@@ -2599,9 +2608,10 @@ function versEvenementCanonique(e){
   }, e.primary_source || "datatourisme");
 }
 
-async function chargerEvenementsCanoniques(lat,lng){
+async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
   if(!sbLecture) return null;
   const b = emprisePublications(lat, lng);
+  const porteeEvenements = portee;
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
      de cette requête ; une zone inconnue devient seulement un candidat DB. */
@@ -2609,6 +2619,7 @@ async function chargerEvenementsCanoniques(lat,lng){
   void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
     p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
   })).then(({data, error})=>{
+    if(porteeEvenements !== porteeCourante) return;
     /* La résolution servait uniquement à mutualiser la synchronisation ; on
        retient désormais son résultat, parce que c'est lui qui nomme le bassin
        dans lequel « Pour toi » a le droit de chercher. */
@@ -2628,7 +2639,9 @@ async function chargerEvenementsCanoniques(lat,lng){
        devient connu. `rafraichirMetropole` est idempotente, l'autre appel
        reste sans effet quand il double celui-ci. */
     rafraichirMetropole();
-  }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
+  }).catch(()=>{
+    if(porteeEvenements === porteeCourante) bassinTerritorialActif = null;
+  }).finally(finTerritoire);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2653,7 +2666,7 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       t:0, publications:[], evenements:[], okPublications:false, okEvenements:false,
     };
     const [publications, evenements] = await Promise.all([
-      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng)
+      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng,portee)
     ]);
     const okPublications = Array.isArray(publications);
     const okEvenements = Array.isArray(evenements);
@@ -10832,15 +10845,24 @@ function rafraichirMetropole(){
      le bassin lui-même, et non des coordonnées. */
   const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
   if(!bassin || metropoleEnCours === bassin) return;
+  const porteeMetropole = porteeCourante;
   metropoleEnCours = bassin;
   chargerEvenementsMetropole(bassin).then((liste)=>{
+    /* Un changement de ville peut arriver pendant la lecture du bassin. Une
+       réponse MEL arrivée après une recherche Paris ne doit jamais repeupler
+       « Pour toi » ; la portée et le nom du bassin doivent encore être ceux
+       qui ont lancé cette requête. */
+    const bassinCourant = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+    if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
     /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
        ramené, souvent parce que le réseau a flanché. Garder la clé de cache
        interdirait tout nouvel essai jusqu'au rechargement de la page. */
     if(!liste.length){ metropoleEnCours = null; return; }
     evenementsMetropole = liste;
     majPourToi();
-  }).catch(()=>{ metropoleEnCours = null; });
+  }).catch(()=>{
+    if(porteeMetropole === porteeCourante) metropoleEnCours = null;
+  });
 }
 
 function bassinPourToi(){
