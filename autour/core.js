@@ -495,8 +495,97 @@
       });
       return result;
     };
-    if (left.eventCanonical || right.eventCanonical)
+    if (left.isTemporary && right.isTemporary && root.AutourEntites &&
+        root.AutourEntites.fusionnerEvenementsCanoniques) {
+      /* Les événements ont un contrat de fusion distinct des lieux. Le
+         dédoublonnage a déjà prouvé qu'il s'agit de la même occurrence ; on
+         reconstruit alors UN CanonicalEvent à partir des deux versions, au
+         lieu de conserver le représentant arrivé en premier. */
+      const canonique = root.AutourEntites.fusionnerEvenementsCanoniques([left, right]);
+      if (canonique) {
+        merged.eventCanonical = canonique;
+        const champs = {
+          title: canonique.title,
+          titre: canonique.title,
+          description: canonique.description,
+          category: canonique.category,
+          cat: canonique.cat,
+          categories: canonique.categories,
+          latitude: canonique.latitude,
+          longitude: canonique.longitude,
+          lat: canonique.lat,
+          lng: canonique.lng,
+          startsAt: canonique.startsAt,
+          endsAt: canonique.endsAt,
+          debutLe: canonique.startsAt,
+          finLe: canonique.endsAt,
+          start_at: canonique.start_at,
+          end_at: canonique.end_at,
+          date_confidence: canonique.date_confidence,
+          dateConfidence: canonique.date_confidence,
+          temporal_status: canonique.temporal_status,
+          temporalStatus: canonique.temporal_status,
+          timezone: canonique.timezone,
+          event_kind: canonique.event_kind,
+          eventKind: canonique.eventKind,
+          announcement_tags: canonique.announcement_tags,
+          announcementTags: canonique.announcementTags,
+          tags: canonique.tags,
+          artist_names: canonique.artist_names,
+          artistNames: canonique.artistNames,
+          music_genres: canonique.music_genres,
+          musicGenres: canonique.musicGenres,
+          performers: canonique.performers,
+          metro_area: canonique.metro_area,
+          metroArea: canonique.metroArea,
+          territory_slug: canonique.territory_slug,
+          importance_level: canonique.importance_level,
+          importanceLevel: canonique.importanceLevel,
+          announced_at: canonique.announced_at,
+          announcedAt: canonique.announcedAt,
+          event_source: canonique.event_source,
+          event_source_url: canonique.event_source_url,
+          event_sources: canonique.event_sources,
+          event_source_urls: canonique.event_source_urls,
+          primary_source: canonique.primary_source,
+          primarySource: canonique.primary_source,
+          place_source: canonique.place_source,
+          venue_name: canonique.venue_name,
+          organizer_name: canonique.organizer_name,
+          price_amount: canonique.price_amount,
+          price_text: canonique.price_text,
+          is_free: canonique.is_free,
+          price_confidence: canonique.price_confidence,
+          audience: canonique.audience,
+          min_age: canonique.min_age,
+          reservation_required: canonique.reservation_required,
+          reservation_text: canonique.reservation_text,
+          image: canonique.image_url,
+          imageSource: canonique.image_source,
+          image_url: canonique.image_url,
+          image_source: canonique.image_source,
+          image_source_url: canonique.image_source_url,
+          image_author: canonique.image_author,
+          image_license: canonique.image_license,
+          image_confidence: canonique.image_confidence,
+          image_width: canonique.image_width,
+          image_height: canonique.image_height,
+          image_scope: "evenement",
+          image_sources: canonique.image_sources,
+          imageSources: canonique.imageSources,
+          image_source_urls: canonique.image_source_urls,
+          imageSourceUrls: canonique.imageSourceUrls,
+          entity_type: "event",
+          isTemporary: true,
+        };
+        Object.entries(champs).forEach(([key, value]) => {
+          if (renseigne(value) || ["is_free", "reservation_required", "lat", "lng", "latitude", "longitude"].includes(key))
+            merged[key] = value;
+        });
+      }
+    } else if (left.eventCanonical || right.eventCanonical) {
       merged.eventCanonical = fusionnerCanonique(left.eventCanonical, right.eventCanonical);
+    }
     if (left.placeCanonical || right.placeCanonical)
       merged.placeCanonical = fusionnerCanonique(left.placeCanonical, right.placeCanonical);
     return merged;

@@ -329,6 +329,7 @@
     manga: "manga_anime",
     manga_anime: "manga_anime",
     expos: "exhibitions",
+    expositions: "exhibitions",
     exhibitions: "exhibitions",
     sport: "sport",
     football: "football",

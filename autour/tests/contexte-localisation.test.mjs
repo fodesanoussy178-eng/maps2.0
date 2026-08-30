@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 await import("../contexte.js");
+await import("../core.js");
 const CTX = globalThis.AutourContexte;
 const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
@@ -68,9 +69,12 @@ const tousLesEvenements = [melEvent, parisEvent, lilleEvent, rennesEvent];
 
 function bassinPourToi(lieux, evenementsMetropole, elementsDuContexte, estCanonique) {
   return new Function(
-    "lieux", "evenementsMetropole", "elementsDuContexte", "estCanonique",
+    "lieux", "evenementsMetropole", "elementsDuContexte", "estCanonique", "dedupeItems", "distanceM",
     extraireFonction("bassinPourToi") + "; return bassinPourToi();")(
-      lieux, evenementsMetropole, elementsDuContexte, estCanonique);
+      lieux, evenementsMetropole, elementsDuContexte, estCanonique,
+      globalThis.AutourCore.dedupeItems,
+      (lat1, lng1, lat2, lng2) => Math.hypot((Number(lat1) - Number(lat2)) * 111000,
+        (Number(lng1) - Number(lng2)) * 70000));
 }
 
 function idsDeSurface(context) {
