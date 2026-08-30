@@ -3824,12 +3824,21 @@ function visuelPrefere(a, b){
 }
 
 function reconstruireLieux(){
-  lieux = fusionnerFichesFournisseurs(dedupeItems([
+  const toutes = [
     ...permanentPlaces,
     ...datatourismePlaces,
     ...externalEvents,
     ...userPublications
-  ], distanceM));
+  ];
+  /* Les fiches Aide ont une règle de rapprochement plus stricte que les
+     commerces : SIRET/FINESS/identifiant source d'abord, sinon nom + adresse
+     + coordonnées. Elles ne sont jamais rapprochées par un nom seul. */
+  const aide = toutes.filter(l=>l && l.aideStructure === true);
+  const autres = toutes.filter(l=>!l || l.aideStructure !== true);
+  const aideDedup = window.AutourAideStructures
+    ? AutourAideStructures.dedupe(aide)
+    : aide;
+  lieux = fusionnerFichesFournisseurs(dedupeItems([...autres,...aideDedup], distanceM));
   publies = userPublications;
   indexPerime = true;
   revisionLieux++;
@@ -7719,18 +7728,50 @@ async function chargerAide(lat,lng,options){
    les demande donc EN PREMIER, et OSM complète ensuite les objets non
    référencés — il ne remplace jamais cette source.
 
-   Restreint aux besoins « travail » et « jeunes » : l'annuaire ne couvre pas
-   les autres, et l'interroger pour rien coûterait une requête par recherche. */
+   Chaque besoin est transmis au fournisseur ; la taxonomie décide ensuite ce
+   qui est réellement une solution. Une recherche générale audite les dix. */
+function besoinsPourCollecteAide(contexte){
+  const choisis=contexte && Array.isArray(contexte.besoins) ? contexte.besoins.filter(Boolean) : [];
+  if(choisis.length) return choisis;
+  return AIDE && Array.isArray(AIDE.BESOINS_GRILLE) ? AIDE.BESOINS_GRILLE.map(b=>b.id) :
+    ["manger","logement","travail","papiers","sante","jeunes","parler","famille","securite","autre"];
+}
 async function lieuxAideInstitutionnels(lat, lng, contexte, signal){
   const fournisseur = window.AutourProviders && AutourProviders.aideInstitutionnelle;
-  const besoins = contexte && Array.isArray(contexte.besoins) ? contexte.besoins : [];
-  if(!fournisseur || !besoins.some(id=> id === "travail" || id === "jeunes")) return [];
+  const besoins = besoinsPourCollecteAide(contexte);
+  if(!fournisseur || !besoins.length) return [];
   try{
     const places = await fournisseur.nearby(lat, lng, { needs:besoins, radius:15000, signal });
     return places.map(p=> AutourProviders.versInterne(p)).filter(Boolean);
   }catch(e){
     return [];
   }
+}
+
+/* Les trois inventaires structurés ont le même point d'entrée applicatif,
+   mais restent trois adapters séparés côté fournisseur. La taxonomie est
+   appliquée après leur projection commune, jamais dans cette collecte. */
+async function lieuxAideSource(source, lat, lng, contexte, signal){
+  const fournisseur = window.AutourProviders && AutourProviders[source];
+  if(!fournisseur) return [];
+  try{
+    const places = await fournisseur.nearby(lat, lng, {
+      needs:besoinsPourCollecteAide(contexte), radius:15000, signal,
+      records:source === "aideAutour" ? permanentPlaces : undefined,
+    });
+    return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
+  }catch(e){ return []; }
+}
+
+async function lieuxAideAutour(lat, lng, contexte, signal){
+  const fournisseur = window.AutourProviders && AutourProviders.aideAutour;
+  if(!fournisseur) return [];
+  try{
+    const places = await fournisseur.nearby(lat, lng, {
+      needs:contexte && contexte.besoins || [], radius:15000, signal, records:permanentPlaces,
+    });
+    return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
+  }catch(e){ return []; }
 }
 
 async function chargerAideVraiment(lat,lng,generation,contexte){
@@ -7745,6 +7786,16 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
   const reseaux = reseauxPourContexteAide(contexte);
   const exploitable = await coordonnerSourcesVersionnees([
     {
+      /* Ce qu'Autour connaît déjà : publications et lieux persistés. Ils
+         restent une source à part, puis sont corroborés par les référentiels. */
+      charger:()=>lieuxAideAutour(lat, lng, contexte, generation.signal),
+      publier:(locaux)=>{
+        const retenus=resultatsAideDansTerritoire(locaux || []);
+        if(retenus.length) fusionner(retenus,"permanent");
+        return !!retenus.length;
+      },
+    },
+    {
       /* L'annuaire public d'abord : il donne le type normalisé et l'identité
          officielle. OSM arrive ensuite compléter, jamais remplacer. */
       charger: ()=> lieuxAideInstitutionnels(lat, lng, contexte, generation.signal),
@@ -7753,6 +7804,22 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
         if(retenus.length) fusionner(retenus, "permanent");
         return !!retenus.length;
       }
+    },
+    {
+      charger:()=>lieuxAideSource("aideDora",lat,lng,contexte,generation.signal),
+      publier:(locaux)=>{
+        const retenus=resultatsAideDansTerritoire(locaux || []);
+        if(retenus.length) fusionner(retenus,"permanent");
+        return !!retenus.length;
+      },
+    },
+    {
+      charger:()=>lieuxAideSource("aideFiness",lat,lng,contexte,generation.signal),
+      publier:(locaux)=>{
+        const retenus=resultatsAideDansTerritoire(locaux || []);
+        if(retenus.length) fusionner(retenus,"permanent");
+        return !!retenus.length;
+      },
     },
     {
       /* ---- LE RAYON PROGRESSIF ------------------------------------------

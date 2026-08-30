@@ -4,6 +4,23 @@
   const FRANCE_TRAVAIL = /france\s+travail|p[oô]le\s+emploi/i;
   const CAP_EMPLOI = /cap\s+emploi/i;
   const MAISON_EMPLOI = /maison\s+de\s+l['’ ]?emploi/i;
+  const TYPES = Object.freeze([
+    [/france\s*services?/i, "france_services"],
+    [/centre\s+communal\s+d['’ ]action\s+sociale|\bccas\b/i, "ccas"],
+    [/caisse\s+d['’ ]allocations\s+familiales|\bcaf\b/i, "caf"],
+    [/protection\s+maternelle|\bpmi\b/i, "pmi"],
+    [/centre\s+m[ée]dico[- ]psychologique|\bcmp\b/i, "cmp"],
+    [/centre\s+m[ée]dico[- ]psycho[- ]p[ée]dagogique|\bcmpp\b/i, "cmpp"],
+    [/centre\s+de\s+sant[ée]|maison\s+de\s+sant[ée]/i, "centre_de_sante"],
+    [/planning\s+familial|planification\s+familiale/i, "planning_familial"],
+    [/commissariat|police\s+nationale/i, "commissariat"],
+    [/police\s+municipale/i, "police_municipale"],
+    [/gendarmerie|brigade/i, "gendarmerie"],
+    [/aide\s+aux\s+victimes|victimes/i, "aide_aux_victimes"],
+    [/centre\s+social|maison\s+de\s+quartier/i, "centre_social"],
+    [/point\s+information\s+jeunesse|\bcrij\b|\bbij\b/i, "point_information_jeunesse"],
+    [/foyer\s+de\s+jeunes\s+travailleurs|\bfjt\b/i, "foyer_jeunes_travailleurs"],
+  ]);
   function texte(value) {
     return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
   }
@@ -83,25 +100,58 @@
   }
   function typeStructure(record) {
     const adresseBrute = liste(record && record.adresse)[0] || {};
-    const texteIdentite = [
-      record && record.nom,
-      record && record.sigle,
-      record && record.ancien_nom,
+    /* Le pivot et le type de service local sont les champs contrôlés DILA.
+       `mission` et le complément d'adresse sont des informations de service
+       publiées par l'annuaire. Le nom administratif n'est volontairement pas
+       une source de classification : « Secours populaire » seul ne crée pas
+       une aide alimentaire. */
+    const texteStructure = [
+      ...(liste(record && record.pivot)),
+      ...(liste(record && record.type_service_local)),
+      record && record.code_type_service_local,
       adresseBrute.complement1,
       record && record.mission,
       site(record)
     ].map(texte).join(" ");
-    if (RESEAU.test(texteIdentite)) return "mission_locale";
-    if (FRANCE_TRAVAIL.test(texteIdentite)) return "france_travail";
-    if (CAP_EMPLOI.test(texteIdentite)) return "cap_emploi";
-    if (MAISON_EMPLOI.test(texteIdentite)) return "maison_de_l_emploi";
-    return "structure_insertion";
+    const typeExplicite = TYPES.find(([expression]) => expression.test(texteStructure));
+    if (typeExplicite) return typeExplicite[1];
+    if (RESEAU.test(texteStructure)) return "mission_locale";
+    if (FRANCE_TRAVAIL.test(texteStructure)) return "france_travail";
+    if (CAP_EMPLOI.test(texteStructure)) return "cap_emploi";
+    if (MAISON_EMPLOI.test(texteStructure)) return "maison_de_l_emploi";
+    /* Un enregistrement DILA sans type ou mission structurante reste un
+       candidat de l'annuaire, mais il ne reçoit pas artificiellement la
+       capacité emploi. Le nom administratif n'est pas une preuve. */
+    return "";
   }
   function nomAffiche(record) {
     const a = liste(record && record.adresse)[0] || {};
     const commercial = texte(a.complement1);
     return /mission\s+emploi|\bmelt\b/i.test(commercial) ? commercial : texte(record && (record.nom || record.sigle));
   }
+  const CATEGORIES = Object.freeze({
+    mission_locale: ["emploi", "asso"], france_travail: ["emploi"], cap_emploi: ["emploi"],
+    maison_de_l_emploi: ["emploi"], france_services: ["mairie"], ccas: ["mairie", "asso"],
+    caf: ["asso", "mairie"], pmi: ["sante", "famille"], cmp: ["sante", "parler"],
+    cmpp: ["sante", "parler", "jeunes"], centre_de_sante: ["sante"], planning_familial: ["sante", "famille"],
+    commissariat: ["securite"], police_municipale: ["securite"], gendarmerie: ["securite"],
+    aide_aux_victimes: ["securite", "asso"], centre_social: ["asso", "famille"],
+    point_information_jeunesse: ["jeunes"], foyer_jeunes_travailleurs: ["hebergement", "jeunes"],
+    structure_insertion: ["emploi"],
+  });
+  const SERVICES = Object.freeze({
+    mission_locale: ["employment", "job_seeking", "training", "orientation"],
+    france_travail: ["employment", "job_seeking", "training"], cap_emploi: ["employment", "job_seeking"],
+    maison_de_l_emploi: ["employment", "job_seeking", "training"], france_services: ["administrative_assistance", "digital_assistance"],
+    ccas: ["social_welfare", "administrative_assistance", "financial_advice"], caf: ["family_support", "administrative_assistance"],
+    pmi: ["medical_care", "family_counselling"], cmp: ["psychological_support", "counselling"],
+    cmpp: ["psychological_support", "counselling"], centre_de_sante: ["medical_care", "consultation"],
+    planning_familial: ["sexual_health", "family_counselling"], commissariat: ["protection", "complaint"],
+    police_municipale: ["protection"], gendarmerie: ["protection", "complaint"],
+    aide_aux_victimes: ["victim_support", "legal_advice"], centre_social: ["family_counselling", "social_welfare"],
+    point_information_jeunesse: ["orientation", "youth_counselling"], foyer_jeunes_travailleurs: ["youth_counselling"],
+    structure_insertion: ["employment", "job_seeking"],
+  });
   function normaliser(record) {
     if (!record || !record.id) return null;
     const a = adresse(record);
@@ -115,8 +165,20 @@
     const website = site(record);
     const aliases = [officialName, record.sigle, record.ancien_nom, commercial].map(texte).filter(Boolean);
     const sourceUrl = texte(record.url_service_public);
-    const helpCategories = primaryType === "mission_locale" ? ["travail", "jeunes"] : ["travail"];
-    return {
+    const categories = CATEGORIES[primaryType] || [];
+    const helpCategories = primaryType === "mission_locale" ? ["travail", "jeunes"] :
+      primaryType === "france_services" ? ["papiers", "famille"] :
+      primaryType === "ccas" ? ["logement", "travail", "papiers", "famille"] :
+      primaryType === "caf" ? ["famille", "papiers"] :
+      primaryType === "pmi" ? ["sante", "famille"] :
+      primaryType === "cmp" || primaryType === "cmpp" ? ["sante", "parler"] :
+      primaryType === "aide_aux_victimes" ? ["securite", "parler"] :
+      primaryType === "centre_social" ? ["famille", "parler"] :
+      primaryType === "foyer_jeunes_travailleurs" ? ["logement", "jeunes"] :
+      categories.includes("securite") ? ["securite"] :
+      categories.includes("sante") ? ["sante"] :
+      categories.includes("hebergement") ? ["logement"] : [];
+    const brut = {
       autourId: "service-public:" + String(record.id),
       name: nomAffiche(record),
       officialName,
@@ -131,12 +193,12 @@
       classification_confidence: 1,
       lat,
       lng,
-      category: "emploi",
-      categories: ["emploi"],
-      services: primaryType === "mission_locale" ? ["employment", "job_seeking", "training", "orientation"] : ["employment", "job_seeking"],
+      category: categories[0] || "autre",
+      categories,
+      services: SERVICES[primaryType] || [],
       phone,
       website,
-      description: texte(record.mission) || officialName,
+      description: texte(record.mission),
       address: [
         a.numero_voie,
         a.type_voie,
@@ -151,18 +213,22 @@
         ...record.siret ? { siret: String(record.siret) } : {},
         ...record.siren ? { siren: String(record.siren) } : {}
       },
+      status: record.date_fermeture || record.dateFermeture ? "closed" : null,
       provenance: [{
         source: "service_public",
         id: String(record.id),
         updatedAt: record.date_modification_datetime || null,
         url: sourceUrl
       }],
-      updatedAt: record.date_modification_datetime || null
+      updatedAt: record.date_modification_datetime || null,
+      aideStructure: true,
+      sourceConfidence: 0.96,
     };
+    return root.AutourAideStructures ? root.AutourAideStructures.normaliser(brut) : brut;
   }
   async function nearby(lat, lng, options) {
     const o = options || {};
-    const besoins = [...new Set((o.needs || []).filter((x) => x === "travail" || x === "jeunes"))];
+    const besoins = [...new Set((o.needs || []).filter(Boolean))];
     if (!besoins.length) return [];
     const p = new URLSearchParams({
       lat: Number(lat).toFixed(5),

@@ -22,13 +22,14 @@ const GEO = "https://geo.api.gouv.fr/communes";
 const GEO_REGIONS = "https://geo.api.gouv.fr/regions/";
 const GEO_DEPARTEMENTS = "https://geo.api.gouv.fr/departements/";
 const REQUETES = Object.freeze([
-  "mission locale",
-  "mission emploi",
-  "france travail",
-  "cap emploi",
-  "maison de l'emploi",
+  "mission locale", "mission emploi", "france travail", "cap emploi", "maison de l'emploi",
+  "france services", "ccas", "caisse d'allocations familiales", "caf", "pmi",
+  "centre de santé", "centre médico-psychologique", "cmp", "cmpp", "planning familial",
+  "centre social", "maison de quartier", "foyer de jeunes travailleurs", "fjt",
+  "commissariat", "police municipale", "gendarmerie", "aide aux victimes",
+  "centre d'hébergement", "chrs", "hébergement d'urgence",
 ]);
-const BESOINS = new Set(["travail", "jeunes"]);
+const BESOINS = new Set(["manger", "logement", "travail", "papiers", "sante", "jeunes", "parler", "famille", "securite", "autre"]);
 const RAYON_MIN = 500;
 const RAYON_MAX = 20000;
 const LIMITE = 100;
@@ -104,6 +105,10 @@ function projection(record, lat, lng, rayon) {
     mission: record.mission || "",
     date_modification_datetime: record.date_modification_datetime || null,
     url_service_public: record.url_service_public || "",
+    pivot: record.pivot || [],
+    type_service_local: record.type_service_local || [],
+    code_type_service_local: record.code_type_service_local || "",
+    date_fermeture: record.date_fermeture || record.dateFermeture || null,
     distance_m: Math.round(distance),
   };
 }
@@ -284,7 +289,8 @@ export default async function handler(requete) {
 
     const fields = ["id", "nom", "sigle", "ancien_nom", "siret", "siren", "adresse",
       "telephone", "site_internet", "plage_ouverture", "mission",
-      "date_modification_datetime", "url_service_public"].join(",");
+      "date_modification_datetime", "url_service_public", "pivot", "type_service_local",
+      "code_type_service_local", "date_fermeture"].join(",");
     let resultats = [];
     /* Une requête combinée évite de déclencher la protection anti-abus du
        relais avec cinq appels parallèles. Le pivot administratif est la
@@ -292,7 +298,6 @@ export default async function handler(requete) {
        `search(*)` couvre les variantes de nom, de sigle et de mission. */
     const q = new URL(API);
     const recherches = REQUETES.map((terme) => 'search(*,"' + terme + '")');
-    recherches.unshift('pivot LIKE "mission_locale"');
     q.searchParams.set("where", 'code_insee_commune LIKE "' + departement + '%" and (' +
       recherches.join(" or ") + ')');
     q.searchParams.set("limit", String(LIMITE));
