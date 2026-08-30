@@ -143,6 +143,11 @@ test("les réponses différées de l'ancien bassin ne peuvent plus polluer la de
   assert.match(app, /chargerDonneesTemporaires\(lat,lng,\{sansPublications:true\}\)/);
 });
 
+test("les libellés de ville des fiches suivent la destination active", () => {
+  assert.match(app, /cp:p\.cp \|\| \(destinationActive\(\) \? \(activeLocationContext\?\.city \|\| \"\"\) : commune\)/);
+  assert.match(app, /destinationActive\(\) \? \(activeLocationContext\?\.city \|\| \"\"\) : commune/);
+});
+
 test("un changement de destination vide les mémoires de la ville quittée", () => {
   const vider = extraireFonction("viderDonneesContexte");
   for (const ligne of [
