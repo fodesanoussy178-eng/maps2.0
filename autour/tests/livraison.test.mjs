@@ -62,6 +62,18 @@ test("ni le banc, ni les tests, ni les migrations ne sont livrés", () => {
     assert.match(bloc, new RegExp('"' + dossier + '"'), dossier + " ne doit pas être servi");
 });
 
+test("le bundle application ne contient jamais la sortie tronquée d'un terminal", async () => {
+  /* Une édition distante avait ajouté les deux lignes de diagnostic d'un
+     résultat tronqué au début de `app.js`. Le navigateur ne pouvait alors
+     plus parser le bundle et Vercel échouait dans esbuild. Le test est
+     volontairement générique : il protège tout futur bundle contre cette
+     corruption de publication, sans dépendre d'un événement particulier. */
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.ok(app.length > 500_000, "app.js ne doit pas être remplacé par une sortie partielle");
+  assert.doesNotMatch(app, /^Warning: truncated output/m);
+  assert.doesNotMatch(app, /^Total output lines:/m);
+});
+
 /* ---- La preuve, sur le vrai code ---------------------------------------- */
 
 test("chaque module servi survit à l’allègement, déclarations intactes", async () => {
