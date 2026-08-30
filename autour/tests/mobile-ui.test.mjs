@@ -1675,7 +1675,7 @@ test("Aide garde uniquement les solutions liées au besoin et offre une fiche ex
 
 test("les fiches réservent la photo et les cinq actions asynchrones",()=>{
   assert.match(html,/\.aide-couverture\{[^}]*height:190px/s);
-  assert.match(html,/function couvertureLieu\(l, c\)[\s\S]*aide-couverture'\+\(l\.image\?'':' sans-photo'\)/);
+  assert.match(html,/function couvertureLieu\(l, c\)[\s\S]*const media = mediaDe\(l\)[\s\S]*aide-couverture'\+\(photo\?'':' sans-photo'\)/);
   assert.match(html,/\.actions\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(html,/Téléphone non renseigné/);
   assert.match(html,/Site non renseigné/);
