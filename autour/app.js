@@ -10981,17 +10981,20 @@ function rafraichirMetropole(){
 }
 
 function bassinPourToi(){
-  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
-     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
-     identifiant déjà présent n'est jamais remplacé. */
   /* Le bassin est chargé en dehors du rayon local : il doit néanmoins rester
      borné par le contexte de destination. Sinon une réponse MEL ou un cache
-     de la ville précédente pouvait traverser jusqu'à « Pour toi ». */
+     de la ville précédente pouvait traverser jusqu'à « Pour toi ».
+
+     Les deux collections peuvent contenir la même occurrence. Il ne faut pas
+     laisser `lieux` gagner par ordre d'arrivée : la version locale est parfois
+     la moins enrichie (notamment sans `announcement_tags`) alors que la
+     version du bassin porte les artistes, les tags et la provenance. Le
+     dédoublonnage commun fusionne d'abord les preuves et reconstruit le
+     `CanonicalEvent`; le classement Pour toi ne voit ensuite qu'une fiche. */
   const locaux = elementsDuContexte(lieux).filter(estCanonique);
-  if(!evenementsMetropole.length) return locaux;
-  const vus = new Set(locaux.map((l)=> l && l.id));
-  return locaux.concat(elementsDuContexte(evenementsMetropole)
-    .filter((l)=>l && !vus.has(l.id) && estCanonique(l)));
+  const bassin = elementsDuContexte(evenementsMetropole).filter(estCanonique);
+  return dedupeItems([...locaux, ...bassin], distanceM)
+    .filter(estCanonique);
 }
 
 function lieuParId(id){
@@ -11010,7 +11013,12 @@ function lieuParId(id){
   if(id == null) return null;
   const cle = String(id);
   const dansContexte = typeof dansZoneActive === "function" ? dansZoneActive : ()=>true;
-  return lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
+  /* Une recommandation peut être la fusion de la copie locale et de celle du
+     bassin. Réutiliser cette collection fusionnée à l'ouverture évite que la
+     fiche détaillée relise ensuite la version locale nue. */
+  const fusionnes = typeof bassinPourToi === "function" ? bassinPourToi() : [];
+  return fusionnes.find((x)=> x && String(x.id) === cle && dansContexte(x))
+      || lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || evenementsMetropole.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || null;
 }
