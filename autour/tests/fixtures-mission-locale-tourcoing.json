@@ -1,0 +1,102 @@
+{
+  "id": "4a585d95-7910-43e2-b628-735010ebf3e0",
+  "nom": "Mission locale pour l'insertion professionnelle et sociale des jeunes (16-25 ans) - Tourcoing",
+  "sigle": "",
+  "ancien_nom": "",
+  "siret": "",
+  "siren": "",
+  "adresse": [
+    {
+      "complement1": "Mission Emploi Lys Tourcoing",
+      "numero_voie": "200 rue de Roubaix",
+      "code_postal": "59200",
+      "nom_commune": "Tourcoing",
+      "latitude": "50.709408",
+      "longitude": "3.166806"
+    }
+  ],
+  "telephone": [
+    {
+      "valeur": "03 20 28 82 20"
+    }
+  ],
+  "site_internet": [],
+  "plage_ouverture": [
+    {
+      "nom_jour_debut": "Monday",
+      "nom_jour_fin": "Monday",
+      "valeur_heure_debut_1": "14h00",
+      "valeur_heure_fin_1": "17h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Tuesday",
+      "nom_jour_fin": "Tuesday",
+      "valeur_heure_debut_1": "09h00",
+      "valeur_heure_fin_1": "12h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Tuesday",
+      "nom_jour_fin": "Tuesday",
+      "valeur_heure_debut_1": "14h00",
+      "valeur_heure_fin_1": "17h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Wednesday",
+      "nom_jour_fin": "Wednesday",
+      "valeur_heure_debut_1": "09h00",
+      "valeur_heure_fin_1": "12h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Wednesday",
+      "nom_jour_fin": "Wednesday",
+      "valeur_heure_debut_1": "14h00",
+      "valeur_heure_fin_1": "17h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Thursday",
+      "nom_jour_fin": "Thursday",
+      "valeur_heure_debut_1": "09h00",
+      "valeur_heure_fin_1": "12h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Thursday",
+      "nom_jour_fin": "Thursday",
+      "valeur_heure_debut_1": "14h00",
+      "valeur_heure_fin_1": "17h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Friday",
+      "nom_jour_fin": "Friday",
+      "valeur_heure_debut_1": "09h00",
+      "valeur_heure_fin_1": "12h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    },
+    {
+      "nom_jour_debut": "Friday",
+      "nom_jour_fin": "Friday",
+      "valeur_heure_debut_1": "14h00",
+      "valeur_heure_fin_1": "16h00",
+      "valeur_heure_debut_2": "",
+      "valeur_heure_fin_2": ""
+    }
+  ],
+  "mission": "Mission locale pour l'insertion professionnelle et sociale des jeunes (16-25 ans)",
+  "date_modification_datetime": null,
+  "url_service_public": "https://lannuaire.service-public.gouv.fr/hauts-de-france/nord/4a585d95-7910-43e2-b628-735010ebf3e0",
+  "distance_m": 1620
+}
