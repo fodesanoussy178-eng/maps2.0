@@ -186,6 +186,13 @@
   }
 
   function isEvent(record) {
+    /* Un enregistrement explicitement permanent gagne toujours contre une
+       catégorie historique ambiguë (`sport`, `food`, etc.). Un terrain, un
+       restaurant ou un musée ne devient pas une manifestation simplement
+       parce que son fournisseur lui a attribué un tag qui peut aussi servir
+       aux événements. */
+    if (record && (record.entity_type === "place" || record.entityType === "place" ||
+      record.isTemporary === false || record.temporaire === false)) return false;
     return !!(record && (record.entity_type === "event" || record.entityType === "event" ||
       record.isTemporary === true || record.temporaire === true || record.eventCanonical));
   }
