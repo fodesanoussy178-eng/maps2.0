@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
    fiche d'un lieu, l'itinéraire, la publication, le compte. La frontière a
    bougé une deuxième fois ; le contrat, lui, n'a pas changé — les tests
    posent toujours la question à la source entière. */
-const MORCEAUX = ["index.html", "evenements-canoniques.js", "app.js", "differe/ecrans.js"];
+const MORCEAUX = ["index.html", "evenements-canoniques.js", "entites-canoniques.js", "app.js", "differe/ecrans.js"];
 
 export function sourceApplicationSync(base) {
   return MORCEAUX.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");
@@ -32,7 +32,7 @@ export async function sourceApplication(base) {
    et pas du document — « ce fichier ne contient aucune balise vers un CDN »
    n'a de sens que si l'on ne vient pas de coller le document qui en porte
    une, légitimement, pour Leaflet. */
-const CORPS = ["evenements-canoniques.js", "app.js", "differe/ecrans.js"];
+const CORPS = ["evenements-canoniques.js", "entites-canoniques.js", "app.js", "differe/ecrans.js"];
 
 export function corpsApplicationSync(base) {
   return CORPS.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");
