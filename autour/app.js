@@ -2354,7 +2354,8 @@ function versLieu(p){
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
+    description:p.description || "", adresse:p.adresse || "",
+    cp:p.cp || (destinationActive() ? (activeLocationContext?.city || "") : commune),
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
     creatorId:createdBy, creatorName:p.creator_name || "",
@@ -3354,7 +3355,8 @@ async function vraisLieux(lat,lng,bornes,opts){
       type:t.amenity || t.leisure || t.tourism || t.office || "",
       sansNom: !nom,                         // « un résultat sans nom exploitable »
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || nom,
-      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
+      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") ||
+        (destinationActive() ? (activeLocationContext?.city || "") : commune),
       quand: t.opening_hours || "Voir sur place",
       cuisine: t.cuisine || "",              // turkish, african, pizza…
       tel: t.phone || t["contact:phone"] || "",
