@@ -69,7 +69,10 @@
       ? l.rankEta.minutes
       : l.rankBreakdown && l.rankBreakdown.etaMinutes != null
         ? l.rankBreakdown.etaMinutes : null;
-    const direct = Number(eta);
+    /* `Number(null)` vaut 0 : l'absence d'ETA ne doit pas transformer une
+       distance connue en un trajet nul, sinon un résultat éloigné ne peut
+       jamais être départagé d'un résultat proche. */
+    const direct = eta == null ? NaN : Number(eta);
     if (Number.isFinite(direct) && direct >= 0) return direct;
     const distance = Number(l.rankDistance != null
       ? l.rankDistance

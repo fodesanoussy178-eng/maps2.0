@@ -344,10 +344,26 @@
     const meilleurs = precis.length ? precis : candidats;
     const plusHaut = meilleurs.reduce((max, c) => Math.max(max, c.score), 0);
     const seuil = precis.length ? Math.max(0.58, plusHaut - 0.34) : 0.5;
-    const besoins = meilleurs
+    let besoins = meilleurs
       .filter((c) => c.score >= seuil)
       .sort((a, b) => b.score - a.score || CATEGORIES.indexOf(a.besoin) - CATEGORIES.indexOf(b.besoin))
       .map(({ besoin, score }) => ({ besoin, score }));
+
+    /* `autre` est le filet de sécurité, mais il reste une déclaration du
+       lexique comme les neuf autres catégories. Quand la phrase est
+       exactement une expression déclarée sous `autre` et qu'elle correspond
+       aussi à une catégorie plus précise (`orientation`, `besoin d'aide`, …),
+       conserver cette deuxième lecture rend le contrat du dictionnaire
+       vérifiable sans faire remonter « autre » dans les phrases plus longues.
+       La règle est dérivée du lexique : elle ne recopie aucun mot ici. */
+    const autreEstExpressionExacte = LEXIQUE.autre.some((expression) =>
+      normaliser(expression) === t);
+    if (precis.length && autreEstExpressionExacte) {
+      const autre = candidats.find((c) => c.besoin === "autre");
+      if (autre && !besoins.some((x) => x.besoin === "autre"))
+        besoins = besoins.concat({ besoin: "autre", score: autre.score })
+          .sort((a, b) => b.score - a.score || CATEGORIES.indexOf(a.besoin) - CATEGORIES.indexOf(b.besoin));
+    }
 
     return {
       besoins,
