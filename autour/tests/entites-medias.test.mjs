@@ -47,6 +47,8 @@ test("CanonicalEvent et CanonicalPlace sont deux contrats disjoints", () => {
 
   assert.equal(event.entity_type, "event");
   assert.equal(place.entity_type, "place");
+  assert.equal(ENTITES.estEvenement({entity_type: "place", isTemporary: true, cat: "sport"}), false,
+    "un lieu permanent explicite ne doit jamais devenir un événement");
   assert.equal(event.event_source, "openagenda");
   assert.equal(event.place_source, "openstreetmap");
   assert.equal(place.event_source, null);
