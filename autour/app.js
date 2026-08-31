@@ -71,6 +71,21 @@ window.addEventListener("unhandledrejection", e=>{
   console.error("Autour · promesse rejetée :", e && e.reason);
 });
 
+/* Safari peut démarrer un glissement natif sur un bouton contenant une image
+   ou du texte si aucun contrat de drag n'est posé. Les contrôles de l'UI sont
+   des surfaces tap/click ; la carte et sa poignée restent les seuls endroits
+   où l'application écoute réellement un geste de déplacement. */
+document.addEventListener("dragstart", e=>{
+  const cible = e.target && e.target.closest
+    ? e.target.closest("button,a,[role=\"button\"],summary") : null;
+  if(cible) e.preventDefault();
+}, true);
+document.addEventListener("selectstart", e=>{
+  const cible = e.target && e.target.closest
+    ? e.target.closest("button,[role=\"button\"],summary") : null;
+  if(cible) e.preventDefault();
+}, true);
+
 const {
   FAMILY_CATEGORIES,
   classifyPlace,
@@ -2262,7 +2277,7 @@ function versLieu(p){
      une propriété à une publication qui n'en avait pas. */
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
-    id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
+    id:p.id == null || p.id === "" ? "" : "pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
     description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
@@ -2509,7 +2524,7 @@ function versEvenementCanonique(e){
   const debut = debutBrut != null && debutBrut !== "" ? new Date(debutBrut).getTime() : null;
   const fin = finBrut != null && finBrut !== "" ? new Date(finBrut).getTime() : null;
   return normaliserItem({
-    id:"evt"+e.id, dbId:e.id,
+    id:e.id == null || e.id === "" ? "" : "evt"+e.id, dbId:e.id,
     cat:e.category || "event",
     titre:e.title,
     description:e.description || "",
@@ -9047,7 +9062,7 @@ function majFeuille2(){
   // cette branche, les lieux de la zone arrivaient d'Overpass une seconde plus
   // tard, déclenchaient un rendu, et « Pour toi, maintenant » remplaçait les
   // résultats de la recherche qu'on venait tout juste de lancer.
-  if(feuilleNiveau === "racine" && zoneAffichee){
+  if(feuilleNiveau === "racine" && zoneAffichee && creneau !== "maintenant"){
     remplirResultatsZone(zoneAffichee.nom, zoneAffichee.intention);
     restaurerPanneau(corps, stabilite);
     synchroniserHauteurFeuille();
@@ -10549,34 +10564,14 @@ function besoinsRapidesHTML(){
    « Maintenant », « Autour de moi », « Pour toi » et « Explorer » disaient à
    peu près la même chose par quatre portes différentes. Il n'en reste qu'une :
    Explorer, et à l'intérieur le temps. */
-/* Combien d'événements ont VRAIMENT lieu en ce moment.
-
-   Le comptage ne réinterprète rien : il demande son statut au moteur temporel,
-   qui pour un événement canonique se contente de relayer le verdict de
-   Postgres. Un événement de demain ne peut donc pas entrer dans ce nombre,
-   même si le classement le trouve pertinent — c'est exactement la garantie
-   demandée : « Maintenant » ne se remplit jamais artificiellement. */
-function compterMaintenant(){
-  const t = Date.now();
-  return lieux.reduce((n,l)=>{
-    if(!estTemporaire(l) || l.annule) return n;
-    return TEMPS.estMaintenant(statutTemps(l, t).statut) ? n+1 : n;
-  }, 0);
-}
-
 /* La pastille suit le comptage, et le comptage suit le moteur temporel.
    Elle disparaît à zéro plutôt que d'afficher « Maintenant · 0 » : un compteur
    à zéro occupe la même place et demande la même lecture pour ne rien dire. */
 /* LA PASTILLE ET LE BLOC DOIVENT DIRE LE MÊME NOMBRE.
 
-   Elle comptait avec `compterMaintenant`, qui ne connaît que les événements
-   temporaires et les juge au moteur temporel. Le bloc, lui, compte avec le
-   moteur de disponibilité : événements en cours, séances, activités, lieux
-   ouverts. Deux comptages différents sous le même mot — la pastille annonçait
-   « 0 » (donc restait cachée) au-dessus d'un bloc qui proposait trois choses.
-
-   Un seul comptage désormais, celui du bloc, et il porte déjà la zone active :
-   la pastille de Lille ne compte pas ce qui se passe à Tourcoing. */
+   Un seul comptage désormais : la sélection du moteur, déjà bornée à trois et
+   déjà portée par la zone active. La pastille de Lille ne compte pas ce qui se
+   passe à Tourcoing, et n'annonce jamais une liste plus longue que le panneau. */
 function majBadgeMaintenant(){
   const badge = $("#badgeMaintenant");
   if(!badge) return;
@@ -10586,14 +10581,15 @@ function majBadgeMaintenant(){
   const compte = $("#bmCompte");
   /* Le bloc n'en montre jamais plus de trois : la pastille annonce ce qu'on
      va effectivement voir, pas ce qui existe en base. */
-  if(compte) compte.textContent = String(Math.min(n, MAINTENANT_APERCU));
+  if(compte) compte.textContent = String(n);
   /* « Près de toi » est faux dès qu'on regarde une autre ville — et c'est
      exactement le moment où la phrase compte. Elle nomme donc la zone. */
   const sous = badge.querySelector(".bm-sous");
   const ou = zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom
     ? "À " + zoneActive.nom + " en ce moment" : "En cours près de toi";
   if(sous) sous.textContent = ou;
-  badge.setAttribute("aria-label", n + " chose" + (n > 1 ? "s" : "") + " à faire — " + ou);
+  badge.setAttribute("aria-label", n + " proposition" + (n > 1 ? "s" : "") + " sélectionnée" +
+    (n > 1 ? "s" : "") + " — " + ou);
 }
 
 /* Ce qui a lieu MAINTENANT, en tête de la feuille et sous sa propre étiquette.
@@ -10607,12 +10603,6 @@ function majBadgeMaintenant(){
    Le bloc n'existe pas s'il n'y a rien : pas de titre orphelin au-dessus du
    vide. Et il ne s'affiche que dans « Maintenant » — dans « Ce soir » ou
    « À venir », il parlerait d'autre chose que de l'onglet ouvert. */
-function evenementsMaintenant(){
-  const t = Date.now();
-  return lieux.filter(l=>estTemporaire(l) && !l.annule &&
-    TEMPS.estMaintenant(statutTemps(l, t).statut));
-}
-
 /* Ce que la ligne dit du TEMPS dépend de ce qu'elle est. Écrire « jusqu'à
    20:00 » sous un cinéma dont la séance commence à 20:00 dirait exactement le
    contraire de la vérité. */
@@ -10638,6 +10628,11 @@ function tempsMaintenant(l){
 }
 
 function ligneMaintenant(l){
+  const titre = l && (l.titre || l.title) || "";
+  /* Le moteur filtre déjà ces fiches. Cette garde au dernier point de rendu
+     évite qu'une future source ou une fusion partielle ne réintroduise une
+     carte réduite à son emoji. */
+  if(!nomMaintenantExploitable(titre) || !l.cat) return "";
   const c = categorieAffichee(l);
   /* Regarder Paris depuis Lille affichait « 220 km » sous chaque concert : une
      mesure exacte et parfaitement inutile. On ne montre une distance que
@@ -10655,7 +10650,7 @@ function ligneMaintenant(l){
     '</span>';
   return '<button class="mn-l" data-mn="'+esc(l.id)+'">'+
     visuel+
-    '<span class="mn-txt"><b>'+esc(l.titre)+'</b>'+
+      '<span class="mn-txt"><b>'+esc(titre)+'</b>'+
       (lieu ? '<i>'+esc(lieu)+'</i>' : '')+
       (bas ? '<u>'+esc(bas)+'</u>' : '')+'</span>'+
     '<span class="mn-fl" aria-hidden="true">›</span></button>';
@@ -11424,13 +11419,7 @@ function poserRecommandations(jeton, titre){
   const zone = corps && corps.querySelector("[data-reco-zone]");
   if(!zone) return;
 
-  const enCours = (creneau === "maintenant" && !modeAide) ? evenementsMaintenant() : [];
   let reco = recommandationsAccueil(7);
-  // un événement déjà listé dans « Maintenant » ne se répète pas ici
-  if(enCours.length){
-    const dejaListes = new Set(enCours.slice(0, MAINTENANT_APERCU).map(l=>l.id));
-    reco = reco.filter(l=>!dejaListes.has(l.id));
-  }
   /* le classement peut ne rien rendre au tout début (aucun ETA, aucun
      horaire) : on montre alors l'échantillon varié du cache plutôt qu'un
      écran vide */
@@ -11478,9 +11467,9 @@ function poserRecommandations(jeton, titre){
 }
 
 const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
-/* Trois dans le bloc, dix derrière « Voir tout ». Ce n'est pas une limite
-   technique : c'est ce qui distingue une sélection d'un annuaire. */
-const MAINTENANT_TOUT = 10;
+/* Une seule sélection éditorialisée existe pour « Maintenant ». Le panneau,
+   la capsule et la navigation lisent tous ces mêmes trois entités — il n'y a
+   pas de second niveau « Voir tout ». */
 
 /* Ce que `maintenant.js` a besoin de savoir d'un lieu, et rien de plus. Le
    statut vient du moteur temporel, qui le tient du backend : on ne le
@@ -11504,12 +11493,19 @@ const MAINTENANT_TOUT = 10;
 const APPROCHE_NOMINALE_MS = 10 * 60000;
 function arriveeEstimee(t){ return t + APPROCHE_NOMINALE_MS; }
 
+function nomMaintenantExploitable(value){
+  const M = window.AutourMaintenant;
+  if(M && typeof M.nomExploitable === "function") return M.nomExploitable(value);
+  const texte = String(value == null ? "" : value).trim();
+  return texte.length >= 2 && /[\p{L}\p{N}]/u.test(texte);
+}
+
 function versItemMaintenant(l, t){
   /* Le verdict temporel est TRANSMIS, jamais recopié sous forme de chaîne :
      c'est `temporel.js` qui connaît le vocabulaire du backend, et lui seul. */
   const statut = statutTemps(l, t).statut;
   const evenement = estTemporaire(l);
-  const canonique = evenement ? donneesEvenement(l) : null;
+  const canonique = evenement ? donneesEvenement(l) : donneesLieu(l);
   const epoch = (value) => {
     if(value == null || value === "") return null;
     const parsed = typeof value === "number" ? value : new Date(value).getTime();
@@ -11523,15 +11519,21 @@ function versItemMaintenant(l, t){
      « ouvert », « fermé », « fermé définitivement » et « horaires inconnus ».
      Confondre le dernier avec le premier envoie quelqu'un devant une porte
      close ; le confondre avec le deuxième vide le bloc pour rien. */
-  let ouvert = null, ouvertALArrivee = null;
+  let ouvert = null, ouvertALArrivee = null, tempsValide = false;
   if(!evenement){
     const dispo = dispoDe(l, arriveeEstimee(t), t);
     if(dispo){
+      tempsValide = dispo.status === "open" || dispo.status === "closing_soon";
       ouvert = dispo.status === "open" ? true
              : dispo.status === "unknown" ? null : false;
       ouvertALArrivee = dispo.isOpenAtArrival;
     }
   }
+
+  const titre = canonique && (canonique.title || canonique.titre) || "";
+  const categorie = canonique && (canonique.category || canonique.cat) || l.cat || "";
+  const canonicalId = canonique && canonique.id != null ? String(canonique.id) : null;
+  if(evenement) tempsValide = epoch(debutLe) !== null && epoch(finLe) !== null;
 
   return {
     id:l.id, estEvenement:evenement, annule:!!l.annule,
@@ -11541,7 +11543,12 @@ function versItemMaintenant(l, t){
     end_at:canonique ? canonique.end_at : null,
     debutLe, finLe, lat:l.lat, lng:l.lng,
     ferme:estFerme(l),
-    categorie:l.cat, ouvert, ouvertALArrivee,
+    titre, title:titre, categorie, category:categorie,
+    entity_type:canonique && canonique.entity_type || (evenement ? "event" : "place"),
+    canonical_id:canonicalId, canonical:canonique,
+    sansNom:l.sansNom === true || !nomMaintenantExploitable(titre),
+    tempsValide,
+    ouvert, ouvertALArrivee,
     /* Le calque vérifié, transmis tel quel. Le moteur en fait ce qu'il veut —
        exclure une fermeture confirmée, remonter une programmation en cours —
        et c'est lui seul qui décide : ce fichier ne fait que porter. */
@@ -11724,15 +11731,22 @@ function selectionMaintenant(){
      dira à l'affichage s'il faut écrire « jusqu'à 23 h » ou « séance à 20 h ». */
   return retenus.map(i=>{
     const l = parId.get(i.id);
-    return l ? Object.assign({}, l, {nature:i.nature}) : null;
+    return l ? Object.assign({}, l, {
+      nature:i.nature,
+      titre:i.titre || i.title || l.titre || "",
+      title:i.title || i.titre || l.title || l.titre || "",
+      cat:i.categorie || i.category || l.cat,
+      entity_type:i.entity_type || l.entity_type,
+      canonical_id:i.canonical_id,
+      canonical:i.canonical,
+      sansNom:i.sansNom,
+      tempsValide:i.tempsValide,
+    }) : null;
   }).filter(Boolean);
 }
 
 function totalMaintenant(){
-  const M = window.AutourMaintenant;
-  if(!M) return 0;
-  const ctx = contexteMaintenant();
-  return M.total(itemsMaintenant(ctx), ctx);
+  return selectionMaintenant().length;
 }
 
 /* ==================================================================== */
@@ -11826,7 +11840,7 @@ function blocMaintenantAccueil(){
   if(!M) return "";
 
   const liste = selectionMaintenant();
-  const combien = totalMaintenant();
+  const combien = liste.length;
   const ctx = contexteMaintenant();
   const etat = M.etat(Object.assign({resultats:liste.length}, ctx));
 
@@ -11841,30 +11855,14 @@ function blocMaintenantAccueil(){
   if(liste.length >= MAINTENANT_APERCU) PERF.jalon("maintenant_complet");
   const mots = M.textes(etat, ctx);
 
-  /* LE COMPTEUR DOIT DONNER UNE IMPRESSION DE SÉLECTION, PAS D'ANNUAIRE.
-
-     « Maintenant (189) » au-dessus de trois lignes se lit comme un catalogue
-     dont on ne montrerait qu'un fragment — et il donne envie de chercher les
-     186 autres, qui n'existent pas en tant que propositions. Ce que Autour
-     propose réellement est plafonné à dix ; le compteur ne dépasse donc pas ce
-     qu'on peut effectivement ouvrir. Au-delà, il le dit autrement : « 10+ »
-     annonce l'abondance sans promettre une liste. */
-  const proposables = PLAF ? Math.min(combien, PLAF.limiteMaintenant()) : combien;
-  const affiche = PLAF && combien > PLAF.limiteMaintenant()
-    ? PLAF.limiteMaintenant()+"+" : String(proposables);
+  /* Le compteur est celui de la sélection effectivement rendue. Il ne peut
+     donc ni annoncer un catalogue, ni produire un total extensible. */
   const tete = '<p class="mn-tete"><em aria-hidden="true">⚡</em><b>Maintenant</b>'+
-    (etat === M.ETATS.READY && combien ? '<span>('+affiche+')</span>' : '')+'</p>';
+    (etat === M.ETATS.READY && combien ? '<span>('+combien+')</span>' : '')+'</p>';
 
   let corps;
   if(etat === M.ETATS.READY){
-    /* « Voir tout » ne promet que ce qu'il ouvrira réellement : la liste
-       dépliée est plafonnée à dix, annoncer le total en promettrait davantage. */
-    const derriere = Math.min(combien, MAINTENANT_TOUT);
-    corps = liste.map(ligneMaintenant).join("")+
-      (derriere > liste.length
-        ? '<button class="mn-tout" data-mn-tout="1">Voir tout ('+derriere+')</button>'
-        : '')+
-      aveuCouvertureMaintenant(liste.length);
+    corps = liste.map(ligneMaintenant).join("")+aveuCouvertureMaintenant(liste.length);
   }else if(etat === M.ETATS.LOADING){
     /* Trois barres grises, sans texte. Elles occupent exactement la place des
        trois lignes à venir : quand les vraies arrivent, rien ne bouge. */
@@ -11897,22 +11895,19 @@ function blocMaintenantAccueil(){
 }
 
 function ongletsTemps(){
-  const enCours = compterMaintenant();
+  const enCours = selectionMaintenant().length;
   return '<div class="ong-temps" role="tablist" aria-label="Quand">'+
     CRENEAUX.map(c=>{
       const maintenant = c.id === "maintenant";
       // l'éclair est permanent : c'est un repère, pas une décoration qui
       // apparaît et disparaît sous les yeux
       const libelle = maintenant ? "⚡ "+c.label : c.label;
-      /* Même règle sur l'onglet : on n'affiche pas un total qu'on ne peut pas
-         ouvrir. */
-      const ouvrables = PLAF ? Math.min(enCours, PLAF.limiteMaintenant()) : enCours;
       const compte = maintenant && enCours
         ? '<span class="ong-compte" aria-hidden="true">'+
-          (PLAF && enCours > PLAF.limiteMaintenant() ? ouvrables+"+" : ouvrables)+
+          enCours+
           '</span>' : '';
       const lu = maintenant && enCours
-        ? ' aria-label="'+esc(c.label)+' : '+enCours+' événement'+(enCours>1?'s':'')+' en cours"' : '';
+        ? ' aria-label="'+esc(c.label)+' : '+enCours+' proposition'+(enCours>1?'s':'')+' sélectionnée'+(enCours>1?'s':'')+'"' : '';
       return '<button class="ong'+(maintenant?' ong-maintenant':'')+
         (c.id===creneau?' actif':'')+'" role="tab" '+
         'aria-selected="'+(c.id===creneau)+'" data-creneau="'+c.id+'"'+lu+'>'+
@@ -12411,17 +12406,6 @@ function brancherFeuille2(){
     chargerAutourDuPoint(z.lat, z.lng, {force:true});
     majFeuille2();
   });
-  corps.querySelectorAll("[data-mn-tout]").forEach(b=>b.onclick=()=>{
-    /* Ce qui a lieu, par le chemin qui existe déjà — et pas plus de dix.
-       « Maintenant » n'est pas un inventaire : trois propositions dans le
-       bloc, dix au maximum derrière « Voir tout ». Au-delà, la promesse
-       change de nature et la qualité se dilue dans le remplissage. */
-    pileEcrans = [];
-    pousserEcran(()=>afficherListe("⚡", "Maintenant",
-      classerLieux(evenementsMaintenant(), false).slice(0, MAINTENANT_TOUT), false,
-      ()=>{ pileEcrans = []; majFeuille2(); }));
-  });
-
   /* La sortie d'un bloc vide ou en erreur. Elle ne laisse jamais dans une
      impasse : vide → ce qui ouvre autour ; position inconnue → choisir un
      point de départ ; panne → réessayer. Chacune passe par un chemin qui

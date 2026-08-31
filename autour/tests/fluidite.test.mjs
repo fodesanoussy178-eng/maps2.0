@@ -182,13 +182,9 @@ test("le champ Aide propose des exemples et dit où va le reste", () => {
 /*  « Maintenant » : compréhensible, et jamais rempli artificiellement      */
 /* ======================================================================== */
 
-test("le compte de « Maintenant » interroge le moteur temporel, pas le classement", () => {
-  const bloc = /function compterMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
-  assert.ok(bloc, "compterMaintenant doit exister");
-  assert.match(bloc[0], /TEMPS\.estMaintenant\(statutTemps\(l, t\)\.statut\)/,
-    "le nombre doit venir du statut temporel, seule autorité sur « maintenant »");
-  assert.match(bloc[0], /!estTemporaire\(l\) \|\| l\.annule/,
-    "un événement annulé ne compte pas");
+test("le compte de « Maintenant » vient de la sélection du moteur", () => {
+  assert.match(html, /function totalMaintenant\(\)\{\s*return selectionMaintenant\(\)\.length;\s*\}/);
+  assert.match(html, /const enCours = selectionMaintenant\(\)\.length;/);
 });
 
 test("« Maintenant » porte son éclair et son compte", () => {
@@ -326,8 +322,8 @@ test("la pastille disparaît à zéro au lieu d'afficher « Maintenant · 0 »",
      ouverts) : elle annonçait « 0 » — donc restait cachée — au-dessus d'un bloc
      qui proposait trois choses. */
   assert.match(bloc[0], /const n = \(modeNav \|\| modePose \|\| modeAide\) \? 0 : totalMaintenant\(\);/);
-  // et jamais plus que ce que le bloc montre réellement
-  assert.match(bloc[0], /Math\.min\(n, MAINTENANT_APERCU\)/);
+  // la pastille reprend exactement la sélection servie par le bloc
+  assert.match(bloc[0], /if\(compte\) compte\.textContent = String\(n\);/);
 });
 
 test("la pastille suit les données même sans carte", () => {
@@ -419,23 +415,13 @@ test("seul ce qui a réellement lieu prend la carte blanche", () => {
     /if\(estTemporaire\(l\) && !l\.annule && TEMPS\.estMaintenant\(statutTemps\(l\)\.statut\)\)\{/);
 });
 
-test("la liste « ⚡ Maintenant (N) » existe, compacte et comptée", () => {
+test("la liste « ⚡ Maintenant (3) » existe, compacte et comptée", () => {
   assert.match(html, /function blocMaintenantAccueil\(\)\{/);
   assert.match(html, /class="mn" data-testid="maintenant-liste"/);
   assert.match(html, /<b>Maintenant<\/b>'\+/);
-  /* Le compteur disait le total brut. « Maintenant (189) » au-dessus de trois
-     lignes se lit comme un catalogue dont on ne montrerait qu'un fragment, et
-     donne envie de chercher les 186 autres — qui n'existent pas en tant que
-     propositions, puisque la sélection est plafonnée à dix. Il ne dépasse donc
-     plus ce qu'on peut effectivement ouvrir, et dit « 10+ » au-delà :
-     l'abondance, sans promettre une liste. */
-  assert.match(html, /<span>\('\+affiche\+'\)<\/span>/);
-  assert.match(html, /const affiche = PLAF && combien > PLAF\.limiteMaintenant\(\)/);
-  /* Le bouton suivait la même dérive que le compteur : il annonçait le total
-     alors que la liste dépliée est plafonnée à dix. Il ne promet donc plus
-     que ce qu'il ouvrira réellement. */
-  assert.match(html, /const derriere = Math\.min\(combien, MAINTENANT_TOUT\);/);
-  assert.match(html, /Voir tout \('\+derriere\+'\)/);
+  assert.match(html, /const combien = liste\.length;/);
+  assert.match(html, /'<span>\('\+combien\+'\)<\/span>'/);
+  assert.doesNotMatch(html, /MAINTENANT_TOUT|data-mn-tout|["'`]10\+["'`]/);
 });
 
 test("le bloc réserve sa place dès le premier rendu, dans les quatre états", () => {

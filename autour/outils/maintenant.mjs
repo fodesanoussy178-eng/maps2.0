@@ -393,7 +393,7 @@ console.log("\n──── 4. réseau lent ────");
 }
 
 /* ======================================================================== */
-/*  5. BEAUCOUP DE DONNÉES — toujours trois au plus                         */
+/*  5. BEAUCOUP DE DONNÉES — sélection strictement éditorialisée à trois    */
 /* ======================================================================== */
 console.log("\n──── 5. beaucoup de données ────");
 {
@@ -404,12 +404,15 @@ console.log("\n──── 5. beaucoup de données ────");
   const b = await etatBloc(page);
   ok("trois résultats au plus, même avec quarante", b && b.lignes === 3,
      b && String(b.lignes));
-  ok("le compteur dit le vrai total", await page.evaluate(() => {
+  ok("le compteur dit la sélection effectivement rendue", await page.evaluate(() => {
     const t = (document.querySelector(".mn-tete span") || {}).textContent || "";
-    return /\((\d+)\)/.test(t) && Number(t.match(/\((\d+)\)/)[1]) > 3;
+    return /\(3\)/.test(t);
   }));
-  ok("« Voir tout » est proposé", await page.evaluate(() =>
-     !!document.querySelector("[data-mn-tout]")));
+  ok("aucun second niveau « Voir tout »", await page.evaluate(() =>
+     !document.querySelector("[data-mn-tout]") && !document.querySelector(".mn-tout")));
+  ok("aucun résultat sans titre", b && b.titres.length === 3 &&
+     b.titres.every((titre) => /[\p{L}\p{N}]/u.test((titre || "").trim())),
+     b && b.titres.join(" | "));
   ok("la hauteur est la même qu'avec trois résultats", b && b.hauteur >= 200,
      b && b.hauteur + " px");
 

@@ -416,11 +416,11 @@ test("les données très temporelles se rafraîchissent bien plus souvent que le
 /*  10. « Maintenant » : trois, puis dix, jamais davantage                */
 /* ====================================================================== */
 
-test("« Maintenant » montre trois propositions et n'en déplie que dix", () => {
-  assert.match(html, /const MAINTENANT_TOUT = 10;/);
-  assert.match(html, /classerLieux\(evenementsMaintenant\(\), false\)\.slice\(0, MAINTENANT_TOUT\)/);
-  // et rien de futur n'y entre : le filtre reste celui du moteur temporel
-  assert.match(html, /TEMPS\.estMaintenant\(statutTemps\(l, t\)\.statut\)/);
+test("« Maintenant » montre uniquement les trois propositions du moteur", () => {
+  assert.doesNotMatch(html, /MAINTENANT_TOUT|data-mn-tout/);
+  assert.match(html, /const liste = selectionMaintenant\(\);\s*const combien = liste\.length;/);
+  assert.match(html, /const enCours = selectionMaintenant\(\)\.length;/);
+  assert.match(html, /M\.selection\(itemsMaintenant\(ctx\), ctx\)/);
 });
 
 /* ====================================================================== */

@@ -120,7 +120,7 @@ test("retour à Ma position : le bassin GPS est restauré", () => {
 
 test("Maintenant, Pour toi et Explorer partagent le même entonnoir actif", () => {
   assert.match(app, /function elementsDuContexte\(items\)/);
-  for (const nom of ["compterMaintenant", "evenementsMaintenant", "bassinPourToi", "visiblesBruts", "recommandationsAccueil"]) {
+  for (const nom of ["itemsMaintenant", "bassinPourToi", "visiblesBruts", "recommandationsAccueil"]) {
     const fonction = extraireFonction(nom);
     assert.match(fonction, /dansZoneActive|elementsDuContexte/,
       nom + " ne lit pas le contexte géographique actif");

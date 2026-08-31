@@ -413,7 +413,7 @@ const navigateur = await chromium.launch({ executablePath: CHROME });
       enCours: estMaintenant(par("en cours")),
       demain: estMaintenant(par("demain")),
       annule: estMaintenant(par("annulé")),
-      compte: typeof window.compterMaintenant === "function" ? window.compterMaintenant() : -1,
+      compte: typeof window.selectionMaintenant === "function" ? window.selectionMaintenant().length : -1,
     };
   });
 

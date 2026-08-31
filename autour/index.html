@@ -1446,9 +1446,6 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
     border-radius:28px;border-bottom:1px solid var(--bord);
     box-shadow:0 8px 34px rgba(20,30,25,.18);animation:none}
   body:not(.pourtoi-ouvert) #pourToi{display:none}
-  /* Quand la colonne de droite est là, la navigation flottante se recentre
-     entre les deux panneaux plutôt que sous celle de droite. */
-  body.pourtoi-ouvert #navBas{left:var(--decalage-desktop)}
   #btnLieu{flex:0 0 auto;max-width:380px;height:58px;padding:0 20px;font-size:17px}
   .hd-icone{width:58px;height:58px}
   .hd-icone svg{width:23px;height:23px}
@@ -2173,6 +2170,61 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   #feuilleBesoins.accueil .fb-titre{display:block;position:static;width:auto;height:auto;overflow:visible;clip:auto;white-space:normal;font-size:22px;font-weight:800}
   #feuilleBesoins.accueil .fb-x{width:44px;height:44px;margin-left:auto}
 }
+
+/* ---- Contrat de gestes de l'interface ---------------------------------
+   Les boutons sont des contrôles tap/click, pas des éléments HTML
+   déplaçables. Le déplacement reste réservé à Leaflet et à #fbPoignee ;
+   cette règle évite notamment le drag natif d'une image ou la sélection de
+   texte d'un bouton sur Safari iOS. Les zones qui défilent gardent leur axe
+   de défilement explicite. */
+button, [role="button"], summary{
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-user-drag:none;
+  touch-action:manipulation;
+}
+button img, button svg, [role="button"] img, [role="button"] svg{
+  -webkit-user-drag:none;
+  pointer-events:none;
+}
+button:active, [role="button"]:active, summary:active{user-select:none;-webkit-user-select:none}
+
+/* Ces surfaces fixes ne doivent ni prendre un pan de la carte, ni suivre le
+   doigt. Les contrôles inclus dans le corps de feuille ne sont pas ici :
+   celui-ci doit rester verticalement scrollable. */
+#navBas, #navBas button,
+#appHeader, #appHeader button,
+#badgeMaintenant, #btnAide, #btnTransports, #btnAutourDeMoi,
+#locationPopover button, #rechercheOverlay button{
+  touch-action:none;
+  -webkit-user-drag:none;
+  user-select:none;
+  -webkit-user-select:none;
+}
+#navBas{contain:layout}
+#navBas .nb, #navBas .nb-creer{flex:1 0 0;min-width:0}
+#navBas .nb.actif{margin:0;transform:none}
+#navBas .nb-plus{pointer-events:none}
+
+/* La feuille ne se déplace que par sa poignée. Son contenu reste un scroll
+   vertical, et les puces temporelles gardent leur scroll horizontal. */
+#feuilleBesoins .fb-corps{touch-action:auto}
+#feuilleBesoins .ong-temps{touch-action:pan-x}
+#feuilleBesoins .fb-poignee{touch-action:none;-webkit-user-drag:none}
+#feuilleBesoins .ong{touch-action:pan-x}
+#feuilleBesoins .mn-l,
+#feuilleBesoins .mn-sortie,
+#feuilleBesoins .bn,
+#feuilleBesoins .fb-pied button{touch-action:pan-y}
+
+@media (max-width:767px){
+  /* Le panneau passe derrière la navigation, mais sa dernière ligne reste
+     lisible et atteignable au scroll. dvh suit la fenêtre visible de Safari. */
+  #feuilleBesoins.accueil{max-height:min(760px,calc(100dvh - 154px))}
+  #feuilleBesoins .fb-corps{
+    padding-bottom:calc(var(--nav-height) + 20px);
+  }
+}
 </style>
 </head>
 <body>
@@ -2412,10 +2464,10 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="aide-intentions.js?v=a00115e8" defer></script>
 <script src="intentions.js?v=39e671d2" defer></script>
 <script src="comptes.js?v=9f5e8a5d" defer></script>
-<script src="maintenant.js?v=43160c73" defer></script>
+<script src="maintenant.js?v=d6f51360" defer></script>
 <script src="ordonnanceur.js?v=c8368526" defer></script>
-<script src="plafonds.js?v=fac04c2e" defer></script>
-<script src="annonces-taxonomie.js?v=64d76862" defer></script>
+<script src="plafonds.js?v=a922a210" defer></script>
+<script src="annonces-taxonomie.js?v=8dff9359" defer></script>
 <script src="annonces-classement.js?v=b0437559" defer></script>
 <script src="envies.js?v=00000000" defer></script>
 <script src="enrichissements.js?v=00000000" defer></script>
@@ -2430,11 +2482,11 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="signaux.js?v=319acaa9" defer></script>
 <script src="temporel.js?v=dda08b5f" defer></script>
 <script src="evenements-canoniques.js?v=7a5b6ce7" defer></script>
-<script src="entites-canoniques.js?v=e0b58518" defer></script>
+<script src="entites-canoniques.js?v=803c1708" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=2a03415f" defer></script>
 <script src="images.js?v=6303b727" defer></script>
-<script src="core.js?v=13f258bf" defer></script>
+<script src="core.js?v=10ffb46d" defer></script>
 <script src="providers/normaliser.js?v=6288b69c" defer></script>
 <script src="providers/googlePlaces.js?v=70338a03" defer></script>
 <script src="providers/datatourisme.js?v=6f242f4e" defer></script>
@@ -2445,6 +2497,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/aideDora.js?v=5ae438ac" defer></script>
 <script src="providers/aideFiness.js?v=a99f5594" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=6662279b" defer></script>
+<script src="app.js?v=f4aca50a" defer></script>
 </body>
 </html>

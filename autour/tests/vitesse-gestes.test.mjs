@@ -132,15 +132,15 @@ test("« Maintenant » dit qu'il cherche encore plutôt que de laisser croire au
   assert.doesNotMatch(bloc, /<button/, "un aveu ne réclame rien");
 });
 
-test("« Voir tout » ne promet pas plus qu'il n'ouvrira", () => {
-  assert.match(app, /const derriere = Math\.min\(combien, MAINTENANT_TOUT\);/);
-  assert.match(app, /Voir tout \('\+derriere\+'\)/);
+test("« Maintenant » n'ouvre pas une seconde liste", () => {
+  assert.doesNotMatch(app, /MAINTENANT_TOUT|data-mn-tout/);
+  assert.match(app, /const combien = liste\.length;/);
 });
 
 test("le principe de « Maintenant » n'a pas bougé", () => {
-  // trois visibles, dix au plus dépliées, rien de futur
-  assert.match(app, /const MAINTENANT_TOUT = 10;/);
+  // les mêmes trois sont servies par le moteur et par les compteurs
   assert.match(src, /MAINTENANT_APERCU = \(window\.AutourMaintenant \|\| \{\}\)\.PLACES \|\| 3/);
+  assert.match(app, /const enCours = selectionMaintenant\(\)\.length;/);
   assert.match(app, /TEMPS\.estMaintenant\(statutTemps\(l, t\)\.statut\)/);
 });
 
