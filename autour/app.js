@@ -5223,6 +5223,7 @@ async function demarrer(coords){
      celui-ci vient de la session précédente, et si la personne a déménagé de
      ville entre-temps, ses lieux ne doivent pas s'afficher ici. */
   if(CTX && positionMoi && !zoneActive) definirZoneActive(CTX.zoneMoi(positionMoi, commune));
+  majEnteteLieu();
 
   const rapide = positionMoi ? lireJeuRapide(positionMoi[0], positionMoi[1]) : null;
   if(rapide){
@@ -5233,12 +5234,12 @@ async function demarrer(coords){
   dessinerFiltres();
   majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
 
-  /* L'accueil s'ouvre TOUT DE SUITE. Il attendait la réponse d'Overpass — une
-     à trois secondes de carte nue devant quelqu'un qui vient d'arriver, ce qui
-     se lit comme une application vide. */
+  /* La carte reste le premier écran. Maintenant s'ouvre par la navigation
+     basse ou sa pastille compacte ; aucun panneau ne recouvre la carte au
+     démarrage et l'état de la feuille reste réouvrable sans perdre la zone. */
   if(feuilleNiveau === null && !modeNav && !modePose){
-    if(rapide) ouvrirFeuille2("racine");   // les cartes du jeu rapide, intactes
-    else ouvrirAccueilFeuille();
+    majEnteteLieu();
+    majAccueil();
   }
   if(rapide){ PERF.jalon("premier_lieu"); PERF.jalon("source_locale"); }
 
@@ -9054,78 +9055,30 @@ function majFeuille2(){
   }
 
   if(feuilleNiveau === "racine"){
-    // L'accueil ne pose plus de question : il propose. Les besoins sont dans
-    // les pills de l'en-tête, la feuille sert à montrer des lieux.
     const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
-    /* Quand le bloc « ⚡ Maintenant (3) » est là, il EST la section
-       « maintenant ». Garder « Pour toi, maintenant » juste en dessous
-       affichait les mêmes événements une seconde fois, sous une seconde
-       étiquette qui dit la même chose : deux lectures pour une information.
-       Le carrousel devient alors ce qu'il est réellement — les lieux autour,
-       pas ce qui s'y passe. */
-    /* UN SEUL « AUTOUR DE TOI », ET C'EST LE BAS DU PANNEAU.
-
-       Le bloc « ⚡ Maintenant » dit ce qui se passe ; cette section-ci dit ce
-       qu'il y a. Les nommer différemment selon qu'un concert est en cours ou
-       non faisait changer le titre d'une section sous les yeux, pour un
-       contenu qui, lui, ne changeait pas de nature. */
-    const titre = creneau === "maintenant" ? "Autour de toi" : groupe.label;
+    const titre = creneau === "maintenant" ? "Maintenant" : groupe.label;
     $("#fbTitre").textContent = titre;
     retour.hidden = true;
-    // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
-    /* Sur desktop, la référence montre un aperçu de sept cartes puis les
-       transports et les liens. « Voir tout » conserve l'accès au classement
-       complet ; le mobile garde son défilement progressif plus long. */
-    /* ================================================================
-       DEUX TEMPS, ET C'EST TOUT L'OBJET DE CETTE PASSE.
-
-       `recommandationsAccueil` classe l'ensemble des lieux. Le profil l'a
-       mesurée : treize appels, 3 907 ms cumulées, 443 ms pour le pire. Elle
-       vivait dans le MÊME `innerHTML` que le bloc « Maintenant » — qui, lui,
-       est prêt en quelques millisecondes. Maintenant attendait donc un
-       classement dont il n'a aucun besoin, et l'écran restait figé.
-
-       On peint donc d'abord tout ce qui est bon marché — dont « Maintenant »
-       — avec la zone de recommandations à sa place, occupée par le squelette
-       qui s'y affichait déjà. Puis on classe pendant une tranche
-       d'inactivité, et on remplace le squelette par les cartes.
-
-       Rien ne bouge au-dessus : le squelette occupe la place, et l'en-tête
-       « Voir tout » est rendue tout de suite. Ce qui change, c'est le moment
-       où le navigateur reprend la main — entre les deux, il peut peindre,
-       défiler, et enregistrer un appui. */
-    const jeton = ++generationAccueil;
-    if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-
-    corps.innerHTML =
-      blocOuRegarder()+
-      chipsHTML()+
-      /* Sur grand écran elles vivent dans la barre du haut : les rendre ici
-         aussi les ferait exister deux fois pour un lecteur d'écran. */
-      (NAV_FLOTTANTE.matches ? "" : besoinsRapidesHTML())+
-      ongletsTemps()+
-      blocNouveauPourToi()+
-      blocMaintenantAccueil()+
-      blocAideAccueil()+
-      '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
-        '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
-      /* Les six grandes portes d'abord — c'est par elles qu'on retrouve les
-         lieux permanents et les commodités —, le classement ensuite. */
-      (creneau === "maintenant" ? grilleRaccourcisAutour() : "")+
-      '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+
-      (creneau === "maintenant" ? blocTransports() : "")+
-      piedFeuille();
-
-    /* Le classement est-il déjà fait pour cet état exact ? Alors il est déjà
-       posé ci-dessus, et il n'y a rien à différer. Sans cette question, un
-       simple changement d'onglet reclasserait tout pour un résultat
-       identique. */
-    if(!recoCache || recoCache.cle !== cleReco()){
-      annulerRecoDifferee = ORDO
-        ? ORDO.differer(()=>poserRecommandations(jeton, titre),
-            {timeout:300, valide:()=>generationAccueil === jeton})
-        : (poserRecommandations(jeton, titre), null);
+    /* Maintenant est volontairement court : les quatre onglets temporels,
+       les trois propositions réellement retenues, puis l'aide. Aucun
+       catalogue générique, raccourci de catégorie ou bloc « Autour de toi »
+       ne vient diluer la réponse immédiate. */
+    if(creneau === "maintenant"){
+      if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
+      corps.innerHTML = ongletsTemps()+blocMaintenantAccueil()+blocAideAccueil();
+    }else{
+      const jeton = ++generationAccueil;
+      if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
+      corps.innerHTML = ongletsTemps()+
+        '<div class="rc-tete"><strong>'+esc(titre)+'</strong></div>'+
+        '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+piedFeuille();
+      if(!recoCache || recoCache.cle !== cleReco()){
+        annulerRecoDifferee = ORDO
+          ? ORDO.differer(()=>poserRecommandations(jeton, titre),
+              {timeout:300, valide:()=>generationAccueil === jeton})
+          : (poserRecommandations(jeton, titre), null);
+      }
     }
   }else if(feuilleNiveau === "plus"){
     $("#fbTitre").textContent = "Plus de catégories";
@@ -10693,9 +10646,15 @@ function ligneMaintenant(l){
     ? formatDist(distanceDepuisZone(l)) : "";
   const bas = [dist, tempsMaintenant(l)].filter(Boolean).join(" · ");
   const lieu = l.adresse || l.cp || "";
+  const media = mediaDe(l);
+  const visuel = '<span class="mn-visuel" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+    '<i aria-hidden="true">'+esc(c.emoji)+'</i>'+
+    (media.image_url
+      ? '<img src="'+esc(media.image_url)+'" alt="" loading="lazy" decoding="async"'+
+        ' onload="this.classList.add(\'vue\');imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
+    '</span>';
   return '<button class="mn-l" data-mn="'+esc(l.id)+'">'+
-    '<span class="mn-rond" style="background:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
-      c.emoji+'</span>'+
+    visuel+
     '<span class="mn-txt"><b>'+esc(l.titre)+'</b>'+
       (lieu ? '<i>'+esc(lieu)+'</i>' : '')+
       (bas ? '<u>'+esc(bas)+'</u>' : '')+'</span>'+
@@ -11175,8 +11134,13 @@ function peindrePastillePourToi(nombre){
     pastille.hidden = !compte;
     pastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte) : "";
   }
+  const navPastille = $("#navPourToiBadge");
+  if(navPastille){
+    navPastille.hidden = !compte;
+    navPastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : compte) : "";
+  }
   const cloche = $("#btnNotifs");
-  if(cloche) cloche.setAttribute("aria-label", compte ? "Pour toi, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Pour toi");
+  if(cloche) cloche.setAttribute("aria-label", compte ? "Notifications, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Notifications");
 }
 
 function majPastillePourToi(){
@@ -11364,8 +11328,7 @@ function fermerPourToi(){
   const p = $("#pourToi");
   if(!p) return;
   document.body.classList.remove("pourtoi-ouvert");
-  /* Sur grand écran le panneau fait partie du décor : il reste en place. */
-  if(!NAV_FLOTTANTE.matches) p.hidden = true;
+  p.hidden = true;
 }
 
 /* Le panneau est-il visible ? La question a deux réponses selon l'écran — sur
@@ -11376,9 +11339,7 @@ function fermerPourToi(){
 function pourToiOuvert(){
   const p = $("#pourToi");
   if(!p) return false;
-  return NAV_FLOTTANTE.matches
-    ? document.body.classList.contains("pourtoi-ouvert")
-    : !p.hidden;
+  return !p.hidden && document.body.classList.contains("pourtoi-ouvert");
 }
 
 function basculerPourToi(){
@@ -12493,6 +12454,8 @@ function brancherFeuille2(){
     if(creneau === cible) return;
     creneau = cible;
     filtreMaintenant = creneau === "maintenant";
+    ongletCourant = filtreMaintenant ? "maintenant" : "explorer";
+    marquerNavigation(ongletCourant);
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
 
@@ -12504,6 +12467,8 @@ function brancherFeuille2(){
     // « n'afficher que ce qui est utilisable » n'a de sens que dans
     // « maintenant » : ailleurs c'est la date qui trie, pas l'ouverture
     filtreMaintenant = creneau === "maintenant";
+    ongletCourant = filtreMaintenant ? "maintenant" : "explorer";
+    marquerNavigation(ongletCourant);
     /* Le geste répond avant le classement. Le bouton choisi prend son état
        dans le même événement ; carte, contenu et filtres suivent au prochain
        frame. Sur CPU ralenti, « Ce soir » attendait autrement 250 ms avant de
@@ -13530,14 +13495,10 @@ function accorderPourToiALEcran(){
   poserBesoinsRapides();
   const p = $("#pourToi");
   if(!p) return;
-  if(NAV_FLOTTANTE.matches){
-    /* La colonne fait partie de la composition : elle est là d'emblée. */
-    p.hidden = false;
-    document.body.classList.add("pourtoi-ouvert");
-  }else{
-    p.hidden = true;
-    document.body.classList.remove("pourtoi-ouvert");
-  }
+  /* Pour toi est une destination explicite, jamais une colonne imposée au
+     démarrage. Sa pastille reste visible avec les nouveautés réelles. */
+  p.hidden = true;
+  document.body.classList.remove("pourtoi-ouvert");
   majPourToi();
 }
 
@@ -13944,11 +13905,17 @@ function remplirResultatsZone(nom, intention){
    la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
    inversait l'ordre naturel. */
 function ouvrirCreation(){
-  const eph = Object.entries(CATS).filter(([,c])=>c.eph);
+  const eph = [
+    {id:"event", label:"Événement", emoji:"🎉"},
+    {id:"autre", label:"Lieu", emoji:"📍"},
+    {id:"sport", label:"Activité", emoji:"🏃"},
+    {id:"popup", label:"Bon plan", emoji:"✨"},
+    {id:"autre", label:"Autre", emoji:"…"},
+  ];
   ouvrirFeuille(
     '<div class="liste-tete"><h2>Que veux-tu ajouter&nbsp;?</h2></div>'+
-    '<div class="creer-choix">'+eph.map(([id,c])=>
-      '<button class="creer-type" data-type="'+id+'">'+
+    '<div class="creer-choix">'+eph.map(c=>
+      '<button class="creer-type" data-type="'+c.id+'">'+
         '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>');
   $("#feuille").querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{
     typeAvantPose = b.dataset.type;
@@ -13970,6 +13937,7 @@ $("#btnPoseOk").onclick=validerPose;
 function revenirAutourDeMoi(){
   if(!positionMoi || !positionPrecise()) { suivreMaPosition({reproposer:true}); return; }
   definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
+  majEnteteLieu();
   annulerChargementsZone();
   rechercheGeo = null;
   intentionCourante = null;
@@ -13979,7 +13947,7 @@ function revenirAutourDeMoi(){
   allerVers(positionMoi, 16, {duration:.6});
   chargerZone(positionMoi[0], positionMoi[1]);
   rendre(); majAccueil();
-  if(feuilleNiveau !== null) majFeuille2(); else ouvrirAccueilFeuille();
+  if(feuilleNiveau !== null) majFeuille2();
   majBoutons();
 }
 $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
@@ -14107,9 +14075,10 @@ $("#badgeMaintenant").onclick = ()=>{
   if(modeAide) basculerAide();
   creneau = "maintenant";
   filtreMaintenant = true;
-  ongletCourant = "explorer";
-  marquerNavigation("explorer");
+  ongletCourant = "maintenant";
+  marquerNavigation("maintenant");
   contexteExplorer = null;
+  fermerPourToi();
   // même raison qu'ailleurs : rouvrir sans fermer, l'historique reste sain
   ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
@@ -14126,6 +14095,22 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   if(ongletCourant === "explorer" && id !== "explorer") capturerContexteExplorer();
   ongletCourant = id;
   marquerNavigation(id);
+  if(id !== "pourtoi") fermerPourToi();
+  if(id === "maintenant"){
+    if(modeAide) basculerAide();
+    creneau = "maintenant";
+    filtreMaintenant = true;
+    contexteExplorer = null;
+    ouvrirFeuille2("racine");
+    reinitialiserScrollFeuille();
+    rendre();
+    return;
+  }
+  if(id === "pourtoi"){
+    if(modeAide) basculerAide();
+    ouvrirPourToi();
+    return;
+  }
   if(id === "explorer"){
     if(modeAide) basculerAide();
     /* ON NE FERME PAS POUR ROUVRIR AUSSITÔT.
@@ -14151,16 +14136,12 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
     if(!modeAide) basculerAide(); else { sousAide = null; besoinsExprimesAide = []; besoinsAide = []; besoinsSecondairesAide = []; intentionsSanteAide = []; }
     ouvrirFeuille2("aide"); return;
   }
-  /* Créer et Favoris demandent un compte — mais SEULEMENT ici, au moment du
-     geste. L'onglet reste visible et cliquable pour tout le monde : le cacher
-     reviendrait à ne pas dire qu'Autour se publie. */
+  /* La première étape de Créer est toujours lisible : le choix du type ne
+     demande pas de compte. L'authentification reste au moment de publier,
+     après que le brouillon est réellement commencé. */
   if(id === "creer"){
     retourFormulaire=false;
-    exigerCompte("publier").then(ok=>{ if(ok) ouvrirCreation(); });
-    return;
-  }
-  if(id === "favoris"){
-    exigerCompte("favori").then(ok=>{ if(ok) ouvrirFavoris(); });
+    ouvrirCreation();
     return;
   }
   if(id === "profil"){ ouvrirProfil(); return; }
@@ -14253,27 +14234,75 @@ async function ouvrirFavoris(){
 
 /* ---- Ville détectée -----------------------------------------------------
    Reverse-geocoding Nominatim, une seule fois par position. En cas d'échec,
-   l'en-tête garde « Autour de toi » : on n'affiche pas une ville devinée. */
-/* Ce que l'en-tête dit du lieu regardé. Tant que personne n'a donné sa
-   position ni choisi de ville, il le dit — au lieu de faire croire que le
-   point affiché est « autour de toi ». */
+   l'en-tête conserve un contexte neutre : on n'affiche pas une ville devinée. */
+/* Ce que l'en-tête dit du lieu regardé, dans la fiche ouverte par l'avatar.
+   Tant que personne n'a donné sa position ni choisi de ville, il le dit au
+   lieu de faire croire que le point affiché est « autour de toi ». */
+function informationsLocalisation(){
+  const recherche = !!(CTX && zoneActive && zoneActive.type === CTX.TYPES.RECHERCHE);
+  const nom = recherche && zoneActive.nom
+    ? zoneActive.nom
+    : (commune && commune !== COMMUNE_INCONNUE ? commune
+      : positionPrecise() ? "Ma position actuelle" : "Position non définie");
+  const adresse = zoneActive && (zoneActive.adresse || zoneActive.address || "");
+  return {
+    nom,
+    adresse,
+    recherche,
+    statut: recherche ? "Zone explorée"
+      : positionPrecise() ? "Position précise active"
+      : positionConnue() ? "Zone approximative"
+      : "Aucune position sélectionnée",
+  };
+}
+
+function mettreAJourLocalisationPopover(){
+  const pop = $("#locationPopover");
+  if(!pop) return;
+  const info = informationsLocalisation();
+  const zone = $("#locationPopoverZone");
+  const adresse = $("#locationPopoverAddress");
+  const statut = $("#locationPopoverStatus");
+  const retour = $("#locationPopoverReturn");
+  if(zone) zone.textContent = info.nom;
+  if(adresse){
+    adresse.textContent = info.adresse;
+    adresse.hidden = !info.adresse;
+  }
+  if(statut) statut.textContent = info.statut;
+  if(retour) retour.hidden = !(info.recherche && positionPrecise());
+}
+
+function ouvrirLocalisation(){
+  const pop = $("#locationPopover");
+  if(!pop) return;
+  mettreAJourLocalisationPopover();
+  pop.hidden = false;
+}
+
+function fermerLocalisation(){
+  const pop = $("#locationPopover");
+  if(pop) pop.hidden = true;
+}
+
 function majEnteteLieu(){
   const v = $("#hdVille");
   const avatar = $("#hdAvatar");
   if(avatar){
-    const choix = avatarChoisi();
+    const choix = avatarChoisi() || "🙂";
     avatar.textContent = choix;
-    avatar.hidden = !choix;
+    avatar.hidden = false;
   }
-  if(!v) return;
-  if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
+  if(!v){ mettreAJourLocalisationPopover(); return; }
+  if(!positionConnue()){ v.textContent = "Choisir un endroit"; mettreAJourLocalisationPopover(); return; }
   /* Une ville déduite d'une adresse IP ne s'écrit JAMAIS dans cette pastille.
      Sur un réseau mobile elle désigne souvent la passerelle de l'opérateur, à
      des dizaines de kilomètres : afficher « Lille » à quelqu'un qui est à
      Tourcoing est une affirmation fausse, et c'est celle qui a été signalée.
      On dit donc ce qu'on sait vraiment — qu'on regarde une zone, sans plus. */
-  if(positionApprochee()){ v.textContent = "Zone approximative"; return; }
+  if(positionApprochee()){ v.textContent = "Zone approximative"; mettreAJourLocalisationPopover(); return; }
   if(ETIQUETTES_LIEU.includes(v.textContent)) v.textContent = "Autour de toi";
+  mettreAJourLocalisationPopover();
 }
 
 async function detecterVille(lat,lng){
@@ -14291,6 +14320,7 @@ async function detecterVille(lat,lng){
     if(parRelais){
       villeDetectee = cle;
       if(nommable()){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
+      mettreAJourLocalisationPopover();
     }
     terminerGeneration(generation);
     return;
@@ -14311,13 +14341,14 @@ async function detecterVille(lat,lng){
       $("#hdVille").textContent = nom;
       mesurerHeader();
     }
+    mettreAJourLocalisationPopover();
   }catch(e){ /* silencieux : l'en-tête reste neutre plutôt que faux */ }
   finally{ terminerGeneration(generation); }
 }
 
-/* L'ancien gros bouton noir « Que faire autour de moi ? » a disparu : la
-   feuille s'ouvre d'elle-même au démarrage sur « Pour toi, maintenant », et
-   les pills de l'en-tête donnent l'accès direct aux besoins. */
+/* Ouvre l'accueil d'Explorer ou de Maintenant depuis une navigation explicite.
+   Le démarrage reste centré sur la carte ; les résultats ne sont jamais effacés
+   quand la feuille est refermée. */
 function ouvrirAccueilFeuille(){
   if(modeAide) basculerAide();
   catsActives = null; sousChoisi = null; filtreActif = "tout";
@@ -14398,17 +14429,25 @@ poigneeFeuille.addEventListener("pointerup",e=>{
    doit rendre la poignée à son état de repos. Sans ça le glissement restait
    « en cours » et le geste suivant se comparait à une origine périmée. */
 poigneeFeuille.addEventListener("pointercancel",relacherPoignee);
-/* La pastille de lieu : recentrer si on sait où on est, demander sinon.
-   C'est la seule commande géographique — « Autour de moi » n'est plus un
-   concept concurrent de « Maintenant », c'est ce geste-là. */
+/* La pastille de lieu expose le contexte actif. Le retour GPS reste une action
+   explicite dans sa fiche lorsque l'on explore une autre zone. */
 $("#btnLieu").onclick = ()=>{
-  /* Tant qu'on n'a pas le vrai point, ce bouton le demande. Il testait
-     `positionConnue()`, qui répond « oui » depuis que la ville peut venir de
-     l'adresse IP : la pastille se contentait donc de recentrer sur une ville
-     approchée, et plus rien dans l'écran ne permettait de demander la vraie
-     position. Quelqu'un que le navigateur n'a jamais localisé restait sur une
-     ville à plusieurs kilomètres, sans aucun moyen d'y remédier. */
-  if(!positionPrecise()){ suivreMaPosition({reproposer:true}); return; }
-  if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
-  allerVers(positionMoi, 16, {duration:.6});
+  /* Le clic ne modifie pas la géographie : il rend visible l'état déjà actif. */
+ const pop = $("#locationPopover");
+  if(pop && !pop.hidden) fermerLocalisation();
+  else ouvrirLocalisation();
 };
+if($("#locationPopoverClose")) $("#locationPopoverClose").onclick = fermerLocalisation;
+if($("#locationPopoverReturn")) $("#locationPopoverReturn").onclick = ()=>{
+  revenirAutourDeMoi();
+  fermerLocalisation();
+};
+document.addEventListener("pointerdown", (e)=>{
+  const pop = $("#locationPopover");
+  const bouton = $("#btnLieu");
+  if(!pop || pop.hidden || pop.contains(e.target) || (bouton && bouton.contains(e.target))) return;
+  fermerLocalisation();
+});
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape") fermerLocalisation();
+});

@@ -208,24 +208,23 @@ test("un seul contrôle ramène à sa position",()=>{
 
 test("« Créer » reste atteignable en un tap depuis l'écran principal",()=>{
   // l'onglet n'est ni caché ni grisé pour un visiteur : le masquer reviendrait
-  // à ne pas dire qu'Autour se publie. Le compte est demandé APRÈS le tap.
-  assert.match(html,/if\(id === "creer"\)\{/);
-  assert.match(html,/exigerCompte\("publier"\)\.then\(ok=>\{ if\(ok\) ouvrirCreation\(\); \}\)/);
+  // à ne pas dire qu'Autour se publie. Le choix du type vient avant le compte.
+  assert.match(html,/if\(id === "creer"\)\{\s*retourFormulaire=false;\s*ouvrirCreation\(\);\s*return;/);
+  assert.doesNotMatch(html,/if\(id === "creer"\)\{[\s\S]{0,220}exigerCompte\("publier"\)/);
   assert.match(html,/function ouvrirCreation/);
   assert.doesNotMatch(html,/data-nb="creer"[^>]*aria-disabled/);
 });
 
 test("le bottom sheet propose au lieu de poser une question",()=>{
-  assert.match(html,/Pour toi, maintenant/);
-  assert.match(html,/function recommandationsAccueil/);
-  assert.match(html,/class="rc-piste"/);
-  assert.match(html,/data-rc-tout/);
-  // l'accueil s'ouvre tout seul — et sans attendre que des lieux existent.
-  // Avec le jeu rapide il s'ouvre directement sur les propositions gardées,
-  // sinon sur le squelette ; dans les deux cas avant toute requête.
-  assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose\)\{\s*\n\s*if\(rapide\) ouvrirFeuille2\("racine"\);/);
-  assert.match(html,/else ouvrirAccueilFeuille\(\);/);
-  assert.doesNotMatch(html,/!modePose && lieux\.length\) ouvrirAccueilFeuille/);
+  // Maintenant est volontairement court : onglets, trois résultats réels,
+  // puis l'accès discret à Aide.
+  assert.match(html,/function blocMaintenantAccueil\(\)\{/);
+  assert.match(html,/corps\.innerHTML = ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+blocAideAccueil\(\);/);
+  assert.match(html,/function blocAideAccueil\(\)\{/);
+  // La carte est le premier écran : le panneau ne s'ouvre qu'après un geste.
+  assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose\)\{\s*\n\s*majEnteteLieu\(\);\s*\n\s*majAccueil\(\);/);
+  assert.doesNotMatch(html,/if\(rapide\) ouvrirFeuille2\("racine"\)/);
+  assert.doesNotMatch(html,/else ouvrirAccueilFeuille\(\);/);
 });
 
 test("« Pour toi, maintenant » peut se fermer sur mobile",()=>{
@@ -251,16 +250,16 @@ test("les heures affichées suivent le fuseau du lieu",()=>{
 
 test("la navigation basse suit le produit",()=>{
   assert.match(html,/<nav id="navBas"/);
-  for(const t of ["explorer","creer","favoris","profil"])
-    assert.match(html,new RegExp('data-nb="'+t+'"'), t);
-  // « Autour de moi » et « Pour toi » ouvraient le même écran : un seul reste
-  assert.doesNotMatch(html,/data-nb="maintenant"/);
+  const debut = html.indexOf('<nav id="navBas">');
+  const fin = html.indexOf("</nav>", debut);
+  const nav = html.slice(debut, fin);
+  const ordre = [...nav.matchAll(/data-nb="([^"]+)"/g)].map(x=>x[1]);
+  assert.deepEqual(ordre, ["maintenant","explorer","creer","pourtoi","aide","profil"]);
+  assert.match(nav,/id="navPourToiBadge"/);
+  assert.doesNotMatch(nav,/data-nb="favoris"/);
   // Messages n'est plus un onglet permanent : prévenir les participants vit
   // sur l'événement qu'on a créé
   assert.doesNotMatch(html,/data-nb="messages"/);
-  // Favoris n'est plus un onglet mort : il liste ce qui est enregistré
-  assert.doesNotMatch(html,/data-nb="favoris" aria-disabled/);
-  assert.match(html,/exigerCompte\("favori"\)\.then\(ok=>\{ if\(ok\) ouvrirFavoris\(\); \}\)/);
   // Profil est un vrai écran de compte, plus un raccourci vers les canaux
   assert.match(html,/if\(id === "profil"\)\{ ouvrirProfil\(\); return; \}/);
 });
@@ -1145,10 +1144,14 @@ test("« Revenir autour de moi » apparaît dès que la carte s'est déplacée",
 });
 
 test("la navigation nomme le produit",()=>{
-  for(const t of ["explorer","creer","favoris","profil"])
-    assert.match(html,new RegExp('data-nb="'+t+'"'), t);
-  assert.match(html,/Explorer\n {2}<\/button>/);
-  // le temps se choisit DANS Explorer, pas dans la barre du bas
+  const debut = html.indexOf('<nav id="navBas">');
+  const fin = html.indexOf("</nav>", debut);
+  const nav = html.slice(debut, fin);
+  assert.deepEqual([...nav.matchAll(/data-nb="([^"]+)"/g)].map(x=>x[1]),
+    ["maintenant","explorer","creer","pourtoi","aide","profil"]);
+  assert.match(nav,/data-nb="explorer"[\s\S]*?<span>Explorer<\/span>/);
+  // le temps se choisit dans Maintenant ou Explorer, pas via une nomenclature
+  // cachée dans la barre du bas
   assert.match(html,/function ongletsTemps\(\)\{/);
   for(const label of ["Maintenant","Ce soir","Ce week-end","À venir"])
     assert.match(html,new RegExp('label:"'+label.replace("À","À")+'"'), label);
@@ -1445,8 +1448,8 @@ test("sans position GPS, l'application garde un repli de ville honnête",()=>{
   assert.match(html,/originePosition = null; precisionPosition = null;\s+positionMoi = null; commune = COMMUNE_INCONNUE;/);
   assert.match(html,/const CENTRE_CARTE_FRANCE = \[46\.603354, 1\.888334\];/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
-  assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat, lng\);/);
-  assert.match(html,/if\(!positionConnue\(\)\)\{ v\.textContent = "Choisir un endroit"; return; \}/);
+  assert.match(html,/if\(positionConnue\(\)\) detecterVille\(lat,\s*lng\);/);
+  assert.match(html,/if\(!positionConnue\(\)\)\{\s*v\.textContent = "Choisir un endroit";\s*mettreAJourLocalisationPopover\(\);/);
   // et surtout : plus jamais « rien autour de toi » quand on ignore où est « toi »
   assert.match(html,/const erreurSansResultat = erreurPartielle && retenus === 0 && feuilleNiveau === null;/);
   // `positionConnue()` n'est plus testé ici : il est entré dans etatDonnees(),
@@ -1476,10 +1479,13 @@ test("un état utile s'affiche immédiatement, même sans permission",()=>{
 test("la pastille de l'en-tête est géographique, pas temporelle",()=>{
   // « Maintenant » y était en double avec les onglets de la feuille
   assert.doesNotMatch(html,/id="btnMaintenant"/);
-  assert.match(html,/<button id="btnLieu" title="Recentrer sur ma position">/);
+  assert.match(html,/<button id="btnLieu" title="Voir la localisation active" aria-label="Voir la localisation active">/);
+  assert.match(html,/function informationsLocalisation\(\)\{/);
+  assert.match(html,/id="locationPopoverReturn"[^>]*>Revenir à ma position/);
   assert.match(html,/\$\("#btnLieu"\)\.onclick = \(\)=>\{/);
-  assert.match(html,/if\(zoneAffichee \|\| rechercheGeo\)\{ revenirAutourDeMoi\(\); return; \}/);
-  // « Revenir autour de moi » est la même action, pas un concept concurrent
+  assert.match(html,/if\(pop && !pop\.hidden\) fermerLocalisation\(\);\s*else ouvrirLocalisation\(\);/);
+  // Le retour géographique conserve le moteur existant et est disponible dans
+  // la carte comme dans la carte de localisation.
   assert.match(html,/function revenirAutourDeMoi\(\)\{/);
   assert.match(html,/\$\("#btnAutourDeMoi"\)\.onclick = revenirAutourDeMoi;/);
 });
@@ -1618,12 +1624,12 @@ test("un signal ne s'invente jamais",()=>{
 test("Aide est une entrée principale, nommée et distincte du cœur",()=>{
   assert.match(html,/<button class="nb nb-aide" data-nb="aide">/);
   // le mot est écrit : une icône seule ne dit pas ce que c'est
-  assert.match(html,/<\/svg>\s*\n\s*Aide\s*\n\s*<\/button>/);
-  // le cœur revient à Aide — c'est là qu'il dit quelque chose — et Favoris
-  // passe au signet pour que les deux se distinguent
-  assert.match(html,/Le cœur revient à Aide/);
-  assert.match(html,/<button class="nb" data-nb="favoris">\s*\n\s*<svg[^>]*><path d="M6\.5 3\.5h11/);
-  for(const t of ["explorer","aide","creer","favoris","profil"])
+  assert.match(html,/<button class="nb nb-aide" data-nb="aide">[\s\S]*?<span>Aide<\/span>\s*<\/button>/);
+  // Pour toi et Aide ont chacun leur entrée : aucun Favoris fantôme ne
+  // reprend la place réservée à Aide.
+  assert.match(html,/<button class="nb nb-pourtoi" data-nb="pourtoi"[^>]*>/);
+  assert.doesNotMatch(html,/data-nb="favoris"/);
+  for(const t of ["maintenant","explorer","aide","creer","pourtoi","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);
   // un rappel discret sur l'accueil, une ligne et pas un panneau
   assert.match(html,/function blocAideAccueil\(\)\{/);
@@ -1802,8 +1808,9 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
   // le groupe temporel aussi : on ne parle pas de vide pendant qu'on charge,
   // et l'ignorance de la position passe avant l'ignorance des données
   assert.match(html,/if\(etatGroupe === ETATS_DONNEES\.LOCATION_LOADING \|\|\s*\n\s*etatGroupe === ETATS_DONNEES\.DATA_LOADING\) return squeletteHTML\(3\);/);
-  // et l'accueil s'ouvre sans attendre Overpass
-  assert.match(html,/L'accueil s'ouvre TOUT DE SUITE\./);
+  // et l'accueil reste disponible sans attendre Overpass lorsqu'on le demande
+  assert.match(html,/La carte reste le premier écran\./);
+  assert.match(html,/aucun panneau ne recouvre la carte au/);
 });
 
 test("l'accueil propose quatre besoins rapides",()=>{
@@ -2235,13 +2242,17 @@ test("une instance régionale ne décide pas qu'un quartier est vide",()=>{
 });
 
 test("une ville déduite de l'IP ne coupe pas l'accès à la vraie position",()=>{
+  // Une ville déduite de l'IP reste une zone de données, tandis que l'avatar
+  // ouvre toujours la carte de localisation et permet de revenir au GPS.
+  assert.match(html,/function ouvrirLocalisation\(\)\{/);
+  assert.match(html,/if\(retour\) retour\.hidden = !\(info\.recherche && positionPrecise\(\)\);/);
   // `positionConnue()` répond « oui » dès qu'une ville est déduite de l'adresse
   // IP. La pastille de l'en-tête — le seul bouton toujours visible — testait
   // ça et se contentait alors de recentrer : plus aucun moyen, dans tout
   // l'écran, de demander la vraie position.
-  assert.match(html,/if\(!positionPrecise\(\)\)\{ suivreMaPosition\(\{reproposer:true\}\); return; \}/);
+  assert.doesNotMatch(html,/if\(!positionPrecise\(\)\)\{ suivreMaPosition\(\{reproposer:true\}\); return; \}/);
   assert.doesNotMatch(html,/if\(!positionConnue\(\)\)\{ suivreMaPosition\(\); return; \}/);
-  // et le message d'échec ne prétend pas garder un quartier qu'on n'a jamais eu
+  // et les messages de précision restent explicites
   assert.match(html,/"Zone approximative · active ta position pour être précis\."/);
   assert.match(html,/"Position indisponible · on garde ton dernier quartier\."/);
 });
@@ -2254,7 +2265,7 @@ test("l'adresse IP choisit une zone de données, jamais la position",()=>{
   // seul le GPS peut définir la position réelle
   assert.match(html,/positionMoi = c;\s*\n\s*originePosition = "gps";\s*\n\s*precisionPosition = "point";/);
   // la ville déduite de l'IP ne s'écrit jamais dans la pastille
-  assert.match(html,/if\(positionApprochee\(\)\)\{ v\.textContent = "Zone approximative"; return; \}/);
+  assert.match(html,/if\(positionApprochee\(\)\)\{\s*v\.textContent = "Zone approximative";/);
   // ni via le géocodage inverse, qui ne nomme que sur un vrai point
   assert.match(html,/const nommable = \(\)=>positionPrecise\(\);/);
   assert.match(html,/if\(parRelais\)\{[\s\S]*?if\(nommable\(\)\)/);
@@ -2498,7 +2509,7 @@ test("les quatre sorties disent toutes la même chose",()=>{
      `hidden`, sur bureau c’est la classe du body : deux réponses possibles,
      une seule fonction pour les donner. */
   assert.match(html,/function pourToiOuvert\(\)\{/);
-  assert.match(html,/NAV_FLOTTANTE\.matches\s*\n?\s*\?\s*document\.body\.classList\.contains\("pourtoi-ouvert"\)\s*\n?\s*:\s*!p\.hidden/);
+  assert.match(html,/return !p\.hidden && document\.body\.classList\.contains\("pourtoi-ouvert"\);/);
   // ✕
   assert.match(html,/\$\("#ptFermer"\)\.onclick = fermerPourToi/);
   // la cloche bascule

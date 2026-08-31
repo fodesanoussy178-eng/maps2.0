@@ -2095,6 +2095,84 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
 
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ---- Autour : hiérarchie de la nouvelle interface ---------------------- */
+.visuellement-cache{position:absolute!important;width:1px!important;height:1px!important;
+  padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;
+  white-space:nowrap!important;border:0!important}
+#hdAvatar{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;
+  border:2px solid var(--violet);background:linear-gradient(145deg,#fff,#eee8ff);
+  font-size:24px;line-height:1;flex:0 0 38px}
+#btnLieu{justify-content:center;cursor:pointer}
+#btnAide{display:none!important}
+#locationPopover{position:absolute;z-index:780;top:calc(var(--safe-t) + 94px);right:28px;width:min(310px,calc(100vw - 32px));
+  padding:16px;border:1px solid var(--bord);border-radius:20px;background:#fff;
+  box-shadow:0 14px 38px rgba(20,30,25,.2)}
+.location-popover-head{display:flex;align-items:center;gap:9px;color:var(--ink)}
+.location-popover-head>span{font-size:20px;color:var(--violet)}
+.location-popover-head strong{flex:1;font-size:15px}
+.location-popover-head button{width:34px;height:34px;border:1px solid var(--bord);border-radius:50%;background:#fff;color:var(--ink);font-size:14px}
+#locationPopover p{margin:12px 0 0;color:var(--ink2);font-size:14px;line-height:1.35}
+#locationPopoverZone{font-weight:800;color:var(--ink)!important;font-size:18px!important}
+#locationPopoverAddress{padding-top:10px;border-top:1px solid var(--bord)}
+.location-popover-status{font-size:12px!important}
+#locationPopoverReturn{width:100%;min-height:42px;margin-top:14px;padding:10px 14px;border:0;border-radius:12px;
+  background:var(--violet);color:#fff;font-size:13.5px;font-weight:750;cursor:pointer}
+#navBas{left:50%;right:auto;width:min(1180px,calc(100vw - 56px));transform:translateX(-50%);}
+#navBas .nb{position:relative}
+.nb-plus{display:grid;place-items:center;background:var(--violet);color:#fff!important;border-radius:50%;
+  box-shadow:0 8px 22px rgba(91,46,230,.32)}
+.nb-creer{overflow:visible;color:var(--violet)}
+.nb-creer .nb-plus{width:62px;height:62px;margin-top:-25px}
+.nav-badge{position:absolute;top:4px;right:calc(50% - 27px);min-width:18px;height:18px;padding:0 5px;border-radius:99px;
+  display:grid;place-items:center;background:var(--signal);color:#fff;border:2px solid #fff;
+  font:700 10px/1 'JetBrains Mono',monospace;font-style:normal}
+#notifPastille{display:grid;place-items:center;min-width:18px;height:18px;padding:0 4px}
+#feuilleBesoins .fb-corps{overflow-y:auto;overscroll-behavior:contain}
+#feuilleBesoins.accueil{max-height:min(760px,calc(100vh - 154px));overflow:hidden}
+#feuilleBesoins.accueil .fb-x{display:grid}
+#feuilleBesoins.accueil .fb-tete{position:relative;top:auto;right:auto;width:auto;min-height:48px;padding:8px 16px 0;background:#fff;display:flex}
+#feuilleBesoins.accueil .fb-titre{display:block;position:static;width:auto;height:auto;overflow:visible;clip:auto;white-space:normal;font-size:18px;font-weight:800}
+#feuilleBesoins.accueil .fb-x{margin-left:auto}
+#feuilleBesoins.accueil .fb-corps{padding-top:12px}
+.mn{border-radius:20px;box-shadow:0 2px 10px rgba(20,30,25,.06)}
+.mn-l{height:82px;flex-basis:82px;padding:9px 14px;gap:12px}
+.mn-visuel{position:relative;display:grid;place-items:center;flex:0 0 62px;width:62px;height:62px;overflow:hidden;border-radius:15px;
+  background:var(--teinte,#5D6B63);color:#fff;font-size:23px}
+.mn-visuel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .18s ease}
+.mn-visuel img.vue{opacity:1}
+.mn-visuel i{font-style:normal}
+@media (max-width:1099px){
+  #appHeader{left:16px;right:16px;top:calc(var(--safe-t) + 12px)}
+  #appHeader #btnLieu{width:48px;height:48px;padding:0;flex:0 0 48px}
+  #appHeader #btnLoupe,#appHeader #btnNotifs{width:48px;height:48px}
+  #hdAvatar{width:34px;height:34px;flex-basis:34px;font-size:21px}
+  #locationPopover{top:calc(var(--safe-t) + 68px);right:16px}
+  #navBas{width:100%;left:0;right:0;bottom:0;transform:none;border-radius:20px 20px 0 0}
+  .nb{font-size:11px}
+  .nb-creer .nb-plus{width:58px;height:58px;margin-top:-19px}
+  .nav-badge{top:1px;right:calc(50% - 25px)}
+  #feuilleBesoins.accueil .fb-corps{padding-top:8px}
+  .mn-l{height:78px;flex-basis:78px}
+  .mn-visuel{width:56px;height:56px;flex-basis:56px}
+}
+@media (min-width:1100px){
+  #badgeMaintenant{top:calc(var(--safe-t) + var(--marge-desktop));}
+  #appHeader #btnLieu{width:58px;max-width:58px;padding:0;margin-left:0}
+  #appHeader #btnLieu.inconnu{border-color:var(--bord);color:var(--ink)}
+  #appHeader #btnLoupe{margin-left:auto}
+  #appHeader #btnNotifs{margin-left:0}
+  #navBas{bottom:20px;min-height:96px;padding:10px 14px;border-radius:99px;}
+  #btnTransports{bottom:calc(var(--marge-desktop) + 108px)}
+  #navBas .nb{font-size:14px;padding:8px 10px}
+  #navBas .nb svg{width:25px;height:25px}
+  .nb-creer .nb-plus{width:68px;height:68px;margin-top:-34px}
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,#feuilleBesoins.reduite{
+    bottom:auto;height:auto;max-height:min(760px,calc(100vh - 154px));
+  }
+  #feuilleBesoins.accueil .fb-tete{position:relative;top:auto;right:auto;width:auto;min-height:0;padding:8px 16px 0;background:#fff}
+  #feuilleBesoins.accueil .fb-titre{display:block;position:static;width:auto;height:auto;overflow:visible;clip:auto;white-space:normal;font-size:22px;font-weight:800}
+  #feuilleBesoins.accueil .fb-x{width:44px;height:44px;margin-left:auto}
+}
 </style>
 </head>
 <body>
@@ -2144,19 +2222,30 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <!-- Le lieu regardé, et rien d'autre. Cette pastille portait aussi
        « Maintenant », ce qui faisait deux commandes du temps (ici et dans la
        feuille) et brouillait la seule question qu'elle doit répondre : où
-       est-ce que je regarde ? Un appui recentre, ou demande où regarder. -->
-  <button id="btnLieu" title="Recentrer sur ma position">
-    ⌖ <span id="hdAvatar" hidden aria-hidden="true"></span><b id="hdVille">Autour de toi</b>
-  </button>
+       est-ce que je regarde ? Un appui ouvre la fiche de localisation active. -->
   <button class="hd-icone" id="btnLoupe" aria-label="Rechercher">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
   </button>
-  <button class="hd-icone" id="btnNotifs" aria-label="Pour toi">
+  <button id="btnLieu" title="Voir la localisation active" aria-label="Voir la localisation active">
+    <span id="hdAvatar" hidden aria-hidden="true">🙂</span><b id="hdVille" class="visuellement-cache">Localisation active</b>
+  </button>
+  <button class="hd-icone" id="btnNotifs" aria-label="Notifications">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-    <span class="notif-texte">Pour toi</span>
     <i id="notifPastille" hidden></i>
   </button>
 </header>
+
+<div id="locationPopover" hidden role="dialog" aria-labelledby="locationPopoverTitle">
+  <div class="location-popover-head">
+    <span aria-hidden="true">⌖</span>
+    <strong id="locationPopoverTitle">Localisation active</strong>
+    <button id="locationPopoverClose" type="button" aria-label="Fermer la localisation">✕</button>
+  </div>
+  <p id="locationPopoverZone"></p>
+  <p id="locationPopoverAddress" hidden></p>
+  <p class="location-popover-status" id="locationPopoverStatus"></p>
+  <button id="locationPopoverReturn" type="button" hidden>Revenir à ma position</button>
+</div>
 
 <!-- Recherche : superposée à la carte, jamais un écran de remplacement. -->
 <div id="rechercheOverlay" hidden role="dialog" aria-label="Rechercher">
@@ -2252,41 +2341,31 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   <div class="pt-corps" id="ptCorps"></div>
 </aside>
 
-<!-- Navigation basse. « Messages » ne sert qu'à prévenir les participants
-     d'un événement qu'on a créé (annulation, changement d'horaire, limite
-     de places) : il ne s'active donc que si on a publié quelque chose. -->
+<!-- Navigation basse : Maintenant, Explorer, Créer, Pour toi, Aide, Profil. -->
 <nav id="navBas">
-  <!-- « Autour de moi » et « Pour toi » ouvraient le même écran par deux
-       portes : c'était deux noms pour une seule chose. Il n'en reste qu'une,
-       Explorer, et le temps se choisit à l'intérieur (Maintenant, Ce soir,
-       Ce week-end, À venir). Revenir à sa position est devenu un geste
-       géographique : la pastille de l'en-tête et le bouton de la carte. -->
+  <button class="nb" data-nb="maintenant">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M13.2 2 5.5 13h5.3L10.1 22 18.5 10h-5.3z"/></svg>
+    <span>Maintenant</span>
+  </button>
   <button class="nb actif" data-nb="explorer">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-    Explorer
-  </button>
-  <!-- Aide n'est plus un cœur flottant sur la carte : c'est l'une des deux
-       questions auxquelles Autour répond. « Qu'est-ce qui se passe autour de
-       moi » et « qu'est-ce qui peut m'aider autour de moi » méritent la même
-       place. Icône de soutien (deux mains), et le mot écrit. -->
-  <!-- Le cœur revient à Aide : c'est lui qui dit « soutien », et c'est là que
-       ça compte. Favoris passe donc au signet — deux cœurs côte à côte ne se
-       distinguaient pas, et le plus important des deux devait garder le sien. -->
-  <button class="nb nb-aide" data-nb="aide">
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
-    Aide
+    <span>Explorer</span>
   </button>
   <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
     <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
-    Créer
+    <span>Créer</span>
   </button>
-  <button class="nb" data-nb="favoris">
-    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1z"/></svg>
-    Favoris
+  <button class="nb nb-pourtoi" data-nb="pourtoi" aria-label="Pour toi">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.2c0 5.2-8 9.3-8 9.3s-8-4.1-8-9.3a4.1 4.1 0 0 1 7.1-2.8L12 9.2l.9-.8A4.1 4.1 0 0 1 20 11.2z"/></svg>
+    <span>Pour toi</span><i class="nav-badge" id="navPourToiBadge" hidden></i>
+  </button>
+  <button class="nb nb-aide" data-nb="aide">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
+    <span>Aide</span>
   </button>
   <button class="nb" data-nb="profil">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
-    Profil
+    <span>Profil</span>
   </button>
 </nav>
 
@@ -2333,7 +2412,7 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="aide-intentions.js?v=a00115e8" defer></script>
 <script src="intentions.js?v=39e671d2" defer></script>
 <script src="comptes.js?v=9f5e8a5d" defer></script>
-<script src="maintenant.js?v=2a3f867d" defer></script>
+<script src="maintenant.js?v=43160c73" defer></script>
 <script src="ordonnanceur.js?v=c8368526" defer></script>
 <script src="plafonds.js?v=fac04c2e" defer></script>
 <script src="annonces-taxonomie.js?v=64d76862" defer></script>
@@ -2366,6 +2445,6 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
 <script src="providers/aideDora.js?v=5ae438ac" defer></script>
 <script src="providers/aideFiness.js?v=a99f5594" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=4213b465" defer></script>
+<script src="app.js?v=6662279b" defer></script>
 </body>
 </html>
