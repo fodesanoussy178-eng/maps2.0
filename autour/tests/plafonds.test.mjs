@@ -10,29 +10,24 @@ const html = sourceApplicationSync(import.meta.url);
 const liste = (n) => Array.from({ length: n }, (_, i) => ({ id: "l" + i, rang: i }));
 
 /* ==========================================================================
-   « Voir tout » avait été débouché — c'était la correction d'un défaut, pas
-   une direction de produit. Poussée jusqu'au bout, elle donne un annuaire.
-   Autour ne répond pas à « qu'est-ce qui existe ici » mais à « qu'est-ce que
-   je fais maintenant » : deux cents réponses valent zéro réponse.
+« Maintenant » est une vitrine éditorialisée, pas un annuaire. Elle ne possède
+qu'un seul niveau de lecture : les trois propositions retenues.
    ========================================================================== */
 
-test("3 résultats connus → Voir tout en montre 3", () => {
+test("3 résultats connus → Maintenant en montre 3", () => {
   assert.equal(P.appliquer(liste(3), P.limiteMaintenant()).length, 3);
 });
 
-test("8 résultats connus → Voir tout en montre 8", () => {
-  /* Le plafond est un maximum, jamais un objectif : rien ne complète une
-     liste courte pour atteindre le chiffre. Sept excellentes valent mieux
-     que dix. */
-  assert.equal(P.appliquer(liste(8), P.limiteMaintenant()).length, 8);
+test("8 résultats connus → Maintenant en montre 3", () => {
+  assert.equal(P.appliquer(liste(8), P.limiteMaintenant()).length, 3);
 });
 
-test("18 résultats Maintenant → Voir tout en montre 10", () => {
-  assert.equal(P.appliquer(liste(18), P.limiteMaintenant()).length, 10);
+test("18 résultats Maintenant → Maintenant en montre 3", () => {
+  assert.equal(P.appliquer(liste(18), P.limiteMaintenant()).length, 3);
 });
 
-test("100 résultats Maintenant → Voir tout en montre 10", () => {
-  assert.equal(P.appliquer(liste(100), P.limiteMaintenant()).length, 10);
+test("100 résultats Maintenant → Maintenant en montre 3", () => {
+  assert.equal(P.appliquer(liste(100), P.limiteMaintenant()).length, 3);
 });
 
 test("zone peu dense → 5 au maximum dans Explorer", () => {
@@ -67,7 +62,7 @@ test("l’ordre de pertinence survit à la coupe", () => {
      fin le déferait sans rien savoir de lui. */
   const source = liste(40);
   const coupe = P.appliquer(source, P.limiteMaintenant());
-  assert.deepEqual(coupe.map((x) => x.rang), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(coupe.map((x) => x.rang), [0, 1, 2]);
   // et les objets sont les mêmes, pas des copies remaniées
   coupe.forEach((x, i) => assert.equal(x, source[i]));
 });

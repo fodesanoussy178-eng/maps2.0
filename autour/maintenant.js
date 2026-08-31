@@ -199,8 +199,55 @@
     FERME_TROP_TOT:   "ferme_trop_tot",
     SEANCE_TROP_LOIN: "seance_trop_loin",
     SEANCE_TROP_PROCHE: "seance_trop_proche",
+    SANS_NOM:         "sans_nom",
+    CATEGORIE_INVALIDE: "categorie_invalide",
+    IDENTITE_CANONIQUE_INVALIDE: "identite_canonique_invalide",
+    TEMPS_INEXPLOITABLE: "temps_inexploitable",
     RETENU:           "retenu",
   });
+
+  /* Une icône, un libellé de catégorie ou un tiret ne sont pas un nom. Cette
+     règle appartient au moteur : une fiche qui arrive ici sans titre
+     exploitable ne doit pouvoir atteindre aucun rendu de « Maintenant ». */
+  function nomExploitable(value) {
+    const texte = String(value == null ? "" : value).trim();
+    return texte.length >= 2 && /[\p{L}\p{N}]/u.test(texte);
+  }
+
+  function categorieExploitable(value) {
+    const categorie = String(value == null ? "" : value).trim().toLowerCase();
+    /* Les catégories canoniques sont des slugs ; un pictogramme ou une
+       phrase fournisseur ne peut pas servir à classer une proposition. */
+    return /^[a-z][a-z0-9_-]*$/.test(categorie);
+  }
+
+  /* « Maintenant » ne classe que des entités canoniques déjà enrichies. Le
+     fallback historique `id` seul ne suffit pas : il permettait à une ligne
+     issue d'un fournisseur incomplet de se glisser jusqu'à l'interface. */
+  function qualiteProposition(item) {
+    if (!item || item.sansNom === true ||
+        !nomExploitable(item.titre || item.title || item.name))
+      return refus(RAISONS.SANS_NOM);
+    const categorie = String(item.categorie || item.category || item.cat || "").trim();
+    const categorieCanonique = String(item.canonical &&
+      (item.canonical.category || item.canonical.categorie || item.canonical.cat) || "").trim();
+    if (!categorieExploitable(categorie) || !categorieExploitable(categorieCanonique) ||
+        categorie.toLowerCase() !== categorieCanonique.toLowerCase())
+      return refus(RAISONS.CATEGORIE_INVALIDE);
+    const type = String(item.entity_type || item.entityType || "").toLowerCase();
+    const identifiant = item.canonical_id || item.canonicalId ||
+      (item.canonical && item.canonical.id) || null;
+    if (!(type === "event" || type === "place") || identifiant == null ||
+        String(identifiant).trim() === "" ||
+        !item.canonical || typeof item.canonical !== "object")
+      return refus(RAISONS.IDENTITE_CANONIQUE_INVALIDE);
+    /* Les événements sont validés par `fiable` avec leurs deux bornes. Pour
+       un lieu permanent, l'application doit transmettre un verdict
+       d'ouverture horodaté ; un booléen historique ne suffit plus. */
+    if (!item.estEvenement && item.tempsValide !== true)
+      return refus(RAISONS.TEMPS_INEXPLOITABLE);
+    return { retenu: true, raison: RAISONS.RETENU, distance: null };
+  }
 
   const TERRE_M = 6371000;
   function distanceM(aLat, aLng, bLat, bLng) {
@@ -576,6 +623,8 @@
     const ctx = contexte || {};
     const out = [];
     for (const item of (items || [])) {
+      const qualite = qualiteProposition(item);
+      if (!qualite.retenu) continue;
       const v = disponible(item, ctx);
       if (v.retenu) {
         out.push({ item, nature: v.nature, distance: v.distance,
@@ -625,10 +674,12 @@
     return choisis.map((c) => Object.assign({}, c.item, { nature: c.nature }));
   }
 
-  /* Combien il y en a en tout — le bloc n'en montre que trois, mais il doit
-     pouvoir dire qu'il y en a davantage sans mentir sur le nombre. */
+  /* Le moteur ne possède qu'une vitrine : trois propositions éditorialisées.
+     Même l'API publique `total` parle de cette sélection, jamais du bassin
+     brut de candidats ; le classement interne peut toujours sonder
+     `candidats` sans l'exposer à l'interface. */
   function total(items, contexte) {
-    return candidats(items, contexte).length;
+    return selection(items, contexte).length;
   }
 
   /* ===================================================================
@@ -715,6 +766,7 @@
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
     SEANCE_MIN_MS, SEANCE_MAX_MS,
     fiable, disponible, candidats, selection, selectionCeSoir, total, etat, textes,
-    distanceM, familleDe, estNourriture,
+    distanceM, familleDe, estNourriture, nomExploitable, categorieExploitable,
+    qualiteProposition,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

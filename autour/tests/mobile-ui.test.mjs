@@ -509,7 +509,7 @@ test("les résultats d'une zone survivent à l'arrivée des données",()=>{
   // Overpass répond une seconde après le déplacement de carte et redessine la
   // feuille : sans cet état, « Pour toi, maintenant » écrasait les résultats
   assert.match(html,/let zoneAffichee = null;/);
-  assert.match(html,/if\(feuilleNiveau === "racine" && zoneAffichee\)\{/);
+  assert.match(html,/if\(feuilleNiveau === "racine" && zoneAffichee && creneau !== "maintenant"\)\{/);
   assert.match(html,/remplirResultatsZone\(zoneAffichee\.nom, zoneAffichee\.intention\);/);
   // et il se relâche quand on revient à soi ou qu'on relance une recherche
   assert.match(html,/zoneAffichee = null;\s*\/\/ la feuille reprend ses recommandations locales/);

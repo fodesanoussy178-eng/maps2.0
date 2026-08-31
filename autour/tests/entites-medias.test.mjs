@@ -40,6 +40,7 @@ test("CanonicalEvent et CanonicalPlace sont deux contrats disjoints", () => {
     isTemporary: true,
   });
   const place = ENTITES.CanonicalPlace({
+    id: "place-tourcoing",
     title: "Institut du Monde Arabe - Tourcoing",
     source: "openstreetmap",
     isTemporary: false,
@@ -47,6 +48,7 @@ test("CanonicalEvent et CanonicalPlace sont deux contrats disjoints", () => {
 
   assert.equal(event.entity_type, "event");
   assert.equal(place.entity_type, "place");
+  assert.equal(place.id, "place-tourcoing");
   assert.equal(ENTITES.estEvenement({entity_type: "place", isTemporary: true, cat: "sport"}), false,
     "un lieu permanent explicite ne doit jamais devenir un événement");
   assert.equal(event.event_source, "openagenda");

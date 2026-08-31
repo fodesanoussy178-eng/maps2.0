@@ -467,6 +467,7 @@
 
   function CanonicalPlace(record) {
     const raw = record && typeof record === "object" ? record : {};
+    const placeId = first(raw, ["id", "place_id", "placeId", "dbId"]);
     const media = mediaFields(raw, "place", "place_photo");
     const hours = clean(first(raw, ["opening_hours", "openingHours", "horaires", "quand"]));
     /* Une photo de portée événement ne devient jamais la photo officielle
@@ -489,9 +490,10 @@
     const explicitPrice = amount != null || !!priceText || free != null;
     return Object.assign({
       entity_type: "place",
+      id: placeId == null ? null : String(placeId),
       title: clean(first(raw, ["title", "titre", "name"])) || null,
       description: clean(first(raw, ["description", "description_long"])) || null,
-      category: first(raw, ["category", "cat", "primaryCategory"]) || null,
+      category: clean(first(raw, ["category", "cat", "primaryCategory"])) || null,
       address: clean(first(raw, ["address", "adresse"])) || null,
       city: clean(first(raw, ["city", "commune", "cp"])) || null,
       lat: number(first(raw, ["lat", "latitude"])),

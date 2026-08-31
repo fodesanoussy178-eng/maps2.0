@@ -16,6 +16,10 @@ const h = (n) => n * 3600e3;
    quel critère a refusé. */
 const bon = (extra) => Object.assign({
   id: "e1", estEvenement: true, annule: false,
+  titre: "Jam Rap Open Mic", title: "Jam Rap Open Mic", categorie: "event",
+  entity_type: "event", canonical_id: "e1",
+  canonical: { entity_type: "event", id: "e1", title: "Jam Rap Open Mic", category: "event" },
+  tempsValide: true,
   enCours: true, dateIncertaine: false,
   debutLe: T - h(1), finLe: T + h(1),
   lat: 50.6312, lng: 3.0573, ferme: false,
@@ -150,7 +154,32 @@ test("au plus trois, même quand il y en a dix", () => {
   const dix = Array.from({ length: 10 }, (_, i) =>
     aDistance(100 + i * 50, { id: "e" + i }));
   assert.equal(M.selection(dix, ctx()).length, 3);
-  assert.equal(M.total(dix, ctx()), 10, "le total, lui, dit la vérité");
+  assert.equal(M.total(dix, ctx()), 3, "le total public suit la sélection");
+});
+
+test("Maintenant exclut toute proposition sans nom canonique exploitable", () => {
+  const incomplets = [
+    bon({ id: "vide", titre: "", title: "" }),
+    bon({ id: "icone", titre: "🔊", title: "🔊" }),
+    bon({ id: "anonyme", sansNom: true }),
+    bon({ id: "sans-categorie", categorie: "", category: "" }),
+    bon({ id: "icone-categorie", categorie: "🔊", category: "🔊",
+      canonical: { entity_type: "event", id: "icone-categorie", title: "Concert", category: "🔊" } }),
+    bon({ id: "categorie-divergente", categorie: "event", category: "event",
+      canonical: { entity_type: "event", id: "categorie-divergente", title: "Concert", category: "concert" } }),
+    bon({ id: "sans-identite", canonical: null, canonical_id: null }),
+    bon({ id: "sans-temps", estEvenement: false, tempsValide: false,
+      entity_type: "place", categorie: "resto", category: "resto" }),
+  ];
+  assert.deepEqual(M.candidats(incomplets, ctx()), []);
+  assert.deepEqual(M.selection(incomplets, ctx()), []);
+});
+
+test("les trois propositions sélectionnées portent toujours un titre", () => {
+  const choix = M.selection(Array.from({ length: 5 }, (_, i) =>
+    aDistance(100 + i * 50, { id: "titre-" + i })), ctx());
+  assert.ok(choix.length <= 3);
+  assert.ok(choix.every((item) => M.nomExploitable(item.titre || item.title)));
 });
 
 test("le plus proche d'abord", () => {
@@ -331,7 +360,7 @@ test("le bouton sert à rouvrir ou actualiser, pas à obtenir la première fois"
 test("l'application délègue la sélection au module, sans la refaire", () => {
   assert.match(html, /function selectionMaintenant\(\)\{/);
   assert.match(html, /M\.selection\(itemsMaintenant\(ctx\), ctx\)/);
-  assert.match(html, /M\.total\(/);
+  assert.match(html, /function totalMaintenant\(\)\{\s*return selectionMaintenant\(\)\.length;/);
   assert.match(html, /M\.etat\(Object\.assign\(\{resultats:liste\.length\}, ctx\)\)/);
   // un seul contexte par rendu : deux calculs séparés finissent par diverger
   assert.match(html, /function contexteMaintenant\(\)\{/);
@@ -431,11 +460,19 @@ test("la feuille se rafraîchit quand la carte change de ville", () => {
    rues et un cinéma dont la séance commence dans vingt minutes.
    ======================================================================== */
 
-const lieu = (extra) => Object.assign({
-  id: "l1", estEvenement: false, annule: false,
-  lat: ICI[0] + 300 / 111320, lng: ICI[1],
-  ouvert: true, ouvertALArrivee: true, categorie: "resto",
-}, extra || {});
+const lieu = (extra) => {
+  const item = Object.assign({
+    id: "l1", estEvenement: false, annule: false,
+    titre: "Le lieu", title: "Le lieu", entity_type: "place", canonical_id: "l1",
+    canonical: { entity_type: "place", title: "Le lieu", category: "resto" },
+    tempsValide: true,
+    lat: ICI[0] + 300 / 111320, lng: ICI[1],
+    ouvert: true, ouvertALArrivee: true, categorie: "resto",
+  }, extra || {});
+  if (item.canonical && item.categorie)
+    item.canonical = Object.assign({}, item.canonical, { category: item.categorie });
+  return item;
+};
 
 test("les quatre natures sont exactement celles du contrat", () => {
   assert.deepEqual(Object.values(M.NATURES).sort(),

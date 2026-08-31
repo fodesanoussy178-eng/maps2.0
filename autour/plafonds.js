@@ -11,19 +11,16 @@
      réponses, c'est la même chose que zéro : personne ne choisit dans deux
      cents.
 
-     LE COMPTEUR ET LA LISTE NE DISENT PAS LA MÊME CHOSE. « Maintenant (18) »
-     veut dire « Autour en connaît dix-huit » — c'est une mesure de ce qu'il
-     sait, et elle reste honnête. La liste, elle, en montre dix au plus : c'est
-     une sélection. Confondre les deux, c'est soit mentir sur ce qu'on sait,
-     soit noyer ce qu'on propose.
+     Le compteur et la liste de « Maintenant » disent la même chose : la
+     sélection éditorialisée qui sera effectivement présentée. Il n'existe
+     aucun second niveau d'annuaire derrière ce créneau.
 
      MIEUX VAUT SEPT EXCELLENTES QUE DIX. Le plafond est un maximum, jamais un
      objectif : rien ici ne complète une liste courte pour atteindre le chiffre.
      =================================================================== */
 
-  /* Maintenant : trois en direct, dix au plus derrière « Voir tout ». */
+  /* Maintenant : exactement la vitrine éditorialisée, jamais plus. */
   const MAINTENANT_APERCU = 3;
-  const MAINTENANT_TOUT = 10;
 
   /* Explorer : le plafond suit la densité de la zone. Une place de village
      avec quatre commerces n'a pas besoin de quinze lignes ; un centre-ville
@@ -48,7 +45,7 @@
     return Math.min(EXPLORER[densite(connus)] || EXPLORER.normale, PLAFOND_ABSOLU);
   }
 
-  function limiteMaintenant() { return MAINTENANT_TOUT; }
+  function limiteMaintenant() { return MAINTENANT_APERCU; }
 
   /* Appliquer un plafond, c'est COUPER — jamais réordonner. L'ordre qui
      arrive ici porte déjà tout le travail du moteur : nature (event_now,
@@ -62,7 +59,7 @@
   }
 
   root.AutourPlafonds = Object.freeze({
-    MAINTENANT_APERCU, MAINTENANT_TOUT, EXPLORER, PLAFOND_ABSOLU,
+    MAINTENANT_APERCU, EXPLORER, PLAFOND_ABSOLU,
     SEUIL_NORMALE, SEUIL_DENSE,
     densite, limiteExplorer, limiteMaintenant, appliquer,
   });

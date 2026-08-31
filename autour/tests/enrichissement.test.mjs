@@ -750,7 +750,8 @@ test("« bientôt » ne devient JAMAIS « maintenant »", () => {
 
 test("les plafonds de Maintenant sont intacts", () => {
   assert.match(moteur, /const PLACES = 3;/);
-  assert.match(html, /const MAINTENANT_TOUT = 10;/);
+  assert.doesNotMatch(html, /MAINTENANT_TOUT|data-mn-tout/);
+  assert.match(html, /const liste = selectionMaintenant\(\);\s*const combien = liste\.length;/);
 });
 
 test("le calque voyage jusqu'au moteur sans être réinterprété", () => {
