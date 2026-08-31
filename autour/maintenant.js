@@ -119,6 +119,16 @@
   const familleDe = (item) => (item && item.famille) ||
     FAMILLES[(item && item.categorie) || ""] || "autre";
 
+  /* Dans un aperçu de trois cartes, un seul lieu de bouche suffit. Un café,
+     un bar et un restaurant répondent à la même envie pratique ; la deuxième
+     place doit laisser respirer une activité, une culture ou une sortie. */
+  const estNourriture = (item, famille) => {
+    const f = famille || familleDe(item);
+    return f === "manger" ||
+      ["resto", "restaurant", "fastfood", "food", "marche", "cafe", "bar",
+       "boulangerie", "bakery"].includes(String(item && item.categorie || "").toLowerCase());
+  };
+
   /* Les catégories qui valent « activité » plutôt que simple « ouvert ». Un
      musée ouvert est une sortie ; une supérette ouverte est une commodité. */
   const ACTIVITES = Object.freeze(["cinema", "musee", "biblio", "parc", "terrain",
@@ -594,15 +604,20 @@
        sens strict — la variété ne coûte jamais la tête de liste. */
     const choisis = [];
     const famillesPrises = new Set();
+    let nourriturePrise = false;
     for (const c of pool) {
       if (choisis.length >= combien) break;
       if (famillesPrises.has(c.famille)) continue;
+      if (estNourriture(c.item, c.famille) && nourriturePrise) continue;
       famillesPrises.add(c.famille);
+      if (estNourriture(c.item, c.famille)) nourriturePrise = true;
       choisis.push(c);
     }
     for (const c of pool) {
       if (choisis.length >= combien) break;
       if (choisis.indexOf(c) >= 0) continue;
+      if (estNourriture(c.item, c.famille) && nourriturePrise) continue;
+      if (estNourriture(c.item, c.famille)) nourriturePrise = true;
       choisis.push(c);
     }
     /* On rend l'ordre de priorité, pas l'ordre de cueillette. */
@@ -700,6 +715,6 @@
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
     SEANCE_MIN_MS, SEANCE_MAX_MS,
     fiable, disponible, candidats, selection, selectionCeSoir, total, etat, textes,
-    distanceM, familleDe,
+    distanceM, familleDe, estNourriture,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

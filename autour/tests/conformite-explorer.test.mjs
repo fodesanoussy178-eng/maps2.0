@@ -52,8 +52,12 @@ test("le bloc disparaît complètement quand il n'y a rien", () => {
   assert.match(bloc[0], /if\(creneau !== "maintenant" \|\| modeAide\) return "";/);
 });
 
-test("il se pose entre les onglets de temps et « Maintenant »", () => {
-  assert.match(html, /ongletsTemps\(\)\+\s*\n\s*blocNouveauPourToi\(\)\+\s*\n\s*blocMaintenantAccueil\(\)/);
+test("Maintenant se limite à ses résultats puis à l'aide", () => {
+  assert.match(html, /ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+blocAideAccueil\(\)/);
+  const debut = html.indexOf('if(feuilleNiveau === "racine"){');
+  const fin = html.indexOf('}else if(feuilleNiveau === "plus"){', debut);
+  const racine = html.slice(debut, fin);
+  assert.doesNotMatch(racine, /blocNouveauPourToi|grilleRaccourcisAutour|blocOuRegarder/);
 });
 
 test("l'ouvrir le marque lu, comme à droite — une seule notion de « lu »", () => {
@@ -108,10 +112,10 @@ test("l'état vide ne mime plus une liste absente", () => {
 /*  3. L'interface principale ne se referme pas sur elle-même               */
 /* ======================================================================== */
 
-test("sur grand écran, le panneau racine n'a pas de croix", () => {
+test("sur grand écran, le panneau racine reste refermable", () => {
   const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
                              html.indexOf("/* ---- grappes de marqueurs"));
-  assert.match(desktop, /#feuilleBesoins\.accueil \.fb-x\{display:none\}/);
+  assert.match(html, /#feuilleBesoins\.accueil \.fb-x\{display:grid\}/);
 });
 
 test("la croix reste partout où l'on veut vraiment sortir", () => {

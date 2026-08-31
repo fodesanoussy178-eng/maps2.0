@@ -580,6 +580,7 @@ test("la diversité évite trois fois la même réponse", () => {
     lieu({ id: "burger3", categorie: "resto", lat: ICI[0] + 0.0012 }),
     lieu({ id: "cafe", categorie: "cafe", lat: ICI[0] + 0.004 }),
     lieu({ id: "cine", categorie: "cinema", lat: ICI[0] + 0.005 }),
+    lieu({ id: "sport", categorie: "sport", lat: ICI[0] + 0.006 }),
   ];
   const choisis = M.selection(liste, ctx()).map((x) => x.id);
   assert.equal(choisis.length, 3);
@@ -599,14 +600,14 @@ test("la variété ne coûte jamais la tête de liste", () => {
   assert.equal(M.selection(liste, ctx())[0].id, "concert");
 });
 
-test("faute de variété, on complète quand même — mais avec du disponible", () => {
+test("on ne propose jamais plus d'un lieu lié à la nourriture", () => {
   const trois = [
     lieu({ id: "a", categorie: "resto", lat: ICI[0] + 0.001 }),
     lieu({ id: "b", categorie: "resto", lat: ICI[0] + 0.002 }),
     lieu({ id: "c", categorie: "resto", lat: ICI[0] + 0.003 }),
   ];
-  assert.equal(M.selection(trois, ctx()).length, 3);
-  // mais jamais avec du fermé
+  assert.equal(M.selection(trois, ctx()).length, 1);
+  // mais jamais avec du fermé, même si c'est le seul type disponible
   const fermes = trois.map((l) => Object.assign({}, l, { ouvert: false }));
   assert.deepEqual(M.selection(fermes, ctx()), []);
 });

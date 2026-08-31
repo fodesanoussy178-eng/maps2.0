@@ -243,70 +243,15 @@ function prechargerEcrans(){
 
 const PLAF = window.AutourPlafonds || null;
 let zoneActive = null;
-/* Contrat unique des résultats : tous les écrans lisent ce contexte, jamais
-   le GPS brut. La position physique reste dans `positionMoi` pour le point
-   bleu, les itinéraires et le bouton « revenir autour de moi » ; elle ne peut
-   pas remettre des données dans une destination choisie. */
-let activeLocationContext = null;
 let porteeCourante = 0;
 const porteeValide = (p)=> p === porteeCourante;
-
-function contexteDepuisZone(zone){
-  if(!zone) return null;
-  const recherche = !!(zone.type === "recherche" ||
-    (CTX && zone.type === CTX.TYPES.RECHERCHE));
-  return Object.freeze({
-    mode: recherche ? "destination" : "gps",
-    source: recherche ? "search" : "gps",
-    key: CTX ? CTX.idZone(zone) : zone.type+":"+zone.lat.toFixed(2)+","+zone.lng.toFixed(2),
-    lat: zone.lat, lng: zone.lng,
-    city: zone.nom || null,
-    zone,
-  });
-}
-
-function contexteLocalisationActif(){ return activeLocationContext; }
-function destinationActive(){ return activeLocationContext?.mode === "destination"; }
-
-/* Changer de destination doit être une frontière de données, pas seulement
-   un filtre d'affichage. Les caches par coordonnées restent valides, mais les
-   collections en mémoire sont vidées afin qu'aucun ancien objet ne puisse
-   atteindre une surface avant la réponse de la nouvelle zone. */
-function viderDonneesContexte(){
-  permanentPlaces = [];
-  datatourismePlaces = [];
-  externalEvents = [];
-  userPublications = [];
-  lieux = [];
-  publies = userPublications;
-  dernierClassement = [];
-  revisionLieux += 1;
-  indexCategories.clear();
-  zonesVues.clear();
-  chargementsTemporaires.clear();
-  derniersChargementsTemporaires.clear();
-  requetesCouchesSupabase.clear();
-  signaturesCouchesPubliees.clear();
-  zonesResto.clear();
-  restaurationsEnCours.clear();
-  prechargementFait = false;
-  prechargementEnCours = false;
-  recoCache = null;
-  recoBurstCache = null;
-  generationAccueil += 1;
-}
 
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
    d'un coup tout travail en vol — et rend le nouveau numéro à l'appelant. */
 function definirZoneActive(zone){
-  if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)){
-    activeLocationContext = activeLocationContext || contexteDepuisZone(zone);
-    return porteeCourante;
-  }
+  if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)) return porteeCourante;
   zoneActive = zone || null;
-  activeLocationContext = contexteDepuisZone(zoneActive);
   porteeCourante += 1;
-  viderDonneesContexte();
   /* Les mémoires qui portent sur « les lieux qu'on montre » ne valent plus
      rien : elles ont été calculées pour l'autre ville. */
   oublierItemsMaintenant();
@@ -315,15 +260,6 @@ function definirZoneActive(zone){
   // les cartes d'une ville qu'on vient de quitter serait afficher du faux
   dernierRecoRendu = null;
   selectionAccueil = null;
-  /* Le bassin est une donnée de la zone, pas une préférence globale. Tant que
-     la nouvelle résolution n'a pas répondu, conserver celui de la ville
-     précédente permettait à « Pour toi » d'afficher des événements d'un autre
-     bassin — particulièrement visible lors d'un Paris demandé depuis la MEL.
-     Les réponses en vol sont en plus gardées sous la portée ci-dessous et ne
-     pourront donc pas repeupler ces mémoires périmées. */
-  bassinTerritorialActif = null;
-  evenementsMetropole = [];
-  metropoleEnCours = null;
   return porteeCourante;
 }
 
@@ -331,16 +267,8 @@ function definirZoneActive(zone){
    — tout début de session, avant la géolocalisation — on ne filtre rien :
    mieux vaut montrer ce qu'on a que de vider l'écran par principe. */
 function dansZoneActive(l){
-  const zone = activeLocationContext?.zone || zoneActive;
-  if(!CTX || !zone) return true;
-  return CTX.dansZone(l, zone, {vue: bornesVue()});
-}
-
-/* Entonnoir commun des trois surfaces géographiques : carte/Explorer,
-   Maintenant et Pour toi partent tous du même ensemble avant d'appliquer
-   leurs règles propres (temps, catégories ou surveillance). */
-function elementsDuContexte(items){
-  return (items || []).filter(dansZoneActive);
+  if(!CTX || !zoneActive) return true;
+  return CTX.dansZone(l, zoneActive, {vue: bornesVue()});
 }
 /* CE FILTRE EST APPELÉ UNE FOIS PAR LIEU, ET IL Y EN A CENT TRENTE.
 
@@ -372,13 +300,10 @@ function bornesVue(){
 /* Le centre dont TOUT parle : classement, distances, sélection. Il vaut la
    ville cherchée dès qu'il y en a une, et la position physique sinon. */
 function centreZoneActive(){
-  if(activeLocationContext) return [activeLocationContext.lat, activeLocationContext.lng];
   if(zoneActive) return [zoneActive.lat, zoneActive.lng];
   return positionMoi;
 }
-const idZoneActive = ()=> CTX
-  ? CTX.idZone(activeLocationContext?.zone || zoneActive)
-  : (activeLocationContext?.key || "sans-zone");
+const idZoneActive = ()=> CTX ? CTX.idZone(zoneActive) : "sans-zone";
 
 /* LA DISTANCE AUSSI PART DE LA ZONE.
 
@@ -391,14 +316,14 @@ const idZoneActive = ()=> CTX
 /* Le point de départ de toute REQUÊTE de données. Même règle que pour
    l'affichage : on demande à la zone dont on parle, jamais à celle qu'on a
    quittée. */
-function centreDonnees(){ return centreZoneActive() || null; }
+function centreDonnees(){ return centreZoneActive() || positionMoi || null; }
 function chargerAideZone(options){
   const c = centreDonnees();
   return c ? chargerAide(c[0], c[1], options) : Promise.resolve([]);
 }
 
 function distanceDepuisZone(l){
-  const c = centreZoneActive();
+  const c = centreZoneActive() || positionMoi;
   if(!c || !l) return NaN;
   return distanceM(c[0], c[1], l.lat, l.lng);
 }
@@ -473,33 +398,17 @@ function regimeZone(zone, depuis, mesuree){
    Ici la distance suffit : il ne s'agit pas de dire à quelqu'un où il est,
    seulement de décider combien on va demander. */
 function regimePoint(lat, lng){
-  /* Une carte déplacée après une recherche reste dans la destination
-     choisie : le GPS ne doit pas réduire Paris à un chargement « lointain »
-     depuis Tourcoing. Au repos, le point physique et le contexte GPS
-     coïncident, donc le comportement local reste inchangé. */
-  const reference = destinationActive() ? centreZoneActive() : positionMoi;
-  if(!reference) return "local";
-  const d = distanceM(reference[0], reference[1], lat, lng);
+  if(!positionMoi) return "local";   // on ne charge que là où l'on se croit
+  const d = distanceM(positionMoi[0], positionMoi[1], lat, lng);
   if(d <= SEUIL_LOCAL_M)   return "local";
   if(d <= SEUIL_PROCHE_M)  return "proche";
   if(d <= SEUIL_VOISINE_M) return "voisine";
   return "loin";
 }
-/* `regimeZone` reste la mesure de présence physique utilisée uniquement par
-   la veille GPS. Les résultats, eux, ont leur propre régime : une destination
-   volontaire est locale pour le calcul demandé, quelle que soit la position
-   réelle conservée pour le retour. */
-function regimeZoneResultats(zone){
-  const active = activeLocationContext;
-  const memeDestination = destinationActive() && zone && (
-    zone === rechercheGeo || (active.zone &&
-      active.zone.lat === zone.lat && active.zone.lng === zone.lng));
-  return memeDestination ? "local" : regimeZone(zone);
-}
-const reglagesZone = (zone)=> REGIMES[regimeZoneResultats(zone)];
+const reglagesZone = (zone)=> REGIMES[regimeZone(zone)];
 const plafondPour = (zone)=> reglagesZone(zone).resultats;
 const plafondResultats = ()=> plafondPour(rechercheGeo);
-const surPlace = ()=> regimeZoneResultats(rechercheGeo) === "local";
+const surPlace = ()=> regimeZone(rechercheGeo) === "local";
 
 /* Une requête est géographique si elle n'est pas, EXACTEMENT, un mot du
    vocabulaire de l'application : on ne géocode pas « pizza », mais on géocode
@@ -2354,8 +2263,7 @@ function versLieu(p){
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:"pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    description:p.description || "", adresse:p.adresse || "",
-    cp:p.cp || (destinationActive() ? (activeLocationContext?.city || "") : commune),
+    description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
     creatorId:createdBy, creatorName:p.creator_name || "",
@@ -2600,15 +2508,13 @@ function versEvenementCanonique(e){
   const finBrut = premiere(["end_at", "endAt", "fin_le", "finLe"]);
   const debut = debutBrut != null && debutBrut !== "" ? new Date(debutBrut).getTime() : null;
   const fin = finBrut != null && finBrut !== "" ? new Date(finBrut).getTime() : null;
-  const villeContexte = (typeof activeLocationContext !== "undefined" && activeLocationContext?.city) ||
-    ((typeof activeLocationContext !== "undefined" && activeLocationContext?.mode === "gps") ? commune : "");
   return normaliserItem({
     id:"evt"+e.id, dbId:e.id,
     cat:e.category || "event",
     titre:e.title,
     description:e.description || "",
     adresse:e.place_name || e.address || "",
-    cp:[e.city, e.insee_code].filter(Boolean).join(" ") || villeContexte,
+    cp:[e.city, e.insee_code].filter(Boolean).join(" ") || commune,
     lat:e.lat, lng:e.lng,
     debutLe:debut, finLe:fin,
     timezone:e.timezone || "Europe/Paris",
@@ -2693,10 +2599,9 @@ function versEvenementCanonique(e){
   }, e.primary_source || "datatourisme");
 }
 
-async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
+async function chargerEvenementsCanoniques(lat,lng){
   if(!sbLecture) return null;
   const b = emprisePublications(lat, lng);
-  const porteeEvenements = portee;
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
      de cette requête ; une zone inconnue devient seulement un candidat DB. */
@@ -2704,7 +2609,6 @@ async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
   void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
     p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
   })).then(({data, error})=>{
-    if(porteeEvenements !== porteeCourante) return;
     /* La résolution servait uniquement à mutualiser la synchronisation ; on
        retient désormais son résultat, parce que c'est lui qui nomme le bassin
        dans lequel « Pour toi » a le droit de chercher. */
@@ -2724,9 +2628,7 @@ async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
        devient connu. `rafraichirMetropole` est idempotente, l'autre appel
        reste sans effet quand il double celui-ci. */
     rafraichirMetropole();
-  }).catch(()=>{
-    if(porteeEvenements === porteeCourante) bassinTerritorialActif = null;
-  }).finally(finTerritoire);
+  }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2751,7 +2653,7 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       t:0, publications:[], evenements:[], okPublications:false, okEvenements:false,
     };
     const [publications, evenements] = await Promise.all([
-      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng,portee)
+      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng)
     ]);
     const okPublications = Array.isArray(publications);
     const okEvenements = Array.isArray(evenements);
@@ -3355,8 +3257,7 @@ async function vraisLieux(lat,lng,bornes,opts){
       type:t.amenity || t.leisure || t.tourism || t.office || "",
       sansNom: !nom,                         // « un résultat sans nom exploitable »
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || nom,
-      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") ||
-        (destinationActive() ? (activeLocationContext?.city || "") : commune),
+      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
       quand: t.opening_hours || "Voir sur place",
       cuisine: t.cuisine || "",              // turkish, african, pizza…
       tel: t.phone || t["contact:phone"] || "",
@@ -3704,7 +3605,7 @@ function remettreFondAutonome(){
   // Le repli suit toujours la zone déjà affichée. On ne fabrique jamais une
   // ville par défaut : sans position connue, la carte Leaflet a déjà un
   // centre, qui est le seul repère honnête à conserver.
-  const centre = centreZoneActive() || [map.getCenter().lat,map.getCenter().lng];
+  const centre = positionMoi || [map.getCenter().lat,map.getCenter().lng];
   if(!centre || !Number.isFinite(centre[0]) || !Number.isFinite(centre[1])) return Promise.resolve(null);
   fondAutonomePose = true;
   return poserFond().then(fond=>{
@@ -4094,11 +3995,7 @@ function fusionner(nouveaux, flux, opts){
   const source = nouveaux[0] && nouveaux[0].source || type;
   const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source))
     // une annulation reste une information utile et distincte d'une suppression
-    .filter(l=>l.annule || !estPasse(l))
-    /* Toutes les sources passent par la même frontière géographique. Une
-       tâche différée du bassin GPS peut encore terminer après une recherche
-       Paris ; elle ne doit jamais repeupler la collection de Paris. */
-    .filter(l=>dansZoneActive(l));
+    .filter(l=>l.annule || !estPasse(l));
   const courant = type === "external" ? externalEvents
     : type === "user" ? userPublications
     : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
@@ -4541,11 +4438,6 @@ function cleZone(lat, lng, z, cats){
 
 function chargerZone(lat, lng, opts){
   const o = opts || {};
-  /* Un appel ancien peut connaître les coordonnées du GPS sans connaître la
-     destination choisie entre-temps. Refuser ce travail ici protège aussi les
-     chemins différés qui ne passent pas par le chargeur de recherche. */
-  if(destinationActive() && CTX && !CTX.dansZone([lat,lng], activeLocationContext.zone))
-    return Promise.resolve([]);
   /* LE ZOOM D'UNE CARTE QUI VOLE N'EST PAS CELUI QU'ELLE VISE.
 
      Ce garde-fou existe pour une bonne raison : vue de très loin, une carte
@@ -4742,8 +4634,6 @@ const chargementsTemporaires = new Map();
 const derniersChargementsTemporaires = new Map();
 function chargerDonneesTemporaires(lat, lng, opts){
   const o = opts || {};
-  if(destinationActive() && CTX && !CTX.dansZone([lat,lng], activeLocationContext.zone))
-    return Promise.resolve([]);
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(!o.force && chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
   const dernier = derniersChargementsTemporaires.get(cle) || 0;
@@ -5333,6 +5223,7 @@ async function demarrer(coords){
      celui-ci vient de la session précédente, et si la personne a déménagé de
      ville entre-temps, ses lieux ne doivent pas s'afficher ici. */
   if(CTX && positionMoi && !zoneActive) definirZoneActive(CTX.zoneMoi(positionMoi, commune));
+  majEnteteLieu();
 
   const rapide = positionMoi ? lireJeuRapide(positionMoi[0], positionMoi[1]) : null;
   if(rapide){
@@ -5343,12 +5234,12 @@ async function demarrer(coords){
   dessinerFiltres();
   majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
 
-  /* L'accueil s'ouvre TOUT DE SUITE. Il attendait la réponse d'Overpass — une
-     à trois secondes de carte nue devant quelqu'un qui vient d'arriver, ce qui
-     se lit comme une application vide. */
+  /* La carte reste le premier écran. Maintenant s'ouvre par la navigation
+     basse ou sa pastille compacte ; aucun panneau ne recouvre la carte au
+     démarrage et l'état de la feuille reste réouvrable sans perdre la zone. */
   if(feuilleNiveau === null && !modeNav && !modePose){
-    if(rapide) ouvrirFeuille2("racine");   // les cartes du jeu rapide, intactes
-    else ouvrirAccueilFeuille();
+    majEnteteLieu();
+    majAccueil();
   }
   if(rapide){ PERF.jalon("premier_lieu"); PERF.jalon("source_locale"); }
 
@@ -5547,8 +5438,7 @@ function chargerLeDemarrage(rapide){
      dans le premier `requestIdleCallback` ajoutait plusieurs requêtes pendant
      que Google, Supabase et DATAtourisme étaient encore en vol. */
   setTimeout(()=>{
-    if(porteeValide(generation.portee) && !destinationActive() && positionMoi &&
-       distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
+    if(positionMoi && distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
       quandLibre(()=>chargerDonneesTemporaires(lat,lng,{sansPublications:true}));
   },5000);
 
@@ -7386,7 +7276,7 @@ async function notesGoogle(lat,lng,opts){
 const zonesResto = new Set();
 const restaurationsEnCours = new Map();
 function completerRestauration(opts){
-  if(!centreDonnees()) return Promise.resolve([]);
+  if(!positionMoi) return Promise.resolve([]);
   /* La restauration se complète dans la zone dont on parle, pas là où l'on
      dort : chercher Lille depuis Tourcoing allait chercher les restaurants de
      Tourcoing et les versait dans la carte de Lille. */
@@ -7548,7 +7438,7 @@ function distancePourListe(l){
 
 /* événements éphémères qui se passent dans un lieu donné */
 function evenementsDe(lieu){
-  return lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && l.adresse === lieu.titre);
+  return lieux.filter(l=>estTemporaire(l) && l.adresse === lieu.titre);
 }
 
 /* "auto" = pertinence · "note" = les mieux notés · "distance" = les plus proches */
@@ -7561,7 +7451,7 @@ function classerLieux(liste, sansPalmares){
      dans cette ville-là n'arrive jamais en tête. Chez soi les deux points
      coïncident, et rien ne change. */
   const [lat,lng] = pointDeReference() || positionMoi;
-  const dedans = (liste || []).filter(dansZoneActive).map(l=>{
+  const dedans = liste.map(l=>{
     const d = distanceM(lat,lng,l.lat,l.lng);
     const evs = estTemporaire(l) ? [] : evenementsDe(l);
     return Object.assign({}, l, {dist:d, evs:evs.length, mien:!!l.mien});
@@ -7605,7 +7495,7 @@ function ouvrirListe(cat){
   mettreAJourProfil("categorie", cat);
   // l'aide n'est cherchée que si quelqu'un la demande : dix recherches
   // facturées à chaque ouverture de l'app seraient absurdes
-  if(SANS_CLASSEMENT.has(cat) && centreDonnees())
+  if(SANS_CLASSEMENT.has(cat) && positionMoi)
     chargerAideZone().then(()=>{
       if(filtreActif === cat) ouvrirListe(cat);
     });
@@ -7639,11 +7529,6 @@ function suitesUtiles(connus, montres){
 }
 
 function afficherListe(emoji, titre, l, sansPalmares, redessiner, connus){
-  /* Une liste peut être recalculée après l'arrivée d'une réponse réseau. Le
-     garde-fou reste ici aussi : aucune porte de rendu ne peut réintroduire un
-     élément de la ville quittée, même si son appelant possède encore une
-     référence ancienne. */
-  l = (l || []).filter(dansZoneActive);
   const avecNotes = l.some(x=>x.note);
   const avecPrix  = l.some(x=>x.prixN != null);
   const critere = sansPalmares
@@ -7748,7 +7633,7 @@ function ouvrirResultats(q){
   const cat = categorieRecherchee(q);
   if(cat){
     filtreActif = cat; dessinerFiltres(); rendre();
-    if(SANS_CLASSEMENT.has(cat) && centreDonnees()) chargerAideZone();
+    if(SANS_CLASSEMENT.has(cat) && positionMoi) chargerAideZone();
     pileEcrans = [];
     pousserEcran(()=>ouvrirListe(cat));
     // OSM ignore beaucoup d'équipements publics : on demande à Google et on
@@ -8264,40 +8149,31 @@ async function rechercherAilleurs(phrase, ville){
     const zone = await geocoderVille(ville,null,generation.signal);
     if(!generationCourante(generation)) return;
     const pos = zone ? [zone.lat, zone.lng] : null;
-    if(zone){
-      /* Ce chemin historique (« restaurant à Paris ») doit avoir exactement
-         le même contexte que la recherche directe d'une ville. Sinon Google
-         ramenait bien Paris, mais le reste de l'interface restait au GPS. */
-      rechercheGeo = {nom:ville, lat:zone.lat, lng:zone.lng, emprise:zone.emprise || null};
-      definirZoneActive(CTX ? CTX.zoneRecherche(ville, pos, zone.emprise || null) : null);
-      if(generationsActives.get(generation.canal) === generation)
-        generation.portee = porteeCourante;
-      annulerChargementsZone("recherche:ailleurs");
-      allerVers(pos, 13, {duration:.8});
-    }
-    const depuis = pos || centreDonnees();
-    if(!depuis) return;
+    const depuis = pos || positionMoi;
     const res = await chercherGoogle(phrase, depuis[0], depuis[1],{signal:generation.signal});
     if(!generationCourante(generation)) return;
     charge(null);
     if(!res.length){ toast("Rien trouvé à "+ville); return; }
 
+    if(pos) allerVers(pos, 13, {duration:.8});
     ajouterLieuxGoogle(res, "commerce");
 
     // on retrouve les lieux tout juste ajoutés par leur identifiant calculé
     const ids = new Set(res.map(f=>"g"+hash(f.nom+f.lat)));
-    const trouves = lieux.filter(l=>ids.has(l.id) && dansZoneActive(l));
+    const trouves = lieux.filter(l=>ids.has(l.id));
     if(!trouves.length){ toast("Rien trouvé à "+ville); return; }
 
-    // `classerLieux` lit le contexte actif : le GPS n'est jamais remplacé,
-    // même temporairement, pour calculer une liste distante.
+    // le classement se fait depuis la ville visée, pas depuis ta position
+    const vrai = positionMoi;
+    positionMoi = depuis;
     const classes = classerLieux(trouves, false);
+    positionMoi = vrai;
 
     /* Même règle que pour les résultats de zone : « restaurant à Lille » tapé
        depuis Tourcoing est une question posée de loin, et on y répond par un
        aperçu. Ce chemin-ci affiche une liste plein écran — sans ce plafond, la
        même recherche donnait cinq résultats par une porte et trente par l'autre. */
-    const montres = classes.slice(0, plafondPour(rechercheGeo));
+    const montres = classes.slice(0, plafondPour(zone));
 
     selectionAccueil = false;
     fermerFeuille2();
@@ -8314,10 +8190,9 @@ async function rechercherAilleurs(phrase, ville){
 
 /* Ajoute les résultats Google à la liste déjà affichée, sans la bloquer. */
 function completerParGoogle(q, catDefaut, redessiner){
-  const centre = centreDonnees();
-  if(!centre) return;
+  if(!positionMoi) return;
   const generation = nouvelleGeneration("recherche:complement",q+"|"+(catDefaut||""),true);
-  chercherGoogle(q, centre[0], centre[1],{signal:generation.signal}).then(res=>{
+  chercherGoogle(q, positionMoi[0], positionMoi[1],{signal:generation.signal}).then(res=>{
     if(!generationCourante(generation) || !res.length) return;
     if(ajouterLieuxGoogle(res, catDefaut)) redessiner();
   }).finally(()=>terminerGeneration(generation));
@@ -8417,7 +8292,7 @@ function appliquerSuggestion(s){
   if(s.cats.includes("family")) chargerEditorial("family");
   else if(s.cats.includes("cinema")) chargerEditorial("cinema");
   else if(s.cats.includes("event")) chargerEditorial("events");
-  if(s.aide && centreDonnees()) chargerAideZone();
+  if(s.aide && positionMoi) chargerAideZone();
   mettreAJourProfil("categorie", s.cats[0]);
   dessinerFiltres(); majFiltres(); rendre();
   toast(s.t);
@@ -8922,9 +8797,8 @@ let rayonRecherche = 2500;
    La zone est le périmètre ; le rayon sert à classer ce qui est proche, pas à
    décider ce qui existe. */
 function rayonDeLaZone(){
-  const zone = activeLocationContext?.zone || zoneActive;
-  if(!CTX || !zone) return rayonRecherche;
-  return Math.max(rayonRecherche, CTX.rayonZone(zone) + CTX.MARGE_M);
+  if(!CTX || !zoneActive) return rayonRecherche;
+  return Math.max(rayonRecherche, CTX.rayonZone(zoneActive) + CTX.MARGE_M);
 }
 
 /* L'intention structurée de la recherche en cours, telle que `comprendre.js`
@@ -8945,10 +8819,9 @@ function elargirZone(){
    Sert à ne jamais afficher une catégorie à zéro. */
 function compterCats(cats){
   const set = new Set(cats);
-  const [lat,lng] = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  const [lat,lng] = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
   let n = 0;
   for(const l of lieux){
-    if(!dansZoneActive(l)) continue;
     if(!correspondUneCategorie(l,set)) continue;
     if(!nomExploitable(l)) continue;
     if(filtreMaintenant && !estVivant(l)) continue;
@@ -8980,8 +8853,8 @@ function categoriesClassementFeuille(){
 
 function classementFeuille(){
   if(feuilleNiveau === null || feuilleNiveau === "racine" || feuilleNiveau === "plus") return [];
-  const centre = centreZoneActive() || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
-  let candidats = lieux.filter(l=>dansZoneActive(l) && nomExploitable(l));
+  const centre = positionMoi || (map ? [map.getCenter().lat,map.getCenter().lng] : [0,0]);
+  let candidats = lieux.filter(nomExploitable);
   if(feuilleNiveau === "aide"){
     const choix = sousAideChoisi();
     if(choix && choix.urgentSeul) candidats = candidats.filter(l=>niveauUrgence(l)>=5);
@@ -9182,78 +9055,30 @@ function majFeuille2(){
   }
 
   if(feuilleNiveau === "racine"){
-    // L'accueil ne pose plus de question : il propose. Les besoins sont dans
-    // les pills de l'en-tête, la feuille sert à montrer des lieux.
     const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
-    /* Quand le bloc « ⚡ Maintenant (3) » est là, il EST la section
-       « maintenant ». Garder « Pour toi, maintenant » juste en dessous
-       affichait les mêmes événements une seconde fois, sous une seconde
-       étiquette qui dit la même chose : deux lectures pour une information.
-       Le carrousel devient alors ce qu'il est réellement — les lieux autour,
-       pas ce qui s'y passe. */
-    /* UN SEUL « AUTOUR DE TOI », ET C'EST LE BAS DU PANNEAU.
-
-       Le bloc « ⚡ Maintenant » dit ce qui se passe ; cette section-ci dit ce
-       qu'il y a. Les nommer différemment selon qu'un concert est en cours ou
-       non faisait changer le titre d'une section sous les yeux, pour un
-       contenu qui, lui, ne changeait pas de nature. */
-    const titre = creneau === "maintenant" ? "Autour de toi" : groupe.label;
+    const titre = creneau === "maintenant" ? "Maintenant" : groupe.label;
     $("#fbTitre").textContent = titre;
     retour.hidden = true;
-    // le titre vit dans le corps (avec « Voir tout ») : la barre ferait doublon
     f.classList.add("accueil");
-    /* Sur desktop, la référence montre un aperçu de sept cartes puis les
-       transports et les liens. « Voir tout » conserve l'accès au classement
-       complet ; le mobile garde son défilement progressif plus long. */
-    /* ================================================================
-       DEUX TEMPS, ET C'EST TOUT L'OBJET DE CETTE PASSE.
-
-       `recommandationsAccueil` classe l'ensemble des lieux. Le profil l'a
-       mesurée : treize appels, 3 907 ms cumulées, 443 ms pour le pire. Elle
-       vivait dans le MÊME `innerHTML` que le bloc « Maintenant » — qui, lui,
-       est prêt en quelques millisecondes. Maintenant attendait donc un
-       classement dont il n'a aucun besoin, et l'écran restait figé.
-
-       On peint donc d'abord tout ce qui est bon marché — dont « Maintenant »
-       — avec la zone de recommandations à sa place, occupée par le squelette
-       qui s'y affichait déjà. Puis on classe pendant une tranche
-       d'inactivité, et on remplace le squelette par les cartes.
-
-       Rien ne bouge au-dessus : le squelette occupe la place, et l'en-tête
-       « Voir tout » est rendue tout de suite. Ce qui change, c'est le moment
-       où le navigateur reprend la main — entre les deux, il peut peindre,
-       défiler, et enregistrer un appui. */
-    const jeton = ++generationAccueil;
-    if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-
-    corps.innerHTML =
-      blocOuRegarder()+
-      chipsHTML()+
-      /* Sur grand écran elles vivent dans la barre du haut : les rendre ici
-         aussi les ferait exister deux fois pour un lecteur d'écran. */
-      (NAV_FLOTTANTE.matches ? "" : besoinsRapidesHTML())+
-      ongletsTemps()+
-      blocNouveauPourToi()+
-      blocMaintenantAccueil()+
-      blocAideAccueil()+
-      '<div class="rc-tete"><strong>'+esc(titre)+'</strong>'+
-        '<button class="rc-tout" data-rc-tout="1">Voir tout →</button></div>'+
-      /* Les six grandes portes d'abord — c'est par elles qu'on retrouve les
-         lieux permanents et les commodités —, le classement ensuite. */
-      (creneau === "maintenant" ? grilleRaccourcisAutour() : "")+
-      '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+
-      (creneau === "maintenant" ? blocTransports() : "")+
-      piedFeuille();
-
-    /* Le classement est-il déjà fait pour cet état exact ? Alors il est déjà
-       posé ci-dessus, et il n'y a rien à différer. Sans cette question, un
-       simple changement d'onglet reclasserait tout pour un résultat
-       identique. */
-    if(!recoCache || recoCache.cle !== cleReco()){
-      annulerRecoDifferee = ORDO
-        ? ORDO.differer(()=>poserRecommandations(jeton, titre),
-            {timeout:300, valide:()=>generationAccueil === jeton})
-        : (poserRecommandations(jeton, titre), null);
+    /* Maintenant est volontairement court : les quatre onglets temporels,
+       les trois propositions réellement retenues, puis l'aide. Aucun
+       catalogue générique, raccourci de catégorie ou bloc « Autour de toi »
+       ne vient diluer la réponse immédiate. */
+    if(creneau === "maintenant"){
+      if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
+      corps.innerHTML = ongletsTemps()+blocMaintenantAccueil()+blocAideAccueil();
+    }else{
+      const jeton = ++generationAccueil;
+      if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
+      corps.innerHTML = ongletsTemps()+
+        '<div class="rc-tete"><strong>'+esc(titre)+'</strong></div>'+
+        '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+piedFeuille();
+      if(!recoCache || recoCache.cle !== cleReco()){
+        annulerRecoDifferee = ORDO
+          ? ORDO.differer(()=>poserRecommandations(jeton, titre),
+              {timeout:300, valide:()=>generationAccueil === jeton})
+          : (poserRecommandations(jeton, titre), null);
+      }
     }
   }else if(feuilleNiveau === "plus"){
     $("#fbTitre").textContent = "Plus de catégories";
@@ -9788,7 +9613,7 @@ function lancerBesoinAide(phrase){
 }
 
 function chargerAideSiBesoin(force){
-  if(!centreDonnees()) return;
+  if(!positionMoi) return;
   chargerAideZone({force:!!force}).catch(()=>{});
 }
 
@@ -9972,7 +9797,7 @@ function enteteBesoinAide(titre){
    repeint de l'écran — un onglet, un défilement, une carte qui reçoit sa photo
    — relancerait un appel de modèle pour un résultat identique. */
 function cleOrdreAide(candidats){
-  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : [0,0]);
   return [
     besoinsSelectionnesAide().join("+"),
     phraseAideCourante || "",
@@ -9990,7 +9815,7 @@ function demanderOrdreAide(candidats){
      appliquerait à cette liste-ci un classement calculé pour une autre — la
      panne la plus discrète possible, et la plus fausse. */
   ordreModeleAide = null;
-  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre) return;
 
   const contexte = IA_AIDE.contexte({
@@ -10044,7 +9869,7 @@ function demanderOrdreAide(candidats){
 /* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
    contraintes dures, distance — plus la pertinence du besoin. */
 function solutionsAide(limite){
-  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre || !AIDE) return [];
   const besoins = besoinsSelectionnesAide();
   const choix = sousAideChoisi();
@@ -10733,7 +10558,7 @@ function besoinsRapidesHTML(){
    demandée : « Maintenant » ne se remplit jamais artificiellement. */
 function compterMaintenant(){
   const t = Date.now();
-  return elementsDuContexte(lieux).reduce((n,l)=>{
+  return lieux.reduce((n,l)=>{
     if(!estTemporaire(l) || l.annule) return n;
     return TEMPS.estMaintenant(statutTemps(l, t).statut) ? n+1 : n;
   }, 0);
@@ -10784,7 +10609,7 @@ function majBadgeMaintenant(){
    « À venir », il parlerait d'autre chose que de l'onglet ouvert. */
 function evenementsMaintenant(){
   const t = Date.now();
-  return elementsDuContexte(lieux).filter(l=>estTemporaire(l) && !l.annule &&
+  return lieux.filter(l=>estTemporaire(l) && !l.annule &&
     TEMPS.estMaintenant(statutTemps(l, t).statut));
 }
 
@@ -10821,9 +10646,15 @@ function ligneMaintenant(l){
     ? formatDist(distanceDepuisZone(l)) : "";
   const bas = [dist, tempsMaintenant(l)].filter(Boolean).join(" · ");
   const lieu = l.adresse || l.cp || "";
+  const media = mediaDe(l);
+  const visuel = '<span class="mn-visuel" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
+    '<i aria-hidden="true">'+esc(c.emoji)+'</i>'+
+    (media.image_url
+      ? '<img src="'+esc(media.image_url)+'" alt="" loading="lazy" decoding="async"'+
+        ' onload="this.classList.add(\'vue\');imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
+    '</span>';
   return '<button class="mn-l" data-mn="'+esc(l.id)+'">'+
-    '<span class="mn-rond" style="background:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
-      c.emoji+'</span>'+
+    visuel+
     '<span class="mn-txt"><b>'+esc(l.titre)+'</b>'+
       (lieu ? '<i>'+esc(lieu)+'</i>' : '')+
       (bas ? '<u>'+esc(bas)+'</u>' : '')+'</span>'+
@@ -10960,41 +10791,25 @@ function rafraichirMetropole(){
      le bassin lui-même, et non des coordonnées. */
   const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
   if(!bassin || metropoleEnCours === bassin) return;
-  const porteeMetropole = porteeCourante;
   metropoleEnCours = bassin;
   chargerEvenementsMetropole(bassin).then((liste)=>{
-    /* Un changement de ville peut arriver pendant la lecture du bassin. Une
-       réponse MEL arrivée après une recherche Paris ne doit jamais repeupler
-       « Pour toi » ; la portée et le nom du bassin doivent encore être ceux
-       qui ont lancé cette requête. */
-    const bassinCourant = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
-    if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
     /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
        ramené, souvent parce que le réseau a flanché. Garder la clé de cache
        interdirait tout nouvel essai jusqu'au rechargement de la page. */
     if(!liste.length){ metropoleEnCours = null; return; }
     evenementsMetropole = liste;
     majPourToi();
-  }).catch(()=>{
-    if(porteeMetropole === porteeCourante) metropoleEnCours = null;
-  });
+  }).catch(()=>{ metropoleEnCours = null; });
 }
 
 function bassinPourToi(){
-  /* Le bassin est chargé en dehors du rayon local : il doit néanmoins rester
-     borné par le contexte de destination. Sinon une réponse MEL ou un cache
-     de la ville précédente pouvait traverser jusqu'à « Pour toi ».
-
-     Les deux collections peuvent contenir la même occurrence. Il ne faut pas
-     laisser `lieux` gagner par ordre d'arrivée : la version locale est parfois
-     la moins enrichie (notamment sans `announcement_tags`) alors que la
-     version du bassin porte les artistes, les tags et la provenance. Le
-     dédoublonnage commun fusionne d'abord les preuves et reconstruit le
-     `CanonicalEvent`; le classement Pour toi ne voit ensuite qu'une fiche. */
-  const locaux = elementsDuContexte(lieux).filter(estCanonique);
-  const bassin = elementsDuContexte(evenementsMetropole).filter(estCanonique);
-  return dedupeItems([...locaux, ...bassin], distanceM)
-    .filter(estCanonique);
+  /* `lieux` d'abord — il porte les publications et l'état le plus frais —,
+     puis ce que la métropole ajoute et que la carte locale ne voyait pas. Un
+     identifiant déjà présent n'est jamais remplacé. */
+  const locaux = lieux.filter(estCanonique);
+  if(!evenementsMetropole.length) return locaux;
+  const vus = new Set(locaux.map((l)=> l && l.id));
+  return locaux.concat(evenementsMetropole.filter((l)=> l && !vus.has(l.id) && estCanonique(l)));
 }
 
 function lieuParId(id){
@@ -11012,14 +10827,8 @@ function lieuParId(id){
      d'abord, qui porte l'état le plus frais, la métropole ensuite. */
   if(id == null) return null;
   const cle = String(id);
-  const dansContexte = typeof dansZoneActive === "function" ? dansZoneActive : ()=>true;
-  /* Une recommandation peut être la fusion de la copie locale et de celle du
-     bassin. Réutiliser cette collection fusionnée à l'ouverture évite que la
-     fiche détaillée relise ensuite la version locale nue. */
-  const fusionnes = typeof bassinPourToi === "function" ? bassinPourToi() : [];
-  return fusionnes.find((x)=> x && String(x.id) === cle && dansContexte(x))
-      || lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
-      || evenementsMetropole.find((x)=> x && String(x.id) === cle && dansContexte(x))
+  return lieux.find((x)=> x && String(x.id) === cle)
+      || evenementsMetropole.find((x)=> x && String(x.id) === cle)
       || null;
 }
 
@@ -11325,8 +11134,13 @@ function peindrePastillePourToi(nombre){
     pastille.hidden = !compte;
     pastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte) : "";
   }
+  const navPastille = $("#navPourToiBadge");
+  if(navPastille){
+    navPastille.hidden = !compte;
+    navPastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : compte) : "";
+  }
   const cloche = $("#btnNotifs");
-  if(cloche) cloche.setAttribute("aria-label", compte ? "Pour toi, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Pour toi");
+  if(cloche) cloche.setAttribute("aria-label", compte ? "Notifications, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Notifications");
 }
 
 function majPastillePourToi(){
@@ -11514,8 +11328,7 @@ function fermerPourToi(){
   const p = $("#pourToi");
   if(!p) return;
   document.body.classList.remove("pourtoi-ouvert");
-  /* Sur grand écran le panneau fait partie du décor : il reste en place. */
-  if(!NAV_FLOTTANTE.matches) p.hidden = true;
+  p.hidden = true;
 }
 
 /* Le panneau est-il visible ? La question a deux réponses selon l'écran — sur
@@ -11526,9 +11339,7 @@ function fermerPourToi(){
 function pourToiOuvert(){
   const p = $("#pourToi");
   if(!p) return false;
-  return NAV_FLOTTANTE.matches
-    ? document.body.classList.contains("pourtoi-ouvert")
-    : !p.hidden;
+  return !p.hidden && document.body.classList.contains("pourtoi-ouvert");
 }
 
 function basculerPourToi(){
@@ -11763,10 +11574,6 @@ function versItemMaintenant(l, t){
    carte est centrée sur soi et les deux coïncident ; ailleurs, c'est la ville
    qu'on regarde qui commande. */
 function pointDeReference(){
-  /* Une destination est un contexte explicite : même pendant l'animation de
-     la carte, les scores, distances et surfaces parlent déjà de cette ville.
-     Pour le mode GPS, on conserve la liberté d'explorer la vue courante. */
-  if(destinationActive()) return centreZoneActive();
   const c = centreCarte();
   return (Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]))
     ? c : positionMoi;
@@ -11777,7 +11584,6 @@ function pointDeReference(){
    d'afficher une distance plutôt que d'en afficher une fausse. */
 const SEUIL_MEME_ZONE_M = 30000;
 function jeSuisDansLaZoneRegardee(){
-  if(destinationActive()) return !!centreZoneActive();
   if(!positionPrecise() || !positionMoi) return false;
   const r = pointDeReference();
   if(!Array.isArray(r)) return false;
@@ -12599,7 +12405,6 @@ function brancherFeuille2(){
   corps.querySelectorAll("[data-tterr-recentrer]").forEach(b=>b.onclick=()=>{
     if(!contexteTerritorial || !contexteTerritorial.zones.length) return;
     const z = contexteTerritorial.zones[0];
-    rechercheGeo = {nom:contexteTerritorial.nom, lat:z.lat, lng:z.lng, emprise:null};
     if(CTX) definirZoneActive(CTX.zoneRecherche(contexteTerritorial.nom, [z.lat, z.lng], null));
     allerVers([z.lat, z.lng], 15);
     reevaluerTerritorial({ouverture:true});
@@ -12649,6 +12454,8 @@ function brancherFeuille2(){
     if(creneau === cible) return;
     creneau = cible;
     filtreMaintenant = creneau === "maintenant";
+    ongletCourant = filtreMaintenant ? "maintenant" : "explorer";
+    marquerNavigation(ongletCourant);
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
 
@@ -12660,6 +12467,8 @@ function brancherFeuille2(){
     // « n'afficher que ce qui est utilisable » n'a de sens que dans
     // « maintenant » : ailleurs c'est la date qui trie, pas l'ouverture
     filtreMaintenant = creneau === "maintenant";
+    ongletCourant = filtreMaintenant ? "maintenant" : "explorer";
+    marquerNavigation(ongletCourant);
     /* Le geste répond avant le classement. Le bouton choisi prend son état
        dans le même événement ; carte, contenu et filtres suivent au prochain
        frame. Sur CPU ralenti, « Ce soir » attendait autrement 250 ms avant de
@@ -12926,7 +12735,7 @@ function basculerAide(){
   // sont déjà en cache. La carte se reclasse juste après le premier paint.
   requestAnimationFrame(()=>setTimeout(()=>{ rendre(); majAccueil(); },0));
 
-  if(modeAide && centreDonnees()){
+  if(modeAide && positionMoi){
     // les réseaux d'aide arrivent après coup, la carte est déjà utilisable
     chargerAideZone()
       .then(()=>{ rendre(); majAccueil(); majFeuille2(); });
@@ -12942,10 +12751,9 @@ function basculerMaintenant(){
    comptage de ce que l'app connaît réellement autour de toi ; le libellé le
    dit, pour qu'on ne le prenne pas pour une mesure. */
 function vitalite(){
-  const centre = centreZoneActive();
-  if(!centre) return null;
-  const [lat,lng] = centre;
-  const proches = lieux.filter(l=>dansZoneActive(l) && distanceM(lat,lng,l.lat,l.lng) < 900);
+  if(!positionMoi) return null;
+  const [lat,lng] = positionMoi;
+  const proches = lieux.filter(l=>distanceM(lat,lng,l.lat,l.lng) < 900);
   const ouverts = proches.filter(l=>l.ouvert === true).length;
   const evs = proches.filter(l=>estTemporaire(l) && !estPasse(l)).length;
   const score = ouverts + evs*5;
@@ -13182,7 +12990,7 @@ function majAccueil(){
      lieux et de la position. Les faire attendre Leaflet rendait l'application
      entièrement vide quand le CDN toussait. */
   majBadgeMaintenant();
-  if(!centreDonnees() || modeNav){ PERF.travail("accueil", debutCpu); return; }
+  if(!positionMoi || modeNav){ PERF.travail("accueil", debutCpu); return; }
   if(selectionAccueil === false){ PERF.travail("accueil", debutCpu); return; }
   const ctx = contexteActuel();
   /* Le point de référence est celui du classement — soi, ou la zone qu'on est
@@ -13330,7 +13138,6 @@ function dessinerFiltres(){ majRaccourcis(); }
 function appliquerPosition(p, opts){
   const o = opts || {};
   const c = [p.coords.latitude, p.coords.longitude];
-  const destinationAvant = destinationActive();
   noterAutorisationGeo(true);
   memoriserPosition(c, "gps");
 
@@ -13345,7 +13152,7 @@ function appliquerPosition(p, opts){
   const regimeAvant = regimeZone(rechercheGeo);
   const bouge = premiereFois || venaitDeLApproximation || !positionMoi
     || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
-  if(bouge && !destinationAvant){
+  if(bouge){
     annulerGeneration("demarrage");
     annulerGeneration("zone:precalculee");
   }
@@ -13374,7 +13181,7 @@ function appliquerPosition(p, opts){
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
 
-  if(bouge && !destinationAvant){
+  if(bouge){
     // le quartier réel se charge — court délai : on est encore au
     // démarrage, et l'écran montre déjà quelque chose
     chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
@@ -13688,14 +13495,10 @@ function accorderPourToiALEcran(){
   poserBesoinsRapides();
   const p = $("#pourToi");
   if(!p) return;
-  if(NAV_FLOTTANTE.matches){
-    /* La colonne fait partie de la composition : elle est là d'emblée. */
-    p.hidden = false;
-    document.body.classList.add("pourtoi-ouvert");
-  }else{
-    p.hidden = true;
-    document.body.classList.remove("pourtoi-ouvert");
-  }
+  /* Pour toi est une destination explicite, jamais une colonne imposée au
+     démarrage. Sa pastille reste visible avec les nouveautés réelles. */
+  p.hidden = true;
+  document.body.classList.remove("pourtoi-ouvert");
   majPourToi();
 }
 
@@ -14008,7 +13811,7 @@ function ouvrirResultatsZone(nom, intention){
    tout seul une fois sur place. Rien à faire, aucun bouton — la promesse est
    tenue par la géolocalisation, pas par un réglage. */
 function noteApercu(nom){
-  const r = regimeZoneResultats(rechercheGeo);
+  const r = regimeZone(rechercheGeo);
   if(r === "local") return "";
   /* On dit la distance dans les mots, pas en kilomètres : « un peu plus loin »
      se comprend sans calcul, et c'est bien de cela qu'il s'agit. */
@@ -14102,11 +13905,17 @@ function remplirResultatsZone(nom, intention){
    la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
    inversait l'ordre naturel. */
 function ouvrirCreation(){
-  const eph = Object.entries(CATS).filter(([,c])=>c.eph);
+  const eph = [
+    {id:"event", label:"Événement", emoji:"🎉"},
+    {id:"autre", label:"Lieu", emoji:"📍"},
+    {id:"sport", label:"Activité", emoji:"🏃"},
+    {id:"popup", label:"Bon plan", emoji:"✨"},
+    {id:"autre", label:"Autre", emoji:"…"},
+  ];
   ouvrirFeuille(
     '<div class="liste-tete"><h2>Que veux-tu ajouter&nbsp;?</h2></div>'+
-    '<div class="creer-choix">'+eph.map(([id,c])=>
-      '<button class="creer-type" data-type="'+id+'">'+
+    '<div class="creer-choix">'+eph.map(c=>
+      '<button class="creer-type" data-type="'+c.id+'">'+
         '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>');
   $("#feuille").querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{
     typeAvantPose = b.dataset.type;
@@ -14128,6 +13937,7 @@ $("#btnPoseOk").onclick=validerPose;
 function revenirAutourDeMoi(){
   if(!positionMoi || !positionPrecise()) { suivreMaPosition({reproposer:true}); return; }
   definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
+  majEnteteLieu();
   annulerChargementsZone();
   rechercheGeo = null;
   intentionCourante = null;
@@ -14137,7 +13947,7 @@ function revenirAutourDeMoi(){
   allerVers(positionMoi, 16, {duration:.6});
   chargerZone(positionMoi[0], positionMoi[1]);
   rendre(); majAccueil();
-  if(feuilleNiveau !== null) majFeuille2(); else ouvrirAccueilFeuille();
+  if(feuilleNiveau !== null) majFeuille2();
   majBoutons();
 }
 $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
@@ -14265,9 +14075,10 @@ $("#badgeMaintenant").onclick = ()=>{
   if(modeAide) basculerAide();
   creneau = "maintenant";
   filtreMaintenant = true;
-  ongletCourant = "explorer";
-  marquerNavigation("explorer");
+  ongletCourant = "maintenant";
+  marquerNavigation("maintenant");
   contexteExplorer = null;
+  fermerPourToi();
   // même raison qu'ailleurs : rouvrir sans fermer, l'historique reste sain
   ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
@@ -14284,6 +14095,22 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   if(ongletCourant === "explorer" && id !== "explorer") capturerContexteExplorer();
   ongletCourant = id;
   marquerNavigation(id);
+  if(id !== "pourtoi") fermerPourToi();
+  if(id === "maintenant"){
+    if(modeAide) basculerAide();
+    creneau = "maintenant";
+    filtreMaintenant = true;
+    contexteExplorer = null;
+    ouvrirFeuille2("racine");
+    reinitialiserScrollFeuille();
+    rendre();
+    return;
+  }
+  if(id === "pourtoi"){
+    if(modeAide) basculerAide();
+    ouvrirPourToi();
+    return;
+  }
   if(id === "explorer"){
     if(modeAide) basculerAide();
     /* ON NE FERME PAS POUR ROUVRIR AUSSITÔT.
@@ -14309,16 +14136,12 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
     if(!modeAide) basculerAide(); else { sousAide = null; besoinsExprimesAide = []; besoinsAide = []; besoinsSecondairesAide = []; intentionsSanteAide = []; }
     ouvrirFeuille2("aide"); return;
   }
-  /* Créer et Favoris demandent un compte — mais SEULEMENT ici, au moment du
-     geste. L'onglet reste visible et cliquable pour tout le monde : le cacher
-     reviendrait à ne pas dire qu'Autour se publie. */
+  /* La première étape de Créer est toujours lisible : le choix du type ne
+     demande pas de compte. L'authentification reste au moment de publier,
+     après que le brouillon est réellement commencé. */
   if(id === "creer"){
     retourFormulaire=false;
-    exigerCompte("publier").then(ok=>{ if(ok) ouvrirCreation(); });
-    return;
-  }
-  if(id === "favoris"){
-    exigerCompte("favori").then(ok=>{ if(ok) ouvrirFavoris(); });
+    ouvrirCreation();
     return;
   }
   if(id === "profil"){ ouvrirProfil(); return; }
@@ -14411,27 +14234,75 @@ async function ouvrirFavoris(){
 
 /* ---- Ville détectée -----------------------------------------------------
    Reverse-geocoding Nominatim, une seule fois par position. En cas d'échec,
-   l'en-tête garde « Autour de toi » : on n'affiche pas une ville devinée. */
-/* Ce que l'en-tête dit du lieu regardé. Tant que personne n'a donné sa
-   position ni choisi de ville, il le dit — au lieu de faire croire que le
-   point affiché est « autour de toi ». */
+   l'en-tête conserve un contexte neutre : on n'affiche pas une ville devinée. */
+/* Ce que l'en-tête dit du lieu regardé, dans la fiche ouverte par l'avatar.
+   Tant que personne n'a donné sa position ni choisi de ville, il le dit au
+   lieu de faire croire que le point affiché est « autour de toi ». */
+function informationsLocalisation(){
+  const recherche = !!(CTX && zoneActive && zoneActive.type === CTX.TYPES.RECHERCHE);
+  const nom = recherche && zoneActive.nom
+    ? zoneActive.nom
+    : (commune && commune !== COMMUNE_INCONNUE ? commune
+      : positionPrecise() ? "Ma position actuelle" : "Position non définie");
+  const adresse = zoneActive && (zoneActive.adresse || zoneActive.address || "");
+  return {
+    nom,
+    adresse,
+    recherche,
+    statut: recherche ? "Zone explorée"
+      : positionPrecise() ? "Position précise active"
+      : positionConnue() ? "Zone approximative"
+      : "Aucune position sélectionnée",
+  };
+}
+
+function mettreAJourLocalisationPopover(){
+  const pop = $("#locationPopover");
+  if(!pop) return;
+  const info = informationsLocalisation();
+  const zone = $("#locationPopoverZone");
+  const adresse = $("#locationPopoverAddress");
+  const statut = $("#locationPopoverStatus");
+  const retour = $("#locationPopoverReturn");
+  if(zone) zone.textContent = info.nom;
+  if(adresse){
+    adresse.textContent = info.adresse;
+    adresse.hidden = !info.adresse;
+  }
+  if(statut) statut.textContent = info.statut;
+  if(retour) retour.hidden = !(info.recherche && positionPrecise());
+}
+
+function ouvrirLocalisation(){
+  const pop = $("#locationPopover");
+  if(!pop) return;
+  mettreAJourLocalisationPopover();
+  pop.hidden = false;
+}
+
+function fermerLocalisation(){
+  const pop = $("#locationPopover");
+  if(pop) pop.hidden = true;
+}
+
 function majEnteteLieu(){
   const v = $("#hdVille");
   const avatar = $("#hdAvatar");
   if(avatar){
-    const choix = avatarChoisi();
+    const choix = avatarChoisi() || "🙂";
     avatar.textContent = choix;
-    avatar.hidden = !choix;
+    avatar.hidden = false;
   }
-  if(!v) return;
-  if(!positionConnue()){ v.textContent = "Choisir un endroit"; return; }
+  if(!v){ mettreAJourLocalisationPopover(); return; }
+  if(!positionConnue()){ v.textContent = "Choisir un endroit"; mettreAJourLocalisationPopover(); return; }
   /* Une ville déduite d'une adresse IP ne s'écrit JAMAIS dans cette pastille.
      Sur un réseau mobile elle désigne souvent la passerelle de l'opérateur, à
      des dizaines de kilomètres : afficher « Lille » à quelqu'un qui est à
      Tourcoing est une affirmation fausse, et c'est celle qui a été signalée.
      On dit donc ce qu'on sait vraiment — qu'on regarde une zone, sans plus. */
-  if(positionApprochee()){ v.textContent = "Zone approximative"; return; }
+  if(positionApprochee()){ v.textContent = "Zone approximative"; mettreAJourLocalisationPopover(); return; }
   if(ETIQUETTES_LIEU.includes(v.textContent)) v.textContent = "Autour de toi";
+  mettreAJourLocalisationPopover();
 }
 
 async function detecterVille(lat,lng){
@@ -14449,6 +14320,7 @@ async function detecterVille(lat,lng){
     if(parRelais){
       villeDetectee = cle;
       if(nommable()){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
+      mettreAJourLocalisationPopover();
     }
     terminerGeneration(generation);
     return;
@@ -14469,13 +14341,14 @@ async function detecterVille(lat,lng){
       $("#hdVille").textContent = nom;
       mesurerHeader();
     }
+    mettreAJourLocalisationPopover();
   }catch(e){ /* silencieux : l'en-tête reste neutre plutôt que faux */ }
   finally{ terminerGeneration(generation); }
 }
 
-/* L'ancien gros bouton noir « Que faire autour de moi ? » a disparu : la
-   feuille s'ouvre d'elle-même au démarrage sur « Pour toi, maintenant », et
-   les pills de l'en-tête donnent l'accès direct aux besoins. */
+/* Ouvre l'accueil d'Explorer ou de Maintenant depuis une navigation explicite.
+   Le démarrage reste centré sur la carte ; les résultats ne sont jamais effacés
+   quand la feuille est refermée. */
 function ouvrirAccueilFeuille(){
   if(modeAide) basculerAide();
   catsActives = null; sousChoisi = null; filtreActif = "tout";
@@ -14556,17 +14429,25 @@ poigneeFeuille.addEventListener("pointerup",e=>{
    doit rendre la poignée à son état de repos. Sans ça le glissement restait
    « en cours » et le geste suivant se comparait à une origine périmée. */
 poigneeFeuille.addEventListener("pointercancel",relacherPoignee);
-/* La pastille de lieu : recentrer si on sait où on est, demander sinon.
-   C'est la seule commande géographique — « Autour de moi » n'est plus un
-   concept concurrent de « Maintenant », c'est ce geste-là. */
+/* La pastille de lieu expose le contexte actif. Le retour GPS reste une action
+   explicite dans sa fiche lorsque l'on explore une autre zone. */
 $("#btnLieu").onclick = ()=>{
-  /* Tant qu'on n'a pas le vrai point, ce bouton le demande. Il testait
-     `positionConnue()`, qui répond « oui » depuis que la ville peut venir de
-     l'adresse IP : la pastille se contentait donc de recentrer sur une ville
-     approchée, et plus rien dans l'écran ne permettait de demander la vraie
-     position. Quelqu'un que le navigateur n'a jamais localisé restait sur une
-     ville à plusieurs kilomètres, sans aucun moyen d'y remédier. */
-  if(!positionPrecise()){ suivreMaPosition({reproposer:true}); return; }
-  if(zoneAffichee || rechercheGeo){ revenirAutourDeMoi(); return; }
-  allerVers(positionMoi, 16, {duration:.6});
+  /* Le clic ne modifie pas la géographie : il rend visible l'état déjà actif. */
+ const pop = $("#locationPopover");
+  if(pop && !pop.hidden) fermerLocalisation();
+  else ouvrirLocalisation();
 };
+if($("#locationPopoverClose")) $("#locationPopoverClose").onclick = fermerLocalisation;
+if($("#locationPopoverReturn")) $("#locationPopoverReturn").onclick = ()=>{
+  revenirAutourDeMoi();
+  fermerLocalisation();
+};
+document.addEventListener("pointerdown", (e)=>{
+  const pop = $("#locationPopover");
+  const bouton = $("#btnLieu");
+  if(!pop || pop.hidden || pop.contains(e.target) || (bouton && bouton.contains(e.target))) return;
+  fermerLocalisation();
+});
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape") fermerLocalisation();
+});
