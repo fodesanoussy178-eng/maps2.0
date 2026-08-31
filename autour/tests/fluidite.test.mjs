@@ -229,19 +229,22 @@ test("rien ne parle de « rien autour de toi » sans position connue", () => {
 });
 
 /* ======================================================================== */
-/*  Ce que cette passe ne devait PAS changer                                */
+/*  Navigation principale et stabilité du rendu                             */
 /* ======================================================================== */
 
-test("la navigation basse garde ses cinq entrées, dans l'ordre", () => {
-  const ordre = [...html.matchAll(/data-nb="([a-z]+)"/g)].map((m) => m[1]);
-  const nav = ordre.filter((x, i) => ordre.indexOf(x) === i);
-  assert.deepEqual(nav, ["explorer", "aide", "creer", "favoris", "profil"]);
+test("la navigation basse porte les six entrées, dans l'ordre", () => {
+  const debut = html.indexOf('<nav id="navBas">');
+  const fin = html.indexOf("</nav>", debut);
+  const nav = html.slice(debut, fin);
+  const ordre = [...nav.matchAll(/data-nb="([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ordre, ["maintenant", "explorer", "creer", "pourtoi", "aide", "profil"]);
 });
 
-test("aucun onglet principal n'a été ajouté pour « Maintenant »", () => {
-  assert.doesNotMatch(html, /data-nb="maintenant"/);
-  // « Maintenant » reste un créneau à l'intérieur d'Explorer
+test("« Maintenant » est une entrée principale et garde ses créneaux", () => {
+  assert.match(html, /data-nb="maintenant"/);
+  // Les quatre créneaux restent disponibles dans la feuille.
   assert.match(html, /\{ id:"maintenant", label:"Maintenant"\s*\}/);
+  assert.match(html, /function ongletsTemps\(\)\{/);
 });
 
 test("la carte reste une seule instance vivante", () => {
@@ -337,7 +340,7 @@ test("un appui sur la pastille ouvre la liste, pas un menu", () => {
   assert.ok(bloc);
   assert.match(bloc[0], /creneau = "maintenant";/);
   assert.match(bloc[0], /ouvrirFeuille2\("racine"\);/);
-  assert.match(bloc[0], /marquerNavigation\("explorer"\)/);
+  assert.match(bloc[0], /marquerNavigation\("maintenant"\)/);
 });
 
 test("la pastille s'efface là où la carte appartient à autre chose", () => {
@@ -501,17 +504,11 @@ test("une ligne ouvre son événement, sans menu intermédiaire", () => {
 });
 
 test("un événement en cours n'est jamais affiché deux fois dans la feuille", () => {
-  assert.match(html, /const dejaListes = new Set\(enCours\.slice\(0, MAINTENANT_APERCU\)\.map\(l=>l\.id\)\);/);
-  assert.match(html, /reco = reco\.filter\(l=>!dejaListes\.has\(l\.id\)\);/);
-  /* La section du bas s'appelle « Autour de toi », toujours. Elle changeait
-     de nom selon qu'un concert était en cours ou non — « Pour toi,
-     maintenant » sinon — ce qui renommait une section sous les yeux pour un
-     contenu de même nature, et redonnait le mot « maintenant » à une
-     deuxième liste. Un seul « Maintenant » à l'écran : le bloc du haut. */
-  assert.match(html, /const titre = creneau === "maintenant" \? "Autour de toi"/,
-    "deux sections nommées « maintenant » diraient la même chose deux fois");
-  assert.doesNotMatch(html, /"Pour toi, maintenant"/,
-    "ce titre disait « maintenant » une deuxième fois");
+  /* Maintenant rend son échantillon sélectionné directement. Le panneau ne
+     compose donc plus une deuxième liste générique susceptible de recopier un
+     événement déjà affiché. */
+  assert.match(html, /corps\.innerHTML = ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+blocAideAccueil\(\);/);
+  assert.doesNotMatch(html, /corps\.innerHTML = ongletsTemps\(\)\+besoinsRapidesHTML/);
 });
 
 /* ======================================================================== */
@@ -726,7 +723,7 @@ test("une zone ne possède qu'une requête Supabase en vol", () => {
   const bloc = html.slice(html.indexOf("async function rafraichirCoucheSupabase"),
     html.indexOf("function chargerCoucheSupabase", html.indexOf("async function rafraichirCoucheSupabase")));
   assert.match(bloc, /if\(requetesCouchesSupabase\.has\(cle\)\) return requetesCouchesSupabase\.get\(cle\);/);
-  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng(?:,portee)?\)/);
+  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng\)/);
   assert.match(bloc, /if\(okPublications \|\| okEvenements\)/,
     "une panne totale ne doit jamais remplacer le cache par du vide");
 });
