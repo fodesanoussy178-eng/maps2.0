@@ -9036,15 +9036,22 @@ const SET_AIDE  = new Set(CATS_AIDE);
 const SOUS_AIDE = (AIDE ? AIDE.BESOINS_GRILLE : []).filter(b=>b.id !== "autre").map(b=>({
   id:b.id, emoji:b.emoji, label:b.label, cats:b.cats,
 }));
-/* La maquette expose cinq portes immédiatement compréhensibles. Les autres
-   besoins restent atteignables par la recherche de situation, mais ne
-   transforment pas l'accueil Aide en grille d'annuaire. */
+/* L'écran d'entrée conserve toutes les portes prévues par le contrat Aide.
+   Elles restent des filtres de besoin — pas des catégories de commerce — et
+   « Autre besoin » garde une sortie explicite pour les situations que le
+   lexique ne couvre pas directement. */
 const AIDE_FILTRES_MAQUETTE = [
   {id:"tout", label:"Tout", emoji:""},
-  {id:"logement", label:"Logement", emoji:"🏠"},
   {id:"manger", label:"Manger", emoji:"🍽️"},
-  {id:"papiers", label:"Papiers", emoji:"📄"},
+  {id:"logement", label:"Logement", emoji:"🏠"},
+  {id:"travail", label:"Travail / argent", emoji:"💼"},
+  {id:"papiers", label:"Papiers / démarches", emoji:"📄"},
   {id:"sante", label:"Santé", emoji:"🩺"},
+  {id:"jeunes", label:"Jeunes / études", emoji:"🎓"},
+  {id:"parler", label:"Parler à quelqu’un", emoji:"💬"},
+  {id:"famille", label:"Famille", emoji:"👨‍👩‍👧"},
+  {id:"securite", label:"Sécurité", emoji:"🛡️"},
+  {id:"autre", label:"Autre besoin", emoji:"➕"},
 ];
 const AIDE_AUTRE = AIDE && AIDE.BESOIN_DE ? AIDE.BESOIN_DE("autre") :
   {id:"autre", emoji:"➕", label:"Autre aide", cats:["asso","mairie"]};

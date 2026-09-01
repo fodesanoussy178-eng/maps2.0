@@ -512,8 +512,10 @@ input{font-family:inherit;font-size:16px}
 .ab-exemples{margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--ink2)}
 .ab-exemples button{margin:4px 2px 0 0;padding:5px 9px;border:0;border-radius:99px;
   background:#F1ECFF;color:#4D32A6;font-size:11.5px;font-weight:650}
-.aide-filtres{display:flex;gap:7px;overflow-x:auto;padding:1px 0 4px;
-  scrollbar-width:none}
+.aide-filtres{display:flex;flex-wrap:nowrap;gap:7px;overflow-x:auto;overflow-y:hidden;
+  height:47px;min-height:47px;max-height:47px;padding:1px 0 4px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+  touch-action:pan-x}
 .aide-filtres::-webkit-scrollbar{display:none}
 .aide-filtre{flex:0 0 auto;min-height:38px;padding:8px 12px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;color:var(--ink);font-size:13px;font-weight:700;
@@ -1357,8 +1359,9 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   /* Aide est une destination à part entière sur mobile : son écran initial
      doit montrer la hiérarchie complète comme dans la référence, pas une
      demi-feuille qui coupe la troisième rangée avant le champ libre. */
-  body.aide #feuilleBesoins{height:calc(100dvh - var(--header-bas) - 50px);
-    max-height:calc(100dvh - var(--header-bas) - 50px)}
+  body.aide #feuilleBesoins{bottom:var(--nav-height);
+    height:calc(100dvh - var(--header-bas) - 50px - var(--nav-height));
+    max-height:calc(100dvh - var(--header-bas) - 50px - var(--nav-height))}
   .ab{padding-bottom:8px}
   .ab-urgence{margin-bottom:17px;padding:11px 12px}
   .ab-grille{gap:7px}

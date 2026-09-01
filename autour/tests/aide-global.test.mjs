@@ -20,13 +20,22 @@ test("l'écran initial Aide affiche le bassin prioritaire et la recherche dédi�
   assert.ok(app.includes('{id:"tout", label:"Tout"'));
   assert.ok(app.includes('{id:"logement", label:"Logement"'));
   assert.ok(app.includes('{id:"manger", label:"Manger"'));
-  assert.ok(app.includes('{id:"papiers", label:"Papiers"'));
+  assert.ok(app.includes('{id:"travail", label:"Travail / argent"'));
+  assert.ok(app.includes('{id:"papiers", label:"Papiers / démarches"'));
   assert.ok(app.includes('{id:"sante", label:"Santé"'));
+  assert.ok(app.includes('{id:"jeunes", label:"Jeunes / études"'));
+  assert.ok(app.includes('{id:"parler", label:"Parler à quelqu’un"'));
+  assert.ok(app.includes('{id:"famille", label:"Famille"'));
+  assert.ok(app.includes('{id:"securite", label:"Sécurité"'));
+  assert.ok(app.includes('{id:"autre", label:"Autre besoin"'));
   assert.ok(app.includes("solutionsAide(aideAfficherToutes ? Infinity : 3, {noModel:true})"));
   assert.ok(app.includes('data-aide-toutes="1"') && app.includes("Voir toutes les aides autour de toi"));
   assert.ok(!index.includes('id="formBesoin"'));
   assert.ok(index.includes('id="aideRechercheContenu"'));
   assert.ok(index.includes(".recherche-aide"));
+  assert.match(index, /\.aide-filtres\{[^}]*flex-wrap:nowrap/);
+  assert.match(index, /\.aide-filtres\{[^}]*overflow-x:auto/);
+  assert.match(index, /\.aide-filtres\{[^}]*height:47px/);
   assert.ok(app.includes("URGENCES_AIDE") && app.includes('href=\"tel:\'') && app.includes("u.numero"));
   assert.ok(app.includes("112") && app.includes("15") && app.includes("17") &&
     app.includes("18") && app.includes("115") && app.includes("3114") && app.includes("3919"));
