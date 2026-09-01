@@ -153,6 +153,8 @@ const aDistance = (metres, extra) =>
 test("au plus trois, même quand il y en a dix", () => {
   const dix = Array.from({ length: 10 }, (_, i) =>
     aDistance(100 + i * 50, { id: "e" + i }));
+  assert.equal(M.candidats(dix, ctx()).length, 10,
+    "le moteur doit conserver le bassin complet pour mesurer la nouveauté");
   assert.equal(M.selection(dix, ctx()).length, 3);
   assert.equal(M.total(dix, ctx()), 3, "le total public suit la sélection");
 });

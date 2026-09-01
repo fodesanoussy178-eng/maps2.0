@@ -87,6 +87,33 @@ test("les actions de goûts restent atteignables au-dessus de la navigation", ()
     "les actions de la feuille mobile ne doivent pas passer sous la navigation");
 });
 
+test("les goûts et les recommandations sont reconstruits par ID après reload", () => {
+  assert.match(source, /function ouvrirPourToi\(\)[\s\S]*?rafraichirMetropole\(\)[\s\S]*?majPourToi\(\)/,
+    "ouvrir Pour toi doit relancer le bassin après une nouvelle session");
+  assert.doesNotMatch(
+    source.slice(source.indexOf("function nouveautesPourToi"), source.indexOf("function noterConsultationPourToi")),
+    /if\(!annoncees\.size && consultationCompte\)/,
+    "une date de consultation ne doit pas effacer les recommandations non vues"
+  );
+  const pastille = source.slice(source.indexOf("function peindrePastillePourToi"), source.indexOf("function majPastillePourToi"));
+  assert.match(pastille, /dataset\.count = String\(compte\)/);
+  assert.match(source, /let rebasePourToiEnAttente = false/);
+  assert.match(source, /if\(rebasePourToiEnAttente\)[\s\S]*?retenirAnnoncees\(propositionsPourToi\(POURTOI_TOUT_MAX\)\)/);
+});
+
+test("Maintenant expose le bassin complet et son badge FOMO canonique", () => {
+  assert.match(source, /id="navMaintenantBadge"/);
+  assert.match(source, /const CLE_MAINTENANT_VU = "autour:maintenant-vu:v1"/);
+  assert.match(source, /function idCanoniqueMaintenant\(item\)/);
+  assert.match(source, /function candidatsMaintenant\(\)/);
+  assert.match(source, /M\.candidats\(itemsMaintenant\(ctx\), ctx\)/);
+  assert.match(source, /function marquerMaintenantCommeVu\(\)/);
+  assert.match(source, /ouvrirFeuille2\("racine"\);[\s\S]*?marquerMaintenantCommeVu\(\)/);
+  assert.match(source, /data-mn-candidats="'\+candidats\.length\+'/);
+  assert.match(source, /badge\.dataset\.nouveaux = String\(nouveaux\)/);
+  assert.match(source, /badge\.dataset\.count = String\(compte\)/);
+});
+
 test("sans goûts, Pour toi affiche l'onboarding au lieu d'inventer une personnalisation", () => {
   const pourToi = source.slice(source.indexOf("function majPourToi"), source.indexOf("function brancherPourToi"));
   assert.match(pourToi, /if\(!suivies\)/);
@@ -96,7 +123,8 @@ test("sans goûts, Pour toi affiche l'onboarding au lieu d'inventer une personna
 
 test("la pastille exclut les recommandations vues et les goûts nouvellement pertinents", () => {
   const logique = source.slice(source.indexOf("function rebaserPourToiApresChangementGouts"), source.indexOf("function peindrePastillePourToi"));
-  assert.match(logique, /retenirAnnoncees\(propositionsPourToi\(POURTOI_TOUT_MAX\)\)/);
+  assert.match(logique, /const propositions = propositionsPourToi\(POURTOI_TOUT_MAX\)/);
+  assert.match(logique, /retenirAnnoncees\(propositions\)/);
   assert.match(logique, /!annoncees\.has\(id\) && !vues\.has\(id\)/);
   const rendu = source.slice(source.indexOf("function majPourToi"), source.indexOf("function brancherPourToi"));
   assert.match(rendu, /peindrePastillePourToi\(nouveautesPourToi\(propositions\)\.length\)/);
