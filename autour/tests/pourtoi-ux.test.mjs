@@ -80,6 +80,13 @@ test("la sélection des goûts est un brouillon validé en une seule fois", () =
     "l'interface ne doit plus enregistrer chaque clic");
 });
 
+test("les actions de goûts restent atteignables au-dessus de la navigation", () => {
+  assert.match(source, /#pourToi:has\(\.env-actions\)\{z-index:920\}/,
+    "les actions du panneau desktop ne doivent pas passer sous la navigation");
+  assert.match(source, /#feuille:has\(\.env-actions\)\{z-index:920\}/,
+    "les actions de la feuille mobile ne doivent pas passer sous la navigation");
+});
+
 test("sans goûts, Pour toi affiche l'onboarding au lieu d'inventer une personnalisation", () => {
   const pourToi = source.slice(source.indexOf("function majPourToi"), source.indexOf("function brancherPourToi"));
   assert.match(pourToi, /if\(!suivies\)/);
