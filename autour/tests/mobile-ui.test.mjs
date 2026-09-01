@@ -128,7 +128,7 @@ test("l'état ouvert/fermé a une seule source de vérité",()=>{
   assert.match(html,/function dispoDe\(l, arrivee, quand\)/);
   // le moteur temporel fait autorité sur le « quand »
   assert.match(html,/<script src="temporel\.js\?v=[a-f0-9]{8}" defer><\/script>/);
-  assert.match(html,/function statutTemps\(l, quand\)\{/);
+  assert.match(html,/function statutTemps\(l, quand, options\)\{/);
   assert.match(html,/function badgeDispo\(l\)/);
   assert.doesNotMatch(html,/x\.ouvert === true\)\s+sous\.push/);
   assert.doesNotMatch(html,/l\.ouvert === false && creneau === "maintenant"/);
@@ -386,7 +386,7 @@ test("sur desktop une catégorie garde la recherche réelle à côté du panneau
   assert.match(html,/const actif = feuilleNiveau === b\.id;/);
   // Même sélection sur desktop et mobile : sept recommandations et leurs
   // marqueurs, pas un apercu différent selon la taille d'écran.
-  assert.match(html,/let reco = recommandationsAccueil\(7\)/);
+  assert.match(html,/let reco = recommandationsAccueil\(creneau === "maintenant" \? 3 : 7\)/);
   assert.match(html,/const nombreAffiche = items\.length \|\| \(chargement \? 5 : 0\)/);
 });
 
@@ -740,8 +740,10 @@ test("l'échantillon immédiat est réel et varié, jamais inventé",()=>{
   // les favoris d'abord, puis une entrée par famille
   assert.match(html,/candidats\.filter\(l=>estFavori\(l\)\)\.forEach\(prendre\)/);
   assert.match(html,/FAMILLES_ECHANTILLON\.forEach/);
-  // il sort des lieux déjà chargés, pas d'un jeu fabriqué
-  assert.match(html,/echantillonImmediat\(lieux\.filter\(nomExploitable\)\)/);
+  // Maintenant ne complète plus un classement vide avec un aperçu différent :
+  // elle conserve uniquement la sélection éditorialisée commune, bornée à 3.
+  assert.match(html,/recommandationsAccueil\(creneau === "maintenant" \? 3 : 7\)/);
+  assert.doesNotMatch(html,/if\(!reco\.length && creneau === "maintenant"\)[\s\S]*?echantillonImmediat/);
 });
 
 test("le préchargement suit l'usage réel et ne bloque jamais",()=>{
@@ -1357,7 +1359,7 @@ test("OpenAgenda ne fait plus d'appel depuis le bundle navigateur",()=>{
 test("le classement tranche le temps avant de calculer la pertinence",()=>{
   // la proximité ne doit jamais faire remonter un événement futur
   assert.match(core,/const survivants = \[\];/);
-  assert.match(core,/if \(temporary && etat && etat\.statut === temps\.STATUTS\.PASSE\) return;/);
+  assert.match(core,/if \(temporary && etat && etat\.status === temps\.STATUTS_TEMPORELS\.PAST\) return;/);
   assert.match(core,/if \(ctx\.nowOnly\) \{/);
   assert.match(core,/const disponible = temps && etat/);
   // le contrat porte sur l'ORDRE des deux passes, pas sur la façon dont le
@@ -1381,7 +1383,7 @@ test("la proximité de date des événements passe avant leur trajet",()=>{
 });
 
 test("une exposition fermée annonce sa réouverture, pas le début de sa période",()=>{
-  assert.match(temporel,/const ouvre = dispo\.opensAt \? Date\.parse\(dispo\.opensAt\) : NaN;/);
+  assert.match(temporel,/const ouvre = dispo\.opensAt \? toEpochInZone\(dispo\.opensAt, timeZone\) : NaN;/);
   assert.match(temporel,/\{ debut: suivant, dansMs: suivant - t \}/);
   // et elle n'est jamais « imminente » : ce n'est pas un événement qui commence
   assert.doesNotMatch(temporel,/statut: STATUTS\.IMMINENT, periodeLongue/);
@@ -1652,8 +1654,8 @@ test("l'aide mélange structures permanentes et opportunités temporaires",()=>{
   assert.match(html,/function prioriteDisponibiliteAide\(l\)\{/);
   // en cours, imminent, aujourd'hui/demain, semaine, futur : le moteur
   // temporel existant fournit les états, sans second moteur local
-  assert.match(html,/TEMPS\.STATUTS\.EN_COURS\) return 60;/);
-  assert.match(html,/TEMPS\.STATUTS\.IMMINENT\) return 50;/);
+  assert.match(html,/TEMPS\.STATUTS_TEMPORELS\.NOW\) return 60;/);
+  assert.match(html,/TEMPS\.STATUTS_TEMPORELS\.SOON\) return 50;/);
   assert.match(html,/jours <= 1 \? 30 : jours <= 7 \? 20 : 10/);
   assert.match(html,/prioriteDisponibiliteAide\(b\.l\) - prioriteDisponibiliteAide\(a\.l\)/);
   // et la carte d'aide affiche la date réelle d'un événement

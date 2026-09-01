@@ -55,6 +55,7 @@
   });
 
   const TERRE_M = 6371000;
+  const DEFAULT_TIMEZONE = "Europe/Paris";
 
   function distanceM(aLat, aLng, bLat, bLng) {
     const r = Math.PI / 180;
@@ -74,14 +75,16 @@
      même raison qu'ailleurs dans Autour : `Number(null)` vaut zéro, et zéro
      est une date — le 1er janvier 1970. Une date absente doit rester absente,
      sinon un contexte sans fin devient un contexte terminé depuis 56 ans. */
-  function horodatage(valeur) {
+  function horodatage(valeur, timeZone) {
     if (valeur == null || valeur === "") return null;
     if (valeur instanceof Date) {
       const t = valeur.getTime();
       return Number.isFinite(t) ? t : null;
     }
     if (typeof valeur === "number") return Number.isFinite(valeur) ? valeur : null;
-    const t = Date.parse(String(valeur));
+    const temporal = root.AutourTemps;
+    const t = temporal && typeof temporal.toEpochInZone === "function"
+      ? temporal.toEpochInZone(valeur, timeZone || DEFAULT_TIMEZONE) : Date.parse(String(valeur));
     return Number.isFinite(t) ? t : null;
   }
 
@@ -146,8 +149,9 @@
   function normaliserContexte(brut) {
     const c = brut || {};
     const slug = String(c.slug || "").trim();
-    const debut = horodatage(c.starts_at != null ? c.starts_at : c.debutLe);
-    const fin = horodatage(c.ends_at != null ? c.ends_at : c.finLe);
+    const fuseau = String(c.timezone || c.fuseau || DEFAULT_TIMEZONE);
+    const debut = horodatage(c.starts_at != null ? c.starts_at : c.debutLe, fuseau);
+    const fin = horodatage(c.ends_at != null ? c.ends_at : c.finLe, fuseau);
     if (!slug || debut == null || fin == null || fin <= debut) return null;
 
     const meta = c.metadata || {};
@@ -164,8 +168,8 @@
       emoji: String(c.emoji || meta.emoji || "📍"),
       debutLe: debut,
       finLe: fin,
-      apercuLe: horodatage(c.preview_starts_at != null ? c.preview_starts_at : c.apercuLe),
-      fuseau: String(c.timezone || c.fuseau || "Europe/Paris"),
+      apercuLe: horodatage(c.preview_starts_at != null ? c.preview_starts_at : c.apercuLe, fuseau),
+      fuseau,
       territoire: c.territory_slug || c.territoire || null,
       priorite: nombre(c.priority != null ? c.priority : c.priorite) || 100,
       urlOfficielle: c.official_url || c.urlOfficielle || null,

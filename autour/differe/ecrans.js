@@ -37,6 +37,18 @@ const RENVOI_COMPTE_MS = 60000;
 let renvoiCompteAvant = 0;     // horodatage jusqu'auquel le renvoi est bloqué
 let renvoiCompteMinuteur = null;
 
+/* Les dates saisies dans les écrans différés rejoignent le même modèle que
+   les dates reçues des fournisseurs. Le fuseau de l'application est celui du
+   lieu regardé ; à défaut, Autour travaille en Europe/Paris. */
+function epochAutour(value, timeZone){
+  const T = (typeof window !== "undefined" && window.AutourTemps) ||
+    (typeof globalThis !== "undefined" && globalThis.AutourTemps);
+  const parsed = T && typeof T.toEpochInZone === "function"
+    ? T.toEpochInZone(value, timeZone || "Europe/Paris")
+    : new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 async function enregistrerProfilCompte(champs){
   if(!sb || !moiId) return false;
   const { error } = await sb.from("profiles").update(champs).eq("id", moiId);
@@ -751,7 +763,10 @@ async function actionCreateur(id, l, canal){
     const saisie = prompt("Nouvel horaire (JJ/MM/AAAA HH:MM) :");
     const quand = saisie && saisie.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
     if(!quand){ if(saisie) toast("Format attendu : 12/09/2026 20:30"); return; }
-    const iso = new Date(+quand[3], +quand[2]-1, +quand[1], +quand[4], +quand[5]).toISOString();
+    const debut = epochAutour(quand[3]+"-"+quand[2]+"-"+quand[1]+"T"+
+      quand[4]+":"+quand[5]+":00", "Europe/Paris");
+    if(debut == null){ toast("Horaire invalide"); return; }
+    const iso = new Date(debut).toISOString();
     toast(await Store.modifierEvenement(l.dbId,{debut_le:iso}) ? "Horaire mis à jour" : "Modification impossible");
     return chargerCanal(l);
   }
@@ -1002,9 +1017,9 @@ async function publier(){
   if(!(await exigerCompte("publier"))) return;
   const identite = await assurerIdentitePublication();
   if(!identite){ toast("Publication annulée"); return; }
-  const debut = new Date(b.date+"T"+(b.heure||"00:00")+":00");
-  let fin = b.fin ? new Date(b.date+"T"+b.fin+":00") : null;
-  if(fin && fin <= debut) fin.setDate(fin.getDate()+1);
+  const debut = epochAutour(b.date+"T"+(b.heure||"00:00")+":00", "Europe/Paris");
+  let fin = b.fin ? epochAutour(b.date+"T"+b.fin+":00", "Europe/Paris") : null;
+  if(fin != null && debut != null && fin <= debut) fin += 24 * 3600000;
   const l=normaliserItem({ id:"n"+Date.now(), cat:b.cat,
     titre:(b.titre||"").trim()||"Sans titre",
     adresse:(b.adresse||"").trim()||"Sur place",
@@ -1013,8 +1028,8 @@ async function publier(){
     places:b.limite?b.places:null, qr:b.qr, par:identite.name,
     creatorId:identite.id, creatorName:identite.name, mien:true, status:"active",
     lat:b.lat, lng:b.lng,
-    debutLe:Number.isFinite(debut.getTime()) ? debut.getTime() : null,
-    finLe:fin && Number.isFinite(fin.getTime()) ? fin.getTime() : null,
+    debutLe:debut,
+    finLe:fin,
     // l'aperçu local de l'affiche, le temps que le vrai fichier monte
     image: b.imageFichier ? URL.createObjectURL(b.imageFichier) : "",
     isTemporary:true }, "autour");

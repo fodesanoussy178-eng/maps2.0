@@ -259,11 +259,11 @@ test("les occurrences sont triées, quel que soit l'ordre reçu", () => {
     ["2025-08-05","2025-08-12","2025-08-19"]);
 });
 
-test("sans heure de fin, un événement commencé ne reste pas en cours indéfiniment", () => {
+test("sans heure de fin, un événement commencé reste inconnu", () => {
   const e = evt({debutLe: MAINTENANT - 30 * 60000});
-  assert.equal(statut(e), STATUTS.EN_COURS);
-  // quatre heures plus tard, la durée supposée est dépassée
-  assert.equal(T.statutTemporel(e, MAINTENANT + 4 * H).statut, STATUTS.PASSE);
+  const etat = T.statutTemporel(e, MAINTENANT);
+  assert.equal(etat.status, T.STATUTS_TEMPORELS.UNKNOWN);
+  assert.equal(etat.statut, STATUTS.INCONNU);
 });
 
 test("un événement annulé est traité comme passé", () => {

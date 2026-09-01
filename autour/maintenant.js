@@ -116,8 +116,13 @@
     collecte: "aide", alimentaire: "aide", asso: "aide", hebergement: "aide",
   });
 
-  const familleDe = (item) => (item && item.famille) ||
-    FAMILLES[(item && item.categorie) || ""] || "autre";
+  const familleDe = (item) => {
+    const canonique = item && (item.canonicalFamily || item.foodSpecialty);
+    if (canonique === "food" || ["resto", "fastfood", "cafe", "boulangerie", "marche",
+      "burger", "pizza", "japonais", "italien", "kebab"].includes(canonique)) return "manger";
+    return canonique || (item && item.famille) ||
+      FAMILLES[(item && (item.canonicalCategory || item.categorie)) || ""] || "autre";
+  };
 
   /* Dans un aperçu de trois cartes, un seul lieu de bouche suffit. Un café,
      un bar et un restaurant répondent à la même envie pratique ; la deuxième
@@ -125,7 +130,7 @@
   const estNourriture = (item, famille) => {
     const f = famille || familleDe(item);
     return f === "manger" ||
-      ["resto", "restaurant", "fastfood", "food", "marche", "cafe", "bar",
+      ["resto", "restaurant", "fastfood", "food", "marche", "cafe", "bar", "boulangerie",
        "boulangerie", "bakery"].includes(String(item && item.categorie || "").toLowerCase());
   };
 
@@ -228,9 +233,9 @@
     if (!item || item.sansNom === true ||
         !nomExploitable(item.titre || item.title || item.name))
       return refus(RAISONS.SANS_NOM);
-    const categorie = String(item.categorie || item.category || item.cat || "").trim();
-    const categorieCanonique = String(item.canonical &&
-      (item.canonical.category || item.canonical.categorie || item.canonical.cat) || "").trim();
+    const categorie = String(item.canonicalCategory || item.categorie || item.category || item.cat || "").trim();
+    const categorieCanonique = String(item.canonicalCategory || (item.canonical &&
+      (item.canonical.category || item.canonical.categorie || item.canonical.cat)) || "").trim();
     if (!categorieExploitable(categorie) || !categorieExploitable(categorieCanonique) ||
         categorie.toLowerCase() !== categorieCanonique.toLowerCase())
       return refus(RAISONS.CATEGORIE_INVALIDE);
@@ -283,8 +288,20 @@
        On ne compare donc plus de chaînes : l'appelant transmet le verdict de
        `temporel.js`, qui est la seule autorité sur ce sujet. Deux booléens,
        et aucune façon de se tromper de dialecte. */
-    if (item.dateIncertaine) return refus(RAISONS.DATE_INCERTAINE);
-    if (!item.enCours) return refus(RAISONS.PAS_EN_COURS);
+    /* En production, le verdict canonique est recalculé ici depuis les mêmes
+       bornes que les fiches et le classement. Les champs historiques restent
+       uniquement le repli des tests/consommateurs qui chargent ce module seul. */
+    const T = root.AutourTemps;
+    const etat = T && typeof T.statutTemporel === "function"
+      ? T.statutTemporel(item, t, {disponibilite:ctx.disponibilite || ctx.availabilityAt}) : null;
+    if (etat) {
+      if (etat.status === "unknown") return refus(RAISONS.DATE_INCERTAINE);
+      if (etat.status === "past") return refus(etat.annule ? RAISONS.ANNULE : RAISONS.DEJA_FINI);
+      if (etat.status !== "now") return refus(RAISONS.PAS_EN_COURS);
+    } else {
+      if (item.dateIncertaine) return refus(RAISONS.DATE_INCERTAINE);
+      if (!item.enCours) return refus(RAISONS.PAS_EN_COURS);
+    }
 
     /* LA RÈGLE, REVÉRIFIÉE ICI MÊME.
 
@@ -397,6 +414,28 @@
        laissaient : c'est exactement ce qu'on est allé chercher. */
     const ouvertVerifie = item.current_status === "open";
 
+    /* En production, l'état d'ouverture partagé prime sur les anciens
+       booléens portés par le modèle Maintenant. Le petit adaptateur conserve
+       les champs du lieu canonique pour que ce module ne reparsé jamais
+       `opening_hours` lui-même. Les fixtures historiques, chargées sans
+       availability.js, continuent naturellement par le chemin de repli. */
+    const A = root.AutourAvailability;
+    if (A && typeof A.etatOuverture === "function") {
+      const source = Object.assign({}, item.canonical || {}, item, {
+        cat: item.categorie || item.canonicalCategory || item.cat,
+        category: item.category || item.canonicalCategory || item.categorie || item.cat,
+        openingHours: item.openingHours || item.opening_hours || item.horaires || item.quand,
+        timezone: item.timezone || item.timeZone || (item.canonical && item.canonical.timezone),
+      });
+      const ouverture = A.etatOuverture(source, t);
+      if (!ouverture || ouverture.openingStatus === "unknown")
+        return refusNature(RAISONS.HORAIRE_INCONNU);
+      if (ouverture.openingStatus === "closed")
+        return refusNature(RAISONS.PAS_OUVERT);
+      if (item.ouvertALArrivee === false)
+        return refusNature(RAISONS.FERME_TROP_TOT);
+    }
+
     /* Un LIEU. Trois conditions, et pas une de moins.
 
        `ouvert` vaut `true`, `false` ou `null`. Le `null` est le cas le plus
@@ -487,10 +526,12 @@
     "piscine", "sport", "spectacle", "concert", "coworking",
   ]);
 
-  function horodatageSoir(value) {
+  function horodatageSoir(value, timeZone) {
     if (value == null || value === "") return null;
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    const t = new Date(value).getTime();
+    const T = root.AutourTemps;
+    const t = T && typeof T.toEpochInZone === "function"
+      ? T.toEpochInZone(value, timeZone || "Europe/Paris")
+      : (typeof value === "number" ? value : new Date(value).getTime());
     return Number.isFinite(t) ? t : null;
   }
 
@@ -525,13 +566,19 @@
   }
 
   function categorieDe(item) {
-    return String(item && (item.categorie || item.category || item.cat) || "").toLowerCase()
+    return String(item && (item.canonicalCategory || item.categorie || item.category || item.cat) || "").toLowerCase()
       .replace(/[ -]+/g, "_");
   }
 
   function evenementDansSoir(item, ctx, bornes) {
-    const debut = horodatageSoir(item && (item.start_at ?? item.startAt ?? item.startsAt ?? item.debutLe));
-    const fin = horodatageSoir(item && (item.end_at ?? item.endAt ?? item.endsAt ?? item.finLe));
+    const T = root.AutourTemps;
+    if (T && typeof T.estDansFenetre === "function")
+      return T.estDansFenetre(item, bornes, Number(ctx.maintenant) || Date.now(), {
+        disponibilite:ctx.disponibilite || ctx.availabilityAt,
+      });
+    const timeZone = item && (item.timezone || item.timeZone);
+    const debut = horodatageSoir(item && (item.start_at ?? item.startAt ?? item.startsAt ?? item.debutLe), timeZone);
+    const fin = horodatageSoir(item && (item.end_at ?? item.endAt ?? item.endsAt ?? item.finLe), timeZone);
     if (debut == null || fin == null || fin <= debut) return false;
     if (debut >= bornes.fin || fin <= bornes.debut) return false;
     const verdict = typeof ctx.statutTemporel === "function"
@@ -542,6 +589,12 @@
   }
 
   function disponiblePendantSoir(item, ctx, bornes) {
+    const A = root.AutourAvailability;
+    if (A && typeof A.etatOuverture === "function") {
+      const etat = A.etatOuverture(item, Number(ctx.maintenant) || Date.now(), {fenetre:bornes});
+      if (!etat || etat.openingStatus === "unknown" || etat.openingStatus === "closed") return null;
+      return etat.windowAvailability || etat;
+    }
     const tester = ctx && (ctx.disponibilite || ctx.disponibiliteA || ctx.availabilityAt);
     if (typeof tester !== "function") return null;
     /* Tous les appels portent sur ce soir. On ne demande jamais l'état à
@@ -550,7 +603,8 @@
     if (!premier || premier.status === "unknown" || premier.status === "permanently_closed") return null;
     const ouvert = premier.status === "open" || premier.status === "closing_soon";
     if (ouvert) return premier;
-    const prochaine = premier.opensAt ? new Date(premier.opensAt).getTime() : NaN;
+    const prochaine = premier.opensAt
+      ? horodatageSoir(premier.opensAt, item && (item.timezone || item.timeZone)) : NaN;
     if (!Number.isFinite(prochaine) || prochaine >= bornes.fin) return null;
     const apresOuverture = tester(item, prochaine + 60000);
     if (!apresOuverture || apresOuverture.status === "unknown" ||
@@ -560,8 +614,10 @@
   }
 
   function trierSoir(a, b) {
-    const da = horodatageSoir(a.item && (a.item.start_at ?? a.item.startAt ?? a.item.startsAt ?? a.item.debutLe));
-    const db = horodatageSoir(b.item && (b.item.start_at ?? b.item.startAt ?? b.item.startsAt ?? b.item.debutLe));
+    const da = horodatageSoir(a.item && (a.item.start_at ?? a.item.startAt ?? a.item.startsAt ?? a.item.debutLe),
+      a.item && (a.item.timezone || a.item.timeZone));
+    const db = horodatageSoir(b.item && (b.item.start_at ?? b.item.startAt ?? b.item.startsAt ?? b.item.debutLe),
+      b.item && (b.item.timezone || b.item.timeZone));
     return (a.distance - b.distance) || ((da == null ? Infinity : da) - (db == null ? Infinity : db));
   }
 

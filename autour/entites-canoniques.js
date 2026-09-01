@@ -380,6 +380,14 @@
     const artists = unique(values(first(raw, ["artist_names", "artistNames"])));
     const genres = unique(values(first(raw, ["music_genres", "musicGenres"])));
     const performers = unique(values(first(raw, ["performers"])));
+    const epoch = (value, timeZone) => {
+      if (value == null || value === "") return null;
+      const T = root.AutourTemps;
+      const parsed = T && typeof T.toEpochInZone === "function"
+        ? T.toEpochInZone(value, timeZone || DEFAULT_TIMEZONE)
+        : new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : null;
+    };
     return Object.assign({
       entity_type: "event",
       id: eventId == null ? null : String(eventId),
@@ -391,8 +399,8 @@
       categories,
       start_at: normalized.start_at || null,
       end_at: normalized.end_at || null,
-      startsAt: normalized.start_at ? new Date(normalized.start_at).getTime() : null,
-      endsAt: normalized.end_at ? new Date(normalized.end_at).getTime() : null,
+      startsAt: epoch(normalized.start_at, normalized.timezone),
+      endsAt: epoch(normalized.end_at, normalized.timezone),
       latitude,
       longitude,
       lat: latitude,

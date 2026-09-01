@@ -15,11 +15,15 @@
      d'elle-même au lieu de devenir un historique. */
   function canauxActifs(canaux, now) {
     const instant = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+    const T = root.AutourTemps;
     return (canaux || []).filter((canal) => {
       if (!canal) return false;
       // un événement annulé reste consultable un temps : c'est justement
       // l'annonce que les participants doivent voir
-      const fin = canal.fin_le ? new Date(canal.fin_le).getTime() : null;
+      const valeurFin = canal.fin_le || canal.end_at || canal.endAt || canal.finLe;
+      const fin = valeurFin == null ? null : T && T.toEpochInZone
+        ? T.toEpochInZone(valeurFin, canal.timezone || canal.timeZone)
+        : new Date(valeurFin).getTime();
       if (fin != null && Number.isFinite(fin) && fin < instant - 24 * 3600000) return false;
       return true;
     });

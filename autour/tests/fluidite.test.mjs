@@ -412,7 +412,7 @@ test("la carte-événement passe AVANT l'affiche : un événement en cours d'abo
 
 test("seul ce qui a réellement lieu prend la carte blanche", () => {
   assert.match(html,
-    /if\(estTemporaire\(l\) && !l\.annule && TEMPS\.estMaintenant\(statutTemps\(l\)\.statut\)\)\{/);
+    /if\(estTemporaire\(l\) && !l\.annule && TEMPS\.estMaintenant\(statutTemps\(l\)\.status\)\)\{/);
 });
 
 test("la liste « ⚡ Maintenant (3) » existe, compacte et comptée", () => {
@@ -680,7 +680,7 @@ test("l'ordre de la liste suit la règle demandée", () => {
   const bloc = /function ordonnerPile\(membres\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc, "ordonnerPile doit exister");
   // 1. en cours · 2. début le plus proche · 3. pertinence
-  assert.match(bloc[0], /const enCours = TEMPS\.estMaintenant\(etat\.statut\) \? 0 : 1;/);
+  assert.match(bloc[0], /const enCours = TEMPS\.estMaintenant\(etat\.status\) \? 0 : 1;/);
   assert.match(bloc[0], /Math\.abs\(etat\.debut - t\)/);
   assert.match(bloc[0], /rang\.has\(l\.id\) \? rang\.get\(l\.id\) : 9999/);
   assert.match(bloc[0], /\(ka\[0\]-kb\[0\]\) \|\| \(ka\[1\]-kb\[1\]\) \|\| \(ka\[2\]-kb\[2\]\)/);
@@ -709,7 +709,7 @@ test("une zone ne possède qu'une requête Supabase en vol", () => {
   const bloc = html.slice(html.indexOf("async function rafraichirCoucheSupabase"),
     html.indexOf("function chargerCoucheSupabase", html.indexOf("async function rafraichirCoucheSupabase")));
   assert.match(bloc, /if\(requetesCouchesSupabase\.has\(cle\)\) return requetesCouchesSupabase\.get\(cle\);/);
-  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng\)/);
+  assert.match(bloc, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng(?:,portee)?\)/);
   assert.match(bloc, /if\(okPublications \|\| okEvenements\)/,
     "une panne totale ne doit jamais remplacer le cache par du vide");
 });

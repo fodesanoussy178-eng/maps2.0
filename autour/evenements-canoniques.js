@@ -154,6 +154,11 @@
   function instantLocal(day, hour, minute, timezone) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ""))) return null;
     const hh = String(hour).padStart(2, "0"), mm = String(minute).padStart(2, "0");
+    const temporal = root.AutourTemps;
+    if (temporal && typeof temporal.toEpochInZone === "function") {
+      const epoch = temporal.toEpochInZone(`${day}T${hh}:${mm}:00`, timezone || DEFAULT_TIMEZONE);
+      return Number.isFinite(epoch) ? new Date(epoch).toISOString() : null;
+    }
     let instant = Date.parse(`${day}T${hh}:${mm}:00Z`);
     if (!Number.isFinite(instant)) return null;
     try {
@@ -191,7 +196,10 @@
     if (startHour > 23 || endHour > 23) return null;
     const start = instantLocal(dayMatch[1], startHour, startMinute, timezone);
     const end = instantLocal(dayMatch[1], endHour, endMinute, timezone);
-    if (!start || !end || Date.parse(end) <= Date.parse(start)) return null;
+    const temporal = root.AutourTemps;
+    const parse = (value) => temporal && typeof temporal.toEpochInZone === "function"
+      ? temporal.toEpochInZone(value, timezone || DEFAULT_TIMEZONE) : Date.parse(value);
+    if (!start || !end || parse(end) <= parse(start)) return null;
     return {start_at: start, end_at: end};
   }
 

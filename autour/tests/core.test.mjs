@@ -173,9 +173,9 @@ test("un même identifiant reste unique si sa catégorie est affinée tardivemen
   assert.equal(uniques[0].id,"oa42");
 });
 
-test("maintenant garde l'inconnu et le bientôt, retire le terminé", () => {
+test("maintenant garde le bientôt, refuse l'horaire inconnu et retire le terminé", () => {
   const now = Date.now();
-  assert.equal(isAvailableNow({isTemporary:false,ouvert:undefined},now),true);
+  assert.equal(isAvailableNow({isTemporary:false,ouvert:undefined},now),false);
   assert.equal(isAvailableNow({isTemporary:true,startsAt:now+2*3600e3,endsAt:now+4*3600e3},now),true);
   assert.equal(isAvailableNow({isTemporary:true,startsAt:now-4*3600e3,endsAt:now-1},now),false);
 });
@@ -228,15 +228,14 @@ test("Explorer privilégie culture et marché sur un simple lieu proche", () => 
   assert.deepEqual(ranked.map(x=>x.id), ["musee","marche","resto-proche"]);
 });
 
-test("le classement Maintenant privilégie l'ouvert et conserve les horaires inconnus", () => {
+test("le classement Maintenant privilégie l'ouvert et exclut les horaires inconnus", () => {
   const commun = {cat:"resto",categories:["restaurant","eat"],latitude:50.72,longitude:3.16,lat:50.72,lng:3.16};
   const ranked = rankResults([
     {...commun,id:"open",title:"Ouvert",titre:"Ouvert",ouvert:true},
     {...commun,id:"unknown",title:"Inconnu",titre:"Inconnu",latitude:50.7202,lat:50.7202},
     {...commun,id:"closed",title:"Fermé",titre:"Fermé",ouvert:false},
   ], {intent:"manger",position:[50.72,3.16],nowOnly:true,distanceBetween:distance});
-  assert.deepEqual(ranked.map(x=>x.id),["open","unknown"]);
-  assert.match(ranked[1].rankReason,/Horaires inconnus/);
+  assert.deepEqual(ranked.map(x=>x.id),["open"]);
 });
 
 test("chaque intention applique son propre périmètre éditorial", () => {

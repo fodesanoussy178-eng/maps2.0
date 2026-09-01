@@ -93,11 +93,10 @@ test("un lieu définitivement fermé n’est jamais recommandé, même hors mode
   assert.deepEqual(classer([mort, vif], {nowOnly: true}).map((l) => l.id), ["vif"]);
 });
 
-test("les horaires inconnus ne sont pas traités comme une fermeture", () => {
+test("les horaires inconnus ne sont pas traités comme une ouverture", () => {
   const inconnu = lieu("inconnu", null);
   const vus = classer([inconnu], {nowOnly: true});
-  assert.equal(vus.length, 1);
-  assert.equal(vus[0].rankAvailability.status, "unknown");
+  assert.equal(vus.length, 0);
 });
 
 test("la marge minimale déclasse un musée qu’on n’a pas le temps de visiter", () => {

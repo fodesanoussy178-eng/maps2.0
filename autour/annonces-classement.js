@@ -13,18 +13,23 @@
     verified_agenda: 16,
     unknown: 0
   });
-  function epoch(value) {
+  function epoch(value, timeZone) {
     if (value == null || value === "") return null;
-    const n = value instanceof Date ? value.getTime() : new Date(value).getTime();
+    const T = root.AutourTemps;
+    const n = T && typeof T.toEpochInZone === "function"
+      ? T.toEpochInZone(value, timeZone || "Europe/Paris")
+      : (value instanceof Date ? value.getTime() : new Date(value).getTime());
     return Number.isFinite(n) ? n : null;
   }
   function eventStart(event) {
     const e = event || {};
-    return epoch(e.event_start_at || e.eventStartAt || e.start_at || e.debutLe);
+    return epoch(e.event_start_at || e.eventStartAt || e.start_at || e.debutLe,
+      e.timezone || e.timeZone);
   }
   function eventEnd(event) {
     const e = event || {};
-    return epoch(e.event_end_at || e.eventEndAt || e.end_at || e.finLe);
+    return epoch(e.event_end_at || e.eventEndAt || e.end_at || e.finLe,
+      e.timezone || e.timeZone);
   }
   function announcedAt(event) {
     const e = event || {};
@@ -85,19 +90,28 @@
     const age = Math.max(0, now - announced);
     return age <= NOUVELLE_MS ? 20 : age <= 30 * 864e5 ? 8 : 0;
   }
-  function fiable(event) {
+  function fiable(event, now) {
     const e = event || {};
     const start = eventStart(e);
     const confidence = String(e.date_confidence || e.dateConfidence || "unknown");
+    const T = root.AutourTemps;
+    if (T && typeof T.etatTemporalEvenement === "function") {
+      const etat = T.etatTemporalEvenement(e, now == null ? Date.now() : now);
+      return etat.hasKnownDate && start != null && ["exact", "day"].includes(confidence);
+    }
     return start != null && ["exact", "day"].includes(confidence);
   }
   function classer(event, options) {
     const e = event || {};
     const o = options || {};
     const now = epoch(o.now) || Date.now();
-    const start = eventStart(e);
-    const end = eventEnd(e);
-    if (!fiable(e) || start <= now || end != null && end <= now) return null;
+    const T = root.AutourTemps;
+    const etat = T && typeof T.etatTemporalEvenement === "function"
+      ? T.etatTemporalEvenement(e, now) : null;
+    const start = etat && etat.debut != null ? etat.debut : eventStart(e);
+    const end = etat && etat.finReelle != null ? etat.finReelle : eventEnd(e);
+    if (!fiable(e, now) || start <= now || end != null && end <= now) return null;
+    if (etat && (!["soon", "today", "tonight", "weekend", "upcoming"].includes(etat.status) || !etat.hasKnownDate)) return null;
     if (e.cancelled || e.annule || e.status === "cancelled") return null;
     const distance = typeof o.distanceFor === "function" ? o.distanceFor(e) : o.distanceMeters;
     if (o.local === false || !territoireCompatible(e, o, distance)) return null;
@@ -128,6 +142,9 @@
       group: announced != null ? "nouvelles_annonces" : "a_ne_pas_manquer",
       announcedAt: announced,
       startAt: start,
+      endAt: end,
+      temporal: etat,
+      temporal_status: etat ? etat.status : null,
       isNew: announced != null && now - announced >= 0 && now - announced <= NOUVELLE_MS
     };
   }
@@ -151,6 +168,12 @@
     return group === "nouvelles_annonces" ? "Nouvelles annonces" : "\xC0 ne pas manquer";
   }
   function libelleDate(event, options) {
+    const T = root.AutourTemps;
+    const now = options && options.now != null ? options.now : Date.now();
+    if (T && typeof T.libelleDate === "function") {
+      const etat = T.etatTemporalEvenement(event, now);
+      return T.libelleDate(event, now, {statut:etat, ignoreStatus:true});
+    }
     const start = eventStart(event);
     if (start == null) return "";
     const d = new Date(start);

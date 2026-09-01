@@ -141,7 +141,7 @@ test("le principe de « Maintenant » n'a pas bougé", () => {
   // les mêmes trois sont servies par le moteur et par les compteurs
   assert.match(src, /MAINTENANT_APERCU = \(window\.AutourMaintenant \|\| \{\}\)\.PLACES \|\| 3/);
   assert.match(app, /const enCours = selectionMaintenant\(\)\.length;/);
-  assert.match(app, /TEMPS\.estMaintenant\(statutTemps\(l, t\)\.statut\)/);
+  assert.match(app, /TEMPS\.estMaintenant\(statutTemps\(l\)\.status\)/);
 });
 
 /* ======================================================================== */
