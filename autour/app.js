@@ -2798,10 +2798,8 @@ function ecrireCacheMetropole(bassin, liste){
   }
 }
 
-async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
-  if(!sbLecture) return null;
-  const porteeEvenements = portee;
-  const b = emprisePublications(lat, lng);
+function actualiserBassinTerritorial(lat,lng){
+  if(!sbLecture) return;
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
      de cette requête ; une zone inconnue devient seulement un candidat DB. */
@@ -2829,6 +2827,13 @@ async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
        reste sans effet quand il double celui-ci. */
     rafraichirMetropole();
   }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
+}
+
+async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
+  if(!sbLecture) return null;
+  const porteeEvenements = portee;
+  const b = emprisePublications(lat, lng);
+  actualiserBassinTerritorial(lat,lng);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2891,6 +2896,12 @@ function chargerCoucheSupabase(lat,lng){
   if(entree && age <= CACHE_COUCHE_MAX_MS){
     PERF.touche("supabase_zone", true);
     publierCoucheSupabase(cle, entree, portee, lat, lng);
+    /* Le cache local contient les événements proches mais pas le nom du
+       bassin métropolitain. Le résoudre aussi sur ce chemin est indispensable
+       après reload/nouvel onglet : sinon aucune réponse ne pouvait relancer
+       `rafraichirMetropole()`, et Pour toi restait vide malgré les goûts
+       persistés. */
+    actualiserBassinTerritorial(lat,lng);
     if(age > CACHE_COUCHE_FRAICHE_MS)
       void rafraichirCoucheSupabase(cle, lat, lng, entree, portee);
     return Promise.resolve(Object.assign({},entree,{depuisCache:true}));
