@@ -10958,11 +10958,11 @@ function ouvrirSurfaceMaintenant(){
   marquerNavigation("maintenant");
   contexteExplorer = null;
   fermerPourToi();
-  ouvrirFeuille2("racine");
   /* Le simple démarrage ou l'ouverture d'Autour ne consulte rien. Ce geste
      précis, lui, ouvre la surface « Maintenant » : toutes les occurrences
      canoniques actuellement connues cessent alors d'être nouvelles. */
   marquerMaintenantCommeVu();
+  ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
   rendre();
   majFiltres();
