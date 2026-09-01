@@ -10679,6 +10679,11 @@ function besoinsRapidesHTML(){
 function majBadgeMaintenant(){
   const badge = $("#badgeMaintenant");
   if(!badge) return;
+  /* Le nœud est présent dans la coquille HTML, mais la capsule peut être
+     repeinte par le cycle d'accueil avant que ses données ne soient connues.
+     Rebrancher ici garantit que le bouton visible utilise toujours la porte
+     commune, sans créer une logique distincte pour la capsule. */
+  badge.onclick = ouvrirSurfaceMaintenant;
   const n = (modeNav || modePose || modeAide) ? 0 : totalMaintenant();
   badge.hidden = n === 0;
   if(n === 0) return;
@@ -14181,10 +14186,6 @@ function marquerNavigation(id){
   if(!nav) return;
   nav.querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x.dataset.nb === id));
 }
-
-/* Un appui sur « ⚡ Maintenant · 3 » ouvre la même surface que les deux
-   autres accès, sans recopier son état ni son historique. */
-$("#badgeMaintenant").onclick = ouvrirSurfaceMaintenant;
 
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;

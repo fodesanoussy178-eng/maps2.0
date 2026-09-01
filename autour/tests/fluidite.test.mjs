@@ -332,7 +332,9 @@ test("la pastille suit les données même sans carte", () => {
 });
 
 test("un appui sur la pastille ouvre la liste, pas un menu", () => {
-  assert.match(html, /\$\("#badgeMaintenant"\)\.onclick = ouvrirSurfaceMaintenant;/);
+  const badge = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
+  assert.ok(badge, "majBadgeMaintenant doit exister");
+  assert.match(badge[0], /badge\.onclick = ouvrirSurfaceMaintenant;/);
   const bloc = /function ouvrirSurfaceMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc);
   assert.match(bloc[0], /creneau = "maintenant";/);

@@ -20,7 +20,9 @@ test("les trois accès Maintenant partagent exactement la même action", () => {
   const rapides = html.slice(html.indexOf("function brancherBesoinsRapides"),
     html.indexOf("function besoinsRapidesHTML"));
   assert.match(rapides, /if\(id === "maintenant"\)\{\s*ouvrirSurfaceMaintenant\(\);/);
-  assert.match(html, /\$\("#badgeMaintenant"\)\.onclick = ouvrirSurfaceMaintenant;/);
+  const badge = html.slice(html.indexOf("function majBadgeMaintenant"),
+    html.indexOf("function blocMaintenantAccueil"));
+  assert.match(badge, /badge\.onclick = ouvrirSurfaceMaintenant;/);
 
   const navigation = html.slice(html.indexOf('\$("#navBas").querySelectorAll'),
     html.indexOf('if(id === "pourtoi")'));
