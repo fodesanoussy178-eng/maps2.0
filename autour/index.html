@@ -169,6 +169,13 @@ input{font-family:inherit;font-size:16px}
 .poi-eti span{font-size:11px;line-height:1.25;color:var(--ink2);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .poi-eti span.ouvre{color:#1B7F3B}
+.aide-poi-rond{position:relative;overflow:hidden;background:color-mix(in srgb,var(--teinte) 15%,#fff)!important;
+  color:var(--ink)!important}
+.aide-poi-rond i{font-style:normal;line-height:1}
+.aide-poi-rond img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .18s ease}
+.aide-poi-rond img.vue{opacity:1}
+.aide-poi-eti{max-width:220px}
 .loin .poi-eti,.poi-eti.masquee{display:none}
 /* Même règle pour la carte d'événement : le texte s'efface, la pastille
    reste — donc le marqueur reste touchable et repérable, il perd seulement
@@ -380,6 +387,15 @@ input{font-family:inherit;font-size:16px}
   padding:calc(var(--safe-t) + 10px) 16px 14px;
   background:#fff;border-radius:0 0 22px 22px;
   box-shadow:0 4px 22px rgba(20,30,25,.16);animation:monteT .16s ease-out}
+.aide-recherche-contenu{padding:18px 2px 3px}
+.aide-recherche-contenu h2{font-size:20px;font-weight:800;letter-spacing:-.02em}
+.aide-recherche-contenu>p{margin:6px 0 16px;font-size:13.5px;line-height:1.45;color:var(--ink2)}
+.aide-recherche-exemples{display:flex;flex-wrap:wrap;gap:8px}
+.aide-recherche-exemples button{min-height:36px;padding:8px 12px;border:1px solid #B79AFF;
+  border-radius:99px;background:#fff;color:#6336D7;font-size:12.5px;font-weight:700}
+.aide-recherche-note{display:flex;align-items:flex-start;gap:8px!important;margin:21px 0 0!important;
+  padding-top:15px;border-top:1px solid var(--bord);font-size:12px!important}
+.aide-recherche-note span{font-size:16px;line-height:1}
 .ro-barre{display:flex;align-items:center;gap:10px;position:relative}
 .ro-barre > svg{position:absolute;margin-left:15px;color:var(--ink2);pointer-events:none}
 .ro-barre input{flex:1;min-width:0;height:46px;padding:0 44px 0 42px;
@@ -496,6 +512,59 @@ input{font-family:inherit;font-size:16px}
 .ab-exemples{margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--ink2)}
 .ab-exemples button{margin:4px 2px 0 0;padding:5px 9px;border:0;border-radius:99px;
   background:#F1ECFF;color:#4D32A6;font-size:11.5px;font-weight:650}
+.aide-filtres{display:flex;gap:7px;overflow-x:auto;padding:1px 0 4px;
+  scrollbar-width:none}
+.aide-filtres::-webkit-scrollbar{display:none}
+.aide-filtre{flex:0 0 auto;min-height:38px;padding:8px 12px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font-size:13px;font-weight:700;
+  white-space:nowrap}
+.aide-filtre span{margin-right:4px}
+.aide-filtre.actif{border-color:#A77BFF;background:#F1ECFF;color:#6336D7}
+.aide-priorites,.aide-liste-complete{display:flex;flex-direction:column;gap:9px;margin:13px 0 10px}
+.aide-priorite{display:grid;grid-template-columns:76px minmax(0,1fr) 16px;gap:10px;
+  align-items:center;min-height:96px;padding:8px;border:1px solid var(--bord);
+  border-radius:15px;background:#fff;text-align:left;color:var(--ink)}
+.aide-priorite-photo{position:relative;display:grid;place-items:center;width:76px;height:80px;
+  overflow:hidden;border-radius:11px;background:color-mix(in srgb,var(--teinte) 15%,#fff)}
+.aide-priorite-photo>span{font-size:29px;line-height:1;opacity:.72}
+.aide-priorite-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .18s ease}
+.aide-priorite-photo img.vue{opacity:1}
+.aide-priorite-corps{display:flex;flex-direction:column;min-width:0;gap:2px}
+.aide-priorite-tete{display:flex;flex-direction:column;gap:2px;min-width:0}
+.aide-priorite-tete>b{font-size:14.5px;font-weight:800;line-height:1.16;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aide-priorite-statut{font-style:normal;font-size:11px;line-height:1.2;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aide-priorite-statut.ouvert{color:#1B7F4C}
+.aide-priorite-cat{font-size:11.5px;font-weight:750;color:#6336D7}
+.aide-priorite-meta{font-size:11.5px;line-height:1.25;color:var(--ink2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aide-priorite-desc{font-size:11.5px;line-height:1.25;color:var(--ink2);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.aide-priorite-chevron{font-size:25px;line-height:1;color:#8E9690}
+.aide-toutes{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  min-height:43px;padding:9px 12px;border:0;border-radius:11px;background:#F1ECFF;
+  color:#6336D7;font-size:13.5px;font-weight:800}
+.aide-toutes span{font-size:18px;line-height:1}
+.aide-vide-court{margin:14px 0;padding:14px;border-radius:11px;background:var(--paper);
+  font-size:13px;line-height:1.4;color:var(--ink2)}
+.aide-urgence-ligne-compacte{display:flex;align-items:center;gap:9px;width:100%;
+  min-height:42px;margin-top:9px;padding:9px 11px;border:1px solid var(--bord);
+  border-radius:11px;background:#fff;color:var(--ink);font-size:13px;text-align:left}
+.aide-urgence-ligne-compacte b{flex:1;font-weight:750}
+.aide-urgence-ligne-compacte span:last-child{font-size:20px;color:var(--ink2)}
+.aide-urgence-registre{display:flex;flex-direction:column;gap:7px;margin:15px 0}
+.aide-urgence-ligne{display:flex;align-items:center;gap:11px;min-height:55px;padding:9px 12px;
+  border:1px solid var(--bord);border-radius:12px;background:#fff;color:var(--ink);
+  text-decoration:none}
+.aide-urgence-ligne.rouge{border-color:#FFB8B8;background:#FFF7F7}
+.aide-urgence-numero{flex:0 0 54px;font-family:'JetBrains Mono',monospace;font-size:18px;
+  font-weight:800;color:#6336D7}
+.aide-urgence-ligne.rouge .aide-urgence-numero{color:#C52F39}
+.aide-urgence-texte{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.aide-urgence-texte b{font-size:13px;font-weight:750}
+.aide-urgence-texte i{font-style:normal;font-size:11.5px;color:var(--ink2)}
 .au-cartes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:16px 0}
 .au-carte{display:flex;flex-direction:column;gap:4px;padding:13px 14px;border:1px solid var(--bord);
   border-radius:12px;background:#fff;color:var(--ink);text-decoration:none}
@@ -1518,6 +1587,12 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   #rechercheOverlay .rc{height:45px;padding:0 15px;gap:7px;font-size:15.5px}
   #rechercheOverlay .rc em{font-size:17px}
   #rechercheOverlay #filtresHumains{margin-inline:-22px;padding-inline:22px}
+  #rechercheOverlay.recherche-aide{left:auto;right:var(--marge-desktop);
+    top:calc(var(--safe-t) + var(--marge-desktop) + 74px);
+    width:var(--pourtoi);max-height:calc(100vh - var(--marge-desktop) * 2 - 74px);
+    overflow-y:auto;border-radius:28px;padding:20px 22px 22px}
+  #rechercheOverlay.recherche-aide .ro-barre input{height:52px;font-size:16px}
+  #rechercheOverlay.recherche-aide .ro-barre input::placeholder{font-size:15px}
   .fb-poignee{display:none}
   .fb-tete{min-height:72px;padding:10px 16px 8px;border-radius:28px 28px 0 0;background:#fff}
   .fb-titre{font-size:22px;font-weight:800}
@@ -2221,6 +2296,10 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   #feuilleBesoins.accueil .fb-corps{padding-top:8px}
   .mn-l{height:78px;flex-basis:78px}
   .mn-visuel{width:56px;height:56px;flex-basis:56px}
+  #rechercheOverlay.recherche-aide{left:12px;right:12px;top:calc(var(--safe-t) + 12px);
+    max-height:calc(100dvh - var(--safe-t) - var(--safe-b) - 24px);
+    overflow-y:auto;border-radius:24px;padding:14px 16px 18px}
+  #rechercheOverlay.recherche-aide .aide-recherche-contenu{padding-top:15px}
 }
 @media (min-width:1100px){
   #badgeMaintenant{top:calc(var(--safe-t) + var(--marge-desktop));}
@@ -2236,6 +2315,10 @@ h2.pub{font-family:'Anton',sans-serif;font-size:26px;line-height:1;text-transfor
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,#feuilleBesoins.reduite{
     bottom:auto;height:auto;max-height:min(760px,calc(100vh - 154px));
   }
+  /* En mode Aide, la navigation flottante ne doit pas recouvrir le dernier
+     contrôle de la feuille. Le bassin reste scrollable si nécessaire, mais
+     son cadre s'arrête juste au-dessus de la barre basse. */
+  body.aide #feuilleBesoins{bottom:calc(var(--marge-desktop) + 108px);max-height:none}
   #feuilleBesoins.accueil .fb-tete{position:relative;top:auto;right:auto;width:auto;min-height:0;padding:8px 16px 0;background:#fff}
   #feuilleBesoins.accueil .fb-titre{display:block;position:static;width:auto;height:auto;overflow:visible;clip:auto;white-space:normal;font-size:22px;font-weight:800}
   #feuilleBesoins.accueil .fb-x{width:44px;height:44px;margin-left:auto}
@@ -2393,6 +2476,18 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
     </button>
   </form>
+  <section id="aideRechercheContenu" class="aide-recherche-contenu" hidden>
+    <h2>Recherche d’aide</h2>
+    <p>Décris ta situation pour trouver les structures utiles autour de toi</p>
+    <div class="aide-recherche-exemples" aria-label="Exemples de recherche d’aide">
+      <button type="button" data-aide-recherche="Je dors dehors">Je dors dehors</button>
+      <button type="button" data-aide-recherche="Aide alimentaire">Aide alimentaire</button>
+      <button type="button" data-aide-recherche="Mission Locale">Mission Locale</button>
+      <button type="button" data-aide-recherche="Foyer">Foyer</button>
+      <button type="button" data-aide-recherche="Parler à quelqu’un">Parler à quelqu’un</button>
+    </div>
+    <p class="aide-recherche-note"><span aria-hidden="true">📍</span> La recherche trouve les aides et services disponibles près de toi.</p>
+  </section>
   <div id="raccourcis" class="pills"></div>
   <div id="filtresHumains" hidden></div>
   <div id="suggestions" hidden></div>

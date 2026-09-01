@@ -11,6 +11,7 @@ const SOURCES = new Set(["autour", "dora", "finess"]);
 const RAYON_MIN = 500;
 const RAYON_MAX = 20000;
 const DORA_API = "https://api.data.inclusion.beta.gouv.fr/api/v1/search";
+const ZONE_PRECALCULEE_MAX_M = 30000;
 
 function nombre(value, maximum) {
   if (value == null || String(value).trim() === "") return null;
@@ -78,6 +79,20 @@ function distanceDuCentre(record, lat, lng) {
   return c ? distanceM({lat, lng}, c) : Infinity;
 }
 
+/* Le pré-calcul national est aussi le dernier filet quand geo.api.gouv.fr est
+   lent ou indisponible. Il ne fabrique pas une commune et ne fait pas suivre
+   un bassin à l'autre : le choix est borné au centre connu le plus proche,
+   puis chaque fiche est à nouveau filtrée sur ses coordonnées et le rayon
+   demandé. Au-delà de 30 km, l'absence de zone reste une absence de données. */
+function zonePrecalculeeProche(lat, lng) {
+  const candidats = Object.entries(aidePrecalcule || {}).map(([code, zone]) => ({
+    code, distance: zone && Number.isFinite(Number(zone.lat)) && Number.isFinite(Number(zone.lng))
+      ? distanceM({lat, lng}, {lat: Number(zone.lat), lng: Number(zone.lng)}) : Infinity,
+  })).sort((a, b) => a.distance - b.distance);
+  const meilleur = candidats[0];
+  return meilleur && meilleur.distance <= ZONE_PRECALCULEE_MAX_M ? meilleur : null;
+}
+
 function localParCommune(source, code, lat, lng, rayon) {
   const zone = aidePrecalcule && aidePrecalcule[String(code)];
   let items = zone && Array.isArray(zone.records) ? zone.records.slice() : [];
@@ -140,12 +155,24 @@ export default async function handler(request) {
   try {
     if (source !== "autour") {
       const code = url.searchParams.get("city_code");
-      commune = code ? { code: code } : await communePour(lat, lng, request.signal);
+      let zoneFallback = false;
+      if (code) commune = { code: code };
+      else {
+        try {
+          commune = await communePour(lat, lng, request.signal);
+        } catch (error) {
+          const proche = zonePrecalculeeProche(lat, lng);
+          if (!proche) throw error;
+          commune = { code: proche.code };
+          zoneFallback = true;
+        }
+      }
       items = localParCommune(source, commune.code, lat, lng, rayon);
       sourceStatus.push({
         source: "data_inclusion",
         state: items.length ? "ok" : "empty",
         scope: String(commune.code),
+        ...(zoneFallback ? {scopeFallback: "centre_precalcule_borne"} : {}),
         snapshotDate: aidePrecalculeMetadata && aidePrecalculeMetadata.snapshotDate || null,
       });
     }

@@ -128,7 +128,7 @@
       lat, lng,
       address: [address, code, city].filter(Boolean).join(", "),
       postalCode: code, commune: city,
-      category: (CATEGORIES[type] || [])[0] || "autre",
+      category: (CATEGORIES[type] || [])[0] || (p.categories || [])[0] || "autre",
       categories: [...new Set([...(CATEGORIES[type] || []), ...(p.categories || [])])],
       primaryType: type,
       type_structure: type,

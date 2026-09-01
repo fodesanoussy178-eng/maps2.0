@@ -1125,10 +1125,14 @@ const NOMS_COUCHES = Object.freeze({
    elle conserve son comportement superposé et exclusif. La déclaration est
    placée ici pour que le gestionnaire de couches puisse partager cette règle. */
 function rechercheDockeeDesktopDemandee(){
+  const overlay = document.getElementById("rechercheOverlay");
+  const rechercheAideOuverte = modeAide && feuilleNiveau === "aide" &&
+    overlay && !overlay.hidden;
+  const rechercheExplorerDockee = feuilleNiveau !== null &&
+    feuilleNiveau !== "racine" && feuilleNiveau !== "plus" &&
+    feuilleNiveau !== "aide" && !!BESOIN_DE(feuilleNiveau);
   return responsiveLayoutState.isDesktop && !modeNav && !modePose &&
-    feuilleNiveau !== null && feuilleNiveau !== "racine" &&
-    feuilleNiveau !== "plus" && feuilleNiveau !== "aide" &&
-    !!BESOIN_DE(feuilleNiveau);
+    (rechercheAideOuverte || rechercheExplorerDockee);
 }
 
 /* Une seule couche principale reste interactive. La sheet peut être suspendue
@@ -6045,6 +6049,24 @@ function sousTitreMarqueur(l){
 function htmlMarqueur(l){
   const c = categorieAffichee(l);
 
+  /* En mode Aide, la carte est une projection du même bassin que la liste :
+     un commerce proche ne peut pas reprendre l'épingle, et une structure
+     connue porte sa photo réelle quand la source l'autorise. */
+  if(modeAide && l.aideStructure){
+    const photo = photoAutoriseeAide(l);
+    const d = distanceDepuisZone(l);
+    const distance = Number.isFinite(d) ? formatDist(d) : "";
+    const statut = libelleOuverture(l);
+    return '<span class="mk-in"><div class="poi aide-poi">'+
+      '<span class="poi-rond aide-poi-rond" style="--teinte:'+(COULEURS_CAT[l.cat]||"#7C3AED")+'">'+
+        '<i>'+c.emoji+'</i>'+
+        (photo ? '<img src="'+esc(photo)+'" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'vue\')" onerror="this.remove()">' : '')+
+      '</span>'+
+      '<span class="poi-eti aide-poi-eti"><b>'+esc(l.titre)+'</b>'+
+        '<span>'+esc([distance, statut].filter(Boolean).join(" · "))+'</span></span>'+
+    '</div></span>';
+  }
+
   /* CE QUI A LIEU MAINTENANT NE SE DESSINE PAS COMME UN COMMERCE.
 
      Un concert en cours et une boulangerie partageaient la même épingle :
@@ -6370,7 +6392,8 @@ function limiterMarqueurs(liste){
    évite un redessin massif tout en mettant à jour son nom, son statut ou sa
    position quand une source meilleure enrichit le même lieu. */
 function empreinteMarqueur(l){
-  return [l.titre,l.cat,l.lat,l.lng,l.ouvert,l.ferme,l.note,l.avis,l.envoi,l.annule]
+  return [l.titre,l.cat,l.lat,l.lng,l.ouvert,l.ferme,l.note,l.avis,l.envoi,l.annule,
+    l.image,l.image_url,l.imageSource]
     .map(v=>v==null?"":String(v)).join("|");
 }
 
@@ -6910,10 +6933,13 @@ function provenanceImage(l){
    Ce qui n'a pas de provenance connue garde la couverture graphique de
    catégorie, sans aucune pénalité dans le classement. */
 function photoAutoriseeAide(l){
-  if(!l || !l.image) return "";
-  const origine = l.imageSource || "";
-  if(IMAGES && IMAGES.SOURCES.includes(origine)) return l.image;
-  return ["datatourisme_licence", "autour_verifie"].includes(origine) ? l.image : "";
+  if(!l) return "";
+  const media = mediaDe(l);
+  const image = media && media.image_url || l.image || l.image_url || "";
+  if(!image) return "";
+  const origine = media && media.image_source || l.imageSource || l.image_source || "";
+  if(IMAGES && IMAGES.SOURCES.includes(origine)) return image;
+  return ["datatourisme_licence", "autour_verifie"].includes(origine) ? image : "";
 }
 
 function couvertureAide(l, c){
@@ -7978,7 +8004,7 @@ const zonesAideChargees = new Map();
 const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
 const RAYON_AIDE = window.AutourAideRayon || null;
-const AIDE_CACHE_PREFIX = "autour:bassin-aide:v1:";
+const AIDE_CACHE_PREFIX = "autour:bassin-aide:v3:";
 const AIDE_CACHE_HEURES = 36;
 const AIDE_CACHE_RAYON = 18000;
 let bassinAideActif = null;
@@ -8061,6 +8087,13 @@ function normaliserCandidatAide(raw) {
   const interne = providers && typeof providers.versInterne === "function"
     ? providers.versInterne(canonique) : canonique;
   if (!interne) return null;
+  /* Le contrat Aide canonique parle en `name`, tandis que la carte historique
+     d'Autour projette les fiches en `titre`. Les deux formes doivent rester
+     affichables après chaque passage (bassin, déduplication, rendu), sinon la
+     vérification finale de la structure la rejetait au second tour et le
+     panneau tombait à zéro malgré une réponse API valide. */
+  if (!interne.name && interne.titre) interne.name = interne.titre;
+  if (!interne.address && interne.adresse) interne.address = interne.adresse;
   interne.aideStructure = true;
   interne.kind = "AideStructure";
   if (!interne.lastSyncedAt) interne.lastSyncedAt = new Date().toISOString();
@@ -8104,8 +8137,19 @@ function candidatsAideZone() {
     ...lieux.filter((l) => l && l.aideStructure === true),
   ];
   const normalises = sources.map(normaliserCandidatAide).filter(Boolean);
-  const dedupes = window.AutourAideStructures && typeof AutourAideStructures.dedupe === "function"
+  const dedupesCanoniques = window.AutourAideStructures && typeof AutourAideStructures.dedupe === "function"
     ? AutourAideStructures.dedupe(normalises) : normalises;
+  /* La déduplication travaille dans le contrat canonique (`name/category`),
+     tandis que le moteur de classement et les composants de carte lisent le
+     contrat historique (`titre/cat`). Reprojeter ici garde une seule entité
+     tout en synchronisant bassin, carte, liste et recherche. */
+  const dedupes = dedupesCanoniques.map((lieu) => {
+    const interne = window.AutourProviders && typeof AutourProviders.versInterne === "function"
+      ? AutourProviders.versInterne(lieu) : lieu;
+    if (interne && !interne.name && interne.titre) interne.name = interne.titre;
+    if (interne && !interne.address && interne.adresse) interne.address = interne.adresse;
+    return interne;
+  }).filter(Boolean);
   return resultatsAideDansTerritoire(dedupes).filter((l) =>
     window.AutourAideStructures ? AutourAideStructures.affichable(l) : true);
 }
@@ -8160,9 +8204,16 @@ function codePaysAide(l){
     if(v === "be" || v === "belgique" || v === "belgium" || v === "belgie") return "BE";
     if(v.length === 2 || v.length === 3) return v.toUpperCase();
   }
-  const texte = [l && l.adresse, l && l.cp, l && l.titre, l && l.title]
+  /* Ne jamais déduire la Belgique d'un nom de rue : Tourcoing possède par
+     exemple une « rue de Courtrai ». Une ville étrangère ne peut être
+     reconnue que par son pays explicite, son code postal belge (4 chiffres)
+     ou sa commune ; le titre et l'adresse restent des informations de fiche,
+     pas une frontière. */
+  const codePostal = String(l && (l.cp || l.postalCode || l.code_postal) || "").trim();
+  if(/^\d{4}$/.test(codePostal)) return "BE";
+  const commune = [l && l.commune, l && l.city, l && l.nom_commune]
     .filter(Boolean).join(" ");
-  if(/\b(?:belgique|belgium|belgie|mouscron|moeskroen|courtrai|kortrijk)\b/i.test(texte)) return "BE";
+  if(/\b(?:belgique|belgium|belgie|mouscron|moeskroen|courtrai|kortrijk)\b/i.test(commune)) return "BE";
   return null;
 }
 
@@ -8244,6 +8295,7 @@ function contexteAideChargement(){
   return {
     besoins,
     urgence,
+    preload: false,
     santeIntentions: Array.isArray(intentionsSanteAide) ? intentionsSanteAide.slice() : [],
     cats: choix && Array.isArray(choix.cats) ? choix.cats.slice() : CATS_AIDE.slice(),
     cle: urgence ? "urgence" : ((besoins.slice().sort().join("+") || "general")+
@@ -8272,6 +8324,7 @@ function reseauxPourContexteAide(contexte){
 async function chargerAide(lat,lng,options){
   const o = options || {};
   const contexte = contexteAideChargement();
+  contexte.preload = !!o.preload;
   /* Le cache dédié répond avant toute source réseau. La catégorie choisie
      ensuite réutilise ce même bassin : elle ne repart pas d'une carte vide. */
   if (!bassinAideActif || bassinAideActif.zoneKey !== idZoneActive())
@@ -8357,7 +8410,9 @@ async function lieuxAideSource(source, lat, lng, contexte, signal){
   try{
     const places = await fournisseur.nearby(lat, lng, {
       needs:besoinsPourCollecteAide(contexte), radius:15000, signal,
-      records:source === "aideAutour" ? permanentPlaces : undefined,
+      records:source === "aideAutour"
+        ? permanentPlaces.filter((lieu) => lieu && lieu.aideStructure === true)
+        : undefined,
     });
     return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
   }catch(e){ return []; }
@@ -8368,7 +8423,8 @@ async function lieuxAideAutour(lat, lng, contexte, signal){
   if(!fournisseur) return [];
   try{
     const places = await fournisseur.nearby(lat, lng, {
-      needs:contexte && contexte.besoins || [], radius:15000, signal, records:permanentPlaces,
+      needs:contexte && contexte.besoins || [], radius:15000, signal,
+      records:permanentPlaces.filter((lieu) => lieu && lieu.aideStructure === true),
     });
     return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
   }catch(e){ return []; }
@@ -8980,6 +9036,16 @@ const SET_AIDE  = new Set(CATS_AIDE);
 const SOUS_AIDE = (AIDE ? AIDE.BESOINS_GRILLE : []).filter(b=>b.id !== "autre").map(b=>({
   id:b.id, emoji:b.emoji, label:b.label, cats:b.cats,
 }));
+/* La maquette expose cinq portes immédiatement compréhensibles. Les autres
+   besoins restent atteignables par la recherche de situation, mais ne
+   transforment pas l'accueil Aide en grille d'annuaire. */
+const AIDE_FILTRES_MAQUETTE = [
+  {id:"tout", label:"Tout", emoji:""},
+  {id:"logement", label:"Logement", emoji:"🏠"},
+  {id:"manger", label:"Manger", emoji:"🍽️"},
+  {id:"papiers", label:"Papiers", emoji:"📄"},
+  {id:"sante", label:"Santé", emoji:"🩺"},
+];
 const AIDE_AUTRE = AIDE && AIDE.BESOIN_DE ? AIDE.BESOIN_DE("autre") :
   {id:"autre", emoji:"➕", label:"Autre aide", cats:["asso","mairie"]};
 /* L'urgence n'est pas un besoin de plus : c'est une gravité. Elle traverse
@@ -8988,6 +9054,8 @@ const AIDE_AUTRE = AIDE && AIDE.BESOIN_DE ? AIDE.BESOIN_DE("autre") :
 const AIDE_URGENCE = {id:"urgence", emoji:"🚨", label:"Urgence", urgentSeul:true,
   cats:["hebergement","sante","asso","alimentaire"]};
 let sousAide = null;          // id du besoin actif, ou null
+let aideAfficherToutes = false;
+let aideUrgencesOuvert = false;
 /* Ce qu'Aide a compris d'une phrase qui ne la concerne pas. Null la plupart
    du temps : il ne s'affiche que le temps de proposer la bonne porte.
    Déclaré ICI, avec les autres états d'Aide, et non près de son producteur :
@@ -9569,14 +9637,14 @@ function majFeuille2(){
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
     ).join("");
   }else if(feuilleNiveau === "aide"){
-    $("#fbTitre").textContent = "Aide";
-    retour.hidden = !sousAide;
-    /* On ne commence PAS par une carte de structures. Tant qu'aucun besoin
-       n'est choisi, l'écran pose une seule question — « de quoi as-tu
-       besoin ? » — et propose de l'écrire en toutes lettres. Les solutions
-       viennent après, jamais avant. */
-    corps.innerHTML = redirectionExplorer ? ecranRedirectionExplorer()
-      : sousAide ? ecranSolutionsAide() : ecranBesoinsAide();
+    $("#fbTitre").textContent = "❤️ Aide";
+    retour.hidden = !(sousAide || phraseAideCourante || redirectionExplorer || aideUrgencesOuvert || aideAfficherToutes);
+    /* L'accueil Aide est directement utile : les trois structures classées
+       viennent avant toute recherche. Une phrase ouvre le résultat interprété;
+       le registre d'urgence reste une vue séparée avec appel direct. */
+    corps.innerHTML = aideUrgencesOuvert ? ecranRegistreUrgenceAide()
+      : redirectionExplorer ? ecranRedirectionExplorer()
+      : phraseAideCourante ? ecranSolutionsAide() : ecranBesoinsAide();
   }else{
     const b = BESOIN_DE(feuilleNiveau);
     if(!b){ fermerFeuille2(); return; }
@@ -10034,6 +10102,8 @@ function avecEpingles(classement){
    « j'ai plus assez pour manger ». */
 function lancerBesoinAide(phrase){
   if(!AIDE) return;
+  aideAfficherToutes = false;
+  aideUrgencesOuvert = false;
   /* La phrase telle qu'elle a été tapée, gardée en mémoire vive le temps de
      l'écran : le modèle en a besoin pour comprendre « je dors dehors ». Elle
      n'entre dans aucune table, aucun journal, aucune métrique, et le prochain
@@ -10131,52 +10201,101 @@ function blocAideAccueil(){
     '<u>Voir →</u></button>';
 }
 
-/* Écran 1 — la question, et rien d'autre. Neuf besoins visibles, puis « Autre
-   besoin » à part : la grille reste mémorisable, tout en gardant une sortie
-   pour ce qui ne rentre dans aucune case. */
+function aideFiltreActif(id){
+  return id === "tout" ? !sousAide : sousAide === id;
+}
+
+function carteAidePrioritaire(l){
+  favorisEnMemoire.set(cleFavori(l), l);
+  const c = categorieAffichee(l, {emoji:"🤝"});
+  const photo = photoAutoriseeAide(l);
+  const dist = distanceDepuisZone(l);
+  const distance = Number.isFinite(dist) ? formatDist(dist) : "";
+  const statut = libelleOuverture(l);
+  const ouvert = ouvertOuImminent(l);
+  const expl = EXPLIQUE ? EXPLIQUE.explication(l) : null;
+  const texte = (expl && expl.texte) || l.description || l.service ||
+    (Array.isArray(l.services) ? l.services[0] : "") ||
+    "Accueil, orientation et accompagnement social.";
+  const adresse = l.adresse || l.address || l.commune || "Adresse à vérifier";
+  const categorie = c.label || l.category || l.cat || "Aide";
+  const teinte = COULEURS_CAT[l.cat] || "#7C3AED";
+  return '<article class="aide-priorite" role="button" tabindex="0" data-ac="'+esc(l.id)+'">'+
+    '<span class="aide-priorite-photo" style="--teinte:'+teinte+'">'+
+      '<span aria-hidden="true">'+c.emoji+'</span>'+
+      (photo ? '<img loading="lazy" decoding="async" alt="" src="'+esc(photo)+'" onload="this.classList.add(\'vue\')" onerror="this.remove()">' : '')+
+    '</span>'+
+    '<span class="aide-priorite-corps">'+
+      '<span class="aide-priorite-tete"><b>'+esc(l.titre)+'</b>'+
+        '<i class="aide-priorite-statut'+(ouvert?' ouvert':'')+'">'+(ouvert?'● ':'')+esc(statut)+'</i></span>'+
+      '<span class="aide-priorite-cat">'+esc(categorie)+'</span>'+
+      '<span class="aide-priorite-meta">'+esc([distance, adresse].filter(Boolean).join(" · "))+'</span>'+
+      '<span class="aide-priorite-desc">'+esc(String(texte).replace(/\s+/g," ").trim().slice(0,150))+'</span>'+
+    '</span>'+
+    '<span class="aide-priorite-chevron" aria-hidden="true">›</span>'+
+  '</article>';
+}
+
+const URGENCES_AIDE = [
+  {numero:"112", titre:"Danger immédiat", detail:"Numéro d’urgence européen", rouge:true},
+  {numero:"15", titre:"Urgence médicale", detail:"Samu"},
+  {numero:"17", titre:"Police secours", detail:"Danger ou violence"},
+  {numero:"18", titre:"Sapeurs-pompiers", detail:"Incendie ou secours"},
+  {numero:"115", titre:"Hébergement d’urgence", detail:"Samu social"},
+  {numero:"3114", titre:"Crise ou idées suicidaires", detail:"Prévention du suicide · 24h/24"},
+  {numero:"3919", titre:"Violences", detail:"Écoute et orientation"},
+];
+
+function ecranRegistreUrgenceAide(){
+  return '<section class="ab au-urgence" data-testid="aide-urgence-registre">'+
+    '<p class="ab-titre">🚨 Numéros d’urgence</p>'+
+    '<p class="ab-intro">Appelle directement le service adapté à ta situation.</p>'+
+    '<div class="aide-urgence-registre">'+URGENCES_AIDE.map(u=>
+      '<a class="aide-urgence-ligne'+(u.rouge?' rouge':'')+'" href="tel:'+u.numero+'">'+
+        '<span class="aide-urgence-numero">'+u.numero+'</span>'+
+        '<span class="aide-urgence-texte"><b>'+esc(u.titre)+'</b><i>'+esc(u.detail)+'</i></span>'+
+        '<span aria-hidden="true">↗</span>'+
+      '</a>').join("")+'</div>'+
+    '<p class="au-note">Autour peut aussi t’aider à trouver une structure locale, mais ne remplace pas les services d’urgence.</p>'+
+    '<button class="ab-autre" data-aide-registre-retour="1">← Retour aux aides proches</button>'+
+  '</section>';
+}
+
+/* Accueil Aide : les structures sont déjà la réponse. La recherche de
+   situation reste dans la loupe, et ne repousse plus les résultats en bas du
+   panneau. */
 function ecranBesoinsAide(){
-  return '<section class="ab" data-testid="aide-besoins">'+
-    '<button class="ab-urgence" data-sa="urgence" data-testid="aide-urgence">'+
+  const liste = solutionsAide(aideAfficherToutes ? Infinity : 3, {noModel:true});
+  const contenu = aideAfficherToutes
+    ? (liste.length
+      ? '<div class="aide-liste-complete" data-testid="aide-liste-complete">'+liste.map(carteAidePrioritaire).join("")+'</div>'
+      : (aideEnCours ? squeletteHTML(3) : aucuneSolutionHTML()))
+    : (liste.length
+      ? '<div class="aide-priorites" data-testid="aide-priorites">'+liste.map(carteAidePrioritaire).join("")+'</div>'
+      : (aideEnCours
+        ? squeletteHTML(3)
+        : '<p class="aide-vide-court">Aucune structure fiable trouvée dans cette zone pour le moment.</p>'));
+  return '<section class="ab aide-accueil" data-testid="aide-besoins">'+
+    '<button class="ab-urgence" data-aide-urgence-registre="1" data-testid="aide-urgence">'+
       '<span class="abu-haut"><em>🆘</em><b>Besoin d’aide urgente&nbsp;?</b></span>'+
-      '<span class="abu-num">112 · 115 · 3114</span>'+
+      '<span class="abu-num">112 · 15 · 17 · 18 · 115 · 3114 · 3919</span>'+
       '<span class="abu-cta">Voir les urgences&nbsp; →</span>'+
     '</button>'+
     '<p class="ab-titre">De quoi as-tu besoin&nbsp;?</p>'+
-    '<p class="ab-intro">Choisis un besoin ou décris-le avec tes mots.</p>'+
-    '<div class="ab-grille">'+SOUS_AIDE.map(b=>
-      '<button class="ab-besoin" data-sa="'+esc(b.id)+'">'+
-        '<em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>').join("")+
-    '</div>'+
-    '<button class="ab-autre" data-sa="autre"><b>＋</b> Autre besoin</button>'+
-    '<div class="ab-separateur" aria-hidden="true"></div>'+
-    '<p class="ab-sous">Ou décris simplement ta situation</p>'+
-    '<form class="ab-form" id="formBesoin">'+
-      '<input id="champBesoin" type="search" enterkeyhint="search" autocomplete="off" '+
-        'placeholder="Je dois trouver où manger ce soir…" '+
-        'aria-label="Explique ce dont tu as besoin">'+
-      '<button type="submit" class="ab-ok">Trouver de l’aide</button>'+
-    '</form>'+
-    '<p class="ab-exemples">Quelques exemples&nbsp;:<br>'+
-      '<button type="button" data-aide-exemple="je dors dehors">je dors dehors</button> '+
-      '<button type="button" data-aide-exemple="j’ai besoin d’aide pour mes papiers">j’ai besoin d’aide pour mes papiers</button> '+
-      '<button type="button" data-aide-exemple="je cherche du travail">je cherche du travail</button> '+
-      '<button type="button" data-aide-exemple="j’ai besoin d’aide pour mon loyer">j’ai besoin d’aide pour mon loyer</button></p>'+
-    '</section>';
+    '<p class="ab-intro">Choisis un besoin ou ouvre la recherche de situation.</p>'+
+    '<div class="aide-filtres" role="tablist" aria-label="Filtrer les aides">'+AIDE_FILTRES_MAQUETTE.map(f=>
+      '<button class="aide-filtre'+(aideFiltreActif(f.id)?' actif':'')+'" data-aide-filter="'+esc(f.id)+'" role="tab" aria-selected="'+(aideFiltreActif(f.id)?'true':'false')+'">'+
+        (f.emoji?'<span aria-hidden="true">'+f.emoji+'</span> ':'')+esc(f.label)+'</button>').join("")+'</div>'+
+    contenu+
+    (aideAfficherToutes
+      ? '<button class="aide-toutes" data-aide-priorites="1">← Revenir aux aides prioritaires</button>'
+      : '<button class="aide-toutes" data-aide-toutes="1">Voir toutes les aides autour de toi <span aria-hidden="true">→</span></button>')+
+    '<button class="aide-urgence-ligne-compacte" data-aide-urgence-registre="1"><span>🚨</span><b>Numéros d’urgence</b><span aria-hidden="true">›</span></button>'+
+  '</section>';
 }
 
 function ecranUrgenceAide(){
-  return '<section class="ab au-urgence" data-testid="aide-urgence-detail">'+
-    '<p class="ab-titre">🆘 Besoin d’aide urgente&nbsp;?</p>'+
-    '<p class="ab-intro">Si tu es en danger immédiat, appelle directement les secours.</p>'+
-    '<div class="au-cartes">'+
-      '<a class="au-carte au-rouge" href="tel:112"><b>Danger immédiat</b><strong>112</strong><span>Numéro d’urgence européen</span></a>'+
-      '<a class="au-carte" href="tel:115"><b>Besoin d’un hébergement</b><strong>115</strong><span>Samu social · mise à l’abri</span></a>'+
-      '<a class="au-carte" href="tel:3114"><b>Crise ou idées suicidaires</b><strong>3114</strong><span>Prévention du suicide · 24h/24</span></a>'+
-      '<a class="au-carte" href="tel:3919"><b>Violences</b><strong>3919</strong><span>Écoute et orientation</span></a>'+
-    '</div>'+
-    '<p class="au-note">Autour peut aussi t’aider à trouver une structure locale, mais ne remplace pas les services d’urgence.</p>'+
-    '<button class="ab-autre" data-sa="logement">🏠 Trouver une aide locale</button>'+
-    '</section>';
+  return ecranRegistreUrgenceAide();
 }
 
 /* Écran 1 bis — « ça ressemble plutôt à une réparation ».
@@ -10390,7 +10509,7 @@ function solutionsAide(limite, options){
   // pertinence du besoin : elle passe devant tout le reste du tri
   const exprimes = new Set(besoinsExprimesAide.length
     ? besoinsExprimesAide : besoins);
-  const notes = classement.map(l=>{
+  let notes = classement.map(l=>{
     /* À poids égal, la raison la plus précise gagne : « tu cherches du
        travail » explique mieux la présence d'une Mission locale que « tu es
        jeune ». On note donc chaque besoin, et on garde le meilleur couple
@@ -10437,6 +10556,16 @@ function solutionsAide(limite, options){
       ? Number(a.l.rankDistance) : distanceM(centre[0], centre[1], a.l.lat, a.l.lng)) -
     (Number.isFinite(Number(b.l.rankDistance))
       ? Number(b.l.rankDistance) : distanceM(centre[0], centre[1], b.l.lat, b.l.lng)));
+
+  /* Une recherche explicite doit rester lisible : les pistes secondaires de
+     la taxonomie ne remplissent pas l’écran si le besoin réellement dit
+     possède déjà des réponses fiables. Elles restent un filet de secours
+     lorsqu’aucune réponse directe n’existe. Ainsi « aide alimentaire » ne
+     transforme pas quatre guichets administratifs en faux résultats de repas. */
+  if(exprimes.size){
+    const directes = notes.filter(x=>x.exprime);
+    if(directes.length) notes = directes;
+  }
 
   /* L'ORDRE D'AUTOUR EST COMPLET ICI. Ce qui suit ne le remplace pas : le
      modèle réordonne une liste déjà juste, et s'il n'a rien dit — pas encore
@@ -11000,8 +11129,12 @@ const BESOINS_RAPIDES = [
    capsule et navigation basse. La sélection reste celle de
    `selectionMaintenant()` et le panneau ne peut donc jamais basculer vers une
    liste longue ou un compteur total. */
+let navigationMaintenantEnCours = false;
 function ouvrirSurfaceMaintenant(){
-  if(modeAide && $("#badgeMaintenant") && $("#badgeMaintenant").dataset.aide === "1"){
+  const depuisNavigationMaintenant = navigationMaintenantEnCours ||
+    (document.activeElement && document.activeElement.getAttribute("data-nb") === "maintenant");
+  navigationMaintenantEnCours = false;
+  if(modeAide && !depuisNavigationMaintenant && $("#badgeMaintenant") && $("#badgeMaintenant").dataset.aide === "1"){
     ouvrirFeuille2("aide");
     reinitialiserScrollFeuille();
     return;
@@ -11047,8 +11180,12 @@ function brancherBesoinsRapides(racine){
 }
 
 function besoinsRapidesHTML(){
+  /* En mode Aide, la barre haute reste centrée sur les quatre portes de la
+     maquette. L’annonce territoriale « Bientôt » garde son comportement
+     normal partout ailleurs, mais ne doit pas repousser la capsule ❤️ Aide. */
+  const besoins = besoinsDuMoment().filter((b)=>!modeAide || b.id !== "territorial");
   return '<div class="br" data-testid="besoins-rapides">'+
-    besoinsDuMoment().map(b=>{
+    besoins.map(b=>{
       const actif = b.id === "territorial" ? modeTerritorial
         : b.id === "maintenant" ? (creneau === "maintenant" && !modeTerritorial && !modeAide)
         : b.id === "aide" ? modeAide
@@ -11109,7 +11246,7 @@ function majBadgeMaintenant(){
      exactement le moment où la phrase compte. Elle nomme donc la zone. */
   const sous = badge.querySelector(".bm-sous");
   const ou = modeAide
-    ? "Solutions fiables autour de toi"
+    ? "Structures proches"
     : zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom
       ? "À " + zoneActive.nom + " en ce moment" : "En cours près de toi";
   if(sous) sous.textContent = ou;
@@ -13091,6 +13228,45 @@ function brancherFeuille2(){
     chargerAideSiBesoin();
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
+  corps.querySelectorAll("[data-aide-filter]").forEach(b=>b.onclick=()=>{
+    const id = b.dataset.aideFilter;
+    aideAfficherToutes = false;
+    aideUrgencesOuvert = false;
+    redirectionExplorer = null;
+    oublierPhraseAide();
+    sousAide = id === "tout" ? null : id;
+    besoinsAide = sousAide ? [sousAide] : [];
+    intentionsSanteAide = [];
+    chargerAideSiBesoin();
+    majFeuille2(); reinitialiserScrollFeuille(); rendre();
+  });
+  corps.querySelectorAll("[data-aide-toutes]").forEach(b=>b.onclick=()=>{
+    aideAfficherToutes = true;
+    aideUrgencesOuvert = false;
+    redirectionExplorer = null;
+    oublierPhraseAide();
+    majFeuille2(); reinitialiserScrollFeuille();
+  });
+  corps.querySelectorAll("[data-aide-priorites]").forEach(b=>b.onclick=()=>{
+    aideAfficherToutes = false;
+    majFeuille2(); reinitialiserScrollFeuille();
+  });
+  corps.querySelectorAll("[data-aide-urgence-registre]").forEach(b=>b.onclick=()=>{
+    aideUrgencesOuvert = true;
+    aideAfficherToutes = false;
+    redirectionExplorer = null;
+    oublierPhraseAide();
+    sousAide = null;
+    besoinsAide = [];
+    majFeuille2(); reinitialiserScrollFeuille();
+  });
+  corps.querySelectorAll("[data-aide-registre-retour]").forEach(b=>b.onclick=()=>{
+    aideUrgencesOuvert = false;
+    aideAfficherToutes = false;
+    sousAide = null;
+    besoinsAide = [];
+    majFeuille2(); reinitialiserScrollFeuille();
+  });
   const form = $("#formBesoin");
   if(form) form.onsubmit = (e)=>{
     e.preventDefault();
@@ -13396,6 +13572,10 @@ function brancherGestesRecommandations(racine){
     const id = b.dataset.ac, cible = lieuParId(id);
     if(!cible) return;
     mettreAJourProfil("clic", cible.cat);
+    if(modeAide && cible.aideStructure){
+      ouvrirFicheCompacte(cible);
+      return;
+    }
     allerVers([cible.lat,cible.lng], 17, {duration:.5});
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(id));
@@ -13512,6 +13692,8 @@ function basculerAide(){
   besoinsSecondairesAide = [];
   intentionsSanteAide = [];
   redirectionExplorer = null;
+  aideAfficherToutes = false;
+  aideUrgencesOuvert = false;
   document.body.classList.toggle("aide", modeAide);
   /* Les trois portes d'Aide — flottante, en-tête et navigation basse — doivent
      parler du même mode dès le geste, sans attendre le rendu différé de la
@@ -14224,17 +14406,44 @@ PERF.mesure("boot UI", "script", "ui_ready");
 /* La recherche n'occupe plus l'écran en permanence : elle s'ouvre à la loupe
    et se referme entièrement, rendant la carte à l'utilisateur. */
 function ouvrirRecherche(){
-  $("#rechercheOverlay").hidden = false;
-  $("#appHeader").hidden = true;
-  majRaccourcis();
+  const overlay = $("#rechercheOverlay");
+  const aide = !!modeAide;
+  overlay.hidden = false;
+  overlay.classList.toggle("recherche-aide", aide);
+  overlay.setAttribute("aria-label", aide ? "Recherche d’aide" : "Rechercher");
+  const contenu = $("#aideRechercheContenu");
+  if(contenu) contenu.hidden = !aide;
+  const raccourcis = $("#raccourcis");
+  if(raccourcis) raccourcis.hidden = aide;
+  const filtres = $("#filtresHumains");
+  if(filtres && aide) filtres.hidden = true;
+  const btnFiltres = $("#btnFiltres");
+  if(btnFiltres) btnFiltres.hidden = aide;
+  const champ = $("#rech");
+  if(champ) champ.placeholder = aide
+    ? "Ex. je dors dehors ce soir, j’ai besoin de manger, mission locale…"
+    : "Une envie, un lieu, une ville…";
+  $("#appHeader").hidden = !(aide && responsiveLayoutState.isDesktop);
+  if(!aide) majRaccourcis();
   layerManager.activate(NOMS_COUCHES.searchOverlay);
   requestAnimationFrame(()=>$("#rech").focus());
 }
 function fermerRecherche(options){
   const force = !!(options && options.force);
   const dockee = !force && rechercheDockeeDesktopDemandee();
-  $("#rechercheOverlay").hidden = !dockee;
-  $("#appHeader").hidden = dockee;
+  const overlay = $("#rechercheOverlay");
+  overlay.hidden = !dockee;
+  overlay.classList.remove("recherche-aide");
+  overlay.setAttribute("aria-label", "Rechercher");
+  const contenu = $("#aideRechercheContenu");
+  if(contenu) contenu.hidden = true;
+  const raccourcis = $("#raccourcis");
+  if(raccourcis) raccourcis.hidden = false;
+  const btnFiltres = $("#btnFiltres");
+  if(btnFiltres) btnFiltres.hidden = false;
+  const champ = $("#rech");
+  if(champ) champ.placeholder = "Une envie, un lieu, une ville…";
+  $("#appHeader").hidden = dockee && !(modeAide && responsiveLayoutState.isDesktop);
   $("#suggestions").hidden = true;
   layerManager.deactivate(NOMS_COUCHES.searchOverlay);
 }
@@ -14251,7 +14460,7 @@ function synchroniserRechercheDesktop(){
   overlay.classList.toggle("recherche-dockee", dockee);
   if(dockee){
     overlay.hidden = false;
-    header.hidden = true;
+    header.hidden = !(modeAide && responsiveLayoutState.isDesktop);
     majRaccourcis();
     return;
   }
@@ -14264,6 +14473,11 @@ function synchroniserRechercheDesktop(){
 }
 responsiveLayout.subscribe(()=>synchroniserRechercheDesktop());
 $("#btnLoupe").onclick = ouvrirRecherche;
+document.querySelectorAll("[data-aide-recherche]").forEach((b)=>b.onclick=()=>{
+  const champ = $("#rech");
+  if(champ) champ.value = b.dataset.aideRecherche || "";
+  lancerRecherche();
+});
 
 /* ---- Pour toi : la cloche l'ouvre, la taille d'écran décide de sa forme --
    Sur grand écran c'est une colonne du décor ; sur mobile un tiroir. Le même
@@ -14319,7 +14533,7 @@ function amorcerPourToi(){
 }
 $("#btnFermerRech").onclick=()=>{
   $("#rech").value=""; recherche=""; $("#suggestions").hidden=true;
-  fermerRecherche(); rendre(); majAccueil();
+  fermerRecherche({force:modeAide}); rendre(); majAccueil();
 };
 
 /* Les filtres humains vivaient dans un rail flottant que rien n'annonçait :
@@ -14376,6 +14590,10 @@ if(window.ResizeObserver){
 function suggerer(q){
   const z = $("#suggestions");
   if(!z) return;
+  if(modeAide){
+    z.hidden = true;
+    return;
+  }
   const t = sansAccents(q).trim();
 
   // rien de tapé : on propose ce qui correspond à l'heure qu'il est
@@ -14454,7 +14672,7 @@ $("#rech").onfocus=()=>suggerer($("#rech").value);
 let minuteurRenduRecherche;
 $("#rech").oninput=e=>{
   recherche = e.target.value;
-  if(recherche) toutAfficher();
+  if(recherche && !modeAide) toutAfficher();
   /* LES SUGGESTIONS D'ABORD, LES MARQUEURS ENSUITE.
 
      `rendre()` recompose les marqueurs de la carte : sur un centre-ville c'est
@@ -14481,6 +14699,11 @@ async function lancerRecherche(){
   const q = (champ.value || "").trim();
   if(!q) return;
   champ.blur();                 // referme le clavier avant de bouger la carte
+  if(modeAide){
+    fermerRecherche({force:true});
+    lancerBesoinAide(q);
+    return;
+  }
   fermerRecherche({force:true});
   zoneAffichee = null;          // une nouvelle recherche remplace la précédente
   intentionCourante = null;     // et son interprétation avec elle
@@ -14872,6 +15095,14 @@ function marquerNavigation(id){
   nav.querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x.dataset.nb === id));
 }
 
+/* Le clic synthétique et certains navigateurs tactiles ne donnent pas le
+   focus au bouton bas. Le marquage en capture distingue alors sans ambiguïté
+   le geste de navigation du clic sur la capsule centrale, qui garde sa porte
+   Aide. */
+$("#navBas").addEventListener("click", (e)=>{
+  if(e.target.closest('[data-nb="maintenant"]')) navigationMaintenantEnCours = true;
+}, true);
+
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;
   if(b.getAttribute("aria-disabled") === "true"){
@@ -15138,6 +15369,18 @@ function ouvrirAccueilFeuille(){
 }
 $("#fbFermer").onclick = fermerFeuille2;
 $("#fbRetour").onclick = ()=>{
+  // En mode Aide, le retour quitte d'abord la recherche, le registre ou la
+  // liste complète ; il ne désactive le mode qu'à la racine.
+  if(modeAide && (aideUrgencesOuvert || phraseAideCourante || redirectionExplorer || aideAfficherToutes || sousAide)){
+    aideUrgencesOuvert = false;
+    aideAfficherToutes = false;
+    redirectionExplorer = null;
+    oublierPhraseAide();
+    sousAide = null;
+    besoinsAide = [];
+    majFeuille2(); reinitialiserScrollFeuille(); rendre();
+    return;
+  }
   // revenir aux quatre besoins : on relâche la sélection en cours
   if(modeAide) basculerAide();
   const venaitDePlus = (BESOIN_DE(feuilleNiveau) || {}).secondaire;

@@ -5,10 +5,11 @@
 
   function normaliser(record) {
     const p = record || {};
-    const aide = p.aideStructure === true ||
-      [p.cat, p.category, ...(Array.isArray(p.categories) ? p.categories : [])].some((category) =>
-        ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso",
-          "toilettes", "collecte", "friperie"].includes(category));
+    /* La liste permanente contient aussi des commerces classés `friperie`,
+       `sante` ou `mairie`. Une catégorie technique ne suffit donc jamais à
+       transformer un commerce en structure sociale : Autour doit avoir
+       explicitement marqué la fiche comme AideStructure. */
+    const aide = p.aideStructure === true || p.kind === "AideStructure";
     if (!aide) return null;
     return AIDE() ? AIDE().normaliser(Object.assign({}, p, {
       source: "autour",

@@ -7,7 +7,7 @@ const app = lire("../app.js");
 const index = lire("../index.html");
 
 test("le bassin Aide est séparé, borné par la zone et préchargé après la peinture", () => {
-  assert.match(app, /const AIDE_CACHE_PREFIX = "autour:bassin-aide:v1:"/);
+  assert.match(app, /const AIDE_CACHE_PREFIX = "autour:bassin-aide:v3:"/);
   assert.ok(app.includes("AIDE_CACHE_PREFIX + encodeURIComponent(idZoneActive())"));
   assert.ok(app.includes("Date.now() - Number(entree.t) > AIDE_CACHE_HEURES"));
   assert.ok(app.includes("function programmerPrechargementAide()"));
@@ -15,13 +15,21 @@ test("le bassin Aide est séparé, borné par la zone et préchargé après la p
   assert.ok(app.includes("if(modeAide){") && app.includes("candidatsAideZone()"));
 });
 
-test("l'écran initial garde neuf cases et « Autre besoin » hors grille", () => {
-  assert.ok(app.includes('BESOINS_GRILLE : []).filter(b=>b.id !== "autre")'));
-  assert.ok(app.includes('data-sa="autre"><b>') && app.includes("Autre besoin"));
-  assert.ok(app.includes('placeholder="Je dois trouver où manger ce soir…"'));
-  assert.ok(app.includes("Trouver de l’aide"));
-  assert.ok(app.includes('data-testid="aide-urgence-detail"'));
-  assert.ok(app.includes("112") && app.includes("115") && app.includes("3114"));
+test("l'écran initial Aide affiche le bassin prioritaire et la recherche dédiée", () => {
+  assert.ok(app.includes("AIDE_FILTRES_MAQUETTE"));
+  assert.ok(app.includes('{id:"tout", label:"Tout"'));
+  assert.ok(app.includes('{id:"logement", label:"Logement"'));
+  assert.ok(app.includes('{id:"manger", label:"Manger"'));
+  assert.ok(app.includes('{id:"papiers", label:"Papiers"'));
+  assert.ok(app.includes('{id:"sante", label:"Santé"'));
+  assert.ok(app.includes("solutionsAide(aideAfficherToutes ? Infinity : 3, {noModel:true})"));
+  assert.ok(app.includes('data-aide-toutes="1"') && app.includes("Voir toutes les aides autour de toi"));
+  assert.ok(!index.includes('id="formBesoin"'));
+  assert.ok(index.includes('id="aideRechercheContenu"'));
+  assert.ok(index.includes(".recherche-aide"));
+  assert.ok(app.includes("URGENCES_AIDE") && app.includes('href=\"tel:\'') && app.includes("u.numero"));
+  assert.ok(app.includes("112") && app.includes("15") && app.includes("17") &&
+    app.includes("18") && app.includes("115") && app.includes("3114") && app.includes("3919"));
 });
 
 test("la capsule Aide annonce au plus trois recommandations et reste actionnable", () => {

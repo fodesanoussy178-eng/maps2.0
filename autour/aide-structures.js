@@ -317,7 +317,13 @@
       status,
       source,
       sources: unique([...(array(p.sources)), source]),
-      sourceRefs: Object.assign({}, p.sourceRefs || {}, ids),
+      /* `sourceRefs` est relu par le dédoublonnage historique d'Autour. Un
+         producteur (`dataProvider`) décrit une origine commune, pas une
+         identité : le conserver ici ferait fusionner toutes les fiches DORA
+         du même export, et pouvait faire disparaître une aide alimentaire
+         réelle derrière la fiche précédente. Les métadonnées de producteur
+         restent dans `provenance[].producer`. */
+      sourceRefs: Object.assign({}, ids),
       identifiers: ids,
       provenance: provenancesDe(p, source, ids, sourceConfidence),
       sourceConfidence,
