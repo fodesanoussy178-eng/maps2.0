@@ -173,7 +173,7 @@
      partenaire déclaré. Jamais « le site a l'air officiel ». */
   const SOURCES_INSTITUTIONNELLES = Object.freeze(
     ["datatourisme", "contexte_officiel", "institutionnel", "organisateur",
-     "data_gouv", "partenaire"]);
+     "data_gouv", "data_inclusion", "partenaire"]);
 
   function estInstitutionnel(lieu) {
     const l = lieu || {};
@@ -626,7 +626,13 @@
     /* 6. la source institutionnelle — elle ne vaut que si quelque chose
        d'autre rattache déjà le lieu au besoin. Une source officielle ne rend
        pas une boulangerie sociale ; elle confirme ce qui est déjà là. */
-    if (structurelle && estInstitutionnel(lieu))
+    /* Un catalogue public confirme qu'une fiche existe ; il ne transforme
+       pas une association familiale en aide alimentaire, emploi ou santé.
+       La confirmation ne compte donc que si la fiche porte déjà une
+       catégorie métier non générique compatible avec le besoin. */
+    const categorieInstitutionnelleCompatible = b.categories.some((k) =>
+      k.id !== "asso" && cats.has(k.id));
+    if (structurelle && estInstitutionnel(lieu) && categorieInstitutionnelleCompatible)
       ajouter("institutionnel", POIDS.institutionnel, "source publique");
 
     /* 5. la description, quand elle nomme le service. */

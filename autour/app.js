@@ -3370,6 +3370,9 @@ async function vraisLieux(lat,lng,bornes,opts){
       // écrire « Gratuit » ; `fee=yes` atteste au contraire que c'est payant.
       gratuit: t.fee==="no" ? true : (t.fee==="yes" ? false : undefined),
       prix: t.fee==="no" ? 0 : (t.fee==="yes" ? 6 : null),
+      image: t.image && /^https?:\/\//i.test(t.image) ? t.image : "",
+      imageSource: t.image && /^https?:\/\//i.test(t.image) ? "site_officiel" : "",
+      imageSourceUrl: t.website || t["contact:website"] || "",
       places:null, qr:false, par:"OpenStreetMap", lat:p.lat, lng:p.lon,
       idOsm:e.type+e.id
     };
@@ -6844,7 +6847,7 @@ function sourceAide(l){
   const libelles = {
     openstreetmap:"OpenStreetMap", google_places:"Google Maps", datatourisme:"DATAtourisme",
     autour:"Autour", openagenda:"Agenda officiel", service_public:"Service-Public.fr",
-    dora:"DORA", finess:"FINESS",
+    dora:"DORA", data_inclusion:"Data·inclusion", finess:"FINESS",
   };
   return libelles[source] || (l && l.par) || "Source non renseignée";
 }
@@ -7876,6 +7879,9 @@ const CHAMPS_BASSIN_AIDE = [
   "identifiers", "provenance", "sourceConfidence", "capacities", "capacityEvidence", "capacitesAide",
   "confidenceAide", "confianceAide", "trustLevel", "niveauConfianceAide", "freshness",
   "lastSourceUpdate", "lastSyncedAt", "officialUrl", "capacityHints", "solidaire",
+  "photos", "image", "imageSource", "imageAttribution", "imageSourceUrl", "imageAuthor", "imageLicense",
+  "imageUpdatedAt", "image_url", "image_source", "image_source_url", "image_author", "image_license",
+  "image_updated_at", "image_type", "image_confidence", "image_width", "image_height", "image_fallback_reason",
 ];
 
 function cleBassinAide(lat, lng) {
@@ -8259,7 +8265,7 @@ function publierAideSource(items, source) {
   return ajouterAuBassinAide(retenus, {source});
 }
 
-function ajouterLieuxGoogleAide(fiches, catDefaut) {
+function ajouterLieuxGoogleAide(fiches, catDefaut, attente) {
   const structures = (fiches || []).filter((f) => f && f.nom && f.isAidProvider !== false)
     .map((f) => Object.assign({}, f, {
       name: f.nom,
@@ -8271,7 +8277,44 @@ function ajouterLieuxGoogleAide(fiches, catDefaut) {
       aideStructure: true,
       autourId: f.autourId || f.idGoogle || f.id,
     }));
-  return ajouterAuBassinAide(structures, {source: "google_places"});
+  /* Google n'est pas une source de vérité sociale. On ne publie donc jamais
+     une structure trouvée par Places seule : ses données restent en attente
+     et ne peuvent enrichir qu'une fiche institutionnelle déjà présente. */
+  if (Array.isArray(attente)) {
+    attente.push(...structures);
+    return structures.length;
+  }
+  return 0;
+}
+
+function enrichirPhotosAideGoogle(fiches) {
+  const items = bassinAideActif && bassinAideActif.zoneKey === idZoneActive()
+    ? bassinAideActif.items : [];
+  let enrichis = 0;
+  (fiches || []).forEach((fiche) => {
+    if (!fiche || !fiche.image || !Number.isFinite(Number(fiche.lat)) ||
+        !Number.isFinite(Number(fiche.lng))) return;
+    const cible = items.find((lieu) =>
+      lieu && lieu.source !== "google_places" &&
+      distanceM(lieu.lat, lieu.lng, fiche.lat, fiche.lng) <= 150 &&
+      (nomsLieuxCompatibles(lieu.titre, fiche.nom) ||
+        adressesLieuxCompatibles(lieu.adresse, fiche.adresse)));
+    if (!cible) return;
+    if (!cible.image) {
+      cible.image = fiche.image;
+      cible.imageSource = fiche.imageSource || "google_places";
+      cible.imageAttribution = fiche.imageAttribution || "";
+      cible.imageSourceUrl = fiche.imageSourceUrl || "";
+      cible.image_url = fiche.image;
+      cible.image_source = cible.imageSource;
+      cible.image_source_url = cible.imageSourceUrl;
+      enrichis += 1;
+    }
+    cible.sourceRefs = Object.assign({}, cible.sourceRefs || {},
+      fiche.idGoogle ? {googlePlaceId: fiche.idGoogle} : {});
+  });
+  if (enrichis) planifierRendu({carte: true, accueil: true, feuille: true});
+  return enrichis;
 }
 
 async function chargerAideVraiment(lat,lng,generation,contexte){
@@ -8284,6 +8327,7 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
     ? ["sante"]
     : contexte.cats.filter(cat=>CATS_AIDE.includes(cat));
   const reseaux = reseauxPourContexteAide(contexte);
+  const enrichissementsGoogle = [];
   const exploitable = await coordonnerSourcesVersionnees([
     {
       /* Ce qu'Autour connaît déjà : publications et lieux persistés. Ils
@@ -8381,12 +8425,15 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
           if(!parCategorie.has(cat)) parCategorie.set(cat,[]);
           parCategorie.get(cat).push(f);
         });
-        parCategorie.forEach((fiches,cat)=>ajouterLieuxGoogleAide(fiches,cat));
+        parCategorie.forEach((fiches,cat)=>ajouterLieuxGoogleAide(fiches,cat,enrichissementsGoogle));
         return !!(garder && garder.length);
       },
     },
   ], ()=>generationCourante(generation));
   if(generationCourante(generation)){
+    /* Toutes les sources fiables ont fini : le rapprochement photo se fait
+       maintenant, jamais au hasard de l'ordre des promesses. */
+    enrichirPhotosAideGoogle(enrichissementsGoogle);
     if(!contexte.preload) charge(null);
     majAccueil();
   }
@@ -10268,7 +10315,13 @@ function solutionsAide(limite, options){
        preuve certaine, confiance, spécialisation réelle, disponibilité,
        distance, fraîcheur. Pour Aide, la pertinence passe avant la quantité. */
     (CLASSEMENT ? CLASSEMENT.comparer(a.l, b.l) : 0) ||
-    (a.l.rankDistance||0) - (b.l.rankDistance||0));
+    /* rankResults mesure déjà depuis le centre actif : personne en mode local,
+       ou zone explicitement regardée. Recalculer en dernier recours évite
+       qu'une fiche issue du cache sans distance soit considérée à zéro mètre. */
+    (Number.isFinite(Number(a.l.rankDistance))
+      ? Number(a.l.rankDistance) : distanceM(centre[0], centre[1], a.l.lat, a.l.lng)) -
+    (Number.isFinite(Number(b.l.rankDistance))
+      ? Number(b.l.rankDistance) : distanceM(centre[0], centre[1], b.l.lat, b.l.lng)));
 
   /* L'ORDRE D'AUTOUR EST COMPLET ICI. Ce qui suit ne le remplace pas : le
      modèle réordonne une liste déjà juste, et s'il n'a rien dit — pas encore

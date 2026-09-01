@@ -35,11 +35,24 @@
     const lat = Number(p.lat);
     const lng = Number(p.lng);
     if (!p.name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    const photos = (Array.isArray(p.photos) ? p.photos : []).filter((photo) => photo && photo.url)
+    const photosBrutes = Array.isArray(p.photos) ? p.photos.slice() : [];
+    const imageUnique = p.image || p.image_url || p.photo_url || p.photo;
+    if (!photosBrutes.length && imageUnique) photosBrutes.push({
+      url: imageUnique,
+      attribution: p.imageAttribution || p.image_attribution || p.image_author || "",
+      source: p.imageSource || p.image_source || p.source || "",
+      sourceUrl: p.imageSourceUrl || p.image_source_url || "",
+      license: p.imageLicense || p.image_license || "",
+    });
+    const photos = photosBrutes.filter((photo) => photo && photo.url)
       .map((photo) => ({
         url: String(photo.url),
         attribution: photo.attribution || "",
         source: photo.source || p.source || "",
+        sourceUrl: photo.sourceUrl || photo.source_url || "",
+        author: photo.author || photo.image_author || "",
+        license: photo.license || photo.image_license || "",
+        updatedAt: photo.updatedAt || photo.image_updated_at || null,
       }));
     return {
       kind: p.kind || (p.aideStructure ? "AideStructure" : "Place"),
@@ -110,7 +123,19 @@
       categories: p.categories,
       image: premierePhoto ? premierePhoto.url : "",
       imageSource: premierePhoto ? premierePhoto.source : "",
-      imageAttribution: premierePhoto ? premierePhoto.attribution : "",
+      imageAttribution: premierePhoto ? (premierePhoto.attribution ||
+        (premierePhoto.author ? [{name: premierePhoto.author, url: ""}] : "")) : "",
+      imageSourceUrl: premierePhoto ? premierePhoto.sourceUrl : "",
+      imageAuthor: premierePhoto ? (premierePhoto.author || "") : "",
+      imageLicense: premierePhoto ? (premierePhoto.license || "") : "",
+      imageUpdatedAt: premierePhoto ? (premierePhoto.updatedAt || null) : null,
+      image_url: premierePhoto ? premierePhoto.url : "",
+      image_source: premierePhoto ? premierePhoto.source : "",
+      image_source_url: premierePhoto ? premierePhoto.sourceUrl : "",
+      image_author: premierePhoto ? (premierePhoto.author || "") : "",
+      image_license: premierePhoto ? (premierePhoto.license || "") : "",
+      image_updated_at: premierePhoto ? (premierePhoto.updatedAt || null) : null,
+      photos: p.photos,
       horaires: heures.weekdayDescriptions || heures.weekdays || null,
       ouvert: p.openNow,
       note: p.rating && Number(p.rating.value),

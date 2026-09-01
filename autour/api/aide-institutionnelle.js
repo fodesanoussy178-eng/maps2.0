@@ -34,6 +34,7 @@ const RAYON_MIN = 500;
 const RAYON_MAX = 20000;
 const LIMITE = 100;
 const DELAI_MS = 5000;
+const PAGES_MAX = 4;
 const TYPES_BASE_LOCALE = Object.freeze({
   "mission locale": ["mission_locale"],
   "mission emploi": ["mission_locale"],
@@ -233,7 +234,14 @@ async function baseLocale(url, lieu) {
 function baseLocaleStatique(commune) {
   if (String(commune && commune.code) !== snapshotTourcoing.code_insee_commune) return null;
   return {
-    records: snapshotTourcoing.records,
+    /* Le fichier de compétence DILA de Tourcoing peut citer des structures
+       qui servent plusieurs communes. Un cache de secours ne transforme pas
+       cette compétence en présence locale : pour la carte, on garde seulement
+       les coordonnées dont la commune est réellement Tourcoing. */
+    records: snapshotTourcoing.records.filter((record) => {
+      const adresse = adresseAvecCoordonnees(record) || {};
+      return slugue(adresse.nom_commune) === "tourcoing";
+    }),
     relationUrl: snapshotTourcoing.source_export,
     version: snapshotTourcoing.snapshot_date,
     parType: null,
@@ -264,6 +272,22 @@ async function jsonAmont(url, signal) {
   return records;
 }
 
+async function jsonAmontPage(url, signal) {
+  const r = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "Autour/1.0 (+https://autour.eu/)",
+    },
+    signal: signal || (AbortSignal.timeout ? AbortSignal.timeout(DELAI_MS) : undefined),
+  });
+  if (!r.ok) throw new Error("service_public_" + r.status);
+  const j = await r.json();
+  return {
+    records: Array.isArray(j) ? j : (j && Array.isArray(j.results) ? j.results : []),
+    total: Number(j && j.total_count) || 0,
+  };
+}
+
 export default async function handler(requete) {
   if (requete.method && requete.method !== "GET")
     return reponse({ erreur: "méthode non acceptée" }, 405, "no-store");
@@ -279,11 +303,14 @@ export default async function handler(requete) {
       ![...besoins].every((x) => BESOINS.has(x)))
     return reponse({ items: [] }, 400, "public, max-age=60");
 
+  let commune = null;
+  const sourceStatus = [];
+  let panneAmont = false;
   try {
     const communes = await jsonAmont(
       GEO + "?lat=" + encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lng) +
       "&fields=code,nom,codeDepartement,codeRegion&format=json", requete.signal);
-    const commune = communes[0] || {};
+    commune = communes[0] || {};
     const departement = commune.codeDepartement;
     if (!/^(?:\d{2,3}|2A|2B)$/.test(String(departement || ""))) return reponse({ items: [] });
 
@@ -298,24 +325,42 @@ export default async function handler(requete) {
        `search(*)` couvre les variantes de nom, de sigle et de mission. */
     const q = new URL(API);
     const recherches = REQUETES.map((terme) => 'search(*,"' + terme + '")');
-    q.searchParams.set("where", 'code_insee_commune LIKE "' + departement + '%" and (' +
+    /* Le filtre départemental faisait parcourir des dizaines de milliers de
+       fiches et finissait en 503. Le code INSEE obtenu par géocodage est une
+       frontière de données : une commune demandée ne lit plus un snapshot
+       d'une autre ville. */
+    q.searchParams.set("where", 'code_insee_commune = "' + commune.code + '" and (' +
       recherches.join(" or ") + ')');
     q.searchParams.set("limit", String(LIMITE));
     q.searchParams.set("select", fields);
-    let panneAmont = null;
+    let totalAmont = 0;
     try {
-      resultats = await jsonAmont(q, requete.signal);
+      for (let page = 0; page < PAGES_MAX; page += 1) {
+        q.searchParams.set("offset", String(page * LIMITE));
+        const bloc = await jsonAmontPage(q, requete.signal);
+        resultats = resultats.concat(bloc.records);
+        totalAmont = bloc.total;
+        if (!bloc.records.length || bloc.records.length < LIMITE || resultats.length >= totalAmont) break;
+      }
+      sourceStatus.push({ source: "service_public", state: "ok", count: resultats.length,
+        total: totalAmont || resultats.length, scope: String(commune.code) });
     } catch (e) {
-      panneAmont = e;
+      panneAmont = true;
+      sourceStatus.push({ source: "service_public", state: "unavailable",
+        reason: String(e && e.message || "amont_indisponible"), scope: String(commune.code) });
       let base;
       try {
         base = await baseLocale(endpointLieu(commune, requete.signal), commune);
+        sourceStatus.push({ source: "service_public_local", state: "ok", count: base.records.length,
+          scope: String(commune.code) });
       } catch (fallbackError) {
         base = baseLocaleStatique(commune);
-        if (!base) throw fallbackError;
+        if (base) sourceStatus.push({ source: "service_public_snapshot", state: "ok",
+          count: base.records.length, scope: String(commune.code), snapshotDate: base.version });
+        else sourceStatus.push({ source: "service_public_local", state: "unavailable",
+          reason: String(fallbackError && fallbackError.message || "cache_absent"), scope: String(commune.code) });
       }
-      resultats = base.records;
-      panneAmont = null;
+      resultats = base ? base.records : [];
     }
 
     /* LE SNAPSHOT LOCAL N'EST PLUS UN PLAN DE SECOURS.
@@ -334,16 +379,20 @@ export default async function handler(requete) {
     if (statique && statique.records && statique.records.length) {
       resultats = resultats.concat(statique.records);
     }
-    if (panneAmont && !resultats.length) throw panneAmont;
-
     const uniques = new Map();
     resultats.forEach((record) => {
       const item = projection(record, lat, lng, rayon);
       if (item) uniques.set(item.id, item);
     });
-    return reponse({ items: [...uniques.values()] });
+    return reponse({ items: [...uniques.values()], cityCode: commune.code, sourceStatus,
+      amontFallback: panneAmont });
   } catch (e) {
-    return reponse({ items: [] }, 503, "public, max-age=60");
+    /* Une panne DILA ne doit pas transformer la collecte multi-sources en
+       échec global. Le contrat explicite l'absence de données pour que le
+       diagnostic et les autres référentiels puissent prendre le relais. */
+    return reponse({ items: [], cityCode: commune && commune.code || null,
+      sourceStatus: [...sourceStatus, {source: "service_public", state: "unavailable",
+        reason: String(e && e.message || "amont_indisponible")} ] });
   }
 }
 

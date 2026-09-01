@@ -1254,10 +1254,14 @@ test("les réseaux d'aide et leurs tags couvrent ce qu'on cherche vraiment",()=>
 });
 
 test("un complément santé tardif enrichit le panneau sans le réinitialiser",()=>{
-  assert.match(html,/parCategorie\.forEach\(\(fiches,cat\)=>ajouterLieuxGoogleAide\(fiches,cat\)\);/);
+  assert.match(html,/parCategorie\.forEach\(\(fiches,cat\)=>ajouterLieuxGoogleAide\(fiches,cat,enrichissementsGoogle\)\);/);
+  assert.match(html,/function enrichirPhotosAideGoogle\(fiches\)/);
+  assert.match(html,/nomsLieuxCompatibles\(lieu\.titre, fiche\.nom\)/);
+  assert.doesNotMatch(html,/return ajouterAuBassinAide\(structures, \{source: "google_places"\}\);/,
+    "Google ne doit jamais publier une structure sociale seule");
   assert.match(html,/coordonnerSourcesVersionnees\([\s\S]*?\(\)=>generationCourante\(generation\)\)/);
   assert.match(html,/zonesAideChargees\.set\(cleZoneAide,\[lat,lng\]\)/);
-  assert.match(html,/if\(canonique && canonique!==dejaPresent\) appliquerFicheGoogle\(canonique,f\);\s+planifierRendu\(\{carte:true,accueil:true,feuille:true\}\);/);
+  assert.match(html,/cible\.imageSource = fiche\.imageSource \|\| "google_places";/);
   assert.doesNotMatch(html,/description:f\.description\|\|"",quand:"Voir sur place",gratuit:true/,
     "une fiche Google ne doit jamais devenir gratuite par défaut");
   assert.match(html,/\(l\.gratuit === true \? 'Gratuit · ' : ''\)/);

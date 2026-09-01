@@ -48,6 +48,50 @@
 
   function details(record) {
     const p = record || {};
+    /* Le pré-calcul peut contenir une ligne publiée par FINESS à l'intérieur
+       du référentiel national data·inclusion. Elle est déjà aplatie et
+       géolocalisée : la repasser dans le parseur FINESS imbriqué perdrait ses
+       catégories et la ferait devenir une fiche sans type. Sa provenance
+       reste honnêtement data·inclusion (et non FINESS direct). */
+    if (p.source === "data_inclusion") {
+      const refs = p.sourceRefs || {};
+      const finessEge = p.finessEge || refs.finessEge;
+      const finessPm = p.finessPm || refs.finessPm;
+      return {
+        name: texte(p.name || p.nom || p.officialName),
+        officialName: texte(p.name || p.nom || p.officialName),
+        lat: p.lat ?? p.latitude, lng: p.lng ?? p.longitude,
+        address: p.address || p.adresse || "",
+        postalCode: p.postalCode || p.code_postal || "",
+        commune: p.commune || p.city || "",
+        category: p.category || (p.categories || [])[0] || "autre",
+        categories: p.categories || [],
+        primaryType: p.primaryType || p.type_structure || p.typology || "",
+        type_structure: p.type_structure || p.typology || "",
+        institutionalType: p.institutionalType || p.type_structure || "",
+        services: unique(p.services || p.service_types),
+        description: texte(p.description),
+        phone: p.phone || p.telephone || "",
+        photos: Array.isArray(p.photos) ? p.photos : [],
+        image: p.image || p.image_url || "",
+        imageSource: p.imageSource || p.image_source || "",
+        imageAttribution: p.imageAttribution || p.image_attribution || "",
+        imageSourceUrl: p.imageSourceUrl || p.image_source_url || "",
+        imageAuthor: p.imageAuthor || p.image_author || "",
+        imageLicense: p.imageLicense || p.image_license || "",
+        imageUpdatedAt: p.imageUpdatedAt || p.image_updated_at || null,
+        source: "data_inclusion", dataProvider: p.dataProvider || "finess",
+        finessEge, finessPm, siret: p.siret || refs.siret,
+        sourceRefs: Object.assign({}, refs, { ...(finessEge ? {finessEge} : {}),
+          ...(finessPm ? {finessPm} : {}), ...(p.siret ? {siret: p.siret} : {}) }),
+        updatedAt: p.updatedAt || p.date_maj || null,
+        provenance: p.provenance || [{ source: "data_inclusion",
+          id: p.id || null, url: p.officialUrl || p.lien_source || null,
+          updatedAt: p.updatedAt || null, confidence: p.sourceConfidence || .88 }],
+        officialUrl: p.officialUrl || p.lien_source || null,
+        sourceConfidence: p.sourceConfidence || .88,
+      };
+    }
     const pm = p.informationsGeneralesPMEJ || p.pm || p;
     const ege = liste(p.ege)[0] || {};
     const e = p.informationsGeneralesEGE || ege.informationsGeneralesEGE || ege || p;

@@ -12,6 +12,7 @@
   const SOURCES = Object.freeze({
     autour: 0.82,
     dora: 0.90,
+    data_inclusion: 0.88,
     finess: 0.96,
     service_public: 0.96,
     openstreetmap: 0.68,
@@ -44,6 +45,35 @@
   const coordonneesValides = (lat, lng) => lat != null && lng != null &&
     lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
   const normaliserIdentifiant = (value) => texte(value).replace(/\s+/g, "").toUpperCase();
+  const sourcePhoto = (value) => {
+    const source = texte(value);
+    return ["data_inclusion", "dora", "finess", "service_public", "data_gouv"].includes(source)
+      ? "institutional" : source;
+  };
+
+  function mediasDe(raw) {
+    const p = raw || {};
+    const photos = Array.isArray(p.photos) ? p.photos.slice() : [];
+    const image = p.image || p.image_url || p.photo_url || p.photo;
+    if (!photos.length && image) photos.push({
+      url: image,
+      attribution: p.imageAttribution || p.image_attribution || p.image_author || "",
+      source: sourcePhoto(p.imageSource || p.image_source),
+      sourceUrl: p.imageSourceUrl || p.image_source_url || "",
+      author: p.imageAuthor || p.image_author || "",
+      license: p.imageLicense || p.image_license || "",
+      updatedAt: p.imageUpdatedAt || p.image_updated_at || null,
+    });
+    return photos.filter((photo) => photo && (photo.url || photo.image_url)).map((photo) => ({
+      url: texte(photo.url || photo.image_url),
+      attribution: photo.attribution || "",
+      source: sourcePhoto(photo.source || photo.image_source),
+      sourceUrl: photo.sourceUrl || photo.source_url || photo.image_source_url || "",
+      author: photo.author || photo.image_author || "",
+      license: photo.license || photo.image_license || "",
+      updatedAt: photo.updatedAt || photo.image_updated_at || null,
+    })).filter((photo) => photo.url);
+  }
 
   function empreinte(value) {
     let h = 2166136261;
@@ -75,6 +105,8 @@
       finessPm: p.finessPm || refs.finessPm,
       finessEge: p.finessEge || refs.finessEge,
       doraId: p.doraId || refs.doraId || (source === "dora" ? p.id : null),
+      dataInclusionId: p.dataInclusionId || refs.dataInclusionId ||
+        (source === "data_inclusion" ? p.id : null),
       servicePublicId: p.servicePublicId || refs.servicePublicId ||
         (source === "service_public" ? p.id : null),
       osmId: p.osmId || refs.osmId || (source === "openstreetmap" ? p.idOsm || p.id : null),
@@ -92,7 +124,8 @@
       /* FINESS EGE/PM identifie le site ; le SIRET peut être partagé par
          plusieurs établissements d'une même personne morale. */
       ["finessEge", "finess-ege"], ["finessPm", "finess-pm"], ["siret", "siret"],
-      ["finess", "finess"], ["doraId", "dora"], ["servicePublicId", "service-public"],
+      ["finess", "finess"], ["doraId", "dora"], ["dataInclusionId", "data-inclusion"],
+      ["servicePublicId", "service-public"],
       ["osmId", "osm"], ["autourId", "autour"],
     ]) {
       if (ids && ids[champ]) return prefixe + ":" + ids[champ];
@@ -236,6 +269,8 @@
     const status = statutDe(p);
     const address = adresseDe(p);
     const officialName = texte(p.officialName || p.nom || p.name || p.titre);
+    const photos = mediasDe(p);
+    const premierePhoto = photos[0] || null;
     const id = cleOfficielle(ids) || "aide:" + empreinte(sansAccents(name) + "|" + sansAccents(address) + "|" + lat.toFixed(4) + "," + lng.toFixed(4));
     const out = {
       kind: "AideStructure",
@@ -263,6 +298,20 @@
       email: texte(p.email || p.courriel),
       website: texte(p.website || p.url || p.site_web || p.url_service_public),
       openingHours: p.openingHours || p.horaires ? (p.openingHours || { weekdayDescriptions: p.horaires }) : null,
+      photos,
+      image: texte(p.image || p.image_url || (premierePhoto && premierePhoto.url)),
+      imageSource: texte(p.imageSource || p.image_source || (premierePhoto && premierePhoto.source)),
+      imageAttribution: p.imageAttribution || p.image_attribution || (premierePhoto && premierePhoto.attribution) || "",
+      imageSourceUrl: texte(p.imageSourceUrl || p.image_source_url || (premierePhoto && premierePhoto.sourceUrl)),
+      imageAuthor: texte(p.imageAuthor || p.image_author || (premierePhoto && premierePhoto.author)),
+      imageLicense: texte(p.imageLicense || p.image_license || (premierePhoto && premierePhoto.license)),
+      imageUpdatedAt: p.imageUpdatedAt || p.image_updated_at || (premierePhoto && premierePhoto.updatedAt) || null,
+      image_url: texte(p.image_url || p.image || (premierePhoto && premierePhoto.url)),
+      image_source: texte(p.image_source || p.imageSource || (premierePhoto && premierePhoto.source)),
+      image_source_url: texte(p.image_source_url || p.imageSourceUrl || (premierePhoto && premierePhoto.sourceUrl)),
+      image_author: texte(p.image_author || p.imageAuthor || (premierePhoto && premierePhoto.author)),
+      image_license: texte(p.image_license || p.imageLicense || (premierePhoto && premierePhoto.license)),
+      image_updated_at: p.image_updated_at || p.imageUpdatedAt || (premierePhoto && premierePhoto.updatedAt) || null,
       openNow: status.ouvert,
       ouvert: status.ouvert,
       status,
@@ -395,6 +444,33 @@
       sourceConfidence: Math.max(a.sourceConfidence || 0, b.sourceConfidence || 0),
       sourcesCount: new Set([...(a.sources || []), ...(b.sources || [])]).size,
     });
+    /* Les médias sont orthogonaux au score d'identité : une source plus riche
+       en téléphone ou en description ne doit pas faire disparaître la photo
+       portée par l'autre référentiel. */
+    const medias = [...mediasDe(a), ...mediasDe(b)];
+    const vus = new Set();
+    out.photos = medias.filter((photo) => {
+      if (vus.has(photo.url)) return false;
+      vus.add(photo.url);
+      return true;
+    });
+    if (!out.image && out.photos.length) {
+      const photo = out.photos[0];
+      out.image = photo.url;
+      out.imageSource = sourcePhoto(photo.source);
+      out.imageAttribution = photo.attribution ||
+        (photo.author ? [{name: photo.author, url: ""}] : "");
+      out.imageSourceUrl = photo.sourceUrl;
+      out.imageAuthor = photo.author;
+      out.imageLicense = photo.license;
+      out.imageUpdatedAt = photo.updatedAt;
+      out.image_url = photo.url;
+      out.image_source = out.imageSource;
+      out.image_source_url = out.imageSourceUrl;
+      out.image_author = out.imageAuthor;
+      out.image_license = out.imageLicense;
+      out.image_updated_at = out.imageUpdatedAt;
+    }
     out.id = cleOfficielle(out.identifiers) || principal.id;
     return evaluerCapacites(out);
   }
