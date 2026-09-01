@@ -199,7 +199,7 @@ test("le compteur ne déplace jamais les onglets voisins", () => {
 
 test("« Maintenant » vide propose « Bientôt » au lieu d'une impasse", () => {
   assert.match(html, /Rien en cours près de toi\./);
-  assert.match(html, /data-creneau-vers="bientot"/);
+  assert.match(html, /data-creneau-vers="avenir"/);
   assert.match(html, /Voir ce qui arrive bientôt →/);
 });
 

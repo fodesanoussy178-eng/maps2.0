@@ -5778,17 +5778,18 @@ const SUGGESTIONS_INTENTION = [
 
 /* Timeline : la même carte, à un autre moment. */
 /* Le moteur garde ses quatre états internes pour les recherches explicites,
-   mais la navigation principale n'expose que les trois fenêtres utiles ici.
-   `Bientôt` est une fenêtre mobile des prochaines heures, définie par
-   temporel.js — elle ne dépend ni de l'heure de la journée ni d'un calcul
-   propre à cet écran. */
+   mais la navigation principale expose trois fenêtres : Maintenant, l'ancien
+   « À venir » renommé « Bientôt », puis Ce week-end. Le libellé Bientôt
+   n'expose donc pas l'ancien créneau interne du même nom. */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant"  },
   { id:"bientot",    label:"Bientôt"     },
   { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
   { id:"avenir",     label:"À venir"      },
 ];
-const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX.filter(c=>c.id !== "avenir"));
+const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX
+  .filter(c=>c.id !== "bientot")
+  .map(c=>c.id === "avenir" ? Object.assign({}, c, {label:"Bientôt"}) : c));
 /* Le créneau choisi ↔ la section rendue par le moteur temporel. */
 const SECTIONS_DU_CRENEAU = Object.freeze({
   maintenant:["maintenant"],
@@ -12972,7 +12973,7 @@ function statutGroupeHTML(){
     if(technique && !/Rien d’ouvert à proximité/.test(technique)) return technique;
     return '<div class="fb-statut" data-testid="maintenant-vide">'+
       'Rien en cours près de toi.'+
-      '<br><button data-creneau-vers="bientot">Voir ce qui arrive bientôt →</button>'+
+      '<br><button data-creneau-vers="avenir">Voir ce qui arrive bientôt →</button>'+
       '<button data-etat-action="all">Voir tous les lieux</button></div>';
   }
   const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];

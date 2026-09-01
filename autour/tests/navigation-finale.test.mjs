@@ -45,12 +45,17 @@ test("Maintenant reste une sélection unique bornée à trois, sans 10+", () => 
 test("Bientôt est un créneau glissant issu du moteur temporel commun", () => {
   const creneaux = html.slice(html.indexOf("const CRENEAUX"), html.indexOf("const SECTIONS_DU_CRENEAU"));
   assert.match(creneaux, /id:"bientot",\s+label:"Bientôt"/);
+  assert.match(creneaux, /id:"avenir",\s+label:"À venir"/);
   assert.match(creneaux, /id:"weekend",\s+label:"Ce week-end"/);
   assert.doesNotMatch(creneaux, /Ce soir/);
+  const visibles = html.slice(html.indexOf("const CRENEAUX_VISIBLES"),
+    html.indexOf("/* Le créneau choisi"));
+  assert.match(visibles, /filter\(c=>c\.id !== "bientot"\)/);
+  assert.match(visibles, /c\.id === "avenir" \? Object\.assign\(\{\}, c, \{label:"Bientôt"\}\)/);
+  assert.doesNotMatch(visibles, /label:"À venir"/);
   const onglets = html.slice(html.indexOf("function ongletsTemps"),
     html.indexOf("/* Ce qu'on écrit quand un groupe est vide"));
   assert.match(onglets, /CRENEAUX_VISIBLES\.map/);
-  assert.doesNotMatch(onglets, /À venir/);
   assert.match(html, /function recommandationsBientot\(limite\)[\s\S]*?fenetreSurface\("bientot"/);
   assert.match(html, /if\(creneau === "bientot" && !modeAide\)/);
   assert.match(temporel, /const FENETRE_BIENTOT_MS = 6 \* 3600 \* 1000;/);
