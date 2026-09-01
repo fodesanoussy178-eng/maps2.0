@@ -135,6 +135,50 @@ test("la fermeture est conservée et n'empêche pas l'affichage", () => {
   assert.equal(AIDE.fiable(ferme, ["logement"]), true);
 });
 
+test("la confiance Aide distingue une source fraîche, vieillissante et inconnue", () => {
+  const maintenant = Date.now();
+  const frais = AIDE.normaliser({
+    source: "finess", name: "CHRS vérifié", type_structure: "chrs",
+    category: "hebergement", status: "open", lat: 50.72, lng: 3.16,
+    updatedAt: new Date(maintenant - 30 * 86400000).toISOString(),
+    address: "1 rue du Foyer, 59200 Tourcoing", sourceRefs: {finessEge: "590999991"},
+  });
+  assert.equal(frais.trustLevel, "verified_help");
+  assert.equal(frais.freshness, "fresh");
+  assert.ok(frais.confidenceAide >= 50);
+
+  const ancien = AIDE.normaliser({
+    source: "finess", name: "CHRS ancien", type_structure: "chrs",
+    category: "hebergement", status: "open", lat: 50.72, lng: 3.16,
+    updatedAt: new Date(maintenant - 2 * 365 * 86400000).toISOString(),
+    address: "2 rue du Foyer, 59200 Tourcoing", sourceRefs: {finessEge: "590999992"},
+  });
+  assert.equal(ancien.trustLevel, "probable_help");
+  assert.equal(ancien.freshness, "stale");
+
+  const inconnu = AIDE.normaliser({
+    source: "openstreetmap", name: "Association sans mission", category: "asso",
+    lat: 50.72, lng: 3.16, address: "3 rue Test, 59200 Tourcoing",
+  });
+  assert.equal(inconnu.trustLevel, "unknown");
+  assert.equal(AIDE.fiable(inconnu, []), false);
+});
+
+test("l'adaptateur interne conserve le niveau de confiance et la source officielle", () => {
+  const fiche = AIDE.normaliser({
+    source: "service_public", name: "France Services test",
+    type_structure: "france_services", category: "mairie", lat: 50.72, lng: 3.16,
+    address: "4 rue Test, 59200 Tourcoing", updatedAt: "2026-08-01",
+    officialUrl: "https://lannuaire.service-public.fr/test",
+    servicePublicId: "sp-test",
+  });
+  const interneFiche = P.versInterne(fiche);
+  assert.equal(interneFiche.trustLevel, fiche.trustLevel);
+  assert.equal(interneFiche.sourceConfidence, fiche.sourceConfidence);
+  assert.equal(interneFiche.officialUrl, fiche.officialUrl);
+  assert.equal(interneFiche.lastSourceUpdate, fiche.lastSourceUpdate);
+});
+
 test("la déduplication suit les identifiants officiels puis le triplet de secours", () => {
   const memeSiret = AIDE.dedupe([
     { source: "dora", name: "CCAS Tourcoing", lat: 50.7248, lng: 3.1578, address: "26 rue Bienfaisance",

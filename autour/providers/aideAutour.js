@@ -7,7 +7,8 @@
     const p = record || {};
     const aide = p.aideStructure === true ||
       [p.cat, p.category, ...(Array.isArray(p.categories) ? p.categories : [])].some((category) =>
-        ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso"].includes(category));
+        ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso",
+          "toilettes", "collecte", "friperie"].includes(category));
     if (!aide) return null;
     return AIDE() ? AIDE().normaliser(Object.assign({}, p, {
       source: "autour",

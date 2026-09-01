@@ -261,6 +261,52 @@ let zoneActive = null;
 let porteeCourante = 0;
 const porteeValide = (p)=> p === porteeCourante;
 
+function contexteDepuisZone(zone){
+  if(!zone) return null;
+  const recherche = !!(zone.type === "recherche" ||
+    (CTX && zone.type === CTX.TYPES.RECHERCHE));
+  return Object.freeze({
+    mode: recherche ? "destination" : "gps",
+    source: recherche ? "search" : "gps",
+    key: CTX ? CTX.idZone(zone) : zone.type+":"+zone.lat.toFixed(2)+","+zone.lng.toFixed(2),
+    lat: zone.lat, lng: zone.lng,
+    city: zone.nom || null,
+    zone,
+  });
+}
+
+function contexteLocalisationActif(){ return activeLocationContext; }
+function destinationActive(){ return activeLocationContext?.mode === "destination"; }
+
+/* Changer de destination doit être une frontière de données, pas seulement
+   un filtre d'affichage. Les caches par coordonnées restent valides, mais les
+   collections en mémoire sont vidées afin qu'aucun ancien objet ne puisse
+   atteindre une surface avant la réponse de la nouvelle zone. */
+function viderDonneesContexte(){
+  permanentPlaces = [];
+  datatourismePlaces = [];
+  externalEvents = [];
+  userPublications = [];
+  lieux = [];
+  publies = userPublications;
+  dernierClassement = [];
+  revisionLieux += 1;
+  indexCategories.clear();
+  zonesVues.clear();
+  chargementsTemporaires.clear();
+  derniersChargementsTemporaires.clear();
+  requetesCouchesSupabase.clear();
+  signaturesCouchesPubliees.clear();
+  zonesResto.clear();
+  restaurationsEnCours.clear();
+  prechargementFait = false;
+  prechargementEnCours = false;
+  bassinAideActif = null;
+  bassinAideEnCours = null;
+  recoCache = null;
+  recoBurstCache = null;
+  generationAccueil += 1;
+}
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
    d'un coup tout travail en vol — et rend le nouveau numéro à l'appelant. */
 function definirZoneActive(zone){
@@ -280,6 +326,16 @@ function definirZoneActive(zone){
   // les cartes d'une ville qu'on vient de quitter serait afficher du faux
   dernierRecoRendu = null;
   selectionAccueil = null;
+  /* Le bassin est une donnée de la zone, pas une préférence globale. Tant que
+     la nouvelle résolution n'a pas répondu, conserver celui de la ville
+     précédente permettait à « Pour toi » d'afficher des événements d'un autre
+     bassin — particulièrement visible lors d'un Paris demandé depuis la MEL.
+     Les réponses en vol sont en plus gardées sous la portée ci-dessous et ne
+     pourront donc pas repeupler ces mémoires périmées. */
+  bassinTerritorialActif = null;
+  evenementsMetropole = [];
+  metropoleEnCours = null;
+  programmerPrechargementAide();
   return porteeCourante;
 }
 
@@ -5302,6 +5358,7 @@ async function demarrer(coords){
   /* ÉTAPE 2 — on rend la main au navigateur. Tout ce qui suit coûte du fil
      principal ou du réseau ; le faire avant la première peinture revenait à
      garder l'écran blanc pendant qu'on préparait ce qu'il devait montrer. */
+  apresPeinture(()=>programmerPrechargementAide());
   apresPeinture(()=>chargerLeDemarrage(rapide));
 
   /* ÉTAPE 3 — les écrans qu'on n'a pas encore ouverts. Le démarrage a rendu
@@ -5722,6 +5779,14 @@ function visibles(){
 }
 
 function visiblesBruts(){
+  if(modeAide){
+    /* Aide possède son propre bassin canonique. La carte générale peut garder
+       ses lieux en mémoire, mais aucun commerce, bar ou lieu culturel ne doit
+       traverser ce mode par proximité ou par catégorie technique. */
+    const besoins = besoinsSelectionnesAide();
+    return candidatsAideZone().filter((l)=>nomExploitable(l) &&
+      estSolutionAideLiee(l) && aideSuffisammentFiable(l, besoins));
+  }
   const q = recherche.trim().toLowerCase();
   // au repos, la carte se limite à la poignée de lieux de la carte d'accueil.
   // Pas en mode Aide : là, on veut voir tous les points d'aide autour, la
@@ -6778,7 +6843,8 @@ function sourceAide(l){
   const source = l && (l.source || ((l.sources || [])[0])) || "";
   const libelles = {
     openstreetmap:"OpenStreetMap", google_places:"Google Maps", datatourisme:"DATAtourisme",
-    autour:"Autour", openagenda:"Agenda officiel",
+    autour:"Autour", openagenda:"Agenda officiel", service_public:"Service-Public.fr",
+    dora:"DORA", finess:"FINESS",
   };
   return libelles[source] || (l && l.par) || "Source non renseignée";
 }
@@ -6796,7 +6862,8 @@ function libelleSourceEvenement(source){
 }
 
 function dateMiseAJourAide(l){
-  const brute = l && (l.updated_at || l.updatedAt || l.horairesVusLe || l.prixVuLe || l.created_at);
+  const brute = l && (l.lastSourceUpdate || l.updated_at || l.updatedAt ||
+    l.horairesVusLe || l.prixVuLe || l.created_at);
   const date = brute ? new Date(brute) : null;
   return date && Number.isFinite(date.getTime())
     ? date.toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"}) : "";
@@ -7784,13 +7851,171 @@ const RESEAUX_AIDE = [
     santeIntentions:["mentale"] },
 ];
 
-/* Une zone n'est chargée que pour le besoin qui l'a demandée. Une recherche
-   générale faite à l'ouverture d'Aide ne doit jamais empêcher la recherche
-   ciblée qui suit (« pharmacie », « psy », etc.). */
+/* Le bassin Aide est une couche de données locale, pas une variante de la carte
+   générale. Il est rempli après la première peinture, conservé par zone et
+   seulement projeté dans les marqueurs quand Aide est actif. Ainsi l'application
+   peut déjà connaître les ressources fiables avant le clic, sans modifier la
+   surface normale d'Autour. */
 const zonesAideChargees = new Map();
 const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
 const RAYON_AIDE = window.AutourAideRayon || null;
+const AIDE_CACHE_PREFIX = "autour:bassin-aide:v1:";
+const AIDE_CACHE_HEURES = 36;
+const AIDE_CACHE_RAYON = 18000;
+let bassinAideActif = null;
+let bassinAideEnCours = null;
+let prechargementAideProgramme = false;
+
+const CHAMPS_BASSIN_AIDE = [
+  "id", "autourId", "kind", "aideStructure", "titre", "name", "officialName", "aliases",
+  "lat", "lng", "cat", "category", "categories", "type", "primaryType", "type_structure",
+  "institutionalType", "service_type", "service_types", "services", "tags", "description",
+  "adresse", "address", "cp", "postalCode", "commune", "tel", "phone", "url", "website",
+  "horaires", "openingHours", "ouvert", "openNow", "status", "source", "sources", "sourceRefs",
+  "identifiers", "provenance", "sourceConfidence", "capacities", "capacityEvidence", "capacitesAide",
+  "confidenceAide", "confianceAide", "trustLevel", "niveauConfianceAide", "freshness",
+  "lastSourceUpdate", "lastSyncedAt", "officialUrl", "capacityHints", "solidaire",
+];
+
+function cleBassinAide(lat, lng) {
+  return AIDE_CACHE_PREFIX + encodeURIComponent(idZoneActive()) + ":" +
+    Number(lat).toFixed(3) + "," + Number(lng).toFixed(3);
+}
+
+function allegementBassinAide(lieu) {
+  const out = {};
+  CHAMPS_BASSIN_AIDE.forEach((champ) => {
+    if (lieu && lieu[champ] !== undefined) out[champ] = lieu[champ];
+  });
+  return out;
+}
+
+function lireBassinAide(lat, lng) {
+  const prefixe = AIDE_CACHE_PREFIX + encodeURIComponent(idZoneActive()) + ":";
+  let meilleur = null;
+  let distance = Infinity;
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const cle = localStorage.key(i);
+      if (!cle || !cle.startsWith(prefixe)) continue;
+      const entree = JSON.parse(localStorage.getItem(cle) || "null");
+      if (!entree || !Array.isArray(entree.items) || !entree.items.length) continue;
+      if (!Number.isFinite(Number(entree.t)) || Date.now() - Number(entree.t) > AIDE_CACHE_HEURES * 3600 * 1000) continue;
+      const centre = Array.isArray(entree.center) ? entree.center : cle.slice(prefixe.length).split(",").map(Number);
+      const d = centre.length === 2 ? distanceM(lat, lng, Number(centre[0]), Number(centre[1])) : Infinity;
+      if (d > AIDE_CACHE_RAYON || d >= distance) continue;
+      meilleur = Object.assign({}, entree, {center: [Number(centre[0]), Number(centre[1])]});
+      distance = d;
+    }
+  } catch (e) { return null; }
+  return meilleur;
+}
+
+function ecrireBassinAide(lat, lng, items) {
+  if (!items || !items.length) return;
+  try {
+    localStorage.setItem(cleBassinAide(lat, lng), JSON.stringify({
+      t: Date.now(), center: [lat, lng], items: items.slice(0, 180).map(allegementBassinAide),
+    }));
+  } catch (e) {
+    /* Le bassin en mémoire reste valable ; le prochain passage refetchera si le
+       navigateur n'a plus de quota. */
+  }
+}
+
+function normaliserCandidatAide(raw) {
+  if (!raw) return null;
+  const structure = window.AutourAideStructures;
+  const providers = window.AutourProviders;
+  if (!structure || typeof structure.normaliser !== "function") return raw.aideStructure ? raw : null;
+  const source = Object.assign({}, raw, {
+    name: raw.name || raw.nom || raw.titre || raw.title,
+    address: raw.address || raw.adresse || "",
+    category: raw.category || raw.cat,
+    aideStructure: true,
+  });
+  const canonique = structure.normaliser(source);
+  if (!canonique || (typeof structure.affichable === "function" && !structure.affichable(canonique))) return null;
+  const interne = providers && typeof providers.versInterne === "function"
+    ? providers.versInterne(canonique) : canonique;
+  if (!interne) return null;
+  interne.aideStructure = true;
+  interne.kind = "AideStructure";
+  if (!interne.lastSyncedAt) interne.lastSyncedAt = new Date().toISOString();
+  return interne;
+}
+
+function ajouterAuBassinAide(nouveaux, meta) {
+  const centre = centreZoneActive() || [Number(nouveaux && nouveaux[0] && nouveaux[0].lat), Number(nouveaux && nouveaux[0] && nouveaux[0].lng)];
+  if (!centre || !Number.isFinite(Number(centre[0])) || !Number.isFinite(Number(centre[1]))) return false;
+  const entrants = (nouveaux || []).map(normaliserCandidatAide).filter(Boolean)
+    .filter((l) => dansZoneActive(l) && estAideFrance(l));
+  if (!entrants.length) return false;
+  const precedents = bassinAideActif && bassinAideActif.zoneKey === idZoneActive()
+    ? bassinAideActif.items : [];
+  const items = window.AutourAideStructures && typeof AutourAideStructures.dedupe === "function"
+    ? AutourAideStructures.dedupe([...precedents, ...entrants]) : [...precedents, ...entrants];
+  bassinAideActif = {
+    zoneKey: idZoneActive(), center: [Number(centre[0]), Number(centre[1])], items,
+    loadedAt: Date.now(), source: meta && meta.source || "aide",
+  };
+  ecrireBassinAide(Number(centre[0]), Number(centre[1]), items);
+  if (modeAide) planifierRendu({carte: true, accueil: true, feuille: true});
+  return true;
+}
+
+function hydraterBassinAide(lat, lng) {
+  if (bassinAideActif && bassinAideActif.zoneKey === idZoneActive()) return bassinAideActif.items;
+  const entree = lireBassinAide(lat, lng);
+  if (!entree) return [];
+  const items = entree.items.map(normaliserCandidatAide).filter(Boolean);
+  bassinAideActif = {
+    zoneKey: idZoneActive(), center: entree.center || [lat, lng], items,
+    loadedAt: Number(entree.t) || 0, cachedAt: Number(entree.t) || 0, source: "cache",
+  };
+  return items;
+}
+
+function candidatsAideZone() {
+  const sources = [
+    ...(bassinAideActif && bassinAideActif.zoneKey === idZoneActive() ? bassinAideActif.items : []),
+    ...lieux.filter((l) => l && l.aideStructure === true),
+  ];
+  const normalises = sources.map(normaliserCandidatAide).filter(Boolean);
+  const dedupes = window.AutourAideStructures && typeof AutourAideStructures.dedupe === "function"
+    ? AutourAideStructures.dedupe(normalises) : normalises;
+  return resultatsAideDansTerritoire(dedupes).filter((l) =>
+    window.AutourAideStructures ? AutourAideStructures.affichable(l) : true);
+}
+
+function aideSuffisammentFiable(l, besoins) {
+  if (!l || !AIDE) return false;
+  const niveau = l.trustLevel || l.niveauConfianceAide || "unknown";
+  if (niveau === "unknown") return false;
+  const structure = window.AutourAideStructures;
+  if (structure && typeof structure.fiable === "function" && !structure.fiable(l, besoins)) return false;
+  return true;
+}
+
+function prechargerBassinAideZone() {
+  const centre = centreDonnees();
+  if (!centre) return Promise.resolve([]);
+  hydraterBassinAide(centre[0], centre[1]);
+  return chargerAide(centre[0], centre[1], {preload: true}).then(() =>
+    bassinAideActif ? bassinAideActif.items : []);
+}
+
+function programmerPrechargementAide() {
+  if (prechargementAideProgramme || !centreDonnees()) return;
+  prechargementAideProgramme = true;
+  const lancer = () => {
+    prechargementAideProgramme = false;
+    prechargerBassinAideZone().catch(() => {});
+  };
+  if (ORDO && ORDO.differer) ORDO.differer(lancer, {timeout: 5000});
+  else setTimeout(lancer, 1800);
+}
 /* Les besoins que la phrase n'a pas nommés mais que la taxonomie propose. Ils
    entrent dans la recherche, à poids réduit : élargir n'est pas détourner. */
 let besoinsSecondairesAide = [];
@@ -7926,6 +8151,11 @@ function reseauxPourContexteAide(contexte){
 async function chargerAide(lat,lng,options){
   const o = options || {};
   const contexte = contexteAideChargement();
+  /* Le cache dédié répond avant toute source réseau. La catégorie choisie
+     ensuite réutilise ce même bassin : elle ne repart pas d'une carte vide. */
+  if (!bassinAideActif || bassinAideActif.zoneKey !== idZoneActive())
+    hydraterBassinAide(lat, lng);
+  if (!o.force && bassinAideEnCours) return bassinAideEnCours;
   const cleZoneAide = idZoneActive()+"|"+contexte.cle;
   const deja = zonesAideChargees.get(cleZoneAide);
   if(o.force) zonesAideChargees.delete(cleZoneAide);
@@ -7953,19 +8183,22 @@ async function chargerAide(lat,lng,options){
     finally{
       if(generationCourante(generation)){
         aideEnCours = false;
+        const aides = candidatsAideZone();
         const trouve = contexte.besoins.length
-          ? lieux.some(l=>dansZoneActive(l) && AIDE && AIDE.estSolution(l,contexte.besoins))
-          : lieux.some(l=>dansZoneActive(l) && correspondUneCategorie(l,SET_AIDE));
+          ? aides.some((l)=>estSolutionAideLiee(l) && aideSuffisammentFiable(l, contexte.besoins))
+          : aides.some((l)=>aideSuffisammentFiable(l));
         definirEtatRechercheVersionne("places",trouve ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
         terminerGeneration(generation);
       }
     }
   })();
+  bassinAideEnCours = promesse;
   chargementsAideEnCours.set(cleChargement,promesse);
   try{ return await promesse; }
   finally{
     if(chargementsAideEnCours.get(cleChargement) === promesse)
       chargementsAideEnCours.delete(cleChargement);
+    if(bassinAideEnCours === promesse) bassinAideEnCours = null;
   }
 }
 
@@ -8020,8 +8253,29 @@ async function lieuxAideAutour(lat, lng, contexte, signal){
   }catch(e){ return []; }
 }
 
+function publierAideSource(items, source) {
+  const retenus = resultatsAideDansTerritoire(items || []);
+  if (!retenus.length) return false;
+  return ajouterAuBassinAide(retenus, {source});
+}
+
+function ajouterLieuxGoogleAide(fiches, catDefaut) {
+  const structures = (fiches || []).filter((f) => f && f.nom && f.isAidProvider !== false)
+    .map((f) => Object.assign({}, f, {
+      name: f.nom,
+      titre: f.nom,
+      category: f.cat || catDefaut || "asso",
+      cat: f.cat || catDefaut || "asso",
+      address: f.adresse || "",
+      source: "google_places",
+      aideStructure: true,
+      autourId: f.autourId || f.idGoogle || f.id,
+    }));
+  return ajouterAuBassinAide(structures, {source: "google_places"});
+}
+
 async function chargerAideVraiment(lat,lng,generation,contexte){
-  charge("Recherche des points d’aide…");
+  if (!contexte.preload) charge("Recherche des points d’aide…");
   aideEtrangersEcartes = false;
   /* Les sources sociales et ouvertes passent d'abord. Elles portent les
      catégories et conditions d'accès ; Google ne sert ensuite qu'à compléter
@@ -8035,37 +8289,21 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
       /* Ce qu'Autour connaît déjà : publications et lieux persistés. Ils
          restent une source à part, puis sont corroborés par les référentiels. */
       charger:()=>lieuxAideAutour(lat, lng, contexte, generation.signal),
-      publier:(locaux)=>{
-        const retenus=resultatsAideDansTerritoire(locaux || []);
-        if(retenus.length) fusionner(retenus,"permanent");
-        return !!retenus.length;
-      },
+      publier:(locaux)=>publierAideSource(locaux, "autour"),
     },
     {
       /* L'annuaire public d'abord : il donne le type normalisé et l'identité
          officielle. OSM arrive ensuite compléter, jamais remplacer. */
       charger: ()=> lieuxAideInstitutionnels(lat, lng, contexte, generation.signal),
-      publier: (locaux)=>{
-        const retenus = resultatsAideDansTerritoire(locaux || []);
-        if(retenus.length) fusionner(retenus, "permanent");
-        return !!retenus.length;
-      }
+      publier: (locaux)=>publierAideSource(locaux, "service_public")
     },
     {
       charger:()=>lieuxAideSource("aideDora",lat,lng,contexte,generation.signal),
-      publier:(locaux)=>{
-        const retenus=resultatsAideDansTerritoire(locaux || []);
-        if(retenus.length) fusionner(retenus,"permanent");
-        return !!retenus.length;
-      },
+      publier:(locaux)=>publierAideSource(locaux, "dora"),
     },
     {
       charger:()=>lieuxAideSource("aideFiness",lat,lng,contexte,generation.signal),
-      publier:(locaux)=>{
-        const retenus=resultatsAideDansTerritoire(locaux || []);
-        if(retenus.length) fusionner(retenus,"permanent");
-        return !!retenus.length;
-      },
+      publier:(locaux)=>publierAideSource(locaux, "finess"),
     },
     {
       /* ---- LE RAYON PROGRESSIF ------------------------------------------
@@ -8093,9 +8331,11 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
           if(!generationCourante(generation)) return r;
           const locaux = r && r.ok ? resultatsAideDansTerritoire(r.lieux) : [];
           dernierResultat = r && r.ok ? Object.assign({}, r, {lieux:locaux}) : r;
-          if(locaux.length) fusionner(locaux,"permanent");
+          if(locaux.length) ajouterAuBassinAide(locaux, {source: "openstreetmap"});
           if(!RAYON_AIDE) break;
-          const retenus = lieux.filter(estSolutionAideLiee);
+          const retenus = candidatsAideZone().filter((lieu) =>
+            distanceM(lat, lng, lieu.lat, lieu.lng) <= palier &&
+            estSolutionAideLiee(lieu) && aideSuffisammentFiable(lieu, contexte.besoins));
           const verdict = RAYON_AIDE.evaluer(retenus, palier);
           rayonAideAtteint = palier;
           if(!verdict.elargir) break;
@@ -8115,11 +8355,7 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
     },
     {
       charger:()=>lieuxDatatourisme(lat,lng,generation.signal),
-      publier:tourisme=>{
-        const locaux = resultatsAideDansTerritoire(tourisme || []);
-        if(locaux.length) fusionner(locaux,"datatourisme");
-        return !!locaux.length;
-      },
+      publier:tourisme=>publierAideSource(tourisme, "datatourisme"),
     },
     {
       charger:async()=>{
@@ -8145,13 +8381,13 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
           if(!parCategorie.has(cat)) parCategorie.set(cat,[]);
           parCategorie.get(cat).push(f);
         });
-        parCategorie.forEach((fiches,cat)=>ajouterLieuxGoogle(fiches,cat));
+        parCategorie.forEach((fiches,cat)=>ajouterLieuxGoogleAide(fiches,cat));
         return !!(garder && garder.length);
       },
     },
   ], ()=>generationCourante(generation));
   if(generationCourante(generation)){
-    charge(null);
+    if(!contexte.preload) charge(null);
     majAccueil();
   }
   return exploitable;
@@ -8579,9 +8815,11 @@ const SET_AIDE  = new Set(CATS_AIDE);
    L'ancienne liste posait la question autrement — « Parler à une association »,
    « Emploi et droits » — c'est-à-dire par l'organigramme plutôt que par le
    problème. On demande maintenant « de quoi as-tu besoin ? ». */
-const SOUS_AIDE = (AIDE ? AIDE.BESOINS_GRILLE : []).map(b=>({
+const SOUS_AIDE = (AIDE ? AIDE.BESOINS_GRILLE : []).filter(b=>b.id !== "autre").map(b=>({
   id:b.id, emoji:b.emoji, label:b.label, cats:b.cats,
 }));
+const AIDE_AUTRE = AIDE && AIDE.BESOIN_DE ? AIDE.BESOIN_DE("autre") :
+  {id:"autre", emoji:"➕", label:"Autre aide", cats:["asso","mairie"]};
 /* L'urgence n'est pas un besoin de plus : c'est une gravité. Elle traverse
    tous les besoins et remonte ce qui accueille sans rendez-vous. Elle garde
    donc sa place, à part et au-dessus. */
@@ -8607,7 +8845,8 @@ let intentionsSanteAide = [];
 
 function sousAideChoisi(){
   if(sousAide === "urgence") return AIDE_URGENCE;
-  return sousAide ? SOUS_AIDE.find(x=>x.id===sousAide) : null;
+  return sousAide ? (SOUS_AIDE.find(x=>x.id===sousAide) ||
+    (sousAide === "autre" ? AIDE_AUTRE : null)) : null;
 }          // id du sous-filtre actif, ou null
 
 /* Ce qu'on risque à ne pas trouver. Dormir dehors ou renoncer à des soins ne
@@ -8706,7 +8945,7 @@ function scoreAide(l, ctx){
 
 /* Le sous-filtre actif, ou le mode Aide entier s'il n'y en a pas. */
 function catsAideActives(){
-  const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+  const s = sousAideChoisi();
   return s ? new Set(s.cats) : SET_AIDE;
 }
 
@@ -8742,7 +8981,7 @@ function proposableAuto(l, ctx){
     // voisine mais non reliée à « Logement » ou « Santé » ne prend jamais la
     // place d'une solution dans le panneau ni sur la carte.
     if(!estSolutionAideLiee(l)) return false;
-    const s = sousAide && SOUS_AIDE.find(x=>x.id === sousAide);
+    const s = sousAideChoisi();
     if(s && s.solidaireSeul && !l.solidaire) return false;
     // « Urgence » ne montre que ce qui reçoit en urgence : un club de sport
     // classé « association » n'a rien à faire dans cette liste-là
@@ -9730,74 +9969,51 @@ function blocAideAccueil(){
     '<u>Voir →</u></button>';
 }
 
-/* Écran 1 — la question, et rien d'autre. Dix besoins écrits comme on les
-   dit, plus l'urgence à part, plus un champ pour expliquer avec ses mots.
-   Aucune structure n'est nommée à ce stade : « CCAS » ne veut rien dire tant
-   qu'on n'a pas eu besoin d'un CCAS. */
+/* Écran 1 — la question, et rien d'autre. Neuf besoins visibles, puis « Autre
+   besoin » à part : la grille reste mémorisable, tout en gardant une sortie
+   pour ce qui ne rentre dans aucune case. */
 function ecranBesoinsAide(){
-  /* L'ordre est le message. Quelqu'un qui ouvre cet écran en urgence ne doit
-     pas avoir à lire dix cases avant de trouver la porte d'entrée : l'urgence
-     passe donc avant tout, y compris avant la question. Puis une phrase qui
-     dit ce que fait Aide — sans elle, l'écran se lit comme une grille de
-     cases sans promesse. La question vient ensuite, les besoins après, et
-     l'expression libre en dernier pour ceux qui n'ont trouvé leur cas dans
-     aucune case. */
   return '<section class="ab" data-testid="aide-besoins">'+
-
-    // 0 · ce qu'est cet écran, en deux lignes
-    '<p class="ab-entete"><b>❤️ Aide autour de toi</b>'+
-      '<i>Trouve rapidement les structures et services qui peuvent t’aider '+
-      'près de chez toi.</i></p>'+
-
-    // 1 · l'urgence, en premier et impossible à manquer. Elle dit aussi ce
-    //     qu'Autour n'est pas : une application d'orientation ne remplace pas
-    //     un service d'urgence, et le laisser croire serait dangereux.
     '<button class="ab-urgence" data-sa="urgence" data-testid="aide-urgence">'+
-      '<span class="abu-haut"><em>'+AIDE_URGENCE.emoji+'</em>'+
-        '<b>Besoin d’aide urgente&nbsp;?</b></span>'+
-      '<span class="abu-quoi">Santé, mise à l’abri, hébergement d’urgence, '+
-        'danger immédiat</span>'+
-      '<span class="abu-cta">Pour une situation urgente, commence ici →</span>'+
+      '<span class="abu-haut"><em>🆘</em><b>Besoin d’aide urgente&nbsp;?</b></span>'+
+      '<span class="abu-num">112 · 115 · 3114</span>'+
+      '<span class="abu-cta">Voir les urgences&nbsp; →</span>'+
     '</button>'+
-    /* Une note de bas de bloc, pas un paragraphe : elle doit être lue, sans
-       repousser la question sous le pli. */
-    '<p class="ab-secours">Danger immédiat&nbsp;: <b>15</b> · <b>17</b> · '+
-      '<b>18</b> · <b>112</b> · <b>115</b>. Prévention du suicide&nbsp;: <b>3114</b>. '+
-      'Autour oriente, il ne remplace pas les secours.</p>'+
-
-    // 2 · ce que fait Aide, en une phrase et sans mot d'administration
-    '<p class="ab-promesse">Explique ton besoin&nbsp;: Autour te propose les '+
-      'aides et les structures utiles autour de toi.</p>'+
-
-    // 3 · la question
     '<p class="ab-titre">De quoi as-tu besoin&nbsp;?</p>'+
-
-    // 4 · les besoins
+    '<p class="ab-intro">Choisis un besoin ou décris-le avec tes mots.</p>'+
     '<div class="ab-grille">'+SOUS_AIDE.map(b=>
       '<button class="ab-besoin" data-sa="'+esc(b.id)+'">'+
         '<em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>').join("")+
     '</div>'+
-
-    // 5 · l'expression libre, pour ce qui n'entre dans aucune case
-    '<p class="ab-sous">Ou explique-le simplement&nbsp;:</p>'+
+    '<button class="ab-autre" data-sa="autre"><b>＋</b> Autre besoin</button>'+
+    '<div class="ab-separateur" aria-hidden="true"></div>'+
+    '<p class="ab-sous">Ou décris simplement ta situation</p>'+
     '<form class="ab-form" id="formBesoin">'+
       '<input id="champBesoin" type="search" enterkeyhint="search" autocomplete="off" '+
-        'placeholder="« je n’ai rien à manger »" '+
+        'placeholder="Je dois trouver où manger ce soir…" '+
         'aria-label="Explique ce dont tu as besoin">'+
-      '<button type="submit" class="ab-ok">Chercher</button>'+
+      '<button type="submit" class="ab-ok">Trouver de l’aide</button>'+
     '</form>'+
-    /* Trois exemples plutôt qu'un : un seul placeholder se lit comme le
-       format attendu, trois se lisent comme une invitation à écrire ses
-       propres mots. Et la dernière ligne évite le voyage inutile — quelqu'un
-       qui vient pour une réparation le sait avant de taper, au lieu de
-       l'apprendre après. */
-    '<p class="ab-exemples">« je dors dehors » · '+
-      '« j’ai besoin d’aide pour une démarche » · '+
-      '« j’ai 20 ans et je trouve pas de travail »</p>'+
-    '<p class="ab-ailleurs-note">Pour une réparation, un commerce ou un '+
-      'service, utilise Explorer.</p>'+
-    '<p class="ab-vie">Ce que tu écris ici reste sur ton téléphone. '+
-      'Autour n’en garde que le besoin (« manger », « travail »), jamais ta phrase.</p>'+
+    '<p class="ab-exemples">Quelques exemples&nbsp;:<br>'+
+      '<button type="button" data-aide-exemple="je dors dehors">je dors dehors</button> '+
+      '<button type="button" data-aide-exemple="j’ai besoin d’aide pour mes papiers">j’ai besoin d’aide pour mes papiers</button> '+
+      '<button type="button" data-aide-exemple="je cherche du travail">je cherche du travail</button> '+
+      '<button type="button" data-aide-exemple="j’ai besoin d’aide pour mon loyer">j’ai besoin d’aide pour mon loyer</button></p>'+
+    '</section>';
+}
+
+function ecranUrgenceAide(){
+  return '<section class="ab au-urgence" data-testid="aide-urgence-detail">'+
+    '<p class="ab-titre">🆘 Besoin d’aide urgente&nbsp;?</p>'+
+    '<p class="ab-intro">Si tu es en danger immédiat, appelle directement les secours.</p>'+
+    '<div class="au-cartes">'+
+      '<a class="au-carte au-rouge" href="tel:112"><b>Danger immédiat</b><strong>112</strong><span>Numéro d’urgence européen</span></a>'+
+      '<a class="au-carte" href="tel:115"><b>Besoin d’un hébergement</b><strong>115</strong><span>Samu social · mise à l’abri</span></a>'+
+      '<a class="au-carte" href="tel:3114"><b>Crise ou idées suicidaires</b><strong>3114</strong><span>Prévention du suicide · 24h/24</span></a>'+
+      '<a class="au-carte" href="tel:3919"><b>Violences</b><strong>3919</strong><span>Écoute et orientation</span></a>'+
+    '</div>'+
+    '<p class="au-note">Autour peut aussi t’aider à trouver une structure locale, mais ne remplace pas les services d’urgence.</p>'+
+    '<button class="ab-autre" data-sa="logement">🏠 Trouver une aide locale</button>'+
     '</section>';
 }
 
@@ -9850,6 +10066,7 @@ function ecranRedirectionExplorer(){
    une distribution ce soir vaut mieux qu'un guichet ouvert demain, et c'est
    le moteur temporel existant qui les date, pas un second moteur. */
 function ecranSolutionsAide(){
+  if(sousAide === "urgence") return ecranUrgenceAide();
   const besoin = sousAideChoisi();
   const liste = solutionsAide();
   const titre = besoin ? besoin.emoji+" "+besoin.label : "Aide";
@@ -9970,12 +10187,13 @@ function demanderOrdreAide(candidats){
 
 /* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
    contraintes dures, distance — plus la pertinence du besoin. */
-function solutionsAide(limite){
-  const centre = positionMoi || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+function solutionsAide(limite, options){
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre || !AIDE) return [];
   const besoins = besoinsSelectionnesAide();
   const choix = sousAideChoisi();
-  let candidats = lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && estSolutionAideLiee(l));
+  let candidats = candidatsAideZone().filter(l=>nomExploitable(l) &&
+    estSolutionAideLiee(l) && aideSuffisammentFiable(l, besoins));
 
   /* LES CAPACITÉS VOYAGENT AVEC LE LIEU. Le classement en a besoin — une
      structure spécialisée passe devant une association qui « peut aussi » —
@@ -10061,7 +10279,7 @@ function solutionsAide(limite){
      jamais remonter la structure qui répond vraiment. */
   const ordonnes = notes.map(x=>Object.assign(x.l, {aideRaison:x.raison, aideSur:x.sur,
                                                      aideExprime:x.exprime}));
-  if(IA_AIDE){
+  if(IA_AIDE && !(options && options.noModel)){
     demanderOrdreAide(ordonnes);
     if(ordreModeleAide && ordreModeleAide.cle === cleOrdreAide(ordonnes)){
       /* Le modèle peut affiner l'ordre dans chaque groupe, mais ne peut pas
@@ -10166,6 +10384,8 @@ function libelleOuverture(l){
    close avec l'assurance du contraire. */
 function fiableAide(l){
   if(!DONNEES) return true;
+  if(!l || l.trustLevel === "unknown" || l.niveauConfianceAide === "unknown" ||
+    l.freshness === "stale") return false;
   const h = DONNEES.normaliserHoraires(l, Date.now(), (x,t)=>dispoDe(x, null, t));
   return h.confidence >= .8;
 }
@@ -10613,6 +10833,11 @@ const BESOINS_RAPIDES = [
    `selectionMaintenant()` et le panneau ne peut donc jamais basculer vers une
    liste longue ou un compteur total. */
 function ouvrirSurfaceMaintenant(){
+  if(modeAide && $("#badgeMaintenant") && $("#badgeMaintenant").dataset.aide === "1"){
+    ouvrirFeuille2("aide");
+    reinitialiserScrollFeuille();
+    return;
+  }
   if(modeAide) basculerAide();
   modeTerritorial = false;
   creneau = "maintenant";
@@ -10653,7 +10878,7 @@ function besoinsRapidesHTML(){
   return '<div class="br" data-testid="besoins-rapides">'+
     besoinsDuMoment().map(b=>{
       const actif = b.id === "territorial" ? modeTerritorial
-        : b.id === "maintenant" ? (creneau === "maintenant" && !modeTerritorial)
+        : b.id === "maintenant" ? (creneau === "maintenant" && !modeTerritorial && !modeAide)
         : b.id === "aide" ? modeAide
         : !!(catsActives && feuilleNiveau === b.id);
       /* L'annonce se lit comme une annonce : le bouton existe, il n'est pas
@@ -10684,21 +10909,35 @@ function majBadgeMaintenant(){
      Rebrancher ici garantit que le bouton visible utilise toujours la porte
      commune, sans créer une logique distincte pour la capsule. */
   badge.onclick = ouvrirSurfaceMaintenant;
-  const n = (modeNav || modePose || modeAide) ? 0 : totalMaintenant();
+  badge.dataset.aide = modeAide ? "1" : "0";
+  const aideTop = modeAide ? solutionsAide(3, {noModel:true}) : [];
+  const n = modeNav || modePose ? 0 : modeAide ? aideTop.length : totalMaintenant();
   badge.hidden = n === 0;
   if(n === 0) return;
   const compte = $("#bmCompte");
   /* Le bloc n'en montre jamais plus de trois : la pastille annonce ce qu'on
      va effectivement voir, pas ce qui existe en base. */
-  if(compte) compte.textContent = String(n);
+  if(compte) compte.textContent = String(Math.min(n, modeAide ? 3 : MAINTENANT_APERCU));
+  const haut = badge.querySelector(".bm-haut em");
+  const titre = badge.querySelector(".bm-haut b");
+  if(modeAide){
+    if(haut) haut.textContent = "❤️";
+    if(titre) titre.textContent = "Aide";
+  }else{
+    if(haut) haut.textContent = "⚡";
+    if(titre) titre.textContent = "Maintenant";
+  }
   /* « Près de toi » est faux dès qu'on regarde une autre ville — et c'est
      exactement le moment où la phrase compte. Elle nomme donc la zone. */
   const sous = badge.querySelector(".bm-sous");
-  const ou = zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom
-    ? "À " + zoneActive.nom + " en ce moment" : "En cours près de toi";
+  const ou = modeAide
+    ? "Solutions fiables autour de toi"
+    : zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom
+      ? "À " + zoneActive.nom + " en ce moment" : "En cours près de toi";
   if(sous) sous.textContent = ou;
-  badge.setAttribute("aria-label", n + " proposition" + (n > 1 ? "s" : "") + " sélectionnée" +
-    (n > 1 ? "s" : "") + " — " + ou);
+  badge.setAttribute("aria-label", modeAide
+    ? "Aide : " + n + " recommandation" + (n > 1 ? "s" : "") + " fiables"
+    : n + " chose" + (n > 1 ? "s" : "") + " à faire — " + ou);
 }
 
 /* Ce qui a lieu MAINTENANT, en tête de la feuille et sous sa propre étiquette.
@@ -10932,8 +11171,16 @@ function lieuParId(id){
      d'abord, qui porte l'état le plus frais, la métropole ensuite. */
   if(id == null) return null;
   const cle = String(id);
-  return lieux.find((x)=> x && String(x.id) === cle)
-      || evenementsMetropole.find((x)=> x && String(x.id) === cle)
+  const dansContexte = typeof dansZoneActive === "function" ? dansZoneActive : ()=>true;
+  /* Une recommandation peut être la fusion de la copie locale et de celle du
+     bassin. Réutiliser cette collection fusionnée à l'ouverture évite que la
+     fiche détaillée relise ensuite la version locale nue. */
+  const fusionnes = typeof bassinPourToi === "function" ? bassinPourToi() : [];
+  const aides = typeof candidatsAideZone === "function" ? candidatsAideZone() : [];
+  return fusionnes.find((x)=> x && String(x.id) === cle && dansContexte(x))
+      || aides.find((x)=> x && String(x.id) === cle && dansContexte(x))
+      || lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
+      || evenementsMetropole.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || null;
 }
 
@@ -12430,6 +12677,13 @@ function brancherFeuille2(){
     if(champ) champ.blur();
     lancerBesoinAide(phrase);
   };
+  corps.querySelectorAll("[data-aide-exemple]").forEach((b)=>b.onclick=()=>{
+    const champ = $("#champBesoin");
+    if(champ){
+      champ.value = b.dataset.aideExemple || "";
+      champ.focus();
+    }
+  });
   corps.querySelectorAll("[data-besoin-off]").forEach(b=>b.onclick=()=>{
     const id = b.dataset.besoinOff;
     if(id === "age"){ ageDeclare = null; }
@@ -12716,7 +12970,7 @@ function brancherGestesRecommandations(racine){
     if(e.key === "Enter" || e.key === " "){ e.preventDefault(); x.click(); }
   });
   racine.querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
-    const id = b.dataset.ac, cible = lieux.find(x=>x.id===id);
+    const id = b.dataset.ac, cible = lieuParId(id);
     if(!cible) return;
     mettreAJourProfil("clic", cible.cat);
     allerVers([cible.lat,cible.lng], 17, {duration:.5});
@@ -12823,8 +13077,9 @@ function majFiltres(){
   };
 }
 
-/* Un clic pour entrer, un clic pour sortir. Rien n'est chargé tant que le
-   mode n'est pas demandé : l'ouverture de l'app ne paie pas ce mode. */
+/* Un clic pour entrer, un clic pour sortir. Le bassin peut déjà être rempli
+   après le premier paint, mais l'écran reste instantané et réutilise la
+   promesse en cours. */
 function basculerAide(){
   modeAide = !modeAide;
   // on repart toujours de la question : « de quoi as-tu besoin ? »
@@ -12835,6 +13090,12 @@ function basculerAide(){
   intentionsSanteAide = [];
   redirectionExplorer = null;
   document.body.classList.toggle("aide", modeAide);
+  /* Les trois portes d'Aide — flottante, en-tête et navigation basse — doivent
+     parler du même mode dès le geste, sans attendre le rendu différé de la
+     carte ou du bassin. Sur mobile `poserBesoinsRapides` est un no-op ; sur
+     desktop il remplace la rangée du haut avec le nouvel état actif. */
+  poserBesoinsRapides();
+  marquerNavigation(modeAide ? "aide" : "explorer");
 
   // on sort de toute sélection en cours : le mode Aide repart d'une page nette
   catsActives = null;

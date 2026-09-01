@@ -19,6 +19,15 @@
   const NIVEAUX = Object.freeze([
     [90, "tres_forte"], [75, "forte"], [50, "moyenne"], [1, "faible"], [0, "inconnue"],
   ]);
+  const CONFIANCE_AIDE = Object.freeze({
+    VERIFIED: "verified_help",
+    PROBABLE: "probable_help",
+    UNKNOWN: "unknown",
+  });
+  const FRAICHEUR_AIDE = Object.freeze({
+    FRAIS_MS: 180 * 24 * 3600 * 1000,
+    OBSOLETE_MS: 365 * 24 * 3600 * 1000,
+  });
 
   const array = (value) => Array.isArray(value) ? value :
     (value == null || value === "" ? [] : [value]);
@@ -154,8 +163,59 @@
   function aBesoinAide(raw) {
     const p = raw || {};
     return p.aideStructure === true || p.kind === "AideStructure" ||
-      ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso"].includes(p.category) ||
-      array(p.categories).some((x) => ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso"].includes(x));
+      ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso",
+        "toilettes", "collecte", "friperie"].includes(p.category) ||
+      array(p.categories).some((x) => ["alimentaire", "hebergement", "emploi", "sante", "securite", "mairie", "asso",
+        "toilettes", "collecte", "friperie"].includes(x));
+  }
+
+  function dateMs(value) {
+    if (value == null || value === "") return null;
+    const parsed = value instanceof Date ? value.getTime() : new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function fraicheurDe(structure, now) {
+    const date = dateMs(structure && (structure.lastSourceUpdate || structure.updatedAt));
+    if (date == null) return { state: "unknown", ageMs: null, factor: .78 };
+    const ageMs = Math.max(0, (now || Date.now()) - date);
+    if (ageMs <= FRAICHEUR_AIDE.FRAIS_MS) return { state: "fresh", ageMs, factor: 1 };
+    if (ageMs <= FRAICHEUR_AIDE.OBSOLETE_MS) return { state: "aging", ageMs, factor: .82 };
+    return { state: "stale", ageMs, factor: .55 };
+  }
+
+  /* Le niveau ne remplace pas le classement métier : il dit simplement si la
+     fiche peut entrer dans la réponse par défaut. Une donnée ancienne reste
+     connue, mais ne se présente plus comme une certitude. */
+  function appliquerConfianceAide(structure) {
+    const p = structure || {};
+    const capacites = Object.values(p.capacities || {});
+    const meilleurePreuve = capacites.reduce((score, value) =>
+      Math.max(score, Number(value && value.confidence) || 0), 0);
+    const source = Math.round(Math.max(0, Math.min(1, Number(p.sourceConfidence) || 0)) * 100);
+    const fraicheur = fraicheurDe(p);
+    const fermeture = p.status && p.status.value === "permanently_closed";
+    const confiance = Math.round(Math.min(100,
+      (meilleurePreuve * .7 + source * .3) * fraicheur.factor));
+    let trustLevel = CONFIANCE_AIDE.UNKNOWN;
+    if (!fermeture && meilleurePreuve >= 50 && source >= 80 && fraicheur.state !== "stale")
+      trustLevel = CONFIANCE_AIDE.VERIFIED;
+    else if (!fermeture && (meilleurePreuve >= 50 || (meilleurePreuve >= 35 && source >= 68)))
+      trustLevel = CONFIANCE_AIDE.PROBABLE;
+    return Object.assign(p, {
+      confidenceAide: confiance,
+      confianceAide: confiance,
+      trustLevel,
+      niveauConfianceAide: trustLevel,
+      freshness: fraicheur.state,
+      freshnessAgeMs: fraicheur.ageMs,
+      lastSourceUpdate: p.lastSourceUpdate || p.updatedAt || null,
+      lastSyncedAt: p.lastSyncedAt || p.syncedAt || null,
+      confidenceReason: fermeture ? "structure_fermee" :
+        trustLevel === CONFIANCE_AIDE.VERIFIED ? "preuve_structurelle_et_source_fiable" :
+        trustLevel === CONFIANCE_AIDE.PROBABLE ? "preuve_partielle_ou_donnee_a_verifier" :
+        "mission_d_aide_non_etablie",
+    });
   }
 
   function normaliser(raw) {
@@ -213,6 +273,9 @@
       provenance: provenancesDe(p, source, ids, sourceConfidence),
       sourceConfidence,
       updatedAt: p.updatedAt || p.date_modification_datetime || p.dateDerniereMaj || null,
+      lastSourceUpdate: p.lastSourceUpdate || p.last_source_update || p.updatedAt ||
+        p.date_modification_datetime || p.dateDerniereMaj || null,
+      lastSyncedAt: p.lastSyncedAt || p.last_synced_at || p.syncedAt || null,
       officialUrl: p.officialUrl || p.url || p.url_service_public || p.lien_source || null,
       capacityHints: Object.assign({}, p.capacityHints || p.capacity_hints || {}),
     };
@@ -221,7 +284,7 @@
 
   function evaluerCapacites(structure) {
     const classement = root.AutourAideClassement;
-    if (!classement || typeof classement.capacites !== "function") return structure;
+    if (!classement || typeof classement.capacites !== "function") return appliquerConfianceAide(structure);
     const result = classement.capacites(structure);
     const capacities = {};
     const capacityEvidence = {};
@@ -243,13 +306,13 @@
       };
       capacityEvidence[capacity] = array(verdict.preuves);
     });
-    return Object.assign(structure, {
+    return appliquerConfianceAide(Object.assign(structure, {
       capacities,
       capacityEvidence,
       capacitesAide: Object.fromEntries(Object.entries(capacities).map(([k, v]) => [k, v.eligible])),
       confianceAide: result.confiance || 0,
       classificationAide: "AutourAideClassement",
-    });
+    }));
   }
 
   function sourceKeys(structure) {
@@ -367,8 +430,12 @@
 
   root.AutourAideStructures = Object.freeze({
     SOURCES,
+    CONFIANCE_AIDE,
+    FRAICHEUR_AIDE,
     normaliser,
     evaluerCapacites,
+    appliquerConfianceAide,
+    fraicheurDe,
     dedupe,
     fusionner,
     fiable,

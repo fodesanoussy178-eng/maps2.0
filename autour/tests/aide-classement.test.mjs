@@ -408,7 +408,7 @@ test("`aide.js` délègue au classement au lieu de lire des noms", () => {
 
 test("le rayon progressif est branché sur la vraie recherche", () => {
   assert.match(html, /RAYON_AIDE\.evaluer\(retenus, palier\)/);
-  assert.match(html, /const retenus = lieux\.filter\(estSolutionAideLiee\)/,
+  assert.match(html, /const retenus = candidatsAideZone\(\)\.filter\(\(lieu\) =>[\s\S]*estSolutionAideLiee\(lieu\)/,
     "on compte ce que l’écran retiendrait, pas ce qu’Overpass a ramené");
   assert.match(html, /data-testid="aide-rayon-elargi"/,
     "et l’écran peut dire que les résultats sont plus loin");

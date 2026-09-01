@@ -1254,7 +1254,7 @@ test("les réseaux d'aide et leurs tags couvrent ce qu'on cherche vraiment",()=>
 });
 
 test("un complément santé tardif enrichit le panneau sans le réinitialiser",()=>{
-  assert.match(html,/parCategorie\.forEach\(\(fiches,cat\)=>ajouterLieuxGoogle\(fiches,cat\)\);/);
+  assert.match(html,/parCategorie\.forEach\(\(fiches,cat\)=>ajouterLieuxGoogleAide\(fiches,cat\)\);/);
   assert.match(html,/coordonnerSourcesVersionnees\([\s\S]*?\(\)=>generationCourante\(generation\)\)/);
   assert.match(html,/zonesAideChargees\.set\(cleZoneAide,\[lat,lng\]\)/);
   assert.match(html,/if\(canonique && canonique!==dejaPresent\) appliquerFicheGoogle\(canonique,f\);\s+planifierRendu\(\{carte:true,accueil:true,feuille:true\}\);/);
@@ -1666,7 +1666,7 @@ test("l'aide mélange structures permanentes et opportunités temporaires",()=>{
 test("Aide garde uniquement les solutions liées au besoin et offre une fiche exploitable",()=>{
   assert.match(html,/function estSolutionAideLiee\(l\)\{/);
   assert.match(html,/AIDE\.estSolution\(l, besoins\)/);
-  assert.match(html,/let candidats = lieux\.filter\(l=>dansZoneActive\(l\) && nomExploitable\(l\) && estSolutionAideLiee\(l\)\)/);
+  assert.match(html,/let candidats = candidatsAideZone\(\)\.filter\(l=>nomExploitable\(l\) &&\s*estSolutionAideLiee\(l\) && aideSuffisammentFiable\(l, besoins\)\)/);
   assert.match(html,/b\.poids - a\.poids \|\|\s*prioriteDisponibiliteAide/s);
   // photo de source autorisée ou couverture graphique : son absence ne sert
   // pas au classement et n'est jamais remplacée par une image inventée
@@ -1725,7 +1725,7 @@ test("le mode Aide ne journalise aucune phrase",()=>{
   assert.match(html,/jamais en mode Aide/);
   // la phrase d'aide ne produit que les besoins exprimés normalisés
   assert.match(html,/const exprimes = lecture && Array\.isArray\(lecture\.besoinsExprimes\)/);
-  assert.match(html,/Ce que tu écris ici reste sur ton téléphone/);
+  assert.match(html,/function oublierPhraseAide\(\)/);
   // le journal filtre ce qui ressemble à une donnée personnelle
   assert.match(comprendre,/const SENSIBLE = /);
   assert.match(comprendre,/if \(SENSIBLE\.test\(brut\.toLowerCase\(\)\)\) return false;/);
@@ -1741,46 +1741,33 @@ test("on n'enrichit que les meilleurs candidats, jamais une zone",()=>{
 });
 
 test("dans Aide, l'urgence passe avant tout le reste",()=>{
-  // elle était sous les dix besoins : il fallait descendre pour la trouver,
-  // exactement l'inverse de ce qu'il faut quand c'est urgent
+  // elle doit rester le premier point d'action, avant la grille et la recherche
   const corps = html.slice(html.indexOf("function ecranBesoinsAide()"),
                            html.indexOf("function ecranSolutionsAide()"));
   const rang = (motif)=>corps.search(motif);
   const urgence  = rang(/data-testid="aide-urgence"/);
-  const promesse = rang(/class="ab-promesse"/);
   const question = rang(/class="ab-titre">De quoi as-tu besoin/);
   const grille   = rang(/class="ab-grille"/);
+  const autre    = rang(/class="ab-autre"/);
   const champ    = rang(/id="formBesoin"/);
   assert.ok(urgence > 0, "le bloc urgence existe");
-  assert.ok(urgence < promesse, "urgence avant la promesse");
-  assert.ok(promesse < question, "promesse avant la question");
   assert.ok(question < grille, "question avant les catégories");
-  assert.ok(grille < champ, "catégories avant le champ libre");
+  assert.ok(urgence < question, "urgence avant la question");
+  assert.ok(grille < autre, "grille avant Autre besoin");
+  assert.ok(autre < champ, "Autre besoin avant le champ libre");
   // et il se comprend en une seconde
   assert.match(html,/<b>Besoin d’aide urgente&nbsp;\?<\/b>/);
-  // et l'écran dit ce qu'Autour n'est pas : orienter n'est pas secourir
-  assert.match(html,/Autour oriente, il ne remplace pas les secours/);
-  assert.match(html,/Danger immédiat&nbsp;: <b>15<\/b>/);
-  assert.match(html,/Santé, mise à l’abri, hébergement d’urgence, /);
-  assert.match(html,/Pour une situation urgente, commence ici/);
-  // visuellement distinct : le seul fond coloré de la feuille
-  assert.match(html,/\.ab-urgence\{[^}]*border:2px solid #B82A3A/);
-  // la grille suit la largeur du conteneur, pas celle de la fenêtre : une
-  // règle en `min-width:768px` posait trois colonnes dans un panneau de 500 px
-  assert.match(html,/\.ab-grille\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(148px,1fr\)\)/);
-  assert.doesNotMatch(html,/@media \(min-width:768px\)\{ \.ab-grille/);
+  assert.match(html,/112/);
+  assert.match(html,/115/);
+  assert.match(html,/3114/);
+  assert.match(html,/\.ab-urgence\{[^}]*border:1px solid #FFB8B8/);
+  assert.match(html,/\.ab-grille\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 });
 
-test("Aide dit ce qu'elle fait avant de poser ses cases",()=>{
-  assert.match(html,/Explique ton besoin&nbsp;: Autour te propose les/);
-  assert.match(html,/aides et les structures utiles autour de toi\./);
-  // une phrase, pas un pavé, et sans mot d'administration
-  const promesse = /'<p class="ab-promesse">([^']*)'\+\s*\n\s*'([^']*)'/.exec(html);
-  assert.ok(promesse, "la promesse est écrite");
-  const texte = (promesse[1]+promesse[2]).replace(/&nbsp;/g," ");
-  assert.ok(texte.length < 140, "courte : "+texte.length+" caractères");
-  for(const jargon of ["dispositif","bénéficiaire","orientation","prestation"])
-    assert.ok(!texte.toLowerCase().includes(jargon), jargon);
+test("Aide explique la recherche avant de poser ses cases",()=>{
+  assert.match(html,/Choisis un besoin ou décris-le avec tes mots\./);
+  assert.match(html,/De quoi as-tu besoin/);
+  assert.match(html,/const SOUS_AIDE = .*filter\(b=>b\.id !== "autre"\)/);
 });
 
 test("le bouton flottant dit « Aide » sans qu'on ait à cliquer",()=>{

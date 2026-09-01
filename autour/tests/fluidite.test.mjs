@@ -169,13 +169,12 @@ test("la redirection ne survit pas à une sortie d'Aide", () => {
   assert.match(html, /function basculerAide\(\)\{[\s\S]{0,400}?redirectionExplorer = null;/);
 });
 
-test("le champ Aide propose des exemples et dit où va le reste", () => {
-  assert.match(html, /placeholder="« je n’ai rien à manger »"/);
+test("le champ Aide propose des exemples et une recherche explicite", () => {
+  assert.match(html, /placeholder="Je dois trouver où manger ce soir…"/);
   assert.match(html, /class="ab-exemples"/);
-  assert.match(html, /« je dors dehors »/);
-  // la phrase est concaténée dans la source : on vérifie ses deux moitiés
-  assert.match(html, /Pour une réparation, un commerce ou un /);
-  assert.match(html, /service, utilise Explorer\./);
+  assert.match(html, /je dors dehors/);
+  assert.match(html, /Trouver de l’aide/);
+  assert.match(html, /data-aide-exemple/);
 });
 
 /* ======================================================================== */
@@ -312,7 +311,7 @@ test("la pastille existe, centrée sur la carte, avec son sous-titre", () => {
   assert.match(html, /#badgeMaintenant\{position:fixed;left:50%;transform:translateX\(-50%\);/);
 });
 
-test("la pastille disparaît à zéro au lieu d'afficher « Maintenant · 0 »", () => {
+test("la pastille Aide affiche les recommandations fiables du bassin", () => {
   const bloc = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc, "majBadgeMaintenant doit exister");
   assert.match(bloc[0], /badge\.hidden = n === 0;/);
@@ -321,9 +320,9 @@ test("la pastille disparaît à zéro au lieu d'afficher « Maintenant · 0 »",
      avec le moteur de disponibilité (événements, séances, activités, lieux
      ouverts) : elle annonçait « 0 » — donc restait cachée — au-dessus d'un bloc
      qui proposait trois choses. */
-  assert.match(bloc[0], /const n = \(modeNav \|\| modePose \|\| modeAide\) \? 0 : totalMaintenant\(\);/);
-  // la pastille reprend exactement la sélection servie par le bloc
-  assert.match(bloc[0], /if\(compte\) compte\.textContent = String\(n\);/);
+  assert.match(bloc[0], /const n = modeNav \|\| modePose \? 0 : modeAide \? aideTop\.length : totalMaintenant\(\);/);
+  // et jamais plus que ce que le bloc montre réellement
+  assert.match(bloc[0], /Math\.min\(n, modeAide \? 3 : MAINTENANT_APERCU\)/);
 });
 
 test("la pastille suit les données même sans carte", () => {
@@ -342,10 +341,11 @@ test("un appui sur la pastille ouvre la liste, pas un menu", () => {
   assert.match(bloc[0], /marquerNavigation\("maintenant"\)/);
 });
 
-test("la pastille s'efface là où la carte appartient à autre chose", () => {
+test("la pastille s'efface là où la carte appartient à une autre section", () => {
   assert.match(html, /body\.nav #badgeMaintenant,body\.pose #badgeMaintenant\{display:none\}/);
   const bloc = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
-  assert.match(bloc[0], /modeNav \|\| modePose \|\| modeAide/);
+  assert.match(bloc[0], /modeNav \|\| modePose/);
+  assert.match(bloc[0], /modeAide \? aideTop\.length/);
 });
 
 /* ======================================================================== */
