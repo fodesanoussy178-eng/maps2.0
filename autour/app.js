@@ -12459,7 +12459,10 @@ function candidatsMaintenant(){
   const M = window.AutourMaintenant;
   if(!M || typeof M.candidats !== "function") return [];
   const ctx = contexteMaintenant();
-  return hydraterItemsMaintenant(M.candidats(itemsMaintenant(ctx), ctx));
+  const pool = M.candidats(itemsMaintenant(ctx), ctx).map((c)=>
+    c && c.item ? Object.assign({}, c.item, {nature:c.nature}) : c
+  );
+  return hydraterItemsMaintenant(pool);
 }
 
 function selectionMaintenant(){

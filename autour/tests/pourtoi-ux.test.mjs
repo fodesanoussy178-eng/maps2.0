@@ -107,6 +107,7 @@ test("Maintenant expose le bassin complet et son badge FOMO canonique", () => {
   assert.match(source, /function idCanoniqueMaintenant\(item\)/);
   assert.match(source, /function candidatsMaintenant\(\)/);
   assert.match(source, /M\.candidats\(itemsMaintenant\(ctx\), ctx\)/);
+  assert.match(source, /c && c\.item \? Object\.assign\(\{\}, c\.item, \{nature:c\.nature\}\)/);
   assert.match(source, /function marquerMaintenantCommeVu\(\)/);
   assert.match(source, /ouvrirFeuille2\("racine"\);[\s\S]*?marquerMaintenantCommeVu\(\)/);
   assert.match(source, /data-mn-candidats="'\+candidats\.length\+'/);
