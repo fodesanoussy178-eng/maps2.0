@@ -2285,6 +2285,13 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   #feuilleBesoins .fb-corps{
     padding-bottom:calc(var(--nav-height) + 20px);
   }
+  /* L’onboarding et la capsule Maintenant partagent le même espace sous
+     l’en-tête sur petit écran. La capsule ne doit pas masquer son texte ;
+     lorsqu’Aide est ouverte, le panneau principal devient l’unique surface
+     de premier plan. Les deux règles sont visuelles et réversibles : dès que
+     l’onboarding est terminé ou qu’Aide est fermée, rien ne reste masqué. */
+  #onboardingLocalisation:not([hidden]) ~ #badgeMaintenant{display:none}
+  body.aide #onboardingLocalisation{display:none}
 }
 </style>
 </head>
