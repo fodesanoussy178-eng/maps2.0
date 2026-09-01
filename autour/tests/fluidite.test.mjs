@@ -197,9 +197,9 @@ test("le compteur ne déplace jamais les onglets voisins", () => {
   assert.match(html, /\.ong-compte\{position:absolute;/);
 });
 
-test("« Maintenant » vide propose « À venir » au lieu d'une impasse", () => {
+test("« Maintenant » vide propose « Bientôt » au lieu d'une impasse", () => {
   assert.match(html, /Rien en cours près de toi\./);
-  assert.match(html, /data-creneau-vers="avenir"/);
+  assert.match(html, /data-creneau-vers="bientot"/);
   assert.match(html, /Voir ce qui arrive bientôt →/);
 });
 
@@ -209,7 +209,7 @@ test("un état vide ne recouvre jamais une vraie panne", () => {
     "une erreur réseau ou une position refusée doit rester lisible");
 });
 
-test("le pont vers « À venir » passe par le même chemin qu'un onglet", () => {
+test("le pont vers « Bientôt » passe par le même chemin qu'un onglet", () => {
   const bloc = /corps\.querySelectorAll\("\[data-creneau-vers\]"\)[\s\S]*?\}\);/.exec(html);
   assert.ok(bloc);
   assert.match(bloc[0], /filtreMaintenant = creneau === "maintenant";/,

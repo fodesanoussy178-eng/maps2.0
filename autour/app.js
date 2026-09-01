@@ -5777,15 +5777,18 @@ const SUGGESTIONS_INTENTION = [
 ];
 
 /* Timeline : la même carte, à un autre moment. */
-/* Quatre groupes de temps, pas un de plus. `Bientôt` est une fenêtre mobile
-   des prochaines heures, définie par temporel.js — elle ne dépend ni de
-   l'heure de la journée ni d'un calcul propre à cet écran. */
+/* Le moteur garde ses quatre états internes pour les recherches explicites,
+   mais la navigation principale n'expose que les trois fenêtres utiles ici.
+   `Bientôt` est une fenêtre mobile des prochaines heures, définie par
+   temporel.js — elle ne dépend ni de l'heure de la journée ni d'un calcul
+   propre à cet écran. */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant"  },
   { id:"bientot",    label:"Bientôt"     },
   { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
   { id:"avenir",     label:"À venir"      },
 ];
+const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX.filter(c=>c.id !== "avenir"));
 /* Le créneau choisi ↔ la section rendue par le moteur temporel. */
 const SECTIONS_DU_CRENEAU = Object.freeze({
   maintenant:["maintenant"],
@@ -12925,7 +12928,7 @@ function blocMaintenantAccueil(){
 function ongletsTemps(){
   const enCours = selectionMaintenant().length;
   return '<div class="ong-temps" role="tablist" aria-label="Quand">'+
-    CRENEAUX.map(c=>{
+    CRENEAUX_VISIBLES.map(c=>{
       const maintenant = c.id === "maintenant";
       // l'éclair est permanent : c'est un repère, pas une décoration qui
       // apparaît et disparaît sous les yeux
@@ -12969,7 +12972,7 @@ function statutGroupeHTML(){
     if(technique && !/Rien d’ouvert à proximité/.test(technique)) return technique;
     return '<div class="fb-statut" data-testid="maintenant-vide">'+
       'Rien en cours près de toi.'+
-      '<br><button data-creneau-vers="avenir">Voir ce qui arrive bientôt →</button>'+
+      '<br><button data-creneau-vers="bientot">Voir ce qui arrive bientôt →</button>'+
       '<button data-etat-action="all">Voir tous les lieux</button></div>';
   }
   const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
@@ -13504,7 +13507,7 @@ function brancherFeuille2(){
     majFeuille2(); reinitialiserScrollFeuille();
   });
 
-  /* Le pont depuis « Maintenant » vide vers « À venir ». Il passe par le même
+  /* Le pont depuis « Maintenant » vide vers « Bientôt ». Il passe par le même
      chemin qu'un appui sur l'onglet : un seul comportement à maintenir. */
   corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>{
     const cible = b.dataset.creneauVers;
@@ -14983,8 +14986,8 @@ function remplirResultatsZone(nom, intention){
 
      Cette feuille ne portait qu'un titre et une liste. On perdait, en tapant
      « Lille », tout ce qui fait l'écran d'accueil : les quatre intentions
-     (Manger, Sortir, Maintenant, Favoris) et les quatre moments (Maintenant,
-     Ce soir, Ce week-end, À venir). Or c'est exactement ce qu'on vient
+     (Manger, Sortir, Maintenant, Favoris) et les trois moments (Maintenant,
+     Bientôt, Ce week-end). Or c'est exactement ce qu'on vient
      chercher dans une ville où l'on n'est pas — « qu'est-ce que je peux y
      faire, et quand ». La référence visuelle montre ces deux rangées au-dessus
      de la liste : ce sont les mêmes composants que l'accueil, à l'identique. */

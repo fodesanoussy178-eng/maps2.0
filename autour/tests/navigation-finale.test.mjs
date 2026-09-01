@@ -43,9 +43,14 @@ test("Maintenant reste une sélection unique bornée à trois, sans 10+", () => 
 });
 
 test("Bientôt est un créneau glissant issu du moteur temporel commun", () => {
-  const creneaux = html.slice(html.indexOf("const CRENEAUX"), html.indexOf("let creneau"));
+  const creneaux = html.slice(html.indexOf("const CRENEAUX"), html.indexOf("const SECTIONS_DU_CRENEAU"));
   assert.match(creneaux, /id:"bientot",\s+label:"Bientôt"/);
+  assert.match(creneaux, /id:"weekend",\s+label:"Ce week-end"/);
   assert.doesNotMatch(creneaux, /Ce soir/);
+  const onglets = html.slice(html.indexOf("function ongletsTemps"),
+    html.indexOf("/* Ce qu'on écrit quand un groupe est vide"));
+  assert.match(onglets, /CRENEAUX_VISIBLES\.map/);
+  assert.doesNotMatch(onglets, /À venir/);
   assert.match(html, /function recommandationsBientot\(limite\)[\s\S]*?fenetreSurface\("bientot"/);
   assert.match(html, /if\(creneau === "bientot" && !modeAide\)/);
   assert.match(temporel, /const FENETRE_BIENTOT_MS = 6 \* 3600 \* 1000;/);
@@ -63,6 +68,21 @@ test("Bientôt est un créneau glissant issu du moteur temporel commun", () => {
   assert.equal(T.estDansFenetre(Object.assign({}, dansCinqHeures, {
     start_at: "2026-09-01T17:00:00", end_at: "2026-09-01T18:00:00",
   }), fenetre, now), false);
+});
+
+test("la fiche compacte desktop reste à droite et au-dessus de la navigation", () => {
+  const desktop = html.slice(html.indexOf("@media (min-width:1100px)"),
+    html.indexOf("/* ---- grappes de marqueurs"));
+  const fiche = desktop.slice(desktop.indexOf("#ficheCompacte"),
+    desktop.indexOf("#bandeauGeo"));
+  assert.match(fiche, /left:auto;right:var\(--marge-desktop\)/);
+  assert.match(fiche, /top:calc\(var\(--safe-t\) \+ var\(--marge-desktop\) \+ 74px\)/);
+  assert.match(fiche, /bottom:calc\(var\(--marge-desktop\) \+ 92px \+ 16px\)/);
+  assert.match(fiche, /width:min\(390px,31vw\)/);
+  assert.match(fiche, /max-height:calc\(/);
+  assert.match(fiche, /overflow-y:auto/);
+  const mobile = html.slice(0, html.indexOf("@media (min-width:1100px)"));
+  assert.match(mobile, /#ficheCompacte\{position:absolute;left:12px;right:12px;[\s\S]*?bottom:calc\(var\(--nav-height\) \+ 12px\)/);
 });
 
 test("une prochaine ouverture est exposée par le même état canonique", () => {

@@ -797,7 +797,7 @@ body.focus-lieu .leaflet-marker-icon.en-avant .poi-rond{transform:scale(1.25);
   box-shadow:0 3px 12px rgba(20,30,25,.34)}
 body.focus-lieu .poi-eti:not(.en-avant .poi-eti){opacity:.5}
 
-/* ---- Les quatre groupes de temps ----------------------------------------
+/* ---- Les trois groupes de temps visibles ---------------------------------
    Une seule rangée, en tête de la feuille : c'est la première question qu'on
    se pose (« maintenant ou plus tard ? ») et elle mérite d'être visible sans
    ouvrir de menu. */
@@ -1616,21 +1616,13 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 
   /* Le panneau de découverte reprend le rythme ample de la référence, sans
      dupliquer aucun contenu : ce sont toujours les mêmes boutons et cartes. */
-  /* LES QUATRE DOIVENT SE VOIR, SINON IL Y EN A TROIS.
-
-     À 17,5 px dans un panneau de 530, le quatrième bouton — Favoris, puis
-     « À venir » — tombait hors du cadre. On peut le faire défiler, mais un
-     choix qu'on ne voit pas n'est pas offert : la référence montre les quatre
-     intentions et les quatre moments d'un coup d'œil. On rend donc quelques
-     pixels, ce qui reste très au-dessus de la taille mobile. */
+  /* Les trois fenêtres visibles doivent tenir sans défilement. */
   .br{gap:8px;padding-bottom:12px}
   .br-b{min-height:50px;padding:9px 14px;font-size:15.5px}
   .br-b em{font-size:18px}
   .ong-temps{gap:7px;padding-bottom:16px}
-  /* Les quatre groupes de temps doivent tenir SANS défilement : « À venir »
-     coupé au bord donne l'impression qu'il n'existe pas. La barre reste
-     défilable — un libellé plus long un jour ne cassera rien — mais à cette
-     taille les quatre sont là d'un coup d'œil. */
+  /* Les trois groupes de temps visibles tiennent sans défilement. La barre
+     reste défilable — un libellé plus long un jour ne cassera rien. */
   .ong{min-height:46px;padding:11px 13px;font-size:14px}
   .aide-bloc{min-height:76px;margin-bottom:16px;padding:14px 16px;border-radius:17px}
   .aide-bloc em{font-size:23px}
@@ -1738,11 +1730,17 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
     border-radius:12px 0 0 12px}
   .moi-in b{width:20px;height:20px}
 
-  /* La fiche compacte se pose en bas au centre de la carte disponible. */
-  #ficheCompacte{left:50%;right:auto;transform:translateX(-50%);
-    width:min(460px,calc(100vw - 40px));bottom:20px}
-  body.sheet-open #ficheCompacte{
-    left:calc((100vw + var(--decalage-desktop)) / 2);}
+  /* Sur desktop, la fiche partage la carte en trois zones : panneau gauche,
+     carte, fiche droite. Elle reste dans la bande haute du panneau principal
+     et s'arrête au-dessus de la navigation basse. Le comportement mobile
+     reste celui du bottom-sheet défini hors de cette media query. */
+  #ficheCompacte{left:auto;right:var(--marge-desktop);transform:none;
+    top:calc(var(--safe-t) + var(--marge-desktop) + 74px);
+    bottom:calc(var(--marge-desktop) + 92px + 16px);
+    width:min(390px,31vw);max-height:calc(100dvh - var(--safe-t) -
+      var(--marge-desktop) - 74px - var(--marge-desktop) - 92px - 16px);
+    overflow-y:auto;overscroll-behavior:contain}
+  body.sheet-open #ficheCompacte{left:auto;right:var(--marge-desktop)}
 
   #bandeauGeo,#bandeauVide,#onboardingLocalisation{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
   #charge{left:50%}
@@ -2672,6 +2670,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=fd1930d5" defer></script>
+<script src="app.js?v=4c1770e8" defer></script>
 </body>
 </html>
