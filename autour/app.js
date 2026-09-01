@@ -1975,6 +1975,9 @@ let metropoleEnCours = null;
 let porteeMetropole = 0;
 let bassinCourant = null;
 const METROPOLE_LIMITE = 300;
+const CLE_CACHE_METROPOLES = "autour:pourtoi-bassins:v1";
+const CACHE_METROPOLE_MAX_MS = 30 * 60 * 1000;
+const CACHE_METROPOLES_MAX = 3;
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
@@ -2751,6 +2754,48 @@ function versEvenementCanonique(e){
     ...visuelEvenement(e),
     majLe:e.last_synced_at || null,
   }, e.primary_source || "datatourisme");
+}
+
+/* Le bassin métropolitain est une couche de lecture : après un reload, les
+   événements locaux peuvent être restitués par le cache Supabase, mais la
+   réponse « dans mon bassin » n'y était pas conservée. Pour toi repartait
+   alors avec un tableau vide le temps d'une requête — et restait vide si cette
+   requête échouait. Garder une copie courte, bornée et périssable permet de
+   reconstruire le même bassin immédiatement ; la requête fraîche le remplace
+   dès qu'elle répond. Ce cache ne contient aucun état de vue ou de goût. */
+function cacheMetropoles(){
+  let cache = {};
+  try{ cache = JSON.parse(localStorage.getItem(CLE_CACHE_METROPOLES) || "{}") || {}; }
+  catch(e){ cache = {}; }
+  const maintenant = Date.now();
+  Object.keys(cache).forEach(cle=>{
+    const entree = cache[cle];
+    if(!entree || !Number.isFinite(entree.t) || maintenant - entree.t > CACHE_METROPOLE_MAX_MS ||
+       !Array.isArray(entree.evenements)) delete cache[cle];
+  });
+  return cache;
+}
+
+function lireCacheMetropole(bassin){
+  if(!bassin) return [];
+  const entree = cacheMetropoles()[String(bassin)];
+  return entree && Array.isArray(entree.evenements) ? entree.evenements : [];
+}
+
+function ecrireCacheMetropole(bassin, liste){
+  if(!bassin || !Array.isArray(liste) || !liste.length) return;
+  const cache = cacheMetropoles();
+  cache[String(bassin)] = {t:Date.now(), evenements:liste.slice(0, METROPOLE_LIMITE)};
+  const cles = Object.keys(cache).sort((a,b)=>(cache[b].t||0)-(cache[a].t||0));
+  cles.slice(CACHE_METROPOLES_MAX).forEach(cle=>delete cache[cle]);
+  try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify(cache)); }
+  catch(e){
+    /* Un quota plein ne doit pas empêcher la réponse réseau de servir la
+       session courante : on garde au moins le bassin le plus récent. */
+    const courant = cache[String(bassin)];
+    try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify({[String(bassin)]:courant})); }
+    catch(e2){}
+  }
 }
 
 async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
@@ -11259,21 +11304,35 @@ function rafraichirMetropole(){
   porteeMetropole = porteeCourante;
   bassinCourant = bassin;
   metropoleEnCours = bassin;
+  const cachee = lireCacheMetropole(bassin);
+  if(cachee.length && !evenementsMetropole.length){
+    evenementsMetropole = cachee;
+    /* Le cache est une reconstruction du bassin, pas une consultation. Le
+       badge reste donc calculé par les mêmes IDs vus/non vus. Lors d'un
+       changement de goûts, le rebase reste en attente de la réponse fraîche
+       afin que des entrées chargées entre-temps ne deviennent pas
+       artificiellement des nouveautés. */
+    majPourToi();
+  }
   chargerEvenementsMetropole(bassin).then((liste)=>{
     /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
        ramené, souvent parce que le réseau a flanché. Garder la clé de cache
        interdirait tout nouvel essai jusqu'au rechargement de la page. */
     if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
     if(!liste.length){
-      evenementsMetropole = [];
+      /* Une réponse vide ou une panne ne doit pas effacer un bassin restauré
+         depuis le cache : elle n'est pas une preuve que le bassin est vide. */
+      if(!evenementsMetropole.length) evenementsMetropole = [];
       if(rebasePourToiEnAttente){
         retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
         rebasePourToiEnAttente = false;
       }
       metropoleEnCours = null;
+      majPourToi();
       return;
     }
     evenementsMetropole = liste;
+    ecrireCacheMetropole(bassin, liste);
     if(rebasePourToiEnAttente){
       /* La validation a pu arriver pendant que le bassin était encore vide.
          Le socle doit alors être pris après sa reconstruction, sinon les
@@ -11289,6 +11348,7 @@ function rafraichirMetropole(){
       rebasePourToiEnAttente = false;
     }
     metropoleEnCours = null;
+    majPourToi();
   });
 }
 
