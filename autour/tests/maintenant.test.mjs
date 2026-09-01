@@ -676,14 +676,14 @@ test("l'application transmet l'ouverture depuis availability.js, pas d'ailleurs"
   assert.match(versItem, /ouvertALArrivee = dispo\.isOpenAtArrival/);
 });
 
-test("l'accueil délègue « Ce soir » aux couches temporelles", () => {
-  assert.match(html, /function recommandationsCeSoir\(limite\)\{/);
-  const bloc = html.slice(html.indexOf("function recommandationsCeSoir"),
-    html.indexOf("function recommandationsAccueil", html.indexOf("function recommandationsCeSoir")));
-  assert.match(bloc, /selectionCeSoir/);
-  assert.match(bloc, /soirDebut:soir && soir\.debut/);
-  assert.match(bloc, /allowPointStatus:false/);
-  assert.match(html, /if\(creneau === "soir" && !modeAide\)/);
+test("l'accueil délègue « Bientôt » à la fenêtre temporelle canonique", () => {
+  assert.match(html, /function recommandationsBientot\(limite\)\{/);
+  const bloc = html.slice(html.indexOf("function recommandationsBientot"),
+    html.indexOf("function recommandationsAccueil", html.indexOf("function recommandationsBientot")));
+  assert.match(bloc, /fenetreSurface\("bientot"/);
+  assert.match(bloc, /statutTemps\(l, now\)/);
+  assert.match(bloc, /TEMPS\.estDansFenetre/);
+  assert.match(html, /if\(creneau === "bientot" && !modeAide\)/);
 });
 
 test("la ligne dit le bon temps selon la nature", () => {

@@ -79,9 +79,14 @@
     unknown_date: STATUTS.INCONNU,
   });
 
-  /* Deux heures : au-delà, ce n'est plus « maintenant », c'est « ce soir ».
-     C'est la fenêtre demandée, et elle vaut partout — aucune règle locale. */
+  /* Deux heures : au-delà, ce n'est plus « maintenant ». Cette fenêtre reste
+     la définition commune de l'imminence et de l'onglet Maintenant. */
   const FENETRE_IMMINENT_MS = 2 * 3600 * 1000;
+
+  /* « Bientôt » est une fenêtre glissante des prochaines heures. Elle ne
+     dépend ni de l'heure civile (matin/soir), ni d'un écran : les événements
+     et les prochaines ouvertures lisent cette même borne. */
+  const FENETRE_BIENTOT_MS = 6 * 3600 * 1000;
 
   /* Au-delà de 36 h, une « période » n'est plus une séance : c'est une
      exposition, une saison, un musée. Sa disponibilité ne se lit plus dans la
@@ -342,6 +347,11 @@
     };
   }
 
+  function fenetreBientot(epoch, timeZone) {
+    const t = epoch == null ? Date.now() : Number(epoch);
+    return { debut: t, fin: t + FENETRE_BIENTOT_MS, timeZone: timeZone || DEFAULT_TIMEZONE };
+  }
+
   function fenetreWeekEnd(epoch, timeZone) {
     const p = partsLocales(epoch, timeZone);
     const ordinal = ordinalLocal(p);
@@ -389,6 +399,8 @@
       case "soir":
       case "ce_soir":
         return Object.assign(fenetreSoir(t, tz), {timeZone:tz});
+      case "bientot":
+        return fenetreBientot(t, tz);
       case "weekend":
       case "ce_week_end":
         return Object.assign(fenetreWeekEnd(t, tz), {timeZone:tz});
@@ -642,8 +654,11 @@
     /* Les lieux longs peuvent déplacer `debut` vers leur prochaine ouverture;
        ce déplacement fait partie du verdict partagé et ne doit pas être
        réécrasé par le début historique de la saison. */
+    const prochaineOuverture = !item.isTemporary && etat.dispo && etat.dispo.opensAt
+      ? toEpochInZone(etat.dispo.opensAt, timeZone) : null;
     const debut = etat.debut != null ? etat.debut
-      : (periode && periode.debut != null ? periode.debut : null);
+      : (periode && periode.debut != null ? periode.debut
+        : (Number.isFinite(prochaineOuverture) && prochaineOuverture > t ? prochaineOuverture : null));
     const finReelle = periode && periode.fin != null ? periode.fin : etat.finReelle;
     const dispo = etat.dispo || null;
     const debutLocal = debut == null ? null : partsLocales(debut, timeZone);
@@ -834,6 +849,7 @@
     STATUTS_TEMPORELS,
     STATUTS_CANONIQUES,
     FENETRE_IMMINENT_MS,
+    FENETRE_BIENTOT_MS,
     SEUIL_PERIODE_LONGUE_MS,
     DUREE_SUPPOSEE_MS,
     DEFAULT_TIMEZONE,
@@ -852,6 +868,7 @@
     partsLocales,
     fenetreJour,
     fenetreSoir,
+    fenetreBientot,
     fenetreWeekEnd,
     toEpoch,
     toEpochInZone,
