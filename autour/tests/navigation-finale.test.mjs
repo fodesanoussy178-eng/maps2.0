@@ -38,7 +38,7 @@ test("Maintenant reste une sélection unique bornée à trois, sans 10+", () => 
   assert.match(bloc, /const choix = selectionMaintenant\(\);/);
   assert.match(bloc, /Math\.min\(3, max\)/);
   assert.match(html, /function blocMaintenantAccueil\(\)[\s\S]*?selectionMaintenant\(\)/);
-  assert.match(html, /const n = \(modeNav \|\| modePose \|\| modeAide\) \? 0 : totalMaintenant\(\);/);
+  assert.match(html, /const n = modeNav \|\| modePose \? 0 : modeAide \? aideTop\.length : totalMaintenant\(\);/);
   assert.doesNotMatch(html, /Maintenant\s*\(\s*10\+\s*\)/);
 });
 

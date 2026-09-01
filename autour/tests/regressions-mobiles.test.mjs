@@ -14,7 +14,7 @@ test("Maintenant n'a plus de chemin d'affichage long", () => {
   assert.match(app, /const liste = selectionMaintenant\(\);\s*const combien = liste\.length;/);
   assert.match(app, /const enCours = selectionMaintenant\(\)\.length;/);
   assert.match(app, /feuilleNiveau === "racine" && zoneAffichee && creneau !== "maintenant"/);
-  assert.match(app, /if\(compte\) compte\.textContent = String\(n\);/);
+  assert.match(app, /Math\.min\(n, modeAide \? 3 : MAINTENANT_APERCU\)/);
 });
 
 test("Maintenant porte le titre, la catégorie, l'identité et le temps canoniques", () => {
