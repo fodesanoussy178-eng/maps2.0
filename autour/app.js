@@ -1975,6 +1975,9 @@ let metropoleEnCours = null;
 let porteeMetropole = 0;
 let bassinCourant = null;
 const METROPOLE_LIMITE = 300;
+const CLE_CACHE_METROPOLES = "autour:pourtoi-bassins:v1";
+const CACHE_METROPOLE_MAX_MS = 30 * 60 * 1000;
+const CACHE_METROPOLES_MAX = 3;
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
@@ -2753,10 +2756,50 @@ function versEvenementCanonique(e){
   }, e.primary_source || "datatourisme");
 }
 
-async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
-  if(!sbLecture) return null;
-  const porteeEvenements = portee;
-  const b = emprisePublications(lat, lng);
+/* Le bassin métropolitain est une couche de lecture : après un reload, les
+   événements locaux peuvent être restitués par le cache Supabase, mais la
+   réponse « dans mon bassin » n'y était pas conservée. Pour toi repartait
+   alors avec un tableau vide le temps d'une requête — et restait vide si cette
+   requête échouait. Garder une copie courte, bornée et périssable permet de
+   reconstruire le même bassin immédiatement ; la requête fraîche le remplace
+   dès qu'elle répond. Ce cache ne contient aucun état de vue ou de goût. */
+function cacheMetropoles(){
+  let cache = {};
+  try{ cache = JSON.parse(localStorage.getItem(CLE_CACHE_METROPOLES) || "{}") || {}; }
+  catch(e){ cache = {}; }
+  const maintenant = Date.now();
+  Object.keys(cache).forEach(cle=>{
+    const entree = cache[cle];
+    if(!entree || !Number.isFinite(entree.t) || maintenant - entree.t > CACHE_METROPOLE_MAX_MS ||
+       !Array.isArray(entree.evenements)) delete cache[cle];
+  });
+  return cache;
+}
+
+function lireCacheMetropole(bassin){
+  if(!bassin) return [];
+  const entree = cacheMetropoles()[String(bassin)];
+  return entree && Array.isArray(entree.evenements) ? entree.evenements : [];
+}
+
+function ecrireCacheMetropole(bassin, liste){
+  if(!bassin || !Array.isArray(liste) || !liste.length) return;
+  const cache = cacheMetropoles();
+  cache[String(bassin)] = {t:Date.now(), evenements:liste.slice(0, METROPOLE_LIMITE)};
+  const cles = Object.keys(cache).sort((a,b)=>(cache[b].t||0)-(cache[a].t||0));
+  cles.slice(CACHE_METROPOLES_MAX).forEach(cle=>delete cache[cle]);
+  try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify(cache)); }
+  catch(e){
+    /* Un quota plein ne doit pas empêcher la réponse réseau de servir la
+       session courante : on garde au moins le bassin le plus récent. */
+    const courant = cache[String(bassin)];
+    try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify({[String(bassin)]:courant})); }
+    catch(e2){}
+  }
+}
+
+function actualiserBassinTerritorial(lat,lng){
+  if(!sbLecture) return;
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
      de cette requête ; une zone inconnue devient seulement un candidat DB. */
@@ -2784,6 +2827,13 @@ async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
        reste sans effet quand il double celui-ci. */
     rafraichirMetropole();
   }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
+}
+
+async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
+  if(!sbLecture) return null;
+  const porteeEvenements = portee;
+  const b = emprisePublications(lat, lng);
+  actualiserBassinTerritorial(lat,lng);
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_proches", {
@@ -2846,6 +2896,12 @@ function chargerCoucheSupabase(lat,lng){
   if(entree && age <= CACHE_COUCHE_MAX_MS){
     PERF.touche("supabase_zone", true);
     publierCoucheSupabase(cle, entree, portee, lat, lng);
+    /* Le cache local contient les événements proches mais pas le nom du
+       bassin métropolitain. Le résoudre aussi sur ce chemin est indispensable
+       après reload/nouvel onglet : sinon aucune réponse ne pouvait relancer
+       `rafraichirMetropole()`, et Pour toi restait vide malgré les goûts
+       persistés. */
+    actualiserBassinTerritorial(lat,lng);
     if(age > CACHE_COUCHE_FRAICHE_MS)
       void rafraichirCoucheSupabase(cle, lat, lng, entree, portee);
     return Promise.resolve(Object.assign({},entree,{depuisCache:true}));
@@ -10958,6 +11014,10 @@ function ouvrirSurfaceMaintenant(){
   marquerNavigation("maintenant");
   contexteExplorer = null;
   fermerPourToi();
+  /* Le simple démarrage ou l'ouverture d'Autour ne consulte rien. Ce geste
+     précis, lui, ouvre la surface « Maintenant » : toutes les occurrences
+     canoniques actuellement connues cessent alors d'être nouvelles. */
+  marquerMaintenantCommeVu();
   ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
   rendre();
@@ -11014,6 +11074,10 @@ function besoinsRapidesHTML(){
    déjà portée par la zone active. La pastille de Lille ne compte pas ce qui se
    passe à Tourcoing, et n'annonce jamais une liste plus longue que le panneau. */
 function majBadgeMaintenant(){
+  const candidats = !modeAide && !modePose ? candidatsMaintenant() : [];
+  const nouveaux = nouveauxMaintenant(candidats).length;
+  peindreBadgeMaintenant(nouveaux);
+
   const badge = $("#badgeMaintenant");
   if(!badge) return;
   /* Le nœud est présent dans la coquille HTML, mais la capsule peut être
@@ -11024,6 +11088,8 @@ function majBadgeMaintenant(){
   badge.dataset.aide = modeAide ? "1" : "0";
   const aideTop = modeAide ? solutionsAide(3, {noModel:true}) : [];
   const n = modeNav || modePose ? 0 : modeAide ? aideTop.length : totalMaintenant();
+  badge.dataset.candidats = String(candidats.length);
+  badge.dataset.nouveaux = String(nouveaux);
   badge.hidden = n === 0;
   if(n === 0) return;
   const compte = $("#bmCompte");
@@ -11144,6 +11210,7 @@ const CLE_POURTOI_ANNONCE = "autour:pourtoi-annonce:v1";
 const CLE_POURTOI_CONSULTE = "autour:pourtoi-consulte:v1";
 const POURTOI_PASTILLE_MAX = 9;
 const POURTOI_MEMOIRE_MAX = 400;
+let rebasePourToiEnAttente = false;
 
 /* « Détecté il y a… » n'a de sens que sur une découverte récente. Au-delà,
    l'événement n'est plus une nouvelle : il est simplement au programme. */
@@ -11248,15 +11315,52 @@ function rafraichirMetropole(){
   porteeMetropole = porteeCourante;
   bassinCourant = bassin;
   metropoleEnCours = bassin;
+  const cachee = lireCacheMetropole(bassin);
+  if(cachee.length && !evenementsMetropole.length){
+    evenementsMetropole = cachee;
+    /* Le cache est une reconstruction du bassin, pas une consultation. Le
+       badge reste donc calculé par les mêmes IDs vus/non vus. Lors d'un
+       changement de goûts, le rebase reste en attente de la réponse fraîche
+       afin que des entrées chargées entre-temps ne deviennent pas
+       artificiellement des nouveautés. */
+    majPourToi();
+  }
   chargerEvenementsMetropole(bassin).then((liste)=>{
     /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
        ramené, souvent parce que le réseau a flanché. Garder la clé de cache
        interdirait tout nouvel essai jusqu'au rechargement de la page. */
     if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
-    if(!liste.length){ metropoleEnCours = null; return; }
+    if(!liste.length){
+      /* Une réponse vide ou une panne ne doit pas effacer un bassin restauré
+         depuis le cache : elle n'est pas une preuve que le bassin est vide. */
+      if(!evenementsMetropole.length) evenementsMetropole = [];
+      if(rebasePourToiEnAttente){
+        retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
+        rebasePourToiEnAttente = false;
+      }
+      metropoleEnCours = null;
+      majPourToi();
+      return;
+    }
     evenementsMetropole = liste;
+    ecrireCacheMetropole(bassin, liste);
+    if(rebasePourToiEnAttente){
+      /* La validation a pu arriver pendant que le bassin était encore vide.
+         Le socle doit alors être pris après sa reconstruction, sinon les
+         recommandations fraîchement chargées deviennent artificiellement
+         des nouveautés. */
+      retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
+      rebasePourToiEnAttente = false;
+    }
     majPourToi();
-  }).catch(()=>{ metropoleEnCours = null; });
+  }).catch(()=>{
+    if(rebasePourToiEnAttente){
+      retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
+      rebasePourToiEnAttente = false;
+    }
+    metropoleEnCours = null;
+    majPourToi();
+  });
 }
 
 function bassinPourToi(){
@@ -11665,19 +11769,23 @@ function retenirAnnoncees(propositions){
    nouvelle sélection avant de relancer l'affichage : seules les entrées qui
    arriveront ensuite pourront alimenter la pastille. */
 function rebaserPourToiApresChangementGouts(){
-  retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
+  const propositions = propositionsPourToi(POURTOI_TOUT_MAX);
+  retenirAnnoncees(propositions);
+  /* Si le bassin n'est pas encore reconstruit, le socle est incomplet. Le
+     rappel au retour de la requête le complètera avant que la pastille puisse
+     annoncer ces fiches comme nouvelles. */
+  rebasePourToiEnAttente = !!sbLecture && !evenementsMetropole.length;
   peindrePastillePourToi(0);
 }
 
 function nouveautesPourToi(propositions){
   const annoncees = marquesAnnoncees();
   const vues = marquesVues();
-  if(!annoncees.size && consultationCompte){
-    /* Ce compte a déjà consulté « Pour toi » ailleurs : ce qui est là n'est
-       pas neuf pour lui, seule la suite le sera. */
-    retenirAnnoncees(propositions);
-    return [];
-  }
+  /* Une date de consultation ne remplace pas le registre par ID. Elle ne
+     sait ni quelles recommandations ont été vues, ni lesquelles sont encore
+     non vues sur ce nouvel onglet. La seule façon honnête de reconstruire la
+     pastille est donc de relire les IDs vus et le socle explicitement créé
+     lors d'un changement de goûts. */
   return (propositions||[]).filter((x)=>{
     if(!x || !x.l || x.l.id == null) return false;
     const id = String(x.l.id);
@@ -11701,11 +11809,13 @@ function peindrePastillePourToi(nombre){
   if(pastille){
     pastille.hidden = !compte;
     pastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : "+" + compte) : "";
+    pastille.dataset.count = String(compte);
   }
   const navPastille = $("#navPourToiBadge");
   if(navPastille){
     navPastille.hidden = !compte;
     navPastille.textContent = compte ? (compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : compte) : "";
+    navPastille.dataset.count = String(compte);
   }
   const cloche = $("#btnNotifs");
   if(cloche) cloche.setAttribute("aria-label", compte ? "Notifications, " + compte + " nouveauté" + (compte > 1 ? "s" : "") : "Notifications");
@@ -11896,6 +12006,10 @@ function ouvrirPourToi(){
   if(!p) return;
   p.hidden = false;
   document.body.classList.add("pourtoi-ouvert");
+  /* Après un reload, `evenementsMetropole` repart vide. Le bassin peut déjà
+     être résolu, ou le devenir juste après : dans les deux cas cet appel est
+     idempotent et garantit que l'ouverture réessaie la reconstruction. */
+  rafraichirMetropole();
   majPourToi();
 }
 
@@ -12048,6 +12162,75 @@ const MAINTENANT_APERCU = (window.AutourMaintenant || {}).PLACES || 3;
 /* Une seule sélection éditorialisée existe pour « Maintenant ». Le panneau,
    la capsule et la navigation lisent tous ces mêmes trois entités — il n'y a
    pas de second niveau « Voir tout ». */
+
+const CLE_MAINTENANT_VU = "autour:maintenant-vu:v1";
+const MAINTENANT_MEMOIRE_MAX = 1000;
+
+/* L'identité FOMO n'est pas l'identifiant de la source. Une même occurrence
+   peut arriver depuis plusieurs flux ; son ID canonique est la seule chose
+   qui puisse décider si elle est nouvelle. */
+function idCanoniqueMaintenant(item){
+  if(!item) return "";
+  const id = item.canonical_id || item.canonicalId ||
+    (item.canonical && item.canonical.id) || item.id;
+  return id == null ? "" : String(id).trim();
+}
+
+function marquesVuesMaintenant(){
+  try{
+    const v = JSON.parse(localStorage.getItem(CLE_MAINTENANT_VU) || "[]");
+    return new Set(Array.isArray(v) ? v.map(String).filter(Boolean) : []);
+  }catch(e){ return new Set(); }
+}
+
+function ecrireMarquesVuesMaintenant(ids){
+  try{
+    localStorage.setItem(CLE_MAINTENANT_VU, JSON.stringify(
+      [...new Set([...ids].map(String).filter(Boolean))].slice(-MAINTENANT_MEMOIRE_MAX)
+    ));
+  }catch(e){}
+}
+
+function uniquesCanoniquesMaintenant(items){
+  const vus = new Set();
+  return (items || []).filter((item)=>{
+    const id = idCanoniqueMaintenant(item);
+    if(!id || vus.has(id)) return false;
+    vus.add(id);
+    return true;
+  });
+}
+
+function nouveauxMaintenant(candidats){
+  const vus = marquesVuesMaintenant();
+  return (candidats || candidatsMaintenant()).filter((item)=>{
+    const id = idCanoniqueMaintenant(item);
+    return id && !vus.has(id);
+  });
+}
+
+function peindreBadgeMaintenant(nombre){
+  const compte = Math.max(0, Number(nombre) || 0);
+  const badge = $("#navMaintenantBadge");
+  if(!badge) return;
+  badge.hidden = compte === 0;
+  badge.textContent = compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : String(compte);
+  badge.dataset.count = String(compte);
+}
+
+function marquerMaintenantCommeVu(){
+  const candidats = candidatsMaintenant();
+  if(!candidats.length) return 0;
+  const vus = marquesVuesMaintenant();
+  const avant = vus.size;
+  candidats.forEach((item)=>{
+    const id = idCanoniqueMaintenant(item);
+    if(id) vus.add(id);
+  });
+  if(vus.size !== avant) ecrireMarquesVuesMaintenant(vus);
+  majBadgeMaintenant();
+  return vus.size - avant;
+}
 
 /* Ce que `maintenant.js` a besoin de savoir d'un lieu, et rien de plus. Le
    statut vient du moteur temporel, qui le tient du backend : on ne le
@@ -12299,7 +12482,12 @@ function itemsMaintenant(ctx){
   const source = lieux.filter(dansZoneActive);
   const cle = idZoneActive() + "|" + minute + "|" + source.length;
   if(itemsMemo.cle === cle) return itemsMemo.items;
-  const items = source.map(l=>itemMemoise(l, ctx.maintenant, minute));
+  /* `lieux` est déjà dédoublonné par les sources, mais les flux canoniques
+     peuvent encore porter deux références vers la même occurrence. Le moteur
+     et le registre FOMO doivent alors voir une seule entité. */
+  const items = uniquesCanoniquesMaintenant(
+    source.map(l=>itemMemoise(l, ctx.maintenant, minute))
+  );
   itemsMemo = {cle, items};
   return items;
 }
@@ -12311,15 +12499,11 @@ function itemsMaintenant(ctx){
    identifiant qu'on n'a pas encore vu. */
 function oublierItemsMaintenant(){ itemsMemo = {cle:null, items:null}; }
 
-function selectionMaintenant(){
-  const M = window.AutourMaintenant;
-  if(!M) return [];
-  const ctx = contexteMaintenant();
-  const retenus = M.selection(itemsMaintenant(ctx), ctx);
+function hydraterItemsMaintenant(retenus){
   const parId = new Map(lieux.map(l=>[l.id, l]));
   /* La nature (`event_now`, `open_now`…) voyage avec le lieu : c'est elle qui
      dira à l'affichage s'il faut écrire « jusqu'à 23 h » ou « séance à 20 h ». */
-  return retenus.map(i=>{
+  return uniquesCanoniquesMaintenant(retenus).map(i=>{
     const l = parId.get(i.id);
     return l ? Object.assign({}, l, {
       nature:i.nature,
@@ -12340,6 +12524,24 @@ function selectionMaintenant(){
       openingStatus:i.openingStatus,
     }) : null;
   }).filter(Boolean);
+}
+
+function candidatsMaintenant(){
+  const M = window.AutourMaintenant;
+  if(!M || typeof M.candidats !== "function") return [];
+  const ctx = contexteMaintenant();
+  const pool = M.candidats(itemsMaintenant(ctx), ctx).map((c)=>
+    c && c.item ? Object.assign({}, c.item, {nature:c.nature}) : c
+  );
+  return hydraterItemsMaintenant(pool);
+}
+
+function selectionMaintenant(){
+  const M = window.AutourMaintenant;
+  if(!M) return [];
+  const ctx = contexteMaintenant();
+  const retenus = M.selection(itemsMaintenant(ctx), ctx);
+  return hydraterItemsMaintenant(retenus);
 }
 
 function totalMaintenant(){
@@ -12436,8 +12638,10 @@ function blocMaintenantAccueil(){
   const M = window.AutourMaintenant;
   if(!M) return "";
 
+  const candidats = candidatsMaintenant();
   const liste = selectionMaintenant();
   const combien = liste.length;
+  const nouveaux = nouveauxMaintenant(candidats).length;
   const ctx = contexteMaintenant();
   const etat = M.etat(Object.assign({resultats:liste.length}, ctx));
 
@@ -12486,7 +12690,9 @@ function blocMaintenantAccueil(){
      quel contexte on le lit. */
   return (modeTerritorial ? enTeteTerritoriale() : "")+
     '<section class="mn" data-testid="maintenant-liste" '+
-    'data-mn-etat="'+esc(etat)+'" aria-busy="'+(etat === M.ETATS.LOADING)+'">'+
+    'data-mn-etat="'+esc(etat)+'" data-mn-candidats="'+candidats.length+'" '+
+    'data-mn-affiches="'+combien+'" data-mn-nouveaux="'+nouveaux+'" '+
+    'aria-busy="'+(etat === M.ETATS.LOADING)+'">'+
     tete+'<div class="mn-corps">'+corps+'</div></section>'+
     (modeTerritorial ? blocServicesTerritoriaux() : "");
 }

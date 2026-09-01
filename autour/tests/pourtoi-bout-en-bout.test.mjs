@@ -194,7 +194,7 @@ test("sans les tags, le classement ne peut rien proposer — la régression d'or
 test("un chargement métropolitain vide libère la clé pour un nouvel essai", () => {
   const i = app.search(/^function rafraichirMetropole\(/m);
   const bloc = app.slice(i, app.indexOf("catch", i));
-  assert.match(bloc, /if\(!liste\.length\)\{ metropoleEnCours = null; return; \}/);
+  assert.match(bloc, /if\(!liste\.length\)\{[\s\S]*?metropoleEnCours = null;\s*majPourToi\(\);\s*return;\s*\}/);
 });
 
 /* OUVRIR CE QU'ON PROPOSE.
