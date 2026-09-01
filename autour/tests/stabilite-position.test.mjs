@@ -49,9 +49,11 @@ test("le retour GPS invalide la ville regardée et recharge Aide autour du vrai 
   assert.match(position, /if\(bouge && CTX && \(retourDemande \|\| !zoneActive/);
   assert.match(position, /if\(modeAide\) rafraichirAideDepuisZone\(\);/);
   assert.match(retour, /definirZoneActive\(CTX \? CTX\.zoneMoi\(positionMoi, commune\) : null\);/);
+  assert.match(retour, /const dejaChezMoi = !destinationAvant && zoneActive/);
+  assert.match(retour, /if\(!dejaChezMoi\) annulerChargementsZone\(\);/);
   assert.match(retour, /reinitialiserContextePourRetour\(\);/);
   assert.match(retour, /rafraichirAideDepuisZone\(\);/);
-  assert.match(aide, /chargerAideZone\(\{force:true\}\)/);
+  assert.match(aide, /chargerAideZone\(\)\.then/);
   assert.match(aide, /if\(modeAide && !destinationActive\(\)\)/);
 });
 

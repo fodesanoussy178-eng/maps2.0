@@ -14225,7 +14225,7 @@ function reinitialiserContextePourRetour(){
 
 function rafraichirAideDepuisZone(){
   if(!modeAide) return Promise.resolve([]);
-  return chargerAideZone({force:true}).then(()=>{
+  return chargerAideZone().then(()=>{
     /* Le retour peut être suivi immédiatement d'un autre geste. Le bassin
        est protégé par la génération de zone ; ce garde ne fait que retenir le
        rendu de l'écran actuellement choisi. */
@@ -15111,13 +15111,18 @@ function revenirAutourDeMoi(){
     return;
   }
   retourPositionDemande = false;
-  definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
+  const destinationAvant = destinationActive();
+  const dejaChezMoi = !destinationAvant && zoneActive &&
+    (!CTX || zoneActive.type === CTX.TYPES.MOI);
+  if(!dejaChezMoi) definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
   majEnteteLieu();
-  annulerChargementsZone();
+  if(!dejaChezMoi) annulerChargementsZone();
   reinitialiserContextePourRetour();
   allerVers(positionMoi, 16, {duration:.6});
-  chargerZone(positionMoi[0], positionMoi[1]);
-  rafraichirAideDepuisZone();
+  if(!dejaChezMoi){
+    chargerZone(positionMoi[0], positionMoi[1]);
+    rafraichirAideDepuisZone();
+  }
   rendre(); majAccueil();
   if(feuilleNiveau !== null) majFeuille2();
   majBoutons();
