@@ -258,6 +258,7 @@ function prechargerEcrans(){
 
 const PLAF = window.AutourPlafonds || null;
 let zoneActive = null;
+let activeLocationContext = null;
 let porteeCourante = 0;
 const porteeValide = (p)=> p === porteeCourante;
 
@@ -310,8 +311,13 @@ function viderDonneesContexte(){
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
    d'un coup tout travail en vol — et rend le nouveau numéro à l'appelant. */
 function definirZoneActive(zone){
-  if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)) return porteeCourante;
+  if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)){
+    activeLocationContext = activeLocationContext || contexteDepuisZone(zone);
+    return porteeCourante;
+  }
   zoneActive = zone || null;
+  activeLocationContext = contexteDepuisZone(zoneActive);
+  viderDonneesContexte();
   porteeCourante += 1;
   bassinTerritorialActif = null;
   evenementsMetropole = [];
@@ -343,8 +349,16 @@ function definirZoneActive(zone){
    — tout début de session, avant la géolocalisation — on ne filtre rien :
    mieux vaut montrer ce qu'on a que de vider l'écran par principe. */
 function dansZoneActive(l){
-  if(!CTX || !zoneActive) return true;
-  return CTX.dansZone(l, zoneActive, {vue: bornesVue()});
+  const zone = activeLocationContext?.zone || zoneActive;
+  if(!CTX || !zone) return true;
+  return CTX.dansZone(l, zone, {vue: bornesVue()});
+}
+
+/* Entonnoir commun des surfaces géographiques : la carte/Explorer,
+   Maintenant et Pour toi partent tous du même ensemble avant d'appliquer
+   leurs règles propres (temps, catégories ou goûts). */
+function elementsDuContexte(items){
+  return (items || []).filter(dansZoneActive);
 }
 /* CE FILTRE EST APPELÉ UNE FOIS PAR LIEU, ET IL Y EN A CENT TRENTE.
 
@@ -2198,11 +2212,51 @@ function appliquerSession(s){
   session = s || null;
   moiId = session && session.user ? session.user.id : null;
   etatCompte = COMPTES ? COMPTES.etatDe(session) : (moiId ? "anonyme" : "visiteur");
+  const envies = window.AutourEnvies;
+  if(envies && typeof envies.definirContexte === "function"){
+    envies.definirContexte(estConnecte() ? moiId : null);
+  }
   return etatCompte;
 }
 
 function monEmail(){
   return (session && session.user && session.user.email) || "";
+}
+
+/* Les profils existants n'ont pas de colonne pour les goûts. Supabase Auth
+   porte déjà des métadonnées privées par utilisateur : elles évitent une
+   migration et restent associées au compte, contrairement à une clé locale
+   globale. Le localStorage reste le repli pour les visiteurs. */
+const CLE_INTERETS_COMPTE = "autour_interets";
+
+function interetsCompte(){
+  const meta = session && session.user && session.user.user_metadata;
+  if(!meta || !Object.prototype.hasOwnProperty.call(meta, CLE_INTERETS_COMPTE)) return null;
+  return Array.isArray(meta[CLE_INTERETS_COMPTE]) ? meta[CLE_INTERETS_COMPTE] : null;
+}
+
+async function chargerInteretsCompte(){
+  if(!ENVIES || !estConnecte()) return false;
+  const distants = interetsCompte();
+  if(!distants) return false;
+  ENVIES.remplacer(distants);
+  return true;
+}
+
+async function enregistrerInteretsCompte(ids){
+  if(!sb || !moiId || !estConnecte() || !ENVIES) return true;
+  try{
+    const choix = ENVIES.normaliserChoix(ids);
+    const {data, error} = await sb.auth.updateUser({
+      data:{[CLE_INTERETS_COMPTE]: choix}
+    });
+    if(error) throw error;
+    if(data && data.user && session) session = Object.assign({}, session, {user:data.user});
+    return true;
+  }catch(e){
+    journal.warn("Goûts du compte non synchronisés :", e.message || e);
+    return false;
+  }
 }
 
 /* Le pseudo public. Il ne participe JAMAIS à l'autorisation : le perdre ne
@@ -2215,6 +2269,7 @@ async function chargerProfil(){
     if(error) throw error;
     monProfil = data || null;
     if(monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
+    await chargerInteretsCompte();
     lireConsultationCompte();
     return monProfil;
   }catch(e){
@@ -2352,7 +2407,8 @@ function versLieu(p){
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:p.id == null || p.id === "" ? "" : "pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    description:p.description || "", adresse:p.adresse || "", cp:p.cp || commune,
+    description:p.description || "", adresse:p.adresse || "",
+    cp:p.cp || (destinationActive() ? (activeLocationContext?.city || "") : commune),
     quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
     creatorId:createdBy, creatorName:p.creator_name || "",
@@ -3357,7 +3413,8 @@ async function vraisLieux(lat,lng,bornes,opts){
       type:t.amenity || t.leisure || t.tourism || t.office || "",
       sansNom: !nom,                         // « un résultat sans nom exploitable »
       adresse: [t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ") || nom,
-      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") || commune,
+      cp: [t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ") ||
+        (destinationActive() ? (activeLocationContext?.city || "") : commune),
       quand: t.opening_hours || "Voir sur place",
       cuisine: t.cuisine || "",              // turkish, african, pizza…
       tel: t.phone || t["contact:phone"] || "",
@@ -4103,7 +4160,8 @@ function fusionner(nouveaux, flux, opts){
      sa projection est idempotente pour les objets déjà normalisés. */
   const classes = nouveaux.map(l=>normaliserItem(l, source))
     // une annulation reste une information utile et distincte d'une suppression
-    .filter(l=>l.annule || !estPasse(l));
+    .filter(l=>l.annule || !estPasse(l))
+    .filter(l=>dansZoneActive(l));
   const courant = type === "external" ? externalEvents
     : type === "user" ? userPublications
     : type === "datatourisme" ? datatourismePlaces : permanentPlaces;
@@ -5547,7 +5605,8 @@ function chargerLeDemarrage(rapide){
      dans le premier `requestIdleCallback` ajoutait plusieurs requêtes pendant
      que Google, Supabase et DATAtourisme étaient encore en vol. */
   setTimeout(()=>{
-    if(positionMoi && distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
+    if(porteeValide(generation.portee) && !destinationActive() && positionMoi &&
+       distanceM(lat,lng,positionMoi[0],positionMoi[1]) < 500)
       quandLibre(()=>chargerDonneesTemporaires(lat,lng,{sansPublications:true}));
   },5000);
 
@@ -11092,12 +11151,13 @@ const POURTOI_NOUVEAU_MS = 72 * 3600 * 1000;
 
 function marquesVues(){
   try{ const v = JSON.parse(localStorage.getItem(CLE_POURTOI_VU) || "[]");
-    return new Set(Array.isArray(v) ? v : []); }
+    return new Set(Array.isArray(v) ? v.map(String) : []); }
   catch(e){ return new Set(); }
 }
 
 function ecrireMarquesVues(ids){
-  try{ localStorage.setItem(CLE_POURTOI_VU, JSON.stringify([...ids].slice(-200))); }
+  try{ localStorage.setItem(CLE_POURTOI_VU,
+    JSON.stringify([...new Set([...ids].map(String))].slice(-200))); }
   catch(e){}
 }
 
@@ -11457,20 +11517,96 @@ function actionsProposition(l){
 }
 
 /* « Tes surveillances » : ce qui est coché, et la porte pour en changer. */
+let editionEnvies = null;
+
+function commencerEditionEnvies(cible){
+  if(!ENVIES) return null;
+  const reprise = editionEnvies && editionEnvies.cible === "panneau"
+    ? editionEnvies.ids.slice() : null;
+  editionEnvies = {
+    cible: cible || "feuille",
+    ids: reprise || (ENVIES.brouillon ? ENVIES.brouillon() : ENVIES.choisies().slice())
+  };
+  return editionEnvies;
+}
+
+function idsEditionEnvies(){
+  return editionEnvies ? editionEnvies.ids.slice() : (ENVIES ? ENVIES.choisies() : []);
+}
+
+function selectionEnviesHTML(){
+  if(!ENVIES) return "";
+  const choix = new Set(idsEditionEnvies());
+  return '<section class="pt-choix-envies" data-testid="selection-gouts">'+
+    '<h3>Choisis tes centres d’intérêt</h3>'+
+    '<p class="env-intro">Sélectionne plusieurs goûts pour personnaliser « Pour toi ».</p>'+
+    '<div class="env-liste">'+ENVIES.CATALOGUE.map(e=>{
+      const on = choix.has(e.id);
+      return '<button type="button" class="env-b'+(on?" actif":"")+'" '+
+        'data-env="'+esc(e.id)+'" aria-pressed="'+on+'">'+
+        '<em aria-hidden="true">'+e.emoji+'</em><b>'+esc(e.label)+'</b>'+
+        '<span class="env-etat" aria-hidden="true">'+(on?"✓":"+")+'</span></button>';
+    }).join("")+'</div>'+
+    '<div class="env-actions">'+
+      '<button type="button" class="env-annuler" data-env-cancel>Annuler</button>'+
+      '<button type="button" class="env-valider" data-env-submit>Valider</button>'+
+    '</div></section>';
+}
+
+function annulerEditionEnvies(){
+  const cible = editionEnvies && editionEnvies.cible;
+  editionEnvies = null;
+  if(cible === "feuille") fermerFeuille();
+  else fermerPourToi();
+}
+
+function validerEditionEnvies(){
+  if(!ENVIES || !editionEnvies) return;
+  const cible = editionEnvies.cible;
+  const ids = editionEnvies.ids.slice();
+  ENVIES.remplacer(ids);
+  editionEnvies = null;
+  /* Le rendu repart de la sélection validée. La synchronisation du compte
+     n'est pas sur le chemin critique : le localStorage est déjà à jour. */
+  void enregistrerInteretsCompte(ids);
+  rebaserPourToiApresChangementGouts();
+  if(cible === "feuille") fermerFeuille();
+  majPourToi();
+}
+
+function brancherSelectionEnvies(racine){
+  if(!racine) return;
+  racine.querySelectorAll("[data-env]").forEach((bouton)=>{
+    bouton.onclick = ()=>{
+      if(!editionEnvies || !ENVIES) return;
+      editionEnvies.ids = ENVIES.basculerBrouillon(editionEnvies.ids, bouton.dataset.env);
+      const actif = editionEnvies.ids.includes(bouton.dataset.env);
+      bouton.classList.toggle("actif", actif);
+      bouton.setAttribute("aria-pressed", String(actif));
+      const etat = bouton.querySelector(".env-etat");
+      if(etat) etat.textContent = actif ? "✓" : "+";
+    };
+  });
+  const annuler = racine.querySelector("[data-env-cancel]");
+  if(annuler) annuler.onclick = annulerEditionEnvies;
+  const valider = racine.querySelector("[data-env-submit]");
+  if(valider) valider.onclick = validerEditionEnvies;
+}
+
 function blocSurveillances(){
   if(!ENVIES) return "";
   const suivies = ENVIES.details();
   return '<section class="pt-envies">'+
     '<div class="pt-envies-tete"><strong>Tes surveillances</strong>'+
-      '<button id="ptGerer">Gérer</button></div>'+
+      '<button id="ptGerer">Modifier mes goûts</button></div>'+
     (suivies.length
       ? '<div class="pt-envies-liste">'+suivies.map(e=>
           '<span class="pt-envie"><em aria-hidden="true">'+e.emoji+'</em>'+
           esc(e.label)+'</span>').join("")+
           '<button class="pt-envie pt-envie-plus" id="ptPlus" aria-label="Ajouter une envie">+</button>'+
         '</div>'
-      : '<p class="pt-envies-vide">Choisis ce que tu veux suivre : '+
-        'Autour te préviendra quand quelque chose arrive.</p>')+
+      : '<p class="pt-envies-vide">Valide quelques goûts ci-dessous pour lancer '+
+        'tes recommandations.</p>')+
     (ENVIES.persistant() ? ''
       : '<p class="pt-envies-vide">Ton navigateur n’enregistre pas ces choix : '+
         'ils vaudront pour cette visite seulement.</p>')+
@@ -11496,13 +11632,14 @@ function rendreGroupePourToi(label, identifiant, propositions){
 function marquesAnnoncees(){
   try{
     const v = JSON.parse(localStorage.getItem(CLE_POURTOI_ANNONCE) || "[]");
-    return new Set(Array.isArray(v) ? v : []);
+    return new Set(Array.isArray(v) ? v.map(String) : []);
   }catch(e){ return new Set(); }
 }
 
 function ecrireMarquesAnnoncees(ids){
   try{
-    localStorage.setItem(CLE_POURTOI_ANNONCE, JSON.stringify([...ids].slice(-POURTOI_MEMOIRE_MAX)));
+    localStorage.setItem(CLE_POURTOI_ANNONCE,
+      JSON.stringify([...new Set([...ids].map(String))].slice(-POURTOI_MEMOIRE_MAX)));
   }catch(e){}
 }
 
@@ -11514,7 +11651,7 @@ function retenirAnnoncees(propositions){
   const annoncees = marquesAnnoncees();
   let ajouts = 0;
   (propositions||[]).forEach((x)=>{
-    const id = x && x.l ? x.l.id : null;
+    const id = x && x.l && x.l.id != null ? String(x.l.id) : null;
     if(id == null || annoncees.has(id)) return;
     annoncees.add(id);
     ajouts++;
@@ -11523,26 +11660,39 @@ function retenirAnnoncees(propositions){
   return ajouts;
 }
 
+/* Un changement de goûts ne transforme pas le catalogue existant en
+   nouveautés. On prend un instantané des recommandations correspondant à la
+   nouvelle sélection avant de relancer l'affichage : seules les entrées qui
+   arriveront ensuite pourront alimenter la pastille. */
+function rebaserPourToiApresChangementGouts(){
+  retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
+  peindrePastillePourToi(0);
+}
+
 function nouveautesPourToi(propositions){
   const annoncees = marquesAnnoncees();
+  const vues = marquesVues();
   if(!annoncees.size && consultationCompte){
     /* Ce compte a déjà consulté « Pour toi » ailleurs : ce qui est là n'est
        pas neuf pour lui, seule la suite le sera. */
     retenirAnnoncees(propositions);
     return [];
   }
-  return (propositions||[]).filter((x)=> x && x.l && x.l.id != null && !annoncees.has(x.l.id));
+  return (propositions||[]).filter((x)=>{
+    if(!x || !x.l || x.l.id == null) return false;
+    const id = String(x.l.id);
+    return !annoncees.has(id) && !vues.has(id);
+  });
 }
 
 function noterConsultationPourToi(propositions){
-  const ajouts = retenirAnnoncees(propositions);
   const premiere = !consultationCompte;
   const marque = Date.now();
   ecrireConsultationPourToi(marque);
-  /* Le compte n'est touché que quand la consultation apprend quelque chose :
-     repeindre un panneau déjà ouvert ne doit pas écrire à chaque
-     rafraîchissement de données. */
-  if(ajouts || premiere) ecrireConsultationCompte(marque);
+  /* La consultation est une date de synchronisation, pas une autorisation de
+     marquer toutes les cartes comme vues. Une carte ne quitte la pastille que
+     lorsqu'elle est réellement ouverte (ou explicitement marquée comme vue). */
+  if(premiere) ecrireConsultationCompte(marque);
 }
 
 function peindrePastillePourToi(nombre){
@@ -11575,10 +11725,13 @@ function majPourToi(){
 
   let contenu;
   if(!suivies){
-    /* Aucune envie cochée : le panneau ne se remplit pas de « suggestions »
-       génériques, il explique à quoi il sert. */
-    contenu = '<p class="pt-vide">Rien à suivre pour l’instant. '+
-      'Dis à Autour ce qui t’intéresse et il te préviendra quand ça arrive.</p>';
+    /* Première utilisation : la sélection est visible immédiatement. Les
+       clics restent dans `editionEnvies`; aucune préférence validée ne bouge
+       avant le bouton « Valider ». */
+    if(!editionEnvies) commencerEditionEnvies("panneau");
+    contenu = editionEnvies && editionEnvies.cible === "panneau"
+      ? selectionEnviesHTML()
+      : '<p class="pt-vide">Choisis tes goûts pour commencer.</p>';
   }else if(!propositions.length){
     contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
       'Autour continue de regarder.</p>';
@@ -11598,17 +11751,16 @@ function majPourToi(){
      explicitement de suivre, ça passe avant ce qu'Autour propose. */
   corps.innerHTML = blocSurveillances() + contenu;
 
-  const nonVues = propositions.filter(x=>!x.vu && x.groupe === "nouvelles_annonces").length;
+  const nonVues = nouveautesPourToi(propositions).length;
   const toutVu = $("#ptToutVu");
   if(toutVu) toutVu.hidden = !nonVues;
-  /* Ouvert, le panneau expose les nouveautés : on les note comme annoncées et
-     la pastille retombe. Fermé, elle compte ce qui n'a jamais été exposé. */
-  if(pourToiOuvert()){
+  /* Ouvrir le panneau ne consulte pas ses cartes. La date de consultation
+     reste utile pour un nouvel appareil connecté, mais les IDs ne quittent la
+     pastille qu'au clic sur une carte. */
+  if(pourToiOuvert() && suivies){
     noterConsultationPourToi(propositions);
-    peindrePastillePourToi(0);
-  }else{
-    peindrePastillePourToi(nouveautesPourToi(propositions).length);
   }
+  peindrePastillePourToi(nouveautesPourToi(propositions).length);
   brancherPourToi(propositions);
   PERF.travail("pour_toi", debutCpu);
 }
@@ -11685,6 +11837,7 @@ function brancherPourToi(propositions){
   const gerer = ()=>ouvrirEnvies();
   if($("#ptGerer")) $("#ptGerer").onclick = gerer;
   if($("#ptPlus")) $("#ptPlus").onclick = gerer;
+  brancherSelectionEnvies(corps);
   const toutVu = $("#ptToutVu");
   if(toutVu) toutVu.onclick = ()=>{
     marquerVu(propositions.map(x=>x.l.id));
@@ -11694,43 +11847,47 @@ function brancherPourToi(propositions){
 
 function marquerVu(ids){
   const vues = marquesVues();
-  ids.forEach(id=>vues.add(id));
+  ids.forEach(id=>{ if(id != null) vues.add(String(id)); });
   ecrireMarquesVues(vues);
+  majPastillePourToi();
 }
 
-/* ---- L'écran « Gérer ses envies » ---------------------------------------
-   Une liste à cocher, rien de plus. Chaque geste est enregistré tout de
-   suite : il n'y a pas de « valider » à oublier. */
+/* ---- L'écran « Modifier mes goûts » --------------------------------------
+   Le brouillon est indépendant des préférences validées. « Annuler » ferme
+   l'écran sans écrire ; « Valider » est le seul geste qui persiste. */
 function ouvrirEnvies(){
   if(!ENVIES) return;
   if(!NAV_FLOTTANTE.matches) fermerPourToi();
+  commencerEditionEnvies("feuille");
   pileEcrans = [];
   pousserEcran(()=>{
     ouvrirFeuille(
       '<h2 class="titre">Tes envies</h2>'+
       '<p class="env-intro">Ce que tu coches sert à classer « Pour toi » et, '+
         'plus tard, à te prévenir. Rien d’autre n’est déduit de ton usage.</p>'+
-      '<div class="env-liste" id="envListe"></div>',
+      '<div class="env-liste" id="envListe"></div>'+
+      '<div class="env-actions">'+
+        '<button type="button" class="env-annuler" data-env-cancel>Annuler</button>'+
+        '<button type="button" class="env-valider" data-env-submit>Valider</button>'+
+      '</div>',
       {ariaLabel:"Choisir tes envies"});
     peindreEnvies();
+    brancherSelectionEnvies($("#feuille"));
   });
 }
 
 function peindreEnvies(){
   const zone = $("#envListe");
   if(!zone || !ENVIES) return;
+  const choix = new Set(idsEditionEnvies());
   zone.innerHTML = ENVIES.CATALOGUE.map(e=>{
-    const on = ENVIES.suivie(e.id);
+    const on = choix.has(e.id);
     return '<button type="button" class="env-b'+(on?" actif":"")+'" '+
       'data-env="'+esc(e.id)+'" aria-pressed="'+on+'">'+
       '<em aria-hidden="true">'+e.emoji+'</em><b>'+esc(e.label)+'</b>'+
       '<span class="env-etat" aria-hidden="true">'+(on?"✓":"+")+'</span></button>';
   }).join("");
-  zone.querySelectorAll("[data-env]").forEach(b=>b.onclick=()=>{
-    ENVIES.basculer(b.dataset.env);
-    peindreEnvies();
-    majPourToi();
-  });
+  brancherSelectionEnvies($("#feuille"));
 }
 
 /* ---- Ouvrir et fermer le panneau ---------------------------------------- */
@@ -13575,6 +13732,7 @@ function dessinerFiltres(){ majRaccourcis(); }
 function appliquerPosition(p, opts){
   const o = opts || {};
   const c = [p.coords.latitude, p.coords.longitude];
+  const destinationAvant = destinationActive();
   noterAutorisationGeo(true);
   memoriserPosition(c, "gps");
 
@@ -13589,7 +13747,7 @@ function appliquerPosition(p, opts){
   const regimeAvant = regimeZone(rechercheGeo);
   const bouge = premiereFois || venaitDeLApproximation || !positionMoi
     || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
-  if(bouge){
+  if(bouge && !destinationAvant){
     annulerGeneration("demarrage");
     annulerGeneration("zone:precalculee");
   }
@@ -13621,7 +13779,7 @@ function appliquerPosition(p, opts){
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
 
-  if(bouge){
+  if(bouge && !destinationAvant){
     // le quartier réel se charge — court délai : on est encore au
     // démarrage, et l'écran montre déjà quelque chose
     chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});

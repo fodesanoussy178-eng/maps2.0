@@ -1923,8 +1923,10 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
 .pt-envie-plus{cursor:pointer;font-size:17px;padding:0 14px}
 .pt-envies-vide{margin-top:4px;font-size:12.5px;line-height:1.45;color:var(--ink2)}
 
-/* L'écran « Tes envies » : une liste à cocher, chaque geste enregistré tout
-   de suite — il n'y a pas de bouton « valider » à oublier. */
+/* La sélection explicite : le brouillon est lisible, multi-sélectionnable et
+   ses deux actions restent visibles au bas du panneau. */
+.pt-choix-envies{margin-top:2px}
+.pt-choix-envies h3{font-size:18px;font-weight:800;line-height:1.2}
 .env-intro{margin:8px 0 18px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
 .env-liste{display:grid;gap:9px}
 .env-b{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:0 15px;
@@ -1937,6 +1939,12 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   border:1px solid var(--bord);font-size:13px;color:var(--ink2)}
 .env-b.actif{border-color:#5B3FC4;background:#F6F2FE}
 .env-b.actif .env-etat{background:#5B3FC4;border-color:#5B3FC4;color:#fff}
+.env-actions{position:sticky;bottom:0;display:flex;gap:10px;margin:18px -2px -2px;
+  padding:12px 2px calc(var(--safe-b) + 2px);border-top:1px solid var(--bord);
+  background:var(--paper);z-index:2}
+.env-actions button{flex:1;min-height:46px;padding:10px 16px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);font:inherit;font-weight:750;cursor:pointer}
+.env-actions .env-valider{border-color:#5B3FC4;background:#5B3FC4;color:#fff}
 
 /* Les quatre envies rapides dans la barre du haut (grand écran seulement). */
 #barreEnvies{display:flex;gap:8px;flex:0 0 auto}
@@ -2520,9 +2528,9 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="maintenant.js?v=5ae1dc33" defer></script>
 <script src="ordonnanceur.js?v=c8368526" defer></script>
 <script src="plafonds.js?v=a922a210" defer></script>
-<script src="annonces-taxonomie.js?v=8dff9359" defer></script>
+<script src="annonces-taxonomie.js?v=3a17b2a2" defer></script>
 <script src="annonces-classement.js?v=77148c1f" defer></script>
-<script src="envies.js?v=00000000" defer></script>
+<script src="envies.js?v=b3211e1e" defer></script>
 <script src="enrichissements.js?v=00000000" defer></script>
 <script src="contexte.js?v=54aec3b1" defer></script>
 <script src="territoire.js?v=8d7f876d" defer></script>
@@ -2550,6 +2558,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=d05b4adc" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=76ab2881" defer></script>
+<script src="app.js?v=2f113d64" defer></script>
 </body>
 </html>

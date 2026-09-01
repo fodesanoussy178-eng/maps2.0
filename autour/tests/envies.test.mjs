@@ -35,7 +35,8 @@ test("le catalogue couvre les envies demandées", () => {
   const {E} = bac();
   const labels = E.CATALOGUE.map(e=>e.label);
   ["Rap","Artistes & concerts","Cinéma","Manga / Anime","Expositions","Sport","Football",
-   "Mode","Food","Vie nocturne","Famille","Théâtre","Festivals"]
+   "Mode","Food","Vie nocturne","Famille","Activités","Vie locale","Culture",
+   "Théâtre","Festivals"]
     .forEach(l=>assert.ok(labels.includes(l), "manque : "+l));
   // les genres sont des enfants de « Artistes & concerts », pas des envies de même rang
   ["rap","rnb","pop","afro","rock","electro","jazz","reggae","kpop","classical"]
@@ -79,6 +80,53 @@ test("le choix survit à un rechargement", () => {
     setItem:(k,v)=>memoire.set(k,String(v)), removeItem:(k)=>memoire.delete(k)}};
   new Function("window","localStorage", source)(fenetre, fenetre.localStorage);
   assert.deepEqual(fenetre.AutourEnvies.choisies(), ["manga"]);
+});
+
+test("les cases du brouillon ne sont pas enregistrées avant validation", () => {
+  const {E, memoire} = bac();
+  const avant = E.choisies();
+  const brouillon = E.basculerBrouillon(E.brouillon(), "rap");
+  assert.deepEqual(brouillon, ["rap"]);
+  assert.deepEqual(E.choisies(), avant, "le clic ne doit pas modifier les goûts validés");
+  assert.equal(memoire.has(E.CLE), false, "le clic ne doit pas écrire dans le stockage");
+});
+
+test("annuler restaure exactement les préférences précédentes", () => {
+  const {E, memoire} = bac();
+  E.remplacer(["rap", "cinema"]);
+  const avant = E.choisies();
+  const brouillon = E.basculerBrouillon(E.brouillon(), "rap");
+  assert.deepEqual(brouillon, ["cinema"]);
+  assert.deepEqual(E.choisies(), avant, "sans remplacer(), l'ancienne sélection reste intacte");
+  assert.equal(memoire.get(E.CLE), JSON.stringify(avant));
+});
+
+test("valider remplace la sélection et la conserve au rechargement", () => {
+  const {E, memoire} = bac();
+  E.remplacer(["rap"]);
+  const nouvelle = E.basculerBrouillon(E.brouillon(), "cinema");
+  E.remplacer(nouvelle);
+  assert.deepEqual(E.choisies(), ["rap", "cinema"]);
+
+  const fenetre = {localStorage:{
+    getItem:(k)=>memoire.has(k)?memoire.get(k):null,
+    setItem:(k,v)=>memoire.set(k,String(v)),
+    removeItem:(k)=>memoire.delete(k)
+  }};
+  new Function("window","localStorage", source)(fenetre, fenetre.localStorage);
+  assert.deepEqual(fenetre.AutourEnvies.choisies(), ["rap", "cinema"]);
+});
+
+test("les goûts locaux d'un compte sont isolés de ceux du visiteur", () => {
+  const {E} = bac();
+  E.remplacer(["food"]);
+  E.definirContexte("compte-a");
+  assert.deepEqual(E.choisies(), []);
+  E.remplacer(["rap"]);
+  E.definirContexte(null);
+  assert.deepEqual(E.choisies(), ["food"]);
+  E.definirContexte("compte-a");
+  assert.deepEqual(E.choisies(), ["rap"]);
 });
 
 test("une envie inconnue est ignorée, elle ne casse pas la liste", () => {
