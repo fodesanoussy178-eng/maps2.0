@@ -253,7 +253,7 @@ test("« Revenir autour de moi » est le seul chemin de retour", () => {
 
 test("une mesure GPS ne ramène pas la carte à soi quand on regarde ailleurs", () => {
   assert.match(html,
-    /if\(bouge && CTX && \(!zoneActive \|\| zoneActive\.type === CTX\.TYPES\.MOI\)\)\s*\n?\s*definirZoneActive\(CTX\.zoneMoi\(c, commune\)\);/);
+    /if\(bouge && CTX && \(retourDemande \|\| !zoneActive \|\| zoneActive\.type === CTX\.TYPES\.MOI\)\)\s*\n?\s*definirZoneActive\(CTX\.zoneMoi\(c, commune\)\);/);
 });
 
 test("tout ce qui s’affiche passe par le filtre de zone", () => {
