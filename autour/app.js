@@ -136,6 +136,22 @@ const positionConnue = ()=>originePosition !== null;
 const positionPrecise = ()=>precisionPosition === "point";
 const positionApprochee = ()=>positionConnue() && !positionPrecise();
 
+/* Une coordonnée sentinelle ne décrit pas un endroit. La laisser passer dans
+   le pipeline faisait partir des requêtes vers (0,0) quand le navigateur
+   n'avait encore ni GPS, ni zone choisie : aucune réponse utile n'était
+   possible, mais ces appels occupaient quand même le réseau et le serveur.
+   Le point est volontairement partagé par toutes les portes de données afin
+   qu'un nouveau fournisseur ne puisse pas réintroduire ce coût par oubli. */
+function coordonneesValides(lat, lng){
+  const a = Number(lat), b = Number(lng);
+  return Number.isFinite(a) && Number.isFinite(b) &&
+    Math.abs(a) <= 90 && Math.abs(b) <= 180 && (a !== 0 || b !== 0);
+}
+function pointGeographiqueValide(point){
+  return Array.isArray(point) && point.length >= 2 &&
+    coordonneesValides(point[0], point[1]);
+}
+
 /* ====================================================================
    LA ZONE ACTIVE, ET LA PORTÉE QUI VA AVEC
 
@@ -306,6 +322,9 @@ function viderDonneesContexte(){
   bassinAideEnCours = null;
   recoCache = null;
   recoBurstCache = null;
+  oublierSelection();
+  candidatsAideMemo = {cle:null, items:null, etrangersEcartes:false};
+  aideEtrangersEcartes = false;
   generationAccueil += 1;
 }
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
@@ -390,8 +409,9 @@ function bornesVue(){
 /* Le centre dont TOUT parle : classement, distances, sélection. Il vaut la
    ville cherchée dès qu'il y en a une, et la position physique sinon. */
 function centreZoneActive(){
-  if(zoneActive) return [zoneActive.lat, zoneActive.lng];
-  return positionMoi;
+  if(zoneActive && coordonneesValides(zoneActive.lat, zoneActive.lng))
+    return [zoneActive.lat, zoneActive.lng];
+  return pointGeographiqueValide(positionMoi) ? positionMoi : null;
 }
 const idZoneActive = ()=> CTX ? CTX.idZone(zoneActive) : "sans-zone";
 
@@ -406,7 +426,7 @@ const idZoneActive = ()=> CTX ? CTX.idZone(zoneActive) : "sans-zone";
 /* Le point de départ de toute REQUÊTE de données. Même règle que pour
    l'affichage : on demande à la zone dont on parle, jamais à celle qu'on a
    quittée. */
-function centreDonnees(){ return centreZoneActive() || positionMoi || null; }
+function centreDonnees(){ return centreZoneActive() || null; }
 function chargerAideZone(options){
   const c = centreDonnees();
   return c ? chargerAide(c[0], c[1], options) : Promise.resolve([]);
@@ -2892,6 +2912,7 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
 }
 
 function chargerCoucheSupabase(lat,lng){
+  if(!coordonneesValides(lat,lng)) return Promise.resolve(null);
   const cle = cleCoucheSupabase(lat,lng);
   const portee = porteeCourante;
   const cache = cacheCouchesSupabase();
@@ -3403,6 +3424,8 @@ function nomReelOsm(tags){
 }
 
 async function vraisLieux(lat,lng,bornes,opts){
+  if(!coordonneesValides(lat,lng))
+    return {ok:false, lieux:[], raison:"coordonnees_invalides"};
   const o = opts || {};
   // Une sous-requête par CLÉ (avec regex sur les valeurs) au lieu d'une par
   // couple clé/valeur : ~5 lignes au lieu de 40. Les serveurs publics saturaient
@@ -4664,6 +4687,7 @@ function cleZone(lat, lng, z, cats){
 
 function chargerZone(lat, lng, opts){
   const o = opts || {};
+  if(!coordonneesValides(lat,lng)) return Promise.resolve([]);
   /* LE ZOOM D'UNE CARTE QUI VOLE N'EST PAS CELUI QU'ELLE VISE.
 
      Ce garde-fou existe pour une bonne raison : vue de très loin, une carte
@@ -4860,6 +4884,7 @@ const chargementsTemporaires = new Map();
 const derniersChargementsTemporaires = new Map();
 function chargerDonneesTemporaires(lat, lng, opts){
   const o = opts || {};
+  if(!coordonneesValides(lat,lng)) return Promise.resolve([]);
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(!o.force && chargementsTemporaires.has(cle)) return chargementsTemporaires.get(cle);
   const dernier = derniersChargementsTemporaires.get(cle) || 0;
@@ -4956,8 +4981,7 @@ function positionServeur(){
     const brut = (document.cookie.match(/(?:^|;\s*)autour_geo=([^;]*)/) || [])[1];
     if(!brut) return null;
     const o = JSON.parse(decodeURIComponent(brut));
-    if(!o || !Number.isFinite(o.lat) || !Number.isFinite(o.lng)) return null;
-    if(Math.abs(o.lat) > 90 || Math.abs(o.lng) > 180) return null;
+    if(!o || !coordonneesValides(o.lat,o.lng)) return null;
     return o;
   }catch(e){ return null; }
 }
@@ -4967,7 +4991,7 @@ function positionServeur(){
 function positionMemorisee(){
   try{
     const v = JSON.parse(localStorage.getItem("autour:position")||"null");
-    if(v && Math.abs(v[0])<=90 && Math.abs(v[1])<=180) return v;
+    if(pointGeographiqueValide(v)) return v;
   }catch(e){}
   return null;
 }
@@ -4984,7 +5008,7 @@ function positionLocaleDeTest(){
   const valeur = new URLSearchParams(location.search).get("testPosition");
   if(!valeur) return null;
   const [lat,lng] = valeur.split(",").map(Number);
-  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat)<=90 && Math.abs(lng)<=180
+  return coordonneesValides(lat,lng)
     ? [lat,lng] : null;
 }
 /* La dernière position réelle. « Réelle » veut dire mesurée par le navigateur :
@@ -5375,6 +5399,7 @@ function attendreLeaflet(){
 
 async function demarrer(coords){
   PERF.jalon("boot_debut");
+  if(coords && !pointGeographiqueValide(coords)) coords = null;
   /* Sans position connue, l'application affichait Paris et l'annonçait comme
      « autour de toi », puis « rien d'ouvert autour de toi ». Elle affirmait
      deux choses fausses : qu'elle savait où on est, et qu'il n'y a rien.
@@ -6269,6 +6294,15 @@ function majIndexEvenements(){
 let derniereSelection = [];
 let ecartesAuto = 0;          // combien de lieux la règle a écartés au dernier rendu
 let regroupesAuto = 0;        // combien d'objets le regroupement a repliés
+/* Plusieurs surfaces demandent la même sélection dans la même image : la
+   carte, l'accueil et la feuille. La clé décrit tout ce qui peut changer le
+   résultat, afin de réutiliser le classement sans le rendre globalement
+   persistant. Une nouvelle donnée, vue, recherche ou minute invalide donc le
+   cache naturellement. */
+let selectionMemo = {cle:null, items:null, details:null, ecartes:0, regroupes:0};
+function oublierSelection(){
+  selectionMemo = {cle:null, items:null, details:null, ecartes:0, regroupes:0};
+}
 
 /* Au repos — pas de recherche, pas de catégorie, pas de filtre — la carte ne
    porte qu'une poignée de recommandations. Tout le reste demeure chargé en
@@ -6281,9 +6315,36 @@ function auRepos(ctx){
          && !modeAide && !rechercheGeo;
 }
 
+function cleSelection(ctx){
+  const vue = bornesVue();
+  const emprise = vue
+    ? vue.flat().map(v=>Number(v).toFixed(4)).join(",") : "sans-vue";
+  const accueil = Array.isArray(selectionAccueil) ? selectionAccueil.join(",") :
+    String(selectionAccueil);
+  const categories = catsActives && catsActives.size
+    ? [...catsActives].sort().join(",") : "";
+  const humains = filtresHumains.size ? [...filtresHumains].sort().join(",") : "";
+  const besoins = modeAide && typeof besoinsSelectionnesAide === "function"
+    ? besoinsSelectionnesAide().join(",") : "";
+  const intentions = modeAide && Array.isArray(intentionsSanteAide)
+    ? intentionsSanteAide.slice().sort().join(",") : "";
+  const centre = ctx && ctx.moi ? ctx.moi : [];
+  return [revisionLieux, typeof revisionBassinAide === "number" ? revisionBassinAide : 0,
+    idZoneActive(), emprise, ctx && Math.floor(ctx.t / 1000), centre[0], centre[1], ctx && ctx.large,
+    modeAide ? 1 : 0, recherche, categories, filtreActif, filtreMaintenant ? 1 : 0,
+    montrerFermes ? 1 : 0, humains, accueil, besoins, intentions].join("|");
+}
+
 function selectionner(){
   const t0 = performance.now();
   const ctx = contexteActuel();
+  const cle = cleSelection(ctx);
+  if(selectionMemo.cle === cle && Array.isArray(selectionMemo.items)){
+    derniereSelection = selectionMemo.details || [];
+    ecartesAuto = selectionMemo.ecartes;
+    regroupesAuto = selectionMemo.regroupes;
+    return selectionMemo.items;
+  }
   const brut = visibles();
   const repos = auRepos(ctx);
   const cible = repos ? MARQUEURS_AU_REPOS
@@ -6314,14 +6375,16 @@ function selectionner(){
     .sort((a,b)=>b.score - a.score)
     .slice(0, cible);
 
+  const items = retenus.map(x=>x.l);
   derniereSelection = retenus;
+  selectionMemo = {cle, items, details:retenus, ecartes:ecartesAuto, regroupes:regroupesAuto};
   if(window.__autourDebug)
     journal.info("[Autour] reçus", brut.length, "· écartés d'office", ecartesAuto,
       "· regroupés", regroupesAuto, "· retenus", retenus.length,
       "· niveau A", notes.filter(x=>x.niveau==="A").length,
       "· classement", (performance.now()-t0).toFixed(1)+" ms",
       "· meilleur", retenus[0] ? retenus[0].l.titre+" ("+Math.round(retenus[0].score)+", "+retenus[0].raison+")" : "—");
-  return retenus.map(x=>x.l);
+  return items;
 }
 
 function raisonDe(id){
@@ -7523,6 +7586,7 @@ function deciderVerification(lieu, restants, entree){
   return decision;
 }
 async function chercherGoogle(q, lat, lng, opts){
+  if(!coordonneesValides(lat,lng)) return [];
   const o = opts || {};
   const fournisseur = providerGoogle();
   if(!fournisseur || !(await googleMapsActif())) return [];
@@ -7533,6 +7597,7 @@ async function chercherGoogle(q, lat, lng, opts){
   catch(e){ if(!(e && e.name === "AbortError")) journal.warn("Recherche Google indisponible"); return []; }
 }
 async function placesGoogle(lat,lng,types,signal){
+  if(!coordonneesValides(lat,lng)) return [];
   const fournisseur = providerGoogle();
   if(!fournisseur || !(await googleMapsActif())) return [];
   try{
@@ -8010,6 +8075,8 @@ const AIDE_CACHE_RAYON = 18000;
 let bassinAideActif = null;
 let bassinAideEnCours = null;
 let prechargementAideProgramme = false;
+let revisionBassinAide = 0;
+let candidatsAideMemo = {cle:null, items:null, etrangersEcartes:false};
 
 const CHAMPS_BASSIN_AIDE = [
   "id", "autourId", "kind", "aideStructure", "titre", "name", "officialName", "aliases",
@@ -8114,6 +8181,8 @@ function ajouterAuBassinAide(nouveaux, meta) {
     zoneKey: idZoneActive(), center: [Number(centre[0]), Number(centre[1])], items,
     loadedAt: Date.now(), source: meta && meta.source || "aide",
   };
+  revisionBassinAide += 1;
+  candidatsAideMemo = {cle:null, items:null, etrangersEcartes:false};
   ecrireBassinAide(Number(centre[0]), Number(centre[1]), items);
   if (modeAide) planifierRendu({carte: true, accueil: true, feuille: true});
   return true;
@@ -8128,10 +8197,19 @@ function hydraterBassinAide(lat, lng) {
     zoneKey: idZoneActive(), center: entree.center || [lat, lng], items,
     loadedAt: Number(entree.t) || 0, cachedAt: Number(entree.t) || 0, source: "cache",
   };
+  revisionBassinAide += 1;
+  candidatsAideMemo = {cle:null, items:null, etrangersEcartes:false};
   return items;
 }
 
 function candidatsAideZone() {
+  const cleMemo = idZoneActive()+"|"+revisionLieux+"|"+revisionBassinAide+"|"+
+    (bassinAideActif && bassinAideActif.zoneKey === idZoneActive()
+      ? bassinAideActif.items.length : 0);
+  if(candidatsAideMemo.cle === cleMemo && Array.isArray(candidatsAideMemo.items)){
+    aideEtrangersEcartes = aideEtrangersEcartes || candidatsAideMemo.etrangersEcartes;
+    return candidatsAideMemo.items;
+  }
   const sources = [
     ...(bassinAideActif && bassinAideActif.zoneKey === idZoneActive() ? bassinAideActif.items : []),
     ...lieux.filter((l) => l && l.aideStructure === true),
@@ -8150,8 +8228,10 @@ function candidatsAideZone() {
     if (interne && !interne.address && interne.adresse) interne.address = interne.adresse;
     return interne;
   }).filter(Boolean);
-  return resultatsAideDansTerritoire(dedupes).filter((l) =>
+  const items = resultatsAideDansTerritoire(dedupes).filter((l) =>
     window.AutourAideStructures ? AutourAideStructures.affichable(l) : true);
+  candidatsAideMemo = {cle:cleMemo, items, etrangersEcartes:aideEtrangersEcartes};
+  return items;
 }
 
 function aideSuffisammentFiable(l, besoins) {
@@ -8322,6 +8402,7 @@ function reseauxPourContexteAide(contexte){
 }
 
 async function chargerAide(lat,lng,options){
+  if(!coordonneesValides(lat,lng)) return [];
   const o = options || {};
   const contexte = contexteAideChargement();
   contexte.preload = !!o.preload;
