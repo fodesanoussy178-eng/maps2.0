@@ -306,6 +306,11 @@ input{font-family:inherit;font-size:16px}
 .moi-in b{display:block;width:17px;height:17px;border-radius:50%;
   background:#1A73E8;border:2.5px solid #fff;
   box-shadow:0 1px 5px rgba(19,72,157,.45)}
+.mk-user{user-select:none;-webkit-user-select:none;-webkit-user-drag:none;touch-action:none}
+.moi-in .moi-avatar{position:absolute;z-index:2;left:50%;top:-7px;
+  display:grid;place-items:center;width:28px;height:28px;transform:translateX(-50%);
+  border:2px solid var(--violet);border-radius:50%;background:#fff;
+  box-shadow:0 2px 7px rgba(20,30,25,.22);font-size:17px;line-height:1}
 .loin .moi-in b{width:13px;height:13px;border-width:2px}
 @keyframes respire{0%,100%{transform:scale(.7);opacity:.9}50%{transform:scale(1);opacity:.35}}
 
@@ -1920,6 +1925,8 @@ h2.itin-titre{margin:0;text-align:center;font-size:27px;line-height:1.06}
   color:var(--ink2)}
 .itin-question{margin:30px 0 14px;font-size:19px;font-weight:750;color:var(--ink)}
 .itin-modes{display:grid;gap:12px}
+.itin-externes{margin-top:18px}
+.itin-externes-titre{margin:0 0 10px;font-size:15px;font-weight:750;color:var(--ink)}
 
 /* La carte : bordure très fine, ombre à peine posée, beaucoup d'air dedans. */
 .itin-mode{display:flex;align-items:center;gap:15px;width:100%;
@@ -2480,7 +2487,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="aide-contexte-ia.js?v=3da4c06f" defer></script>
 <script src="aide.js?v=86fea5f0" defer></script>
 <script src="signaux.js?v=319acaa9" defer></script>
-<script src="temporel.js?v=f1775922" defer></script>
+<script src="temporel.js?v=4e389e92" defer></script>
 <script src="evenements-canoniques.js?v=46471f92" defer></script>
 <script src="entites-canoniques.js?v=c5847f25" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
@@ -2497,6 +2504,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=5ae438ac" defer></script>
 <script src="providers/aideFiness.js?v=a99f5594" defer></script>
 <script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=db2f94ba" defer></script>
+<script src="app.js?v=a3aba612" defer></script>
 </body>
 </html>

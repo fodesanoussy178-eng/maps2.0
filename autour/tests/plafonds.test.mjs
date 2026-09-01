@@ -105,7 +105,7 @@ test("au bout de la liste, des intentions — jamais « Charger plus »", () => 
   assert.doesNotMatch(html, /<button[^>]*>[^<]*(Charger plus|Voir plus de r)/i);
   assert.doesNotMatch(html, /data-(charger|page|plus)=/i);
   assert.match(html, /function suitesUtiles\(connus, montres\)\{/);
-  ["Ce soir", "Ce week-end", "Changer de catégorie", "Explorer cette zone"]
+  ["Bientôt", "Ce week-end", "Changer de catégorie", "Explorer cette zone"]
     .forEach((geste) => assert.ok(html.includes(">" + geste + "<"), "manque : " + geste));
   assert.match(html, /\$\("#feuille"\)\.querySelectorAll\("\[data-suite\]"\)/);
 });

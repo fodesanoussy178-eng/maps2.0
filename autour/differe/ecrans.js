@@ -585,19 +585,22 @@ function liensItinerairesExternes(depart, destination){
       esc(urlItineraireExterne(fournisseur, mode, depart, destination))+'">'+
       '<span class="itin-lien-marque" aria-hidden="true">'+traitSvg(SORTIE_APPLI, 15, 1.9)+'</span>'+
       '<span>'+label+'</span></a>';
-  return carteMode({
-      cle:"voiture", titre:"Voiture", detail:"Ouvrir l’itinéraire",
-      fin:'<span class="itin-liens">'+
-        lien("Google Maps", "google", "driving")+
-        lien("Apple Plans", "apple", "driving")+
-        lien("Waze", "waze", "driving")+'</span>',
-    })+
+  return '<section class="itin-externes" aria-labelledby="itinExternesTitre">'+
+    '<h3 id="itinExternesTitre" class="itin-externes-titre">Continuer avec une application</h3>'+
     carteMode({
-      cle:"transports", titre:"Transports", detail:"Voir en transports",
-      fin:'<span class="itin-liens">'+
-        lien("Google Maps", "google", "transit")+
-        lien("Apple Plans", "apple", "transit")+'</span>',
-    });
+        cle:"voiture", titre:"Voiture", detail:"Ouvrir l’itinéraire",
+        fin:'<span class="itin-liens">'+
+          lien("Google Maps", "google", "driving")+
+          lien("Apple Plans", "apple", "driving")+
+          lien("Waze", "waze", "driving")+'</span>',
+      })+
+      carteMode({
+        cle:"transports", titre:"Transports", detail:"Voir en transports",
+        fin:'<span class="itin-liens">'+
+          lien("Google Maps", "google", "transit")+
+          lien("Apple Plans", "apple", "transit")+'</span>',
+      })+
+    '</section>';
 }
 
 /* Une carte de mode interne : le seul endroit où Autour route lui-même. Elle

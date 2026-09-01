@@ -194,7 +194,8 @@ test("la recherche universelle garde un seul formulaire, quel que soit le contex
 });
 
 test("le marqueur utilisateur est un point bleu, pas un emoji",()=>{
-  assert.match(html,/<span class="moi-in"><i><\/i><b><\/b><\/span>/);
+  assert.match(html,/<span class="moi-in" role="img" aria-label="Ma position"><i aria-hidden="true"><\/i><span class="moi-avatar"/);
+  assert.match(html,/avatarCarte\(\)/);
   assert.match(html,/\.moi-in b\{display:block;width:17px;height:17px;border-radius:50%;\s*\n\s*background:#1A73E8/);
 });
 
@@ -1155,7 +1156,7 @@ test("la navigation nomme le produit",()=>{
   // le temps se choisit dans Maintenant ou Explorer, pas via une nomenclature
   // cachée dans la barre du bas
   assert.match(html,/function ongletsTemps\(\)\{/);
-  for(const label of ["Maintenant","Ce soir","Ce week-end","À venir"])
+  for(const label of ["Maintenant","Bientôt","Ce week-end","À venir"])
     assert.match(html,new RegExp('label:"'+label.replace("À","À")+'"'), label);
 });
 
@@ -1339,7 +1340,7 @@ test("la carte d'un événement montre sa date avant son temps de trajet",()=>{
 test("les événements futurs partent dans des groupes, ils ne disparaissent pas",()=>{
   // quatre groupes, pas un de plus
   assert.match(html,/const SECTIONS_DU_CRENEAU = Object\.freeze\(\{/);
-  assert.match(html,/soir:\["ce_soir","aujourdhui"\],/);
+  assert.match(html,/bientot:\["bientot"\],/);
   assert.match(html,/weekend:\["ce_week_end"\],/);
   assert.match(html,/avenir:\["a_venir"\],/);
   // le rangement vient du moteur temporel, pas d'une règle réécrite ici

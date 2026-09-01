@@ -174,7 +174,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d560c4dd"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=f3fed753"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -5073,8 +5073,8 @@ function installerCarte(){
   if(positionMoi){
     moi = L.marker(positionMoi,{
       icon:L.divIcon({className:"mk mk-user",
-        html:'<span class="moi-in"><i></i><b></b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
-      interactive:true, keyboard:true, title:"Vous êtes ici", zIndexOffset:400
+        html:'<span class="moi-in" role="img" aria-label="Ma position"><i aria-hidden="true"></i><span class="moi-avatar" aria-hidden="true">'+avatarCarte()+'</span><b aria-hidden="true"></b></span>', iconSize:[46,46], iconAnchor:[23,23]}),
+      interactive:true, keyboard:true, draggable:false, title:"Vous êtes ici", zIndexOffset:400
     }).addTo(map);
     moi.on("click", ()=>toast("Vous êtes ici"));
   }
@@ -5572,23 +5572,20 @@ const SUGGESTIONS_INTENTION = [
   { emoji:"🎉", label:"Sortir" },
 ];
 
-/* Timeline : la même carte, à un autre moment de la journée. */
-/* Quatre groupes de temps, pas un de plus. « Dans 1 heure » et « Demain »
-   étaient des nuances de « maintenant » et de « à venir » : deux entrées de
-   menu de plus pour la même décision. Ce qui n'est pas maintenant n'est pas
-   perdu pour autant — il part dans l'un des trois autres groupes. */
+/* Timeline : la même carte, à un autre moment. */
+/* Quatre groupes de temps, pas un de plus. `Bientôt` est une fenêtre mobile
+   des prochaines heures, définie par temporel.js — elle ne dépend ni de
+   l'heure de la journée ni d'un calcul propre à cet écran. */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant"  },
-  { id:"soir",       label:"Ce soir",     heure:19 },
+  { id:"bientot",    label:"Bientôt"     },
   { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
   { id:"avenir",     label:"À venir"      },
 ];
-/* Le créneau choisi ↔ la section rendue par le moteur temporel. « Plus tard
-   aujourd'hui » rejoint « ce soir » : personne ne distingue les deux quand il
-   s'agit de décider de sortir. */
+/* Le créneau choisi ↔ la section rendue par le moteur temporel. */
 const SECTIONS_DU_CRENEAU = Object.freeze({
   maintenant:["maintenant"],
-  soir:["ce_soir","aujourdhui"],
+  bientot:["bientot"],
   weekend:["ce_week_end"],
   avenir:["a_venir"],
 });
@@ -5602,7 +5599,7 @@ function instantCreneau(){
   const fenetre = TEMPS && TEMPS.fenetreSurface
     ? TEMPS.fenetreSurface(c.id, maintenant, "Europe/Paris") : null;
   if(!fenetre || c.id === "maintenant") return new Date(maintenant);
-  if(c.id === "soir") return new Date(Math.max(maintenant, fenetre.debut));
+  if(c.id === "bientot") return new Date(Math.max(maintenant, fenetre.debut));
   if(c.id === "weekend") {
     /* Le ranking lit la fenêtre civile commune ; ce point de référence sert
        seulement aux anciens helpers d'affichage qui attendent un instant. */
@@ -5691,7 +5688,7 @@ function estVivant(l){
     if(creneau === "maintenant") return TEMPS.estMaintenant(etat.status || etat.statut);
     const fenetre = TEMPS.fenetreSurface
       ? TEMPS.fenetreSurface(creneau, t, etat.timeZone || "Europe/Paris") : null;
-    if((creneau === "soir" || creneau === "weekend") && fenetre)
+    if((creneau === "bientot" || creneau === "weekend") && fenetre)
       return TEMPS.estDansFenetre(l, fenetre, t);
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
     return sections.includes(TEMPS.sectionTemporelle(etat, t));
@@ -5700,7 +5697,7 @@ function estVivant(l){
     const etat = statutTemps(l, t);
     return ["open_now", "closing_soon"].includes(etat.openingStatus);
   }
-  if(creneau === "soir" || creneau === "weekend") {
+  if(creneau === "bientot" || creneau === "weekend") {
     const A = window.AutourAvailability;
     const fenetre = TEMPS.fenetreSurface
       ? TEMPS.fenetreSurface(creneau, t, (l && (l.timezone || l.timeZone)) || "Europe/Paris") : null;
@@ -7583,7 +7580,7 @@ function ouvrirListe(cat){
 function suitesUtiles(connus, montres){
   const gestes = [];
   if(creneau === "maintenant"){
-    gestes.push(['<button class="suite" data-suite="soir">Ce soir</button>']);
+    gestes.push(['<button class="suite" data-suite="bientot">Bientôt</button>']);
     gestes.push(['<button class="suite" data-suite="weekend">Ce week-end</button>']);
   }
   gestes.push(['<button class="suite" data-suite="categorie">Changer de catégorie</button>']);
@@ -7656,8 +7653,8 @@ function afficherListe(emoji, titre, l, sansPalmares, redessiner, connus){
 
   $("#feuille").querySelectorAll("[data-suite]").forEach(b=>b.onclick=()=>{
     const quoi = b.dataset.suite;
-    if(quoi === "soir" || quoi === "weekend"){
-      creneau = quoi === "soir" ? "soir" : "weekend";
+    if(quoi === "bientot" || quoi === "weekend"){
+      creneau = quoi === "bientot" ? "bientot" : "weekend";
       filtreMaintenant = false;
       fermerFeuille(); pileEcrans = [];
       ouvrirFeuille2("racine"); majFeuille2(); rendre(); majFiltres();
@@ -8440,10 +8437,23 @@ function avatarChoisi(){
   return PROFIL && typeof PROFIL.avatar === "string" ? PROFIL.avatar : "";
 }
 
+function avatarCarte(){
+  const avatar = avatarChoisi();
+  return esc(AVATARS_ONBOARDING.includes(avatar) ? avatar : "🙂");
+}
+
+function actualiserAvatarCarte(){
+  if(!moi || typeof moi.getElement !== "function") return;
+  const noeud = moi.getElement();
+  const avatar = noeud && noeud.querySelector(".moi-avatar");
+  if(avatar) avatar.textContent = avatarChoisi() || "🙂";
+}
+
 function sauvegarderAvatar(avatar){
   PROFIL.avatar = AVATARS_ONBOARDING.includes(avatar) ? avatar : "";
   enregistrerProfil();
   majEnteteLieu();
+  actualiserAvatarCarte();
   const avatars = $("#onboardingAvatars");
   if(avatars) avatars.querySelectorAll("[data-avatar]").forEach((bouton)=>{
     bouton.setAttribute("aria-pressed", String(bouton.dataset.avatar === avatarChoisi()));
@@ -9467,27 +9477,39 @@ function rechercheTexte(){
   return champ && champ.value ? champ.value.trim() : "";
 }
 
-function recommandationsCeSoir(limite){
-  const M = window.AutourMaintenant;
+function recommandationsBientot(limite){
   const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
-  if(!M || typeof M.selectionCeSoir !== "function" || !centre) return [];
-  const soir = TEMPS && TEMPS.fenetreSoir
-    ? TEMPS.fenetreSoir(Date.now(), "Europe/Paris") : null;
-  const choix = M.selectionCeSoir(lieux.filter(dansZoneActive), {
-    maintenant:Date.now(),
+  if(!centre || !TEMPS || typeof TEMPS.fenetreSurface !== "function") return [];
+  const now = Date.now();
+  const fenetre = TEMPS.fenetreSurface("bientot", now, "Europe/Paris");
+  const classement = rankResults(lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l)), {
+    intent:"sortir",
+    intention:intentionCourante,
+    categories:catsActives && catsActives.size ? [...catsActives] : CATS_ACCUEIL(),
     position:centre,
-    positionConnue:true,
-    rayonMax:rayonDeLaZone(),
-    places:3,
-    soirDebut:soir && soir.debut,
-    soirFin:soir && soir.fin,
-    /* Le matin, ce wrapper interdit à availability.js de transformer un
-       état ponctuel en promesse pour ce soir. Une grille datée, elle, est
-       bien évaluée à l'heure de la plage. */
-    disponibilite:(x,t)=>dispoDe(x, null, t, {allowPointStatus:false}),
-    statutTemporel:(x,t)=>statutTemps(x, t),
+    now,
+    radius:rayonDeLaZone(),
+    distanceBetween:distanceM,
+    horsService,
+    saison:contexteSaison(),
+    diversite:diversiteDemandee(),
+    territorial:contexteTerritorialClassement(),
   });
-  return Number.isFinite(limite) ? choix.slice(0, Math.min(3, Math.max(0, limite))) : choix;
+  const choix = classement.filter((l)=>{
+    const etat = l.temporal || statutTemps(l, now);
+    const debut = etat && etat.debut;
+    if(!etat || !Number.isFinite(debut) || debut <= now || debut >= fenetre.fin) return false;
+    if(estTemporaire(l)){
+      /* Une occurrence doit avoir ses bornes réelles pour être partagée entre
+         la carte et le panneau. Un début sans fin reste affichable dans une
+         fiche, mais n'est pas assez fiable pour une surface éditoriale. */
+      return TEMPS.estDansFenetre(l, fenetre, now);
+    }
+    /* Pour un lieu permanent, le début canonique est la prochaine ouverture.
+       Un lieu déjà ouvert ne doit pas être dupliqué dans « Bientôt ». */
+    return etat.openingStatus === "closed" && !!(etat.availability && etat.availability.opensAt);
+  });
+  return Number.isFinite(limite) ? choix.slice(0, Math.max(0, limite)) : choix;
 }
 
 function recommandationsAccueil(limite, options){
@@ -9514,11 +9536,10 @@ function recommandationsAccueil(limite, options){
     return choix.slice(0, Math.min(3, max));
   }
 
-  /* « Ce soir » ne s'arrête pas au calendrier. Après les événements et les
-     séances, il sonde les activités puis les lieux pertinents réellement
-     ouverts pendant la plage — même si la consultation a lieu le matin. */
-  if(creneau === "soir" && !modeAide){
-    const couche = recommandationsCeSoir(limite);
+  /* « Bientôt » est la fenêtre glissante canonique des prochaines heures.
+     Elle ne dépend ni du matin, ni du soir, ni d'une règle de cet écran. */
+  if(creneau === "bientot" && !modeAide){
+    const couche = recommandationsBientot(limite);
     return couche;
   }
 
@@ -10587,6 +10608,25 @@ const BESOINS_RAPIDES = [
   {id:"aide", emoji:"❤️", label:"Aide"},
 ];
 
+/* Une seule porte pour les trois accès à Maintenant : bouton du haut,
+   capsule et navigation basse. La sélection reste celle de
+   `selectionMaintenant()` et le panneau ne peut donc jamais basculer vers une
+   liste longue ou un compteur total. */
+function ouvrirSurfaceMaintenant(){
+  if(modeAide) basculerAide();
+  modeTerritorial = false;
+  creneau = "maintenant";
+  filtreMaintenant = true;
+  ongletCourant = "maintenant";
+  marquerNavigation("maintenant");
+  contexteExplorer = null;
+  fermerPourToi();
+  ouvrirFeuille2("racine");
+  reinitialiserScrollFeuille();
+  rendre();
+  majFiltres();
+}
+
 /* Le même geste, où que les boutons soient posés — barre du haut sur grand
    écran, panneau sur mobile. */
 function brancherBesoinsRapides(racine){
@@ -10602,9 +10642,7 @@ function brancherBesoinsRapides(racine){
       ouvrirModeTerritorial(); return;
     }
     if(id === "maintenant"){
-      modeTerritorial = false;
-      creneau = "maintenant"; filtreMaintenant = true;
-      majFeuille2(); rendre(); majFiltres(); return;
+      ouvrirSurfaceMaintenant(); return;
     }
     if(modeAide) basculerAide();
     ouvrirFeuille2(id);
@@ -12072,6 +12110,8 @@ function raisonCourte(l){
     if(etat.status === TEMPS.STATUTS_TEMPORELS.NOW) return {t:"⚡ En cours", c:"chaud"};
     if(etat.status === TEMPS.STATUTS_TEMPORELS.SOON) return {t:"⚡ Commence bientôt", c:"chaud"};
     const section = TEMPS.sectionTemporelle(etat, Date.now());
+    if(creneau === "bientot" && (section === "ce_soir" || section === "aujourdhui"))
+      return {t:"Bientôt", c:""};
     if(section === "ce_soir") return {t:"Ce soir", c:""};
     if(section === "ce_week_end") return {t:"Ce week-end", c:""};
     return {t:"Éphémère", c:""};
@@ -13246,7 +13286,10 @@ function appliquerPosition(p, opts){
   }
   majEnteteLieu();
   detecterVille(c[0], c[1]);
-  if(moi) moi.setLatLng(c);          // la pastille bleue suit toujours, elle
+  if(moi){
+    moi.setLatLng(c);
+    actualiserAvatarCarte();         // avatar + halo suivent le GPS, sans drag
+  }
   /* La carte ne se recentre que si on l'a demandé. Pendant une veille, elle
      appartient à la personne qui la regarde. */
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
@@ -14139,22 +14182,9 @@ function marquerNavigation(id){
   nav.querySelectorAll(".nb").forEach(x=>x.classList.toggle("actif", x.dataset.nb === id));
 }
 
-/* Un appui sur « ⚡ Maintenant · 3 » ouvre la liste de ces trois-là. Pas un
-   menu, pas une page : le créneau « maintenant » et la feuille, c'est-à-dire
-   exactement ce que l'onglet du même nom fait déjà. */
-$("#badgeMaintenant").onclick = ()=>{
-  if(modeAide) basculerAide();
-  creneau = "maintenant";
-  filtreMaintenant = true;
-  ongletCourant = "maintenant";
-  marquerNavigation("maintenant");
-  contexteExplorer = null;
-  fermerPourToi();
-  // même raison qu'ailleurs : rouvrir sans fermer, l'historique reste sain
-  ouvrirFeuille2("racine");
-  reinitialiserScrollFeuille();
-  rendre();
-};
+/* Un appui sur « ⚡ Maintenant · 3 » ouvre la même surface que les deux
+   autres accès, sans recopier son état ni son historique. */
+$("#badgeMaintenant").onclick = ouvrirSurfaceMaintenant;
 
 $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   const id = b.dataset.nb;
@@ -14164,19 +14194,13 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   }
   // photographier Explorer AVANT que quoi que ce soit ne le remette à plat
   if(ongletCourant === "explorer" && id !== "explorer") capturerContexteExplorer();
+  if(id === "maintenant"){
+    ouvrirSurfaceMaintenant();
+    return;
+  }
   ongletCourant = id;
   marquerNavigation(id);
   if(id !== "pourtoi") fermerPourToi();
-  if(id === "maintenant"){
-    if(modeAide) basculerAide();
-    creneau = "maintenant";
-    filtreMaintenant = true;
-    contexteExplorer = null;
-    ouvrirFeuille2("racine");
-    reinitialiserScrollFeuille();
-    rendre();
-    return;
-  }
   if(id === "pourtoi"){
     if(modeAide) basculerAide();
     ouvrirPourToi();
