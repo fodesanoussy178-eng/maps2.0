@@ -25,6 +25,7 @@ test("les trois accès Maintenant partagent exactement la même action", () => {
   assert.match(badge, /badge\.onclick = ouvrirSurfaceMaintenant;/);
   assert.match(html, /#appHeader\{pointer-events:none\}/);
   assert.match(html, /#appHeader button,#appHeader a,#appHeader \[role="button"\]\{pointer-events:auto\}/);
+  assert.match(html, /#badgeMaintenant\{position:fixed[\s\S]*?z-index:670;/);
 
   const navigation = html.slice(html.indexOf('\$("#navBas").querySelectorAll'),
     html.indexOf('if(id === "pourtoi")'));
