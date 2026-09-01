@@ -108,4 +108,6 @@ test("la barre basse garde une géométrie stable entre desktop et mobile", () =
   assert.match(html, /#navBas \.nb\.actif\{margin:0;transform:none\}/);
   assert.match(html, /#navBas\{width:100%;left:0;right:0;bottom:0/);
   assert.match(html, /#navBas\{bottom:20px;min-height:96px/);
+  assert.match(html, /#navBas\{position:absolute;left:0;right:0;bottom:0;z-index:910;/);
+  assert.match(html, /#pourToi \.pt-corps\{padding-bottom:calc\(14px \+ var\(--nav-height\) \+ 20px\)\}/);
 });

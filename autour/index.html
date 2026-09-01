@@ -1131,7 +1131,7 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
    Cinq onglets, comme une application native. Deux d'entre eux (Favoris,
    Messages) n'ont pas encore de fonctionnalité : ils sont explicitement
    désactivés plutôt que muets, pour ne pas promettre un écran inexistant. */
-#navBas{position:absolute;left:0;right:0;bottom:0;z-index:660;
+#navBas{position:absolute;left:0;right:0;bottom:0;z-index:910;
   display:flex;align-items:stretch;
   padding:6px 4px calc(var(--safe-b) + 6px);
   background:#fff;border-top:1px solid rgba(20,30,25,.09)}
@@ -1814,6 +1814,7 @@ h2.titre{font-family:'Anton',sans-serif;font-size:27px;line-height:1.03;
   #pourToi{left:0;right:0;bottom:0;top:auto;max-height:86%;
     border-radius:20px 20px 0 0;border-bottom:0;
     animation:monte .28s cubic-bezier(.2,.9,.3,1)}
+  #pourToi .pt-corps{padding-bottom:calc(14px + var(--nav-height) + 20px)}
 }
 /* `flex:0 0 auto` n'est pas décoratif : sans lui, un corps long comprime
    l'en-tête d'un tiroir borné à 86% de l'écran, et la sortie part sous le
