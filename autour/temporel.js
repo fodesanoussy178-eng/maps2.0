@@ -30,6 +30,21 @@
     A_VENIR:     "upcoming",
     PASSE:       "past",
     INCONNU:     "unknown",
+    /* Contrat commun inter-surfaces. Les alias historiques ci-dessus restent
+       exposés pour les fournisseurs et les tests plus anciens, mais aucun
+       écran ne doit plus en déduire son propre calendrier. */
+    NOW:         "now",
+    SOON:        "soon",
+    TODAY:       "today",
+    TONIGHT:     "tonight",
+    WEEKEND:     "weekend",
+    UPCOMING:    "upcoming",
+    PAST:        "past",
+  });
+
+  const STATUTS_TEMPORELS = Object.freeze({
+    NOW: "now", SOON: "soon", TODAY: "today", TONIGHT: "tonight",
+    WEEKEND: "weekend", UPCOMING: "upcoming", PAST: "past", UNKNOWN: "unknown",
   });
 
   /* ---- Ce que la base a déjà tranché -------------------------------------
@@ -77,7 +92,9 @@
      d'inventer une durée, on borne l'affichage : passé ce délai, un événement
      commencé n'est plus annoncé comme en cours. C'est une règle d'affichage
      assumée, pas une donnée. */
-  const DUREE_SUPPOSEE_MS = 3 * 3600 * 1000;
+  /* Conservé comme alias de migration uniquement. Aucune durée n'est plus
+     ajoutée à une occurrence qui n'a pas de fin réelle. */
+  const DUREE_SUPPOSEE_MS = null;
 
   const DEFAULT_TIMEZONE = "Europe/Paris";
 
@@ -87,6 +104,25 @@
     if (typeof value === "number") return Number.isFinite(value) ? value : null;
     const t = new Date(value).getTime();
     return Number.isFinite(t) ? t : null;
+  }
+
+  function toEpochInZone(value, timeZone) {
+    if (value == null || value === "") return null;
+    if (value instanceof Date || typeof value === "number") return toEpoch(value);
+    const text = String(value).trim();
+    if (!text) return null;
+    /* Une date/heure sans offset est une heure murale du lieu, pas une heure
+       UTC implicite du navigateur. Les valeurs déjà zonées gardent leur
+       instant absolu. */
+    if (/^\d{4}-\d{2}-\d{2}(?:$|[T\s]\d{1,2}:\d{2})/.test(text) &&
+        !/(?:Z|[+-]\d{2}:?\d{2})$/.test(text)) {
+      const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{1,2})(?::(\d{2}))?)?/);
+      if (match) {
+        return epochLocal({annee:Number(match[1]), mois:Number(match[2]), jour:Number(match[3]),
+          heure:Number(match[4] || 0), minute:Number(match[5] || 0)}, timeZone || DEFAULT_TIMEZONE);
+      }
+    }
+    return toEpoch(value);
   }
 
   const DEBUTS_STRUCTURES = Object.freeze([
@@ -142,12 +178,33 @@
   function normaliserTemporalite(source) {
     const item = source || {};
     const periodes = normaliserPeriodes(item);
+    const premier = periodes[0] || null;
+    const tz = item.timezone || item.timeZone || DEFAULT_TIMEZONE;
+    const debutBrut = premiereDate(item, DEBUTS_STRUCTURES);
+    const finBrut = premiereDate(item, FINS_STRUCTURES);
+    const dateConfidence = confianceDate(item) || null;
+    const precision = precisionDate(item, premier);
+    const startAt = premier && premier.debut != null ? premier.debut : null;
+    const endAt = premier && premier.fin != null ? premier.fin : null;
+    const startLocal = startAt == null ? null : partsLocales(startAt, tz);
+    const endLocal = endAt == null ? null : partsLocales(endAt, tz);
     return {
       periodes,
-      dateConfidence: confianceDate(item) || null,
-      precision: precisionDate(item, periodes[0]),
+      start_at: debutBrut,
+      end_at: finBrut,
+      startAt,
+      endAt,
+      dateConfidence,
+      precision,
       temporalStatus: item.temporalStatus || item.temporal_status || null,
-      timeZone: item.timezone || item.timeZone || DEFAULT_TIMEZONE,
+      timezone: tz,
+      timeZone: tz,
+      dateLocale: startLocal && {year:startLocal.annee, month:startLocal.mois, day:startLocal.jour},
+      heureLocale: startLocal && {hour:startLocal.heure, minute:startLocal.minute},
+      endDateLocale: endLocal && {year:endLocal.annee, month:endLocal.mois, day:endLocal.jour},
+      endHeureLocale: endLocal && {hour:endLocal.heure, minute:endLocal.minute},
+      hasKnownDate: startAt != null,
+      hasKnownTime: startAt != null && precision === "exact",
     };
   }
 
@@ -159,6 +216,7 @@
      l'erreur. */
   function normaliserPeriodes(source) {
     const item = source || {};
+    const timeZone = item.timezone || item.timeZone || DEFAULT_TIMEZONE;
     const brutes = [];
 
     const listes = [item.occurrences, item.timings, item.periodes];
@@ -166,15 +224,17 @@
       if (!Array.isArray(liste)) return;
       liste.forEach((t) => {
         if (!t) return;
-        const debut = toEpoch(premiereDate(t, ["start_at", "startAt", "start", "begin", "debut"]));
-        const fin = toEpoch(premiereDate(t, ["end_at", "endAt", "end", "fin"]));
+        const debut = toEpochInZone(premiereDate(t, ["start_at", "startAt", "start", "begin", "debut"]),
+          t.timezone || t.timeZone || timeZone);
+        const fin = toEpochInZone(premiereDate(t, ["end_at", "endAt", "end", "fin"]),
+          t.timezone || t.timeZone || timeZone);
         if (debut != null || fin != null) brutes.push({ debut, fin });
       });
     });
 
     if (!brutes.length) {
-      const debut = toEpoch(premiereDate(item, DEBUTS_STRUCTURES));
-      const fin = toEpoch(premiereDate(item, FINS_STRUCTURES));
+      const debut = toEpochInZone(premiereDate(item, DEBUTS_STRUCTURES), timeZone);
+      const fin = toEpochInZone(premiereDate(item, FINS_STRUCTURES), timeZone);
       if (debut != null || fin != null) brutes.push({ debut, fin });
     }
 
@@ -185,10 +245,7 @@
   }
 
   function finEffective(periode) {
-    if (!periode) return null;
-    if (periode.fin != null) return periode.fin;
-    if (periode.debut != null) return periode.debut + DUREE_SUPPOSEE_MS;
-    return null;
+    return periode && periode.fin != null ? periode.fin : null;
   }
 
   /* L'occurrence qui compte : celle en cours, sinon la prochaine à venir.
@@ -201,7 +258,7 @@
 
     const enCours = liste.find((p) => {
       const fin = finEffective(p);
-      return p.debut != null && p.debut <= t && (fin == null || fin > t);
+      return p.debut != null && fin != null && p.debut <= t && fin > t;
     });
     if (enCours) return enCours;
 
@@ -305,6 +362,44 @@
     return etat.debut < fenetre.fin && fin > fenetre.debut;
   }
 
+  /* Une surface ne reparcourt plus ses dates pour décider si une occurrence
+     appartient à sa fenêtre. Cette primitive sert à Ce soir, Ce week-end et
+     aux notifications : elle exige une vraie fin, donc une occurrence sans
+     borne complète ne peut pas être présentée comme un rendez-vous fiable. */
+  function estDansFenetre(source, fenetre, now, options) {
+    const o = options || {};
+    const f = fenetre || {};
+    const debutFenetre = Number(f.debut), finFenetre = Number(f.fin);
+    if (!Number.isFinite(debutFenetre) || !Number.isFinite(finFenetre) || finFenetre <= debutFenetre)
+      return false;
+    const t = now == null ? Date.now() : Number(now);
+    const item = source || {};
+    if (item.annule || item.cancelled || item.status === "cancelled") return false;
+    return normaliserPeriodes(item).some((periode) =>
+      periode.debut != null && periode.fin != null && periode.fin > t &&
+      periode.debut < finFenetre && periode.fin > debutFenetre);
+  }
+
+  function fenetreSurface(surface, epoch, timeZone) {
+    const t = epoch == null ? Date.now() : Number(epoch);
+    const tz = timeZone || DEFAULT_TIMEZONE;
+    switch (String(surface || "")) {
+      case "maintenant":
+        return {debut:t, fin:t + FENETRE_IMMINENT_MS, timeZone:tz};
+      case "soir":
+      case "ce_soir":
+        return Object.assign(fenetreSoir(t, tz), {timeZone:tz});
+      case "weekend":
+      case "ce_week_end":
+        return Object.assign(fenetreWeekEnd(t, tz), {timeZone:tz});
+      case "avenir":
+      case "upcoming":
+        return {debut:t, fin:null, timeZone:tz};
+      default:
+        return {debut:t, fin:null, timeZone:tz};
+    }
+  }
+
   /* Une exposition, une saison ou un musée peut être dans sa période sans
      être accessible à cet instant. Ce verdict est commun aux données locales
      et canoniques : la provenance du statut ne change pas les horaires. */
@@ -322,7 +417,7 @@
        période — souvent des semaines en arrière — mais la prochaine
        ouverture. Sans cette bascule, une expo de juin à septembre
        s'annonçait « Ce soir · 22:47 », l'heure de son ouverture en juin. */
-    const ouvre = dispo.opensAt ? Date.parse(dispo.opensAt) : NaN;
+    const ouvre = dispo.opensAt ? toEpochInZone(dispo.opensAt, timeZone) : NaN;
     const suivant = Number.isFinite(ouvre) && ouvre > t ? ouvre : null;
     if (suivant == null)
       return Object.assign({ statut: STATUTS.PLUS_TARD, periodeLongue: true, dispo }, commun);
@@ -337,7 +432,7 @@
      `disponibilite` est injectée par l'appelant : c'est elle qui sait lire les
      horaires d'ouverture. On ne la réimplémente pas ici, et on ne suppose
      jamais qu'un lieu est ouvert quand elle ne répond pas. */
-  function statutTemporel(item, now, options) {
+  function statutTemporelLegacy(item, now, options) {
     const t = now == null ? Date.now() : Number(now);
     const o = options || {};
     const source = item || {};
@@ -432,6 +527,9 @@
     if (fin != null && fin <= t) return Object.assign({ statut: STATUTS.PASSE }, commun);
 
     if (debut <= t) {
+      /* Une occurrence commencée sans fin réelle ne peut pas être déclarée
+         passée ni en cours : le moteur conserve l'incertitude. */
+      if (fin == null) return Object.assign({ statut: STATUTS.INCONNU }, commun);
       const etendue = (fin == null ? 0 : fin - debut);
       if (etendue > SEUIL_PERIODE_LONGUE_MS) {
         return statutPeriodeLongue(source, t, timeZone, commun, o);
@@ -448,6 +546,141 @@
     return Object.assign({ statut: STATUTS.A_VENIR }, commun);
   }
 
+  function estEvenement(source) {
+    const item = source || {};
+    return item.isTemporary === true || item.temporaire === true ||
+      item.entity_type === "event" || item.entityType === "event" ||
+      !!(item.temporalStatus || item.temporal_status);
+  }
+
+  function statutOuverture(dispo) {
+    if (!dispo || dispo.status === "unknown") return "unknown";
+    if (dispo.status === "permanently_closed" || dispo.status === "closed" ||
+        dispo.status === "opening_soon") return "closed";
+    if (dispo.status === "closing_soon") return "closing_soon";
+    return dispo.isOpenNow ? "open_now" : "closed";
+  }
+
+  /* Le statut canonique est calculé depuis les bornes normalisées. Le verdict
+     SQL reste disponible dans `sourceTemporalStatus` pour l'audit, mais un
+     cache ancien ne peut plus transformer une date future en « terminé » ou
+     « maintenant ». */
+  function statutCanonique(source, t, legacy, options) {
+    const item = source || {};
+    const o = options || {};
+    const timeZone = item.timezone || item.timeZone || o.timeZone || DEFAULT_TIMEZONE;
+    const periodes = normaliserPeriodes(item);
+    const occurrence = prochaineOccurrence(periodes, t);
+    const debut = occurrence && occurrence.debut != null ? occurrence.debut : null;
+    const fin = occurrence && occurrence.fin != null ? occurrence.fin : null;
+    const evenement = estEvenement(item);
+    const annule = !!(item.annule || item.cancelled || item.status === "cancelled");
+    const precision = precisionDate(item, occurrence);
+
+    if (annule) return STATUTS_TEMPORELS.PAST;
+    if (evenement) {
+      if ((legacy && legacy.canonique === "unknown_date") || precision === "unknown")
+        return STATUTS_TEMPORELS.UNKNOWN;
+      if (debut == null) return STATUTS_TEMPORELS.UNKNOWN;
+      if (fin != null && fin <= t) return STATUTS_TEMPORELS.PAST;
+      if (debut <= t) {
+        /* Une occurrence commencée sans fin n'est pas prouvée en cours. */
+        if (fin == null) return STATUTS_TEMPORELS.UNKNOWN;
+        if (legacy && legacy.periodeLongue && legacy.statut !== STATUTS.EN_COURS)
+          return statutCanoniqueDepuisLegacy(legacy, debut, t, timeZone);
+        return fin > t ? STATUTS_TEMPORELS.NOW : STATUTS_TEMPORELS.PAST;
+      }
+      const dans = debut - t;
+      if (dans <= FENETRE_IMMINENT_MS) return STATUTS_TEMPORELS.SOON;
+      if (periodeIntersecte({debut, fin}, fenetreWeekEnd(t, timeZone)))
+        return STATUTS_TEMPORELS.WEEKEND;
+      if (memeJour(debut, t, timeZone)) {
+        return partsLocales(debut, timeZone).heure >= 18
+          ? STATUTS_TEMPORELS.TONIGHT : STATUTS_TEMPORELS.TODAY;
+      }
+      return STATUTS_TEMPORELS.UPCOMING;
+    }
+
+    const dispo = legacy && legacy.dispo
+      ? legacy.dispo
+      : (typeof o.disponibilite === "function" ? o.disponibilite(item, t) : null);
+    const ouverture = statutOuverture(dispo);
+    if (ouverture === "open_now" || ouverture === "closing_soon") return STATUTS_TEMPORELS.NOW;
+    if (ouverture === "closed" && dispo && dispo.opensAt) {
+      const ouvre = toEpoch(dispo.opensAt);
+      if (Number.isFinite(ouvre) && ouvre > t && ouvre - t <= FENETRE_IMMINENT_MS)
+        return STATUTS_TEMPORELS.SOON;
+      if (Number.isFinite(ouvre) && memeJour(ouvre, t, timeZone))
+        return partsLocales(ouvre, timeZone).heure >= 18
+          ? STATUTS_TEMPORELS.TONIGHT : STATUTS_TEMPORELS.TODAY;
+    }
+    if (ouverture === "unknown") return STATUTS_TEMPORELS.UNKNOWN;
+    return ouverture === "closed" ? STATUTS_TEMPORELS.UPCOMING : STATUTS_TEMPORELS.UNKNOWN;
+  }
+
+  function statutCanoniqueDepuisLegacy(legacy, debut, t, timeZone) {
+    if (!legacy || legacy.statut === STATUTS.INCONNU) return STATUTS_TEMPORELS.UNKNOWN;
+    if (legacy.statut === STATUTS.PASSE) return STATUTS_TEMPORELS.PAST;
+    if (legacy.statut === STATUTS.EN_COURS) return STATUTS_TEMPORELS.NOW;
+    if (legacy.statut === STATUTS.IMMINENT) return STATUTS_TEMPORELS.SOON;
+    if (legacy.statut === STATUTS.PLUS_TARD)
+      return partsLocales(debut, timeZone).heure >= 18
+        ? STATUTS_TEMPORELS.TONIGHT : STATUTS_TEMPORELS.TODAY;
+    if (legacy.statut === STATUTS.A_VENIR) {
+      return periodeIntersecte({debut, fin:legacy.finReelle}, fenetreWeekEnd(t, timeZone))
+        ? STATUTS_TEMPORELS.WEEKEND : STATUTS_TEMPORELS.UPCOMING;
+    }
+    return STATUTS_TEMPORELS.UNKNOWN;
+  }
+
+  function ajouterEtatCanonique(legacy, source, t, options) {
+    const item = source || {};
+    const timeZone = item.timezone || item.timeZone || (options && options.timeZone) || DEFAULT_TIMEZONE;
+    const etat = Object.assign({}, legacy || {});
+    const status = statutCanonique(item, t, etat, options);
+    const periode = etat.occurrence || prochaineOccurrence(normaliserPeriodes(item), t);
+    /* Les lieux longs peuvent déplacer `debut` vers leur prochaine ouverture;
+       ce déplacement fait partie du verdict partagé et ne doit pas être
+       réécrasé par le début historique de la saison. */
+    const debut = etat.debut != null ? etat.debut
+      : (periode && periode.debut != null ? periode.debut : null);
+    const finReelle = periode && periode.fin != null ? periode.fin : etat.finReelle;
+    const dispo = etat.dispo || null;
+    const debutLocal = debut == null ? null : partsLocales(debut, timeZone);
+    const finLocal = finReelle == null ? null : partsLocales(finReelle, timeZone);
+    return Object.assign(etat, {
+      status,
+      canonicalStatus: status,
+      temporalStatus: status,
+      sourceTemporalStatus: etat.canonique || item.temporalStatus || item.temporal_status || null,
+      timeZone,
+      timezone: timeZone,
+      start_at: premiereValeur(item, DEBUTS_STRUCTURES),
+      end_at: premiereValeur(item, FINS_STRUCTURES),
+      debut: debut == null ? null : debut,
+      finReelle: finReelle == null ? null : finReelle,
+      startAt: debut == null ? null : debut,
+      endAt: finReelle == null ? null : finReelle,
+      dateLocale: debutLocal && {year:debutLocal.annee, month:debutLocal.mois, day:debutLocal.jour},
+      heureLocale: debutLocal && {hour:debutLocal.heure, minute:debutLocal.minute},
+      endDateLocale: finLocal && {year:finLocal.annee, month:finLocal.mois, day:finLocal.jour},
+      endHeureLocale: finLocal && {hour:finLocal.heure, minute:finLocal.minute},
+      hasKnownDate: debut != null,
+      hasKnownTime: debut != null && (etat.precision || precisionDate(item, periode)) === "exact",
+      openingStatus: statutOuverture(dispo),
+      availability: dispo,
+      now: t,
+    });
+  }
+
+  /* Point d'entrée unique consommé par les surfaces, les fiches et les
+     notifications. `statut` reste l'alias historique ; `status` est le
+     contrat désormais commun. */
+  function statutTemporel(item, now, options) {
+    const t = now == null ? Date.now() : Number(now);
+    return ajouterEtatCanonique(statutTemporelLegacy(item, t, options), item, t, options);
+  }
+
   /* Point d'entrée unique pour les événements. L'objet canonique ne porte pas
      les attributs historiques d'un lieu permanent (`isTemporary`, `debutLe`),
      donc on lui donne seulement ce marqueur technique avant de déléguer au
@@ -462,7 +695,8 @@
      décide pas de ça : la proximité ou les goûts ne doivent jamais y faire
      entrer un événement de la semaine prochaine. */
   function estMaintenant(statut) {
-    return statut === STATUTS.EN_COURS || statut === STATUTS.IMMINENT;
+    return statut === STATUTS.EN_COURS || statut === STATUTS.IMMINENT ||
+      statut === STATUTS_TEMPORELS.NOW || statut === STATUTS_TEMPORELS.SOON;
   }
 
   /* ---- Ce qui s'écrit sur la carte --------------------------------------
@@ -481,42 +715,53 @@
     const t = now == null ? Date.now() : Number(now);
     const etat = (options && options.statut) || statutTemporel(item, t, options);
     const tz = etat.timeZone;
+    const status = etat.status || (
+      etat.statut === STATUTS.EN_COURS ? STATUTS_TEMPORELS.NOW :
+      etat.statut === STATUTS.IMMINENT ? STATUTS_TEMPORELS.SOON :
+      etat.statut === STATUTS.PLUS_TARD ? STATUTS_TEMPORELS.TODAY :
+      etat.statut === STATUTS.A_VENIR ? STATUTS_TEMPORELS.UPCOMING :
+      etat.statut === STATUTS.PASSE ? STATUTS_TEMPORELS.PAST : STATUTS_TEMPORELS.UNKNOWN);
 
-    switch (etat.statut) {
-      case STATUTS.EN_COURS:
+    switch (status) {
+      case STATUTS_TEMPORELS.NOW:
         return etat.periodeLongue && etat.dispo && etat.dispo.closesAtTime
           ? "En cours · jusqu’à " + etat.dispo.closesAtTime
           : "Maintenant";
 
-      case STATUTS.IMMINENT: {
+      case STATUTS_TEMPORELS.SOON: {
         const minutes = Math.max(1, Math.round(etat.dansMs / 60000));
         return "Commence dans " + minutes + " min";
       }
 
-      case STATUTS.PLUS_TARD: {
+      case STATUTS_TEMPORELS.TODAY:
+      case STATUTS_TEMPORELS.TONIGHT: {
         if (etat.debut == null)
           return etat.dispo && etat.dispo.opensAtTime ? "Ouvre à " + etat.dispo.opensAtTime : "Plus tard";
         const p = partsLocales(etat.debut, tz);
-        return (p.heure >= 18 ? "Ce soir · " : "Aujourd’hui · ") + heureLocale(etat.debut, tz);
+        return (status === STATUTS_TEMPORELS.TONIGHT || p.heure >= 18 ? "Ce soir · " : "Aujourd’hui · ") + heureLocale(etat.debut, tz);
       }
 
-      case STATUTS.A_VENIR: {
+      case STATUTS_TEMPORELS.WEEKEND:
+      case STATUTS_TEMPORELS.UPCOMING: {
+        if (etat.debut == null) return "Date à vérifier";
         const p = partsLocales(etat.debut, tz);
-        const demain = new Date(t + 24 * 3600 * 1000).getTime();
+        const demain = fenetreJour(t, tz).fin;
         if (memeJour(etat.debut, demain, tz)) return "Demain · " + heureLocale(etat.debut, tz);
-        const j = new Date(etat.debut);
-        const jourSemaine = JOURS[Number(new Intl.DateTimeFormat("en-US",
-          { timeZone: tz, weekday: "short" }).format(j) === "Sun" ? 0
-          : ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
-              .indexOf(new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(j)))];
-        return jourSemaine + " " + p.jour + " " + MOIS[p.mois - 1] + " · " + heureLocale(etat.debut, tz);
+        const index = jourSemaine(etat.debut, tz);
+        const jourLabel = JOURS[index];
+        return jourLabel + " " + p.jour + " " + MOIS[p.mois - 1] + " · " + heureLocale(etat.debut, tz);
       }
 
-      case STATUTS.PASSE:
+      case STATUTS_TEMPORELS.PAST:
         return etat.annule ? "Annulé" : "Terminé";
 
       default:
-        return "Date à vérifier";
+        /* Une borne connue reste affichable même si le statut est `unknown`
+           (par exemple un début connu sans fin). Ce n'est pas une date à
+           vérifier : c'est une date partiellement renseignée. */
+        return (etat.hasKnownDate || etat.debut != null) && etat.precision !== "unknown" &&
+          etat.canonique !== "unknown_date"
+          ? libelleDate(item, t, {statut: etat}) : "Date à vérifier";
     }
   }
 
@@ -527,8 +772,11 @@
   function libelleDate(item, now, options) {
     const t = now == null ? Date.now() : Number(now);
     const etat = (options && options.statut) || statutTemporel(item, t, options);
-    if (!etat || etat.statut === STATUTS.INCONNU) return "Date à vérifier";
-    if (etat.statut === STATUTS.PASSE && !(options && options.ignoreStatus))
+    if (!etat) return "Date à vérifier";
+    const status = etat.status || (etat.statut === STATUTS.PASSE ? STATUTS_TEMPORELS.PAST : null);
+    if (status === STATUTS_TEMPORELS.UNKNOWN && !etat.hasKnownDate && etat.debut == null)
+      return "Date à vérifier";
+    if (status === STATUTS_TEMPORELS.PAST && !(options && options.ignoreStatus))
       return etat.annule ? "Annulé" : "Terminé";
 
     const periode = etat.occurrence || null;
@@ -554,8 +802,16 @@
   function sectionTemporelle(etat, now) {
     const t = now == null ? Date.now() : Number(now);
     if (!etat || etat.debut == null) return null;
-    if (estMaintenant(etat.statut)) return "maintenant";
-    if (etat.statut === STATUTS.PASSE) return null;
+    const status = etat.status || (
+      etat.statut === STATUTS.EN_COURS ? STATUTS_TEMPORELS.NOW :
+      etat.statut === STATUTS.IMMINENT ? STATUTS_TEMPORELS.SOON :
+      etat.statut === STATUTS.PLUS_TARD ? STATUTS_TEMPORELS.TODAY :
+      etat.statut === STATUTS.A_VENIR ? STATUTS_TEMPORELS.UPCOMING :
+      etat.statut === STATUTS.PASSE ? STATUTS_TEMPORELS.PAST : STATUTS_TEMPORELS.UNKNOWN);
+    if (status === STATUTS_TEMPORELS.NOW || status === STATUTS_TEMPORELS.SOON) return "maintenant";
+    if (status === STATUTS_TEMPORELS.PAST || status === STATUTS_TEMPORELS.UNKNOWN) return null;
+    if (status === STATUTS_TEMPORELS.TONIGHT) return "ce_soir";
+    if (status === STATUTS_TEMPORELS.WEEKEND) return "ce_week_end";
 
     const tz = etat.timeZone;
     const p = partsLocales(etat.debut, tz);
@@ -575,6 +831,7 @@
 
   root.AutourTemps = Object.freeze({
     STATUTS,
+    STATUTS_TEMPORELS,
     STATUTS_CANONIQUES,
     FENETRE_IMMINENT_MS,
     SEUIL_PERIODE_LONGUE_MS,
@@ -582,6 +839,7 @@
     DEFAULT_TIMEZONE,
     normaliserPeriodes,
     normaliserTemporalite,
+    statutOuverture,
     prochaineOccurrence,
     statutTemporel,
     etatTemporalEvenement,
@@ -589,9 +847,14 @@
     libelleTemporel,
     libelleDate,
     sectionTemporelle,
+    estDansFenetre,
+    fenetreSurface,
     partsLocales,
     fenetreJour,
     fenetreSoir,
     fenetreWeekEnd,
+    toEpoch,
+    toEpochInZone,
+    heureLocale,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

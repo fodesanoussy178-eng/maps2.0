@@ -174,7 +174,7 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c1ddb950"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d560c4dd"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -267,6 +267,11 @@ function definirZoneActive(zone){
   if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)) return porteeCourante;
   zoneActive = zone || null;
   porteeCourante += 1;
+  bassinTerritorialActif = null;
+  evenementsMetropole = [];
+  metropoleEnCours = null;
+  porteeMetropole = 0;
+  bassinCourant = null;
   /* Les mémoires qui portent sur « les lieux qu'on montre » ne valent plus
      rien : elles ont été calculées pour l'autre ville. */
   oublierItemsMaintenant();
@@ -1232,6 +1237,7 @@ const CATS = {
   /* ---- couche permanente : la ville telle qu'elle existe ---- */
   resto:    {label:"Restaurants", emoji:"🍔", eph:false},
   fastfood: {label:"Fast-food",   emoji:"🍕", eph:false},
+  boulangerie:{label:"Boulangeries", emoji:"🥐", eph:false},
   cafe:     {label:"Cafés",       emoji:"☕", eph:false},
   bar:      {label:"Bars",        emoji:"🍺", eph:false},
   cinema:   {label:"Cinéma",      emoji:"🎬", eph:false},
@@ -1287,7 +1293,8 @@ const SOUS_TYPES = [
 const DESCRIPTEURS_SOUS_TYPE = new Map();
 
 function categorieAffichee(l, defaut){
-  const base = (l && CATS[l.cat]) || defaut || CATS.event;
+  const categorie = l && (l.canonicalCategory || l.cat);
+  const base = (categorie && CATS[categorie]) || (l && CATS[l.cat]) || defaut || CATS.event;
   if(!l) return base;
   const tags = l.tags || {};
   const trouve = SOUS_TYPES.find(([,,teste])=>teste(tags, l.type || ""));
@@ -1696,7 +1703,7 @@ const BESOINS = [
    Un lieu en porte souvent plusieurs : c'est le but de la classification
    pondérée, et la carte doit le montrer (« SORTIR • FAMILLE »). */
 const ETIQUETTES_CAT = {
-  eat:"MANGER", restaurant:"MANGER", cafe:"MANGER", market:"MANGER",
+  eat:"MANGER", restaurant:"MANGER", resto:"MANGER", fastfood:"MANGER", boulangerie:"MANGER", cafe:"MANGER", market:"MANGER", marche:"MANGER",
   outing:"SORTIR", bar:"SORTIR", concert:"SORTIR", show:"SORTIR", event:"SORTIR",
   family:"FAMILLE", kids_event:"FAMILLE", playground:"FAMILLE", family_event:"FAMILLE",
   culture:"CULTURE", museum:"CULTURE", cinema:"CULTURE",
@@ -1712,7 +1719,9 @@ const ETIQUETTES_CAT = {
    que c'en est un. On prend donc les deux premières étiquettes DISTINCTES. */
 function etiquettesLisibles(l){
   const vues = [];
-  ((l && l.categories) || []).forEach(c=>{
+  const categories = l && l.canonicalCategories && l.canonicalCategories.length
+    ? l.canonicalCategories : ((l && l.categories) || []);
+  categories.forEach(c=>{
     const e = ETIQUETTES_CAT[c];
     if(e && !vues.includes(e)) vues.push(e);
   });
@@ -1893,6 +1902,8 @@ let sb = null, sbLecture = null, moiId = null, monPseudo = "";
 let bassinTerritorialActif = null;
 let evenementsMetropole = [];
 let metropoleEnCours = null;
+let porteeMetropole = 0;
+let bassinCourant = null;
 const METROPOLE_LIMITE = 300;
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
@@ -2260,13 +2271,20 @@ function visuelPublication(p){
   };
 }
 
+function epochTemporel(value, timeZone){
+  if(value == null || value === "") return null;
+  const epoch = TEMPS && TEMPS.toEpochInZone
+    ? TEMPS.toEpochInZone(value, timeZone || "Europe/Paris")
+    : (typeof value === "number" ? value : new Date(value).getTime());
+  return Number.isFinite(epoch) ? epoch : null;
+}
+
 function premiereDateObjet(objet, champs){
   const source = objet || {};
   for(const champ of champs){
     const valeur = source[champ];
     if(valeur == null || valeur === "") continue;
-    const epoch = typeof valeur === "number" ? valeur : new Date(valeur).getTime();
-    if(Number.isFinite(epoch)) return valeur;
+    if(epochTemporel(valeur, source.timezone || source.timeZone)) return valeur;
   }
   return null;
 }
@@ -2284,11 +2302,12 @@ function versLieu(p){
     creatorId:createdBy, creatorName:p.creator_name || "",
     verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
     lat:p.lat, lng:p.lng,
+    timezone:p.timezone || p.timeZone || "Europe/Paris",
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: (()=>{ const v = premiereDateObjet(p, ["start_at", "startAt", "debut_le", "debutLe"]);
-      return v == null ? null : new Date(v).getTime(); })(),
+      return v == null ? null : epochTemporel(v, p.timezone || p.timeZone); })(),
     finLe: (()=>{ const v = premiereDateObjet(p, ["end_at", "endAt", "fin_le", "finLe"]);
-      return v == null ? null : new Date(v).getTime(); })(),
+      return v == null ? null : epochTemporel(v, p.timezone || p.timeZone); })(),
     isTemporary:true, url:p.url || "",
     /* L'affiche d'une publication appartient à qui l'a déposée : c'est la
        provenance la plus claire qu'Autour possède, et la seule qui n'ait
@@ -2510,19 +2529,27 @@ function visuelEvenement(e){
 }
 
 function versEvenementCanonique(e){
+  const temps = (typeof window !== "undefined" && window.AutourTemps) ||
+    (typeof globalThis !== "undefined" && globalThis.AutourTemps);
+  const epoch = (value) => {
+    if(value == null || value === "") return null;
+    const parsed = temps && temps.toEpochInZone
+      ? temps.toEpochInZone(value, e.timezone || e.timeZone)
+      : (typeof value === "number" ? value : new Date(value).getTime());
+    return Number.isFinite(parsed) ? parsed : null;
+  };
   const premiere = (champs) => {
     for(const champ of champs){
       const valeur = e[champ];
       if(valeur == null || valeur === "") continue;
-      const epoch = typeof valeur === "number" ? valeur : new Date(valeur).getTime();
-      if(Number.isFinite(epoch)) return valeur;
+      if(epoch(valeur)) return valeur;
     }
     return null;
   };
   const debutBrut = premiere(["start_at", "startAt", "debut_le", "debutLe"]);
   const finBrut = premiere(["end_at", "endAt", "fin_le", "finLe"]);
-  const debut = debutBrut != null && debutBrut !== "" ? new Date(debutBrut).getTime() : null;
-  const fin = finBrut != null && finBrut !== "" ? new Date(finBrut).getTime() : null;
+  const debut = debutBrut != null && debutBrut !== "" ? epoch(debutBrut) : null;
+  const fin = finBrut != null && finBrut !== "" ? epoch(finBrut) : null;
   return normaliserItem({
     id:e.id == null || e.id === "" ? "" : "evt"+e.id, dbId:e.id,
     cat:e.category || "event",
@@ -2614,8 +2641,9 @@ function versEvenementCanonique(e){
   }, e.primary_source || "datatourisme");
 }
 
-async function chargerEvenementsCanoniques(lat,lng){
+async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
   if(!sbLecture) return null;
+  const porteeEvenements = portee;
   const b = emprisePublications(lat, lng);
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
@@ -2656,6 +2684,7 @@ async function chargerEvenementsCanoniques(lat,lng){
       console.error("Lecture des événements :", error.message);
       return null;
     }
+    if(porteeEvenements !== porteeCourante) return;
     return (data||[]).map(versEvenementCanonique).filter(Boolean);
   } finally { fini(); }
 }
@@ -2668,7 +2697,7 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       t:0, publications:[], evenements:[], okPublications:false, okEvenements:false,
     };
     const [publications, evenements] = await Promise.all([
-      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng)
+      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng,portee)
     ]);
     const okPublications = Array.isArray(publications);
     const okEvenements = Array.isArray(evenements);
@@ -3873,7 +3902,7 @@ function majEtiquettes(){
 /* Passé : c'est le moteur temporel qui tranche, pour qu'un événement récurrent
    ne soit pas déclaré terminé sur la fin de sa première séance. */
 function estPasse(l){
-  if(estTemporaire(l)) return statutTemps(l).statut === TEMPS.STATUTS.PASSE;
+  if(estTemporaire(l)) return statutTemps(l).status === TEMPS.STATUTS_TEMPORELS.PAST;
   return l.endsAt != null && l.endsAt < Date.now();
 }
 
@@ -3897,7 +3926,9 @@ function estGooglePlaces(l){
     (l.sourceRefs && l.sourceRefs.googlePlaceId)));
 }
 function familleDedupLieu(l){
-  return ["resto","fastfood","cafe","bar"].includes(l && l.cat) ? "restauration" : (l && l.cat);
+  const categorie = l && (l.canonicalCategory || l.cat);
+  return ["resto","fastfood","cafe","bar","boulangerie"].includes(categorie)
+    ? "restauration" : categorie;
 }
 function fusionnerFichesFournisseurs(candidats){
   const liste = candidats || [];
@@ -4008,7 +4039,10 @@ function fusionner(nouveaux, flux, opts){
   const o = opts || {};
   const type = flux || "permanent";
   const source = nouveaux[0] && nouveaux[0].source || type;
-  const classes = nouveaux.map(l=>l.categories ? l : normaliserItem(l, source))
+  /* Une liste `categories` fournie par un prestataire n'est pas encore la
+     taxonomie canonique. Chaque flux repasse donc par le même adaptateur ;
+     sa projection est idempotente pour les objets déjà normalisés. */
+  const classes = nouveaux.map(l=>normaliserItem(l, source))
     // une annulation reste une information utile et distincte d'une suppression
     .filter(l=>l.annule || !estPasse(l));
   const courant = type === "external" ? externalEvents
@@ -5564,18 +5598,17 @@ let creneau = "maintenant";
    horaires et de la fenêtre dans laquelle un événement compte. */
 function instantCreneau(){
   const c = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
-  const d = new Date();
-  // le week-end : le prochain samedi, ou aujourd'hui si on y est déjà
-  if(c.weekend){
-    const jour = d.getDay();                       // 0 dimanche … 6 samedi
-    if(jour !== 0 && jour !== 6) d.setDate(d.getDate() + (6 - jour));
+  const maintenant = Date.now();
+  const fenetre = TEMPS && TEMPS.fenetreSurface
+    ? TEMPS.fenetreSurface(c.id, maintenant, "Europe/Paris") : null;
+  if(!fenetre || c.id === "maintenant") return new Date(maintenant);
+  if(c.id === "soir") return new Date(Math.max(maintenant, fenetre.debut));
+  if(c.id === "weekend") {
+    /* Le ranking lit la fenêtre civile commune ; ce point de référence sert
+       seulement aux anciens helpers d'affichage qui attendent un instant. */
+    return new Date(maintenant < fenetre.debut ? fenetre.debut : maintenant);
   }
-  if(c.heure != null){
-    d.setHours(c.heure, 0, 0, 0);
-    // « ce soir » quand il est déjà 21 h : c'est maintenant, pas dans le passé
-    if(d.getTime() < Date.now()) return new Date();
-  }
-  return d;
+  return new Date(maintenant);
 }
 
 /* Le contexte saisonnier du moment : mois, heure et vacances scolaires. Trois
@@ -5622,12 +5655,12 @@ function sectionDe(l, quand){
 /* Le statut temporel d'un objet, calculé par le moteur qui fait autorité
    là-dessus. Un seul point d'entrée pour toute l'application : la carte, les
    cartes du carousel et les sections doivent lire la même chose. */
-function statutTemps(l, quand){
+function statutTemps(l, quand, options){
   const t = quand == null ? Date.now() : quand;
-  const disponibilite = (x,q)=>dispoDe(x, null, q);
+  const disponibilite = (x,q)=>dispoDe(x, null, q, options || {});
   if(estTemporaire(l) && TEMPS.etatTemporalEvenement)
-    return TEMPS.etatTemporalEvenement(donneesEvenement(l), t, {disponibilite});
-  return TEMPS.statutTemporel(l, t, {disponibilite});
+    return TEMPS.etatTemporalEvenement(donneesEvenement(l), t, Object.assign({}, options || {}, {disponibilite}));
+  return TEMPS.statutTemporel(l, t, Object.assign({}, options || {}, {disponibilite}));
 }
 
 function libelleTemporelDe(l, quand, options){
@@ -5647,24 +5680,36 @@ function libelleDateDe(l, quand, options){
 }
 
 function estVivant(l){
-  const t = instantCreneau().getTime();
+  const t = Date.now();
   if(estTemporaire(l)){
     /* « Maintenant » n'accepte que ce qui a lieu ou commence dans les deux
        heures. L'ancienne règle laissait passer douze heures, et surtout elle
        laissait passer un événement SANS date : `startsAt` nul ne déclenchait
        aucun refus. C'est ce qui remplissait le bloc d'événements prévus des
        semaines plus tard. */
-    if(creneau === "maintenant") return TEMPS.estMaintenant(statutTemps(l, t).statut);
-    // les autres créneaux montrent leur groupe, calculé depuis l'instant réel :
-    // un événement de samedi appartient au week-end, pas à « maintenant »
+    const etat = statutTemps(l, t);
+    if(creneau === "maintenant") return TEMPS.estMaintenant(etat.status || etat.statut);
+    const fenetre = TEMPS.fenetreSurface
+      ? TEMPS.fenetreSurface(creneau, t, etat.timeZone || "Europe/Paris") : null;
+    if((creneau === "soir" || creneau === "weekend") && fenetre)
+      return TEMPS.estDansFenetre(l, fenetre, t);
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
-    return sections.includes(sectionDe(l));
+    return sections.includes(TEMPS.sectionTemporelle(etat, t));
   }
-  // « Maintenant » retire ce qui est fermé, pas ce dont on ignore l'horaire :
-  // la plupart des lieux OpenStreetMap n'ont aucune donnée d'ouverture, et
-  // les exiger vidait la carte à l'ouverture de l'application
-  // (un lieu dont on sait lire l'horaire est jugé dessus, les autres restent)
-  return creneau === "maintenant" ? !estFerme(l) : true;
+  if(creneau === "maintenant") {
+    const etat = statutTemps(l, t);
+    return ["open_now", "closing_soon"].includes(etat.openingStatus);
+  }
+  if(creneau === "soir" || creneau === "weekend") {
+    const A = window.AutourAvailability;
+    const fenetre = TEMPS.fenetreSurface
+      ? TEMPS.fenetreSurface(creneau, t, (l && (l.timezone || l.timeZone)) || "Europe/Paris") : null;
+    const ouverture = A && A.etatOuverture
+      ? A.etatOuverture(l, t, {fenetre}) : null;
+    return !!(ouverture && (ouverture.openingStatus === "open_tonight" ||
+      (ouverture.windowAvailability && ["open", "closing_soon"].includes(ouverture.windowAvailability.status))));
+  }
+  return true;
 }
 
 /* Le regroupement vit ici, dans l'unique entonnoir de ce qui peut s'afficher.
@@ -5723,7 +5768,9 @@ function visiblesBruts(){
 function heureLocale(ts, l){
   const tz = (l && (l.timezone || l.timeZone)) ||
     (window.AutourAvailability && window.AutourAvailability.DEFAULT_TIMEZONE) || undefined;
-  return new Date(ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit",timeZone:tz});
+  return TEMPS && TEMPS.heureLocale
+    ? TEMPS.heureLocale(ts, tz)
+    : new Date(ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit",timeZone:tz});
 }
 
 /* ---- Fiche compacte ------------------------------------------------------
@@ -5801,7 +5848,7 @@ function sousTitreMarqueur(l){
   if(estTemporaire(l)){
     const etat = statutTemps(l);
     const libelle = libelleTemporelDe(l, Date.now(), {statut: etat});
-    if(libelle) return '<span'+(etat.statut===TEMPS.STATUTS.EN_COURS?' class="ouvre"':'')+'>'+
+    if(libelle) return '<span'+(etat.status===TEMPS.STATUTS_TEMPORELS.NOW?' class="ouvre"':'')+'>'+
       esc(libelle)+(trajet ? " · "+trajet : "")+'</span>';
   }
   if(l.startsAt && l.startsAt > Date.now())
@@ -5832,11 +5879,12 @@ function htmlMarqueur(l){
 
      Le statut vient du moteur temporel, donc de Postgres pour les événements
      canoniques : un événement de demain ne peut pas prendre cette carte. */
-  if(estTemporaire(l) && !l.annule && TEMPS.estMaintenant(statutTemps(l).statut)){
+  if(estTemporaire(l) && !l.annule && TEMPS.estMaintenant(statutTemps(l).status)){
     const evenement = donneesEvenement(l);
+    const etat = statutTemps(l);
     const dist = positionPrecise()
       ? formatDist(distanceDepuisZone(l)) : "";
-    const fin = evenement && evenement.end_at ? heureLocale(evenement.end_at, l) : "";
+    const fin = etat.finReelle != null ? heureLocale(etat.finReelle, l) : "";
     const bas = [dist, fin ? "jusqu’à "+fin : ""].filter(Boolean).join(" · ");
     const lieu = l.adresse || l.cp || "";
     return '<span class="mk-in"><div class="evc">'+
@@ -5968,7 +6016,7 @@ function ordonnerPile(membres){
   const rang = new Map(derniereSelection.map((x,i)=>[x.l.id, i]));
   const cle = (l)=>{
     const etat = statutTemps(l, t);
-    const enCours = TEMPS.estMaintenant(etat.statut) ? 0 : 1;
+    const enCours = TEMPS.estMaintenant(etat.status) ? 0 : 1;
     const debut = etat.debut == null ? Infinity : Math.abs(etat.debut - t);
     return [enCours, debut, rang.has(l.id) ? rang.get(l.id) : 9999];
   };
@@ -6514,7 +6562,10 @@ feuilleDetail.addEventListener("touchcancel", ()=>{ debutBalayageFeuille=null; }
    getDay() commence par dimanche, d'où le décalage. */
 function horaireDuJour(l){
   if(!l.horaires || !l.horaires.length) return "";
-  const i = (new Date().getDay() + 6) % 7;
+  const i = TEMPS && TEMPS.partsLocales
+    ? ["lun.","mar.","mer.","jeu.","ven.","sam.","dim."].indexOf(
+        TEMPS.partsLocales(Date.now(), (l.timezone || l.timeZone || "Europe/Paris")).jourSemaine)
+    : (new Date().getDay() + 6) % 7;
   const ligne = l.horaires[i] || "";
   return ligne.replace(/^[^:]*:\s*/, "");        // « Lundi : 9h–18h » → « 9h–18h »
 }
@@ -6567,7 +6618,10 @@ function horairesSemaine(l){
   const dispo = dispoDe(l);
   if(dispo && (dispo.conflict || dispo.suspect24h7 || dispo.status === "unknown"))
     return '<p class="horaires-verif">'+esc(libelleHoraires(l))+'</p>';
-  const aujourdhui = (new Date().getDay() + 6) % 7;
+  const aujourdhui = TEMPS && TEMPS.partsLocales
+    ? ["lun.","mar.","mer.","jeu.","ven.","sam.","dim."].indexOf(
+        TEMPS.partsLocales(Date.now(), (l.timezone || l.timeZone || "Europe/Paris")).jourSemaine)
+    : (new Date().getDay() + 6) % 7;
   return '<details class="horaires"><summary>Horaires de la semaine</summary>'+
     l.horaires.map((h,i)=>
       '<div class="h-ligne'+(i===aujourdhui?' h-jour':'')+'">'+esc(h)+'</div>').join("")+
@@ -8574,9 +8628,11 @@ function disponibleAujourdhui(l){
     // sans date exploitable on ne sait pas : dire « oui » ferait se déplacer
     // quelqu'un pour un événement dont personne ne connaît le jour
     const etat = statutTemps(l);
-    if(etat.statut === TEMPS.STATUTS.INCONNU) return null;
-    if(etat.statut === TEMPS.STATUTS.PASSE) return false;
-    return etat.statut !== TEMPS.STATUTS.A_VENIR;
+    if(etat.status === TEMPS.STATUTS_TEMPORELS.UNKNOWN) return null;
+    if(etat.status === TEMPS.STATUTS_TEMPORELS.PAST) return false;
+    return [TEMPS.STATUTS_TEMPORELS.NOW, TEMPS.STATUTS_TEMPORELS.SOON,
+      TEMPS.STATUTS_TEMPORELS.TODAY, TEMPS.STATUTS_TEMPORELS.TONIGHT,
+      TEMPS.STATUTS_TEMPORELS.WEEKEND].includes(etat.status);
   }
   const h = horaireDuJour(l);
   if(h) return !/ferm/i.test(h);
@@ -9448,6 +9504,16 @@ function recommandationsAccueil(limite, options){
   // remplacé silencieusement dès que le classement complet arrive.
   if(!lieux.length) return [];
 
+  /* « Maintenant » n'est pas une liste de recherche avec un aperçu. C'est
+     une sélection éditorialisée unique, calculée par maintenant.js. La
+     capsule, la feuille ouverte et la navigation doivent donc lire
+     exactement le même tableau borné à trois, quel que soit l'appelant. */
+  if(creneau === "maintenant" && !modeAide){
+    const choix = selectionMaintenant();
+    const max = Number.isFinite(limite) ? Math.max(0, Number(limite)) : 3;
+    return choix.slice(0, Math.min(3, max));
+  }
+
   /* « Ce soir » ne s'arrête pas au calendrier. Après les événements et les
      séances, il sonde les activités puis les lieux pertinents réellement
      ouverts pendant la plage — même si la consultation a lieu le matin. */
@@ -9993,10 +10059,10 @@ function solutionsAide(limite){
 function prioriteDisponibiliteAide(l){
   if(estTemporaire(l)){
     const etat = statutTemps(l);
-    if(etat.statut === TEMPS.STATUTS.EN_COURS) return 60;
-    if(etat.statut === TEMPS.STATUTS.IMMINENT) return 50;
-    if(etat.statut === TEMPS.STATUTS.PLUS_TARD) return 40;
-    if(etat.statut !== TEMPS.STATUTS.A_VENIR || etat.debut == null) return 0;
+    if(etat.status === TEMPS.STATUTS_TEMPORELS.NOW) return 60;
+    if(etat.status === TEMPS.STATUTS_TEMPORELS.SOON) return 50;
+    if([TEMPS.STATUTS_TEMPORELS.TODAY, TEMPS.STATUTS_TEMPORELS.TONIGHT].includes(etat.status)) return 40;
+    if(etat.status !== TEMPS.STATUTS_TEMPORELS.UPCOMING || etat.debut == null) return 0;
     const jours = Math.round((etat.debut - Date.now()) / 86400000);
     return jours <= 1 ? 30 : jours <= 7 ? 20 : 10;
   }
@@ -10007,7 +10073,7 @@ function prioriteDisponibiliteAide(l){
 }
 
 function ouvertOuImminent(l){
-  if(estTemporaire(l)) return TEMPS.estMaintenant(statutTemps(l).statut);
+  if(estTemporaire(l)) return TEMPS.estMaintenant(statutTemps(l).status);
   const d = dispoDe(l);
   return !!(d && d.isOpenNow);
 }
@@ -10024,7 +10090,7 @@ function carteAide(l){
   const quand = eph
     ? TEMPS.libelleTemporel(l, Date.now(), {disponibilite:(x,t)=>dispoDe(x, null, t)})
     : libelleOuverture(l);
-  const etat = eph ? statutTemps(l).statut : null;
+  const etat = eph ? statutTemps(l).status : null;
   const chaud = eph ? TEMPS.estMaintenant(etat) : ouvertOuImminent(l);
 
   const expl = EXPLIQUE ? EXPLIQUE.explication(l) : null;
@@ -10608,13 +10674,11 @@ function majBadgeMaintenant(){
    contraire de la vérité. */
 function tempsMaintenant(l){
   const M = window.AutourMaintenant;
-  const evenement = estTemporaire(l) ? donneesEvenement(l) : null;
-  const debutLe = evenement && evenement.start_at != null
-    ? new Date(evenement.start_at).getTime() : l.debutLe;
-  const finLe = evenement && evenement.end_at != null
-    ? new Date(evenement.end_at).getTime() : l.finLe;
+  const etat = statutTemps(l, Date.now());
+  const debutLe = etat.debut;
+  const finLe = etat.finReelle;
   if(M && l.nature === M.NATURES.SEANCE && debutLe){
-    const dans = Math.round((debutLe - Date.now()) / 60000);
+    const dans = Math.round((debutLe - etat.now) / 60000);
     return dans > 0 ? "commence dans "+dans+" min" : "commence maintenant";
   }
   if(M && (l.nature === M.NATURES.OUVERT || l.nature === M.NATURES.ACTIVITE)){
@@ -10786,11 +10850,14 @@ function rafraichirMetropole(){
      le bassin lui-même, et non des coordonnées. */
   const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
   if(!bassin || metropoleEnCours === bassin) return;
+  porteeMetropole = porteeCourante;
+  bassinCourant = bassin;
   metropoleEnCours = bassin;
   chargerEvenementsMetropole(bassin).then((liste)=>{
     /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
        ramené, souvent parce que le réseau a flanché. Garder la clé de cache
        interdirait tout nouvel essai jusqu'au rechargement de la page. */
+    if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
     if(!liste.length){ metropoleEnCours = null; return; }
     evenementsMetropole = liste;
     majPourToi();
@@ -10803,8 +10870,8 @@ function bassinPourToi(){
      identifiant déjà présent n'est jamais remplacé. */
   const locaux = lieux.filter(estCanonique);
   if(!evenementsMetropole.length) return locaux;
-  const vus = new Set(locaux.map((l)=> l && l.id));
-  return locaux.concat(evenementsMetropole.filter((l)=> l && !vus.has(l.id) && estCanonique(l)));
+  const metropole = evenementsMetropole.filter((l)=> l && estCanonique(l));
+  return dedupeItems(locaux.concat(metropole), distanceM);
 }
 
 function lieuParId(id){
@@ -10838,11 +10905,15 @@ function pourquoiAnnonce(x){
 
 function dateAnnonceProposition(value){
   if(!value) return "";
-  const t = new Date(value).getTime();
+  const t = TEMPS && TEMPS.toEpochInZone
+    ? TEMPS.toEpochInZone(value, "Europe/Paris") : new Date(value).getTime();
   if(!Number.isFinite(t)) return "";
-  return new Date(t).toLocaleDateString("fr-FR", {
-    day:"numeric", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit"
-  });
+  return TEMPS && TEMPS.heureLocale && TEMPS.partsLocales
+    ? new Intl.DateTimeFormat("fr-FR", {day:"numeric",month:"long",year:"numeric",
+        timeZone:"Europe/Paris"}).format(new Date(t)) + " · " + TEMPS.heureLocale(t, "Europe/Paris")
+    : new Date(t).toLocaleDateString("fr-FR", {
+        day:"numeric", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit"
+      });
 }
 
 function groupesInteretsPourToi(propositions){
@@ -10887,7 +10958,9 @@ function propositionsPourToi(limite = POURTOI_MAX){
     nouveau: classe.isNew ? detecteDepuis(classe.event) : null,
     vu: classe.seen,
     score: classe.score,
-    matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : []
+    matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : [],
+    temporal: classe.temporal || null,
+    temporalStatus: classe.temporal_status || null,
   }));
 }
 
@@ -11419,11 +11492,9 @@ function poserRecommandations(jeton, titre){
   const zone = corps && corps.querySelector("[data-reco-zone]");
   if(!zone) return;
 
-  let reco = recommandationsAccueil(7);
-  /* le classement peut ne rien rendre au tout début (aucun ETA, aucun
-     horaire) : on montre alors l'échantillon varié du cache plutôt qu'un
-     écran vide */
-  if(!reco.length && creneau === "maintenant") reco = echantillonImmediat(lieux.filter(nomExploitable));
+  let reco = recommandationsAccueil(creneau === "maintenant" ? 3 : 7);
+  /* Maintenant ne fabrique jamais de remplissage : un classement vide reste
+     vide, même si le cache contient des fiches incomplètes ou futures. */
   if(reco.length) PERF.jalon("cached_pois_visible");
 
   /* Des cartes, sinon l'indicateur discret par-dessus ce qui est déjà là.
@@ -11503,16 +11574,19 @@ function nomMaintenantExploitable(value){
 function versItemMaintenant(l, t){
   /* Le verdict temporel est TRANSMIS, jamais recopié sous forme de chaîne :
      c'est `temporel.js` qui connaît le vocabulaire du backend, et lui seul. */
-  const statut = statutTemps(l, t).statut;
+  const temporal = statutTemps(l, t);
+  const statut = temporal.status || temporal.statut;
   const evenement = estTemporaire(l);
   const canonique = evenement ? donneesEvenement(l) : donneesLieu(l);
   const epoch = (value) => {
     if(value == null || value === "") return null;
-    const parsed = typeof value === "number" ? value : new Date(value).getTime();
+    const parsed = TEMPS && TEMPS.toEpochInZone
+      ? TEMPS.toEpochInZone(value, (canonique && (canonique.timezone || canonique.timeZone)) || l.timezone || l.timeZone)
+      : (typeof value === "number" ? value : new Date(value).getTime());
     return Number.isFinite(parsed) ? parsed : null;
   };
-  const debutLe = canonique ? epoch(canonique.start_at) : l.debutLe;
-  const finLe = canonique ? epoch(canonique.end_at) : l.finLe;
+  const debutLe = temporal.debut != null ? temporal.debut : (canonique ? epoch(canonique.start_at) : l.debutLe);
+  const finLe = temporal.finReelle != null ? temporal.finReelle : (canonique ? epoch(canonique.end_at) : l.finLe);
 
   /* Pour un LIEU, c'est `availability.js` qui fait autorité — et lui seul.
      Il distingue quatre états là où un booléen n'en distingue que deux :
@@ -11531,16 +11605,25 @@ function versItemMaintenant(l, t){
   }
 
   const titre = canonique && (canonique.title || canonique.titre) || "";
-  const categorie = canonique && (canonique.category || canonique.cat) || l.cat || "";
-  const canonicalId = canonique && canonique.id != null ? String(canonique.id) : null;
+  const categorie = l.canonicalCategory || canonique && (canonique.category || canonique.cat) || l.cat || "";
+  const canonicalId = l.canonical_id || (canonique && canonique.id != null ? String(canonique.id) : l.id);
   if(evenement) tempsValide = epoch(debutLe) !== null && epoch(finLe) !== null;
 
   return {
     id:l.id, estEvenement:evenement, annule:!!l.annule,
     enCours: TEMPS.estMaintenant(statut),
-    dateIncertaine: statut === "unknown",
+    status: temporal.status || null,
+    temporalStatus: temporal.status || null,
+    temporal: temporal,
+    openingStatus: temporal.openingStatus || null,
+    dateIncertaine: temporal.status === "unknown",
     start_at:canonique ? canonique.start_at : null,
     end_at:canonique ? canonique.end_at : null,
+    timezone: temporal.timezone || (canonique && (canonique.timezone || canonique.timeZone)) || l.timezone || l.timeZone || "Europe/Paris",
+    openingHours: l.openingHours || l.opening_hours || l.horaires || l.quand ||
+      (canonique && (canonique.openingHours || canonique.opening_hours)) || null,
+    opening_hours: l.opening_hours || l.openingHours || l.horaires || l.quand ||
+      (canonique && (canonique.opening_hours || canonique.openingHours)) || null,
     debutLe, finLe, lat:l.lat, lng:l.lng,
     ferme:estFerme(l),
     titre, title:titre, categorie, category:categorie,
@@ -11739,8 +11822,15 @@ function selectionMaintenant(){
       entity_type:i.entity_type || l.entity_type,
       canonical_id:i.canonical_id,
       canonical:i.canonical,
+      canonicalCategory:i.canonicalCategory,
+      canonicalFamily:i.canonicalFamily,
+      foodSpecialty:i.foodSpecialty,
       sansNom:i.sansNom,
       tempsValide:i.tempsValide,
+      status:i.status,
+      temporalStatus:i.temporalStatus,
+      temporal:i.temporal,
+      openingStatus:i.openingStatus,
     }) : null;
   }).filter(Boolean);
 }
@@ -11979,8 +12069,8 @@ function raisonCourte(l){
   if(l.annule) return null;
   if(estTemporaire(l)){
     const etat = statutTemps(l);
-    if(etat.statut === TEMPS.STATUTS.EN_COURS) return {t:"⚡ En cours", c:"chaud"};
-    if(etat.statut === TEMPS.STATUTS.IMMINENT) return {t:"⚡ Commence bientôt", c:"chaud"};
+    if(etat.status === TEMPS.STATUTS_TEMPORELS.NOW) return {t:"⚡ En cours", c:"chaud"};
+    if(etat.status === TEMPS.STATUTS_TEMPORELS.SOON) return {t:"⚡ Commence bientôt", c:"chaud"};
     const section = TEMPS.sectionTemporelle(etat, Date.now());
     if(section === "ce_soir") return {t:"Ce soir", c:""};
     if(section === "ce_week_end") return {t:"Ce week-end", c:""};
@@ -12018,13 +12108,10 @@ function raisonCourte(l){
 }
 
 function fermeDansMoinsDUneHeure(d){
-  if(!d || !d.closesAtTime) return false;
-  const [h,m] = String(d.closesAtTime).split(":").map(Number);
-  if(!Number.isFinite(h)) return false;
-  const n = new Date();
-  let reste = (h*60 + (m||0)) - (n.getHours()*60 + n.getMinutes());
-  if(reste < -12*60) reste += 24*60;          // fermeture après minuit
-  return reste > 0 && reste <= 60;
+  if(!d || !d.closesAt) return false;
+  const fermeture = epochTemporel(d.closesAt, d.timeZone || d.timezone || "Europe/Paris");
+  const reste = fermeture - Date.now();
+  return Number.isFinite(reste) && reste > 0 && reste <= 60 * 60000;
 }
 
 /* Une carte du carousel : photo, catégories, note, temps réel de trajet. */
@@ -12071,7 +12158,7 @@ function carteRecommandation(l){
   // l'heure d'arrivée compte pour ce qui ferme ou ce qui commence ; pour un
   // événement déjà en cours, elle ne décide de rien
   const dejaEnCours = estTemporaire(l) &&
-    statutTemps(l).statut === TEMPS.STATUTS.EN_COURS;
+    statutTemps(l).status === TEMPS.STATUTS_TEMPORELS.NOW;
   /* L'heure d'arrivée est un temps de trajet déguisé : elle se calcule depuis
      le point de départ. Depuis une zone approximative, « Arrivée 03:07 » est
      aussi faux que « 16 min », et bien plus crédible. L'horaire de fermeture,
@@ -12088,10 +12175,10 @@ function carteRecommandation(l){
     ? TEMPS.libelleTemporel(cibleTemporel, instantCreneau().getTime(),
         {disponibilite:(x,t)=>dispoDe(x, null, t), statut: statutTemps(l, instantCreneau().getTime())})
     : "";
-  const etatQuand = quand ? statutTemps(l, instantCreneau().getTime()).statut : "";
-  const classeQuand = etatQuand === TEMPS.STATUTS.EN_COURS ? " en-cours"
-    : etatQuand === TEMPS.STATUTS.IMMINENT ? " imminent"
-    : etatQuand === TEMPS.STATUTS.INCONNU ? " flou" : "";
+  const etatQuand = quand ? statutTemps(l, instantCreneau().getTime()).status : "";
+  const classeQuand = etatQuand === TEMPS.STATUTS_TEMPORELS.NOW ? " en-cours"
+    : etatQuand === TEMPS.STATUTS_TEMPORELS.SOON ? " imminent"
+    : etatQuand === TEMPS.STATUTS_TEMPORELS.UNKNOWN ? " flou" : "";
 
   /* OÙ C'EST. Une ligne discrète sous le nom : la salle pour un concert, le
      quartier ou la rue pour un lieu. Sans elle, cinq lignes se ressemblent —

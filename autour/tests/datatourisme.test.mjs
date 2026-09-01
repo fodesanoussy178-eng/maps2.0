@@ -125,7 +125,7 @@ test("DATAtourisme complète OSM sans bloquer ni modifier l'interface", () => {
   /* Le classement est le même ; il ne s'exécute simplement plus au milieu du
      rendu. Le profil l'avait mesuré à 1 169 ms pour le pire, et « Maintenant »
      attendait derrière alors qu'il n'en dépend pas. */
-  assert.match(index, /let reco = recommandationsAccueil\(7\)/);
+  assert.match(index, /let reco = recommandationsAccueil\(creneau === "maintenant" \? 3 : 7\)/);
   assert.match(index, /const ACCUEIL_MAX = 7/);
   assert.match(index, /const pourToi = recommandationsAccueil\(ACCUEIL_MAX\)/);
   assert.match(index, /selectionAccueil = ids;/);

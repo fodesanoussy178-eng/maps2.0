@@ -56,6 +56,7 @@
     resto: {restaurant:1, eat:.95},
     fastfood: {restaurant:1, eat:.95},
     cafe: {cafe:1, eat:.8, study:.6},
+    boulangerie: {bakery:1, eat:.9, buy:.55},
     bar: {bar:1, outing:.9},
     friperie: {buy:1, outing:.5},
     commerce: {buy:1},
@@ -105,14 +106,80 @@
       .trim();
   }
 
+  const CATEGORY_ALIASES = Object.freeze({
+    restaurant: "resto", restaurants: "resto", fast_food: "fastfood", snack: "fastfood",
+    bakery: "boulangerie", boulangerie: "boulangerie", coffee_shop: "cafe", coffee: "cafe",
+    bar: "bar", museum: "musee", musee: "musee", library: "biblio", bibliotheque: "biblio",
+    park: "parc", garden: "parc", marketplace: "marche", market: "marche",
+    theatre: "spectacle", theater: "spectacle", cinema: "cinema", supermarket: "commerce",
+    shop: "commerce", event: "event", concert: "concert", sport: "sport",
+  });
+
+  const FOOD_SPECIALTIES = Object.freeze({
+    cafe: ["cafe", "coffee", "espresso", "salon de the", "tea"],
+    boulangerie: ["boulangerie", "bakery", "patisserie", "pain", "viennoiserie"],
+    burger: ["burger", "hamburger", "cheeseburger"],
+    pizza: ["pizza", "pizzeria"],
+    japonais: ["japonais", "japanese", "sushi", "ramen", "yakitori"],
+    italien: ["italien", "italian", "pasta", "trattoria"],
+    kebab: ["kebab", "doner", "shawarma", "tacos"],
+  });
+
+  function canonicalSlug(value) {
+    const slug = normalizeText(value).replace(/\s+/g, "_");
+    return CATEGORY_ALIASES[slug] || slug || null;
+  }
+
+  function normalizeFoodSpecialty(place) {
+    const p = place || {};
+    const text = normalizeText([
+      p.foodSpecialty, p.food_specialty, p.cuisine, p.cuisines, p.speciality,
+      p.specialty, p.title, p.titre, p.name, p.description,
+    ].filter(Boolean).join(" "));
+    for (const [specialty, words] of Object.entries(FOOD_SPECIALTIES)) {
+      if (words.some((word) => text.includes(word))) return specialty;
+    }
+    return null;
+  }
+
+  /* Taxonomie unique pour le classement, la déduplication éditoriale et les
+     cartes. Les catégories fournisseur sont conservées dans `cat`; cette
+     projection stable évite qu'un écran traite `restaurant`, `resto` et
+     `fast_food` comme trois natures différentes. */
+  function taxonomieCanonique(place) {
+    const p = place || {};
+    const tags = p.tags || {};
+    const valeurs = [p.canonicalCategory, p.canonical_category, p.cat, p.categorie,
+      p.category, ...(Array.isArray(p.categories) ? p.categories : []),
+      tags.amenity, tags.shop, tags.cuisine].filter(Boolean);
+    const categories = unique(valeurs.map(canonicalSlug));
+    const text = normalizeText([p.title, p.titre, p.name, p.description, p.cuisine].filter(Boolean).join(" "));
+    let category = categories[0] || null;
+    const evenement = p.isTemporary === true || p.entity_type === "event" || p.entityType === "event";
+    const specialty = evenement ? null : normalizeFoodSpecialty(p);
+    if (!category && specialty) category = specialty === "cafe" ? "cafe" : "resto";
+    if (!category && /\b(restaurant|restauration|manger|food)\b/.test(text)) category = "resto";
+    const food = specialty || ["resto", "fastfood", "cafe", "boulangerie", "food", "marche"].includes(category)
+      ? (specialty || null) : null;
+    return {
+      category,
+      categories: unique([category, ...categories]),
+      foodSpecialty: food,
+      family: food || (category && ["resto", "fastfood", "cafe", "boulangerie", "food", "marche"].includes(category)
+        ? "food" : category),
+    };
+  }
+
   function unique(values) {
     return [...new Set((values || []).filter(Boolean))];
   }
 
-  function parseTime(value) {
+  function parseTime(value, timeZone) {
     if (value == null || value === "") return null;
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    const time = new Date(value).getTime();
+    const temporal = root.AutourTemps;
+    const time = temporal && typeof temporal.toEpochInZone === "function"
+      ? temporal.toEpochInZone(value, timeZone || temporal.DEFAULT_TIMEZONE)
+      : (typeof value === "number" ? value : new Date(value).getTime());
     return Number.isFinite(time) ? time : null;
   }
 
@@ -120,7 +187,7 @@
     const source = item || {};
     for (const field of fields) {
       if (source[field] == null || source[field] === "") continue;
-      if (parseTime(source[field]) != null) return source[field];
+      if (parseTime(source[field], source.timezone || source.timeZone) != null) return source[field];
     }
     return null;
   }
@@ -281,18 +348,20 @@
        historiques `debut_le/fin_le` et le modèle commun `startsAt/endsAt`.
        Tous doivent aboutir au même contrat, sans dépendre d'un champ texte
        `quand` qui n'est pas une donnée temporelle structurée. */
+    const timeZone = raw.timezone || raw.timeZone;
     const startsAt = parseTime(firstDateValue(raw, [
       "start_at", "startAt", "event_start_at", "eventStartAt", "startsAt", "debutLe", "debut_le",
-    ]));
+    ]), timeZone);
     const endsAt = parseTime(firstDateValue(raw, [
       "end_at", "endAt", "event_end_at", "eventEndAt", "endsAt", "finLe", "fin_le",
-    ]));
+    ]), timeZone);
     const openingHours = raw.openingHours != null ? raw.openingHours : (raw.horaires || raw.quand || null);
     const isTemporary = raw.isTemporary != null
       ? !!raw.isTemporary
       : raw.entity_type === "event" || TEMPORARY_CATEGORIES.includes(raw.cat);
     const categoryWeights = classifyPlaceWeighted(Object.assign({}, raw, { title, source, isTemporary }));
     const categories = sortByWeight(categoryWeights);
+    const taxonomy = taxonomieCanonique(Object.assign({}, raw, {title, isTemporary}));
 
     return Object.assign({}, raw, {
       categoryWeights,
@@ -304,6 +373,10 @@
       latitude,
       longitude,
       categories,
+      canonicalCategory: taxonomy.category,
+      canonicalCategories: taxonomy.categories,
+      foodSpecialty: taxonomy.foodSpecialty,
+      canonicalFamily: taxonomy.family,
       startsAt,
       endsAt,
       openingHours,
@@ -1238,11 +1311,8 @@
        prévues des semaines plus tard. */
     if (temps) {
       const etat = temps.statutTemporel(item, now, { disponibilite: disponibiliteDe });
-      if (item.isTemporary) return temps.estMaintenant(etat.statut);
-      // un lieu permanent dont on ignore l'horaire reste proposable : la
-      // plupart des lieux OpenStreetMap n'en publient aucun
-      if (etat.statut === temps.STATUTS.INCONNU) return item.ouvert !== false;
-      return temps.estMaintenant(etat.statut);
+      if (item.isTemporary) return temps.estMaintenant(etat.status || etat.statut);
+      return etat.status === "now" && ["open_now", "closing_soon"].includes(etat.openingStatus);
     }
 
     // repli si le module n'est pas chargé : au moins ne rien affirmer de faux
@@ -1254,7 +1324,9 @@
     const dispo = disponibiliteDe(item, now);
     if (dispo && dispo.status === "permanently_closed") return false;
     if (dispo && dispo.status !== "unknown") return dispo.isOpenNow;
-    return item.ouvert !== false;
+    if (item.ouvert === true) return true;
+    if (item.ouvert === false) return false;
+    return false;
   }
 
   const INTENT_PROFILES = Object.freeze({
@@ -1561,11 +1633,11 @@
      l'intérieur d'un même groupe. */
   function eventTemporalBucket(item, now) {
     if (!item || !item.rankBreakdown || !item.rankBreakdown.temporary) return null;
-    const temporal = item.rankTemporal;
+    const temporal = item.rankTemporalCanonical || item.rankTemporal;
     const start = item.rankStart;
     const temps = root.AutourTemps;
-    if (temps && temporal === temps.STATUTS.EN_COURS) return 0;
-    if (temps && temporal === temps.STATUTS.IMMINENT) return 1;
+    if (temporal === "now" || (temps && temporal === temps.STATUTS.EN_COURS)) return 0;
+    if (temporal === "soon" || (temps && temporal === temps.STATUTS.IMMINENT)) return 1;
     if (!Number.isFinite(start)) return 6; // date inconnue : utile, jamais prioritaire
 
     const timeZone = item.timezone || item.timeZone || temps?.DEFAULT_TIMEZONE;
@@ -1652,12 +1724,17 @@
   function sousCategorieDe(item) {
     if (!item) return "autre";
     if (item.sousCat) return String(item.sousCat);
+    if (item.foodSpecialty) return "food:" + String(item.foodSpecialty);
+    if (item.canonicalCategory) return String(item.canonicalCategory);
     if (item.cat) return String(item.cat);
     return (item.categories || [])[0] || "autre";
   }
 
   function familleDiversite(item) {
-    return FAMILLES_DIVERSITE[sousCategorieDe(item)] || "autre";
+    if (item && item.canonicalFamily === "food") return "manger";
+    const sous = sousCategorieDe(item);
+    if (sous.startsWith("food:")) return "manger";
+    return FAMILLES_DIVERSITE[sous] || "autre";
   }
 
   function scoreDiversite(item) {
@@ -1743,14 +1820,16 @@
     const temps = root.AutourTemps;
     const survivants = [];
     deduped.forEach((item) => {
-      const startsAt = parseTime(item.startsAt != null ? item.startsAt : item.debutLe);
-      const endsAt = parseTime(item.endsAt != null ? item.endsAt : item.finLe);
+      const startsAt = parseTime(item.startsAt != null ? item.startsAt : item.debutLe,
+        item.timezone || item.timeZone);
+      const endsAt = parseTime(item.endsAt != null ? item.endsAt : item.finLe,
+        item.timezone || item.timeZone);
       const temporary = item.isTemporary === true || TEMPORARY_CATEGORIES.includes(item.cat);
       const date = Object.assign({}, item, {startsAt, endsAt, isTemporary: temporary});
       const etat = temps ? temps.statutTemporel(date, now, { disponibilite: disponibiliteDe }) : null;
 
       // un événement terminé n'est plus un résultat, à aucun créneau
-      if (temporary && etat && etat.statut === temps.STATUTS.PASSE) return;
+      if (temporary && etat && etat.status === temps.STATUTS_TEMPORELS.PAST) return;
       if (temporary && !etat && endsAt != null && endsAt < now) return;
       if (ctx.nowOnly) {
         /* `etat` vient d'être calculé, parfois au prix d'une lecture complète
@@ -1760,10 +1839,8 @@
            quand le moteur temporel n'est pas chargé. */
         const disponible = temps && etat
           ? (temporary
-            ? temps.estMaintenant(etat.statut)
-            : (etat.statut === temps.STATUTS.INCONNU
-              ? item.ouvert !== false
-              : temps.estMaintenant(etat.statut)))
+            ? temps.estMaintenant(etat.status || etat.statut)
+            : (etat.status === "now" && ["open_now", "closing_soon"].includes(etat.openingStatus)))
           : isAvailableNow(date, now);
         if (!disponible) return;
       }
@@ -1969,10 +2046,14 @@
       let availability = 2;
       let temporalReason = temporary && etat && temps
         ? temps.libelleTemporel(item, now, {statut: etat}) : "";
-      if (item.ouvert === true) {
+      const openingStatus = etat && etat.openingStatus;
+      if (openingStatus === "open_now") {
         availability = 4;
         score += profile.open;
-      } else if (item.ouvert === false) {
+      } else if (openingStatus === "closing_soon") {
+        availability = 2;
+        score += profile.open * .35;
+      } else if (openingStatus === "closed" || item.ouvert === false) {
         availability = 0;
         score -= ctx.nowOnly ? 1000 : 155;
       } else {
@@ -1984,10 +2065,10 @@
         // prochaine occurrence réelle qui compte, pas le début de la période
         const debut = temporalStart;
         const inProgress = etat
-          ? etat.statut === temps.STATUTS.EN_COURS
+          ? etat.status === "now"
           : startsAt != null && startsAt <= now && (endsAt == null || endsAt >= now);
         const imminent = etat
-          ? etat.statut === temps.STATUTS.IMMINENT
+          ? etat.status === "soon"
           : debut != null && debut >= now && debut - now <= 2 * 3600 * 1000;
         const minutesUntil = debut == null ? null : Math.round((debut - now) / 60000);
         if (inProgress) {
@@ -2004,7 +2085,7 @@
              tandis qu'un événement lointain ne passe plus automatiquement
              devant tout établissement ouvert. Le tri précis par date prend
              ensuite le relais entre événements d'un même horizon. */
-          if (etat && etat.statut === temps.STATUTS.PLUS_TARD)
+          if (etat && ["today", "tonight", "weekend"].includes(etat.status))
             availability = Math.max(availability, 4);
           score += Math.max(20, profile.event * .35);
         }
@@ -2081,8 +2162,9 @@
       let rankReason;
       if (outlook.reason) rankReason = outlook.reason;
       else if (temporalReason) rankReason = temporalReason;
-      else if (item.ouvert === true) rankReason = "Ouvert maintenant";
-      else if (item.ouvert == null) rankReason = "Horaires inconnus";
+      else if (openingStatus === "open_now") rankReason = "Ouvert maintenant";
+      else if (openingStatus === "closing_soon") rankReason = "Ferme bientôt";
+      else if (openingStatus === "unknown") rankReason = "Horaires inconnus";
       else rankReason = "Le plus proche";
       if (trip) rankReason += " · " + trip;
 
@@ -2099,7 +2181,10 @@
         rankSignals: profil || null,
         rankMatched: signauxTenus,
         rankFit: Math.round(adequation * 100) / 100,
-        rankTemporal: etat ? etat.statut : null,
+          rankTemporal: etat ? etat.statut : null,
+        rankTemporalCanonical: etat ? etat.status : null,
+        temporal: etat || null,
+        openingStatus: openingStatus || null,
         rankSection: temporalSection,
         rankStart: temporalStart,
         rankNow: now,
@@ -2151,6 +2236,9 @@
     DISCOVERY_EXCLUDED_CATEGORIES,
     CATEGORY_RELATIONS,
     normalizeText,
+    canonicalSlug,
+    normalizeFoodSpecialty,
+    taxonomieCanonique,
     classifyPlace,
     classifyPlaceWeighted,
     categoryWeight,

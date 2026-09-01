@@ -65,6 +65,18 @@
     return (place && (place.timezone || place.timeZone)) || DEFAULT_TIMEZONE;
   }
 
+  /* Toutes les dates métier passent par le même parseur que les événements.
+     Le fallback reste nécessaire quand availability.js est testé seul, avant
+     le chargement de temporel.js. */
+  function epochInZone(value, timeZone) {
+    if (value == null || value === "") return null;
+    const T = root.AutourTemps;
+    const parsed = T && typeof T.toEpochInZone === "function"
+      ? T.toEpochInZone(value, timeZone || DEFAULT_TIMEZONE)
+      : (typeof value === "number" ? value : new Date(value).getTime());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   /* Instant (ms UTC) correspondant à minuit local du jour de `timestamp`. */
   function localMidnight(timestamp, timeZone) {
     const parts = partsInZone(timestamp, timeZone);
@@ -391,7 +403,7 @@
     if (jusquau && provenanceRank >= SOURCE_PRIORITY.structure_verifiee) {
       const texte = String(jusquau).trim();
       const fin = /^\d{4}-\d{2}-\d{2}$/.test(texte)
-        ? Date.parse(texte + "T23:59:59Z") : Date.parse(texte);
+        ? epochInZone(texte + "T23:59:59", zoneOf(l)) : epochInZone(texte, zoneOf(l));
       if (Number.isFinite(fin) && fin > instant)
         return {active: true, reason: l.closure_reason || l.closureReason ||
           "Fermeture exceptionnelle officielle"};
@@ -408,8 +420,8 @@
       if (entree.closed === false || entree.active === false) continue;
       const debut = entree.from || entree.start || entree.debut || entree.date;
       const fin = entree.until || entree.to || entree.end || entree.fin;
-      const tDebut = debut ? Date.parse(debut) : -Infinity;
-      const tFin = fin ? Date.parse(fin) : Infinity;
+      const tDebut = debut ? epochInZone(debut, zoneOf(l)) : -Infinity;
+      const tFin = fin ? epochInZone(fin, zoneOf(l)) : Infinity;
       if (Number.isFinite(tDebut) && tDebut > instant) continue;
       if (Number.isFinite(tFin) && tFin <= instant) continue;
       return {active: true, reason: entree.reason || entree.raison ||
@@ -670,6 +682,45 @@
     return result;
   }
 
+  /* Contrat d'ouverture commun aux surfaces. `getPlaceAvailability` conserve
+     son vocabulaire détaillé pour les appels historiques ; cette projection
+     porte le vocabulaire produit stable et peut aussi être évaluée sur une
+     fenêtre future (par exemple Ce soir). */
+  function etatOuverture(place, now, options) {
+    const o = options || {};
+    const instant = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+    const courant = getPlaceAvailability(place, instant, null, o);
+    const openingStatus = courant.status === "open" ? "open_now"
+      : courant.status === "closing_soon" ? "closing_soon"
+        : courant.status === "permanently_closed" || courant.status === "closed" ||
+          courant.status === "opening_soon" ? "closed" : "unknown";
+    const base = Object.assign({}, courant, {openingStatus, canonicalStatus: openingStatus});
+    const fenetre = o.window || o.fenetre || null;
+    if (!fenetre || !Number.isFinite(Number(fenetre.debut)) || !Number.isFinite(Number(fenetre.fin)))
+      return base;
+    const debut = Number(fenetre.debut), fin = Number(fenetre.fin);
+    if (fin <= debut) return base;
+    const aDebut = getPlaceAvailability(place, debut, null,
+      Object.assign({}, o, {allowPointStatus:false}));
+    let accessible = aDebut && (aDebut.status === "open" || aDebut.status === "closing_soon");
+    let observation = aDebut;
+    if (!accessible && aDebut && aDebut.opensAt) {
+      const ouverture = epochInZone(aDebut.opensAt, zoneOf(place));
+      if (Number.isFinite(ouverture) && ouverture < fin) {
+        observation = getPlaceAvailability(place, Math.min(fin - 60000, ouverture + 60000), null,
+          Object.assign({}, o, {allowPointStatus:false}));
+        accessible = observation.status === "open" || observation.status === "closing_soon";
+      }
+    }
+    if (accessible) {
+      return Object.assign(base, {
+        openingStatus: "open_tonight", canonicalStatus: "open_tonight",
+        windowAvailability: observation,
+      });
+    }
+    return Object.assign(base, {windowAvailability: observation || aDebut || null});
+  }
+
   root.AutourAvailability = Object.freeze({
     DEFAULT_TIMEZONE,
     MARGES_MINUTES,
@@ -679,6 +730,7 @@
     resolveSchedule,
     estSuspect24h7,
     getPlaceAvailability,
+    etatOuverture,
     marginFor,
     isFrenchHoliday,
   });
