@@ -23,6 +23,8 @@ test("les trois accès Maintenant partagent exactement la même action", () => {
   const badge = html.slice(html.indexOf("function majBadgeMaintenant"),
     html.indexOf("function blocMaintenantAccueil"));
   assert.match(badge, /badge\.onclick = ouvrirSurfaceMaintenant;/);
+  assert.match(html, /#appHeader\{pointer-events:none\}/);
+  assert.match(html, /#appHeader button,#appHeader a,#appHeader \[role="button"\]\{pointer-events:auto\}/);
 
   const navigation = html.slice(html.indexOf('\$("#navBas").querySelectorAll'),
     html.indexOf('if(id === "pourtoi")'));
