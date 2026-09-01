@@ -163,6 +163,24 @@ test("Rap, Artistes & concerts et Expositions matchent séparément et ensemble"
     new Set(["rap", "Artistes & concerts", "Expositions"]));
 });
 
+test("les goûts Culture, Activités et Vie locale utilisent la taxonomie des annonces", () => {
+  const cas = [
+    ["culture", "exposition"],
+    ["activites", "workshop"],
+    ["local", "braderie"],
+  ];
+  for (const [interest, tag] of cas) {
+    const item = versEvenementCanonique(Object.assign({}, ligneRpc, {
+      id: "evt-" + interest,
+      title: "Annonce " + interest,
+      announcement_tags: [tag],
+    }));
+    const classes = ANNONCES.classerPourToi([item], optionsClassement([interest]));
+    assert.equal(classes.length, 1, interest);
+    assert.ok(classes[0].matched_interests.includes(interest), interest);
+  }
+});
+
 test("sans les tags, le classement ne peut rien proposer — la régression d'origine", () => {
   const nu = versEvenementCanonique(Object.assign({}, ligneRpc, { announcement_tags: null }));
   const classes = ANNONCES.classerPourToi([nu], {

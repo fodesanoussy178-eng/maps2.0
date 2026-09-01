@@ -461,7 +461,7 @@ test("aucun chemin du code n'ouvre de session sans qu'on l'ait demandé", () => 
   // les seules ouvertures de session sont dans la fonction d'envoi, appelée
   // depuis l'écran de compte, lui-même ouvert par `exigerCompte`
   const appels = [...html.matchAll(/sb\.auth\.(signInWithOtp|updateUser|verifyOtp)/g)];
-  assert.equal(appels.length, 3, "trois appels attendus : " + appels.map((m) => m[1]).join(", "));
+  assert.equal(appels.length, 4, "quatre appels attendus : " + appels.map((m) => m[1]).join(", "));
   const envoi = html.slice(html.indexOf("async function envoyerLienCompte"),
                            html.indexOf("async function seDeconnecter"));
   for (const m of ["signInWithOtp", "updateUser", "verifyOtp"]) {

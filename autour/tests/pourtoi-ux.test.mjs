@@ -59,9 +59,49 @@ test("les surveillances sont rendues avant les recommandations", () => {
     source.indexOf("function rendreGroupePourToi"),
   );
   assert.match(bloc, /Tes surveillances/);
-  assert.match(bloc, /<button id="ptGerer">Gérer<\/button>/);
+  assert.match(bloc, /<button id="ptGerer">Modifier mes goûts<\/button>/);
   const tete = source.slice(source.indexOf('<div class="pt-tete">'), source.indexOf('<div class="pt-corps"'));
   assert.doesNotMatch(tete, /ptGerer/);
+});
+
+test("la sélection des goûts est un brouillon validé en une seule fois", () => {
+  const selection = source.slice(
+    source.indexOf("function commencerEditionEnvies"),
+    source.indexOf("function blocSurveillances")
+  );
+  assert.match(selection, /data-testid="selection-gouts"/);
+  assert.match(selection, /data-env-cancel/);
+  assert.match(selection, /data-env-submit/);
+  assert.match(selection, /ENVIES\.basculerBrouillon\(editionEnvies\.ids/);
+  assert.match(selection, /ENVIES\.remplacer\(ids\)/);
+  assert.match(selection, /rebaserPourToiApresChangementGouts\(\)/);
+  assert.match(selection, /function annulerEditionEnvies\(\)[\s\S]*?fermerPourToi\(\)/);
+  assert.doesNotMatch(selection, /ENVIES\.basculer\(/,
+    "l'interface ne doit plus enregistrer chaque clic");
+});
+
+test("sans goûts, Pour toi affiche l'onboarding au lieu d'inventer une personnalisation", () => {
+  const pourToi = source.slice(source.indexOf("function majPourToi"), source.indexOf("function brancherPourToi"));
+  assert.match(pourToi, /if\(!suivies\)/);
+  assert.match(pourToi, /commencerEditionEnvies\("panneau"\)/);
+  assert.match(pourToi, /selectionEnviesHTML\(\)/);
+});
+
+test("la pastille exclut les recommandations vues et les goûts nouvellement pertinents", () => {
+  const logique = source.slice(source.indexOf("function rebaserPourToiApresChangementGouts"), source.indexOf("function peindrePastillePourToi"));
+  assert.match(logique, /retenirAnnoncees\(propositionsPourToi\(POURTOI_TOUT_MAX\)\)/);
+  assert.match(logique, /!annoncees\.has\(id\) && !vues\.has\(id\)/);
+  const rendu = source.slice(source.indexOf("function majPourToi"), source.indexOf("function brancherPourToi"));
+  assert.match(rendu, /peindrePastillePourToi\(nouveautesPourToi\(propositions\)\.length\)/);
+});
+
+test("un compte recharge et synchronise ses goûts sans migration de profil", () => {
+  const compte = source.slice(source.indexOf("const CLE_INTERETS_COMPTE"), source.indexOf("/* Le pseudo public"));
+  assert.match(compte, /user_metadata/);
+  assert.match(compte, /auth\.updateUser\(\{[\s\S]*data:\{\[CLE_INTERETS_COMPTE\]: choix\}/);
+  assert.match(source, /await chargerInteretsCompte\(\)/);
+  assert.doesNotMatch(compte, /from\("profiles"\)/,
+    "les goûts ne doivent pas dépendre d'une nouvelle colonne publique");
 });
 
 test("les deux fonctions de l'avatar existent vraiment", () => {

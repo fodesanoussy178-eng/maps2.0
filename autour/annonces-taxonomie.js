@@ -170,7 +170,7 @@
   });
   const TAGS = Object.freeze(Object.keys(DOMAINES).concat(
     Object.values(DOMAINES).flat(),
-    ["live", "automobile"]
+    ["live", "automobile", "activity", "workshop", "youth_activity", "kids_event"]
   ));
   const TAG_SET = new Set(TAGS);
   const INTEREST_MATCHING = Object.freeze({
@@ -199,6 +199,15 @@
       "rencontre_realisateur",
       "rencontre_equipe_film",
       "cine_debat"
+    ]),
+    culture: Object.freeze([
+      "cinema", "film", "screening", "projection", "avant_premiere",
+      "exhibition", "exposition", "vernissage", "gallery", "art_exhibition",
+      "photography_exhibition", "museum_exhibition", "retrospective", "theatre",
+      "theater", "play", "stage_play", "dramatic_art", "dance", "standup",
+      "artist_meeting", "festival", "cultural_festival", "carnaval", "kermesse",
+      "guinguette", "bal", "feu_artifice", "fete_foraine", "marche_de_noel",
+      "fan_zone"
     ]),
     manga_anime: Object.freeze([
       "manga",
@@ -290,6 +299,10 @@
       "family_show",
       "parenting_event"
     ]),
+    activites: Object.freeze([
+      "activity", "workshop", "workshop_children", "youth_activity", "family_event",
+      "kids_event", "sport", "match", "tournament", "theatre", "concert", "festival"
+    ]),
     theatre: Object.freeze([
       "theatre",
       "theater",
@@ -310,6 +323,11 @@
       "local_festival", "fete_de_la_musique", "carnaval", "kermesse", "guinguette",
       "fete_foraine", "marche_de_noel", "fan_zone"
     ]),
+    local: Object.freeze([
+      "braderie", "neighbourhood_party", "market", "street_festival",
+      "association_event", "festival", "local_festival", "fete", "fete_populaire",
+      "brocante", "vide_grenier"
+    ]),
     rnb: Object.freeze(["rnb"]),
     pop: Object.freeze(["pop"]),
     afro: Object.freeze(["afro"]),
@@ -326,6 +344,7 @@
     "artistes_concerts": "concerts",
     "artists_concerts": "concerts",
     cinema: "cinema",
+    culture: "culture",
     manga: "manga_anime",
     manga_anime: "manga_anime",
     expos: "exhibitions",
@@ -340,6 +359,10 @@
     nightlife: "nightlife",
     famille: "family",
     family: "family",
+    activites: "activites",
+    activite: "activites",
+    local: "local",
+    vie_locale: "local",
     theatre: "theatre",
     festivals: "festivals",
     rnb: "rnb",
@@ -356,6 +379,7 @@
     rap: "Rap",
     concerts: "Concerts",
     cinema: "Cin\xE9ma",
+    culture: "Culture",
     manga_anime: "Manga / Anime",
     exhibitions: "Expositions",
     sport: "Sport",
@@ -364,6 +388,8 @@
     food: "Food",
     nightlife: "Vie nocturne",
     family: "Famille",
+    activites: "Activit\xE9s",
+    local: "Vie locale",
     theatre: "Th\xE9\xE2tre",
     festivals: "Festivals",
     rnb: "R&B",

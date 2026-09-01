@@ -9,6 +9,10 @@
    notifications. Ils sont donc gardés là où ils survivent à la fermeture de
    l'onglet — et nulle part ailleurs : rien ne part sur le réseau ici.
 
+   Le module distingue volontairement la lecture enregistrée du brouillon
+   d'édition. L'écran peut ainsi cocher dix cases sans écrire dix fois : seul
+   `remplacer()` constitue une validation.
+
    Le stockage peut échouer (navigation privée, quota, réglages qui bloquent
    les données de site). Dans ce cas les envies vivent en mémoire pour la
    session : l'interface continue de fonctionner, elle oublie simplement au
@@ -79,6 +83,8 @@
      mots:["manga","anime","japan","cosplay","convention","comics"]},
     {id:"expos",     label:"Expositions",   emoji:"🖼️", cats:["musee"],
      mots:["exposition","expo","vernissage","galerie","musee"]},
+    {id:"culture",   label:"Culture",       emoji:"🎨", cats:[],
+     mots:["culture","patrimoine","art","arts","spectacle"]},
     {id:"sport",     label:"Sport",         emoji:"🏅", cats:["sport","terrain"],
      mots:["sport","match","tournoi","course","marathon"]},
     {id:"football",  label:"Football",      emoji:"⚽", cats:[],
@@ -91,6 +97,10 @@
      mots:["soiree","club","nuit","after","bal"]},
     {id:"famille",   label:"Famille",       emoji:"🧸", cats:["parc"],
      mots:["famille","enfants","jeune public","atelier enfant"]},
+    {id:"activites", label:"Activités",     emoji:"🧩", cats:[],
+     mots:["activite","activités","atelier","loisir","jeu"]},
+    {id:"local",     label:"Vie locale",    emoji:"🏙️", cats:[],
+     mots:["vie locale","quartier","association","braderie","brocante","fete de quartier"]},
     {id:"theatre",   label:"Théâtre",       emoji:"🎭", cats:["spectacle"],
      mots:["theatre","piece","scene","comedie","impro"]},
     {id:"festivals", label:"Festivals",     emoji:"🎪", cats:[],
@@ -102,11 +112,26 @@
   /* Le repli mémoire : utilisé seulement quand l'écriture est impossible. */
   let enMemoire = null;
   let stockageMuet = false;
+  let cleStockage = CLE;
+
+  /* Les visiteurs partagent la clé locale historique ; un compte confirmé a
+     son propre espace local en attendant la lecture/écriture de ses
+     métadonnées Auth. Cela évite qu'un compte suivant le précédent sur le
+     même navigateur ne voie ses goûts. */
+  function definirContexte(id){
+    const prochain = id
+      ? CLE + "::compte:" + encodeURIComponent(String(id))
+      : CLE;
+    if(prochain === cleStockage) return;
+    cleStockage = prochain;
+    enMemoire = null;
+    stockageMuet = false;
+  }
 
   function lire(){
     if(enMemoire) return enMemoire;
     let brut = null;
-    try{ brut = localStorage.getItem(CLE); }
+    try{ brut = localStorage.getItem(cleStockage); }
     catch(e){ stockageMuet = true; }
     let ids = [];
     try{
@@ -122,7 +147,7 @@
   function ecrire(ids){
     enMemoire = ids.filter(id=>PAR_ID.has(id));
     if(stockageMuet) return false;
-    try{ localStorage.setItem(CLE, JSON.stringify(enMemoire)); return true; }
+    try{ localStorage.setItem(cleStockage, JSON.stringify(enMemoire)); return true; }
     catch(e){ stockageMuet = true; return false; }
   }
 
@@ -133,6 +158,31 @@
   function choisies(){
     const prises = new Set(lire());
     return CATALOGUE.filter(e=>prises.has(e.id)).map(e=>e.id);
+  }
+
+  function normaliserChoix(ids){
+    const prises = new Set(Array.isArray(ids) ? ids : []);
+    return CATALOGUE.filter(e=>prises.has(e.id)).map(e=>e.id);
+  }
+
+  /* Une copie indépendante : le code d'interface peut la modifier sans
+     pouvoir toucher à la sélection déjà validée. */
+  const brouillon = ()=>choisies().slice();
+
+  function basculerBrouillon(ids, id){
+    const choix = new Set(normaliserChoix(ids));
+    if(!PAR_ID.has(id)) return [...choix];
+    if(choix.has(id)) choix.delete(id); else choix.add(id);
+    return normaliserChoix([...choix]);
+  }
+
+  /* Seul point d'écriture utilisé par l'interface de sélection. La liste est
+     normalisée ici aussi pour qu'une préférence de compte inconnue ou dans un
+     ordre arbitraire ne puisse pas contaminer le classement. */
+  function remplacer(ids){
+    const choix = normaliserChoix(ids);
+    ecrire(choix);
+    return choisies();
   }
 
   /* L'interface a besoin de deux lectures — les entrées de premier rang, et
@@ -216,12 +266,13 @@
   /* Uniquement pour les tests : repartir d'un état connu. */
   function _reinitialiser(){
     enMemoire = null; stockageMuet = false;
-    try{ localStorage.removeItem(CLE); }catch(e){}
+    try{ localStorage.removeItem(cleStockage); }catch(e){}
   }
 
   window.AutourEnvies = {
-    CATALOGUE, CLE, racines, enfants,
-    choisies, suivie, definir, basculer, detail, details,
+    CATALOGUE, CLE, racines, enfants, definirContexte,
+    choisies, normaliserChoix, brouillon, basculerBrouillon, remplacer,
+    suivie, definir, basculer, detail, details,
     correspondances, pourquoi, persistant, _reinitialiser,
   };
 })();

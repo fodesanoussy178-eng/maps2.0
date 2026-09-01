@@ -33,3 +33,8 @@ test("la capsule Aide annonce au plus trois recommandations et reste actionnable
   assert.ok(app.includes('poserBesoinsRapides();') && app.includes('marquerNavigation(modeAide ? "aide" : "explorer");'));
   assert.ok(app.includes('!modeTerritorial && !modeAide)'));
 });
+
+test("l’onboarding ne recouvre pas la capsule ni le panneau Aide sur mobile", () => {
+  assert.match(index, /#onboardingLocalisation:not\(\[hidden\]\) ~ #badgeMaintenant\{display:none\}/);
+  assert.match(index, /body\.aide #onboardingLocalisation\{display:none\}/);
+});
