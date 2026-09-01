@@ -1156,10 +1156,11 @@ test("la navigation nomme le produit",()=>{
   // le temps se choisit dans Maintenant ou Explorer, pas via une nomenclature
   // cachée dans la barre du bas
   assert.match(html,/function ongletsTemps\(\)\{/);
-  for(const label of ["Maintenant","Bientôt","Ce week-end"])
+  for(const label of ["Maintenant","À venir","Ce week-end"])
     assert.match(html,new RegExp('label:"'+label.replace("À","À")+'"'), label);
   const visibles = html.slice(html.indexOf("const CRENEAUX_VISIBLES"), html.indexOf("function instantCreneau"));
-  assert.doesNotMatch(visibles, /À venir/, "À venir reste interne, pas visible dans la navigation");
+  assert.match(visibles, /filter\(c=>c\.id !== "bientot"\)/,
+    "le créneau interne Bientôt ne doit pas être exposé dans la navigation");
 });
 
 /* ---- Trajets : moteur interne réduit à pied et vélo --------------------- */

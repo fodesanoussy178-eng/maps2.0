@@ -5778,18 +5778,15 @@ const SUGGESTIONS_INTENTION = [
 
 /* Timeline : la même carte, à un autre moment. */
 /* Le moteur garde ses quatre états internes pour les recherches explicites,
-   mais la navigation principale expose trois fenêtres : Maintenant, l'ancien
-   « À venir » renommé « Bientôt », puis Ce week-end. Le libellé Bientôt
-   n'expose donc pas l'ancien créneau interne du même nom. */
+   mais la navigation principale expose trois fenêtres : Maintenant, À venir,
+   puis Ce week-end. Le créneau interne « Bientôt » n'est pas exposé ici. */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant"  },
   { id:"bientot",    label:"Bientôt"     },
   { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
   { id:"avenir",     label:"À venir"      },
 ];
-const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX
-  .filter(c=>c.id !== "bientot")
-  .map(c=>c.id === "avenir" ? Object.assign({}, c, {label:"Bientôt"}) : c));
+const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX.filter(c=>c.id !== "bientot"));
 /* Le créneau choisi ↔ la section rendue par le moteur temporel. */
 const SECTIONS_DU_CRENEAU = Object.freeze({
   maintenant:["maintenant"],
@@ -12973,7 +12970,7 @@ function statutGroupeHTML(){
     if(technique && !/Rien d’ouvert à proximité/.test(technique)) return technique;
     return '<div class="fb-statut" data-testid="maintenant-vide">'+
       'Rien en cours près de toi.'+
-      '<br><button data-creneau-vers="avenir">Voir ce qui arrive bientôt →</button>'+
+      '<br><button data-creneau-vers="avenir">Voir À venir →</button>'+
       '<button data-etat-action="all">Voir tous les lieux</button></div>';
   }
   const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
@@ -13508,7 +13505,7 @@ function brancherFeuille2(){
     majFeuille2(); reinitialiserScrollFeuille();
   });
 
-  /* Le pont depuis « Maintenant » vide vers « Bientôt ». Il passe par le même
+  /* Le pont depuis « Maintenant » vide vers « À venir ». Il passe par le même
      chemin qu'un appui sur l'onglet : un seul comportement à maintenir. */
   corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>{
     const cible = b.dataset.creneauVers;

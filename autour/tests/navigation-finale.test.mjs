@@ -51,8 +51,8 @@ test("Bientôt est un créneau glissant issu du moteur temporel commun", () => {
   const visibles = html.slice(html.indexOf("const CRENEAUX_VISIBLES"),
     html.indexOf("/* Le créneau choisi"));
   assert.match(visibles, /filter\(c=>c\.id !== "bientot"\)/);
-  assert.match(visibles, /c\.id === "avenir" \? Object\.assign\(\{\}, c, \{label:"Bientôt"\}\)/);
-  assert.doesNotMatch(visibles, /label:"À venir"/);
+  assert.doesNotMatch(visibles, /Object\.assign/);
+  assert.match(visibles, /filter\(c=>c\.id !== "bientot"\)/);
   const onglets = html.slice(html.indexOf("function ongletsTemps"),
     html.indexOf("/* Ce qu'on écrit quand un groupe est vide"));
   assert.match(onglets, /CRENEAUX_VISIBLES\.map/);
