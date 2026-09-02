@@ -62,6 +62,9 @@
   let synchronisation = false;
   let rafPlanifie = 0;        // l'image où la synchro Leaflet est regroupée
   let enGeste = false;        // vrai entre le premier bounds_changed et l'idle
+  let finalisationGeste = false; // vrai pendant la dernière synchro Leaflet
+  let zoomEnGeste = false;    // un zoom Leaflet par frame est trop coûteux sous WebKit
+  let zoomObserve = null;
   let conteneur = null;
   let authRefusee = false;
   let surveillanceAuthInstallee = false;
@@ -198,6 +201,12 @@
     const appliquerVue = () => {
       rafPlanifie = 0;
       if (!carte || !leaflet) return;
+      /* Pendant un pinch, Google anime déjà sa caméra. Reprojeter la couche
+         Leaflet à chaque palier de zoom force WebKit à relayout tous ses
+         marqueurs, même si Autour ne change aucune donnée. Le déplacement
+         garde sa synchro image par image ; le zoom, lui, est réconcilié une
+         seule fois à `idle`, après que la carte a rendu le geste. */
+      if (zoomEnGeste && !finalisationGeste) return;
       const centre = carte.getCenter();
       if (!centre) return;
       synchronisation = true;
@@ -206,7 +215,14 @@
     };
     const suivre = () => {
       if (synchronisation) return;
-      enGeste = true;
+      const zoom = carte.getZoom();
+      if (zoomObserve == null) zoomObserve = zoom;
+      else if (zoom !== zoomObserve) zoomEnGeste = true;
+      zoomObserve = zoom;
+      if (!enGeste) {
+        enGeste = true;
+        root.dispatchEvent(new Event("autour:google-map-gesture-start"));
+      }
       if (!rafPlanifie) rafPlanifie = root.requestAnimationFrame(appliquerVue);
     };
     /* Fin du geste : on annule l'image en attente, on rend la main à Autour
@@ -215,7 +231,12 @@
     const reconcilier = () => {
       if (rafPlanifie) { root.cancelAnimationFrame(rafPlanifie); rafPlanifie = 0; }
       enGeste = false;
+      finalisationGeste = true;
       appliquerVue();
+      finalisationGeste = false;
+      zoomEnGeste = false;
+      zoomObserve = carte && carte.getZoom();
+      root.dispatchEvent(new Event("autour:google-map-gesture-end"));
     };
     carte.addListener("bounds_changed", suivre);
     carte.addListener("idle", reconcilier);
@@ -234,7 +255,7 @@
   function estActif() { return actif; }
   /* La couche application demande « suis-je en train de bouger la carte ? »
      pour sauter la recomposition coûteuse tant que le geste dure. */
-  function enGesteGoogle() { return actif && enGeste; }
+  function enGesteGoogle() { return actif && (enGeste || finalisationGeste); }
   root.AutourMapProviders = Object.assign(root.AutourMapProviders || {}, {
     googleMaps:Object.freeze({activer, lierLeaflet, synchroniserDepuisLeaflet, estActif, enGeste:enGesteGoogle, charger}),
   });

@@ -192,18 +192,25 @@ verifier("le HTML se revalide à chaque ouverture",
 verifier("le middleware pose toujours le cookie de ville",
   /autour_geo=/.test(index.entetes["set-cookie"] || ""), index.entetes["set-cookie"]);
 
-/* Les scripts servis sont-ils les ALLÉGÉS ? La question n'est pas rhétorique :
-   c'est tout l'objet de la manœuvre. */
+/* Le chemin critique est-il bien livré en deux étages ? Le shell doit pouvoir
+   accuser réception d'un geste sans attendre le moteur. Le moteur complet
+   reste un seul paquet différé ; les modules individuels restent présents pour
+   les liens directs et le diagnostic, mais le HTML n'en demande aucun. */
 const scripts = [...index.texte.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1])
   .filter((s) => !/^https?:/.test(s));
-verifier("le document charge les mêmes modules qu’avant", scripts.length === 22,
+verifier("le document charge un seul shell critique", scripts.length === 1 &&
+  /^autour-shell\.js\?v=[a-f0-9]{8}$/.test(scripts[0] || ""),
   scripts.length + " scripts");
-const app = await demander("/" + scripts.find((s) => s.startsWith("app.js")));
+const shell = await demander("/" + scripts[0]);
+const moteur = index.texte.match(/data-autour-moteur="1"[^>]+href="(autour\.js\?v=[a-f0-9]{8})"/);
+verifier("le shell dispose d’un moteur versionné à précharger",
+  shell.statut === 200 && !!moteur, index.texte.slice(0, 160));
+const app = moteur ? await demander("/" + moteur[1])
+  : { statut: 404, texte: "", entetes: {} };
 const appSource = await readFile(join(RACINE, "app.js"), "utf8");
-verifier("app.js servi est la version allégée",
-  app.statut === 200 && app.texte.length < appSource.length * 0.75,
-  Math.round(app.texte.length / 1024) + " ko servis contre " +
-  Math.round(appSource.length / 1024) + " ko en source");
+verifier("autour.js servi est le bundle allégé",
+  app.statut === 200 && app.texte.includes("function ouvrirFeuille("),
+  Math.round(app.texte.length / 1024) + " ko servis");
 /* « Plus AUCUN commentaire » serait faux, et le dire serait se mentir :
    esbuild conserve quelques commentaires courts collés à un élément de
    tableau, et il ajoute ses propres annotations `/* @__PURE__ *\/`. Ce qui
@@ -224,15 +231,16 @@ verifier("il ne reste qu’une poignée de commentaires",
 console.log("     " + commentaires.length + " commentaires subsistent (" +
   Math.round(resteCommentaires / 1024 * 10) / 10 + " ko), soit " +
   Math.round(resteCommentaires / sourceCommentaires * 100) + " % du volume d’origine");
-verifier("app.js garde ses noms de fonctions", /function ouvrirFeuille\(/.test(app.texte));
+verifier("autour.js garde ses noms de fonctions", /function ouvrirFeuille\(/.test(app.texte));
 verifier("les modules .js sont immuables pour un an",
   /max-age=31536000/.test(app.entetes["cache-control"] || "") &&
   /immutable/.test(app.entetes["cache-control"] || ""), app.entetes["cache-control"]);
 
-/* Chaque script du document doit répondre : une empreinte qui ne suit pas, et
-   c'est un 404 sur le chemin critique. */
+/* Le shell et le moteur doivent répondre : une empreinte qui ne suit pas, et
+   c'est un 404 sur le démarrage. */
 const manquants = [];
 for (const s of scripts) if ((await demander("/" + s)).statut !== 200) manquants.push(s);
+if (moteur && (await demander("/" + moteur[1])).statut !== 200) manquants.push(moteur[1]);
 verifier("aucun script du document ne manque à l’appel", manquants.length === 0,
   manquants.join(", "));
 
@@ -339,15 +347,21 @@ await page.waitForTimeout(1500);
 
 const demarrage = await page.evaluate(() => ({
   lieux: lieux.length,
-  maintenant: (document.querySelector('[data-testid="maintenant-liste"]') || { dataset: {} }).dataset.mnEtat,
   carte: typeof map !== "undefined" && !!map,
   google: !!(window.AutourMapProviders && window.AutourMapProviders.googleMaps),
   supabase: window.__supabaseAppele,
   rpc: window.__dernierRpc || null,
 }));
 verifier("l’application démarre et trouve des lieux", demarrage.lieux > 0, String(demarrage.lieux));
+const maintenant = await page.evaluate(async () => {
+  ouvrirSurfaceMaintenant();
+  await new Promise((r) => setTimeout(r, 80));
+  const liste = document.querySelector('[data-testid="maintenant-liste"]');
+  return { etat: liste && liste.dataset.mnEtat,
+    visible: !!(liste && liste.getBoundingClientRect().height) };
+});
 verifier("« Maintenant » sort de son état de chargement",
-  demarrage.maintenant && demarrage.maintenant !== "loading", demarrage.maintenant);
+  maintenant.visible && maintenant.etat && maintenant.etat !== "loading", JSON.stringify(maintenant));
 verifier("la carte est là", demarrage.carte);
 verifier("le fournisseur Google Maps est chargé et disponible", demarrage.google);
 verifier("Supabase est interrogé (couche territoriale)",
@@ -360,12 +374,17 @@ verifier("OpenAgenda n’est jamais appelé depuis le navigateur",
   sorties.filter((u) => /openagenda/.test(u)).join(", "));
 
 const aide = await page.evaluate(async () => {
-  basculerAide();
+  if(!document.body.classList.contains("aide")) basculerAide();
+  ouvrirFeuille2("aide");
   await new Promise((r) => setTimeout(r, 400));
   const actif = document.body.classList.contains("aide");
   const contenu = (document.querySelector("#fbCorps") || { textContent: "" }).textContent;
-  basculerAide();
-  return { actif, aQuelqueChose: contenu.trim().length > 40 };
+  const squelette = document.querySelectorAll("#fbCorps [data-testid=\"squelette\"]").length;
+  const panneau = document.querySelector("#feuilleBesoins");
+  if(panneau && !panneau.hidden) fermerFeuille2({nettoyerHistorique:false});
+  if(document.body.classList.contains("aide")) basculerAide();
+  return { actif, aQuelqueChose: contenu.trim().length > 40 || squelette === 3,
+    longueur: contenu.trim().length, squelette };
 });
 verifier("Aide s’ouvre et affiche quelque chose", aide.actif && aide.aQuelqueChose,
   JSON.stringify(aide));
