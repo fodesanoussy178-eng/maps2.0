@@ -133,7 +133,8 @@ test("Maintenant, Pour toi et Explorer partagent le même entonnoir actif", () =
 test("le suivi GPS ne recharge pas le bassin physique pendant une destination", () => {
   const appliquer = extraireFonction("appliquerPosition");
   assert.match(appliquer, /const destinationAvant = destinationActive\(\);/);
-  assert.match(appliquer, /if\(bouge && !destinationAvant\)\{/);
+  assert.match(appliquer, /const doitRestaurerZone = retourDemande \|\| !destinationAvant;/);
+  assert.match(appliquer, /if\(bouge && doitRestaurerZone\)\{/);
   assert.match(appliquer, /chargerZone\(c\[0\], c\[1\]/);
   assert.match(appliquer, /chargerDonneesTemporaires\(c\[0\], c\[1\]\)/);
 });

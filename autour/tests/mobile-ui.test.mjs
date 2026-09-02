@@ -2285,7 +2285,7 @@ test("le GPS remplace l'approximation, il ne la complète pas",()=>{
   // tout ce qui avait été déduit de l'IP est effacé, pas corrigé
   assert.match(html,/villeDetectee = null;\s*\n\s*commune = "ton quartier";/);
   // et la zone est rechargée même si le déplacement est court
-  assert.match(html,/const bouge = premiereFois \|\| venaitDeLApproximation/);
+  assert.match(html,/const bouge = retourDemande \|\| premiereFois \|\| venaitDeLApproximation/);
   assert.match(html,/if\(venaitDeLApproximation \|\|\s*\n\s*distanceM\(c\[0\],c\[1\], dernierNom\[0\], dernierNom\[1\]\) > 2000\)/);
 });
 
