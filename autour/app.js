@@ -9101,6 +9101,11 @@ let montrerFermes = false;
    « pertinent » veut dire. Une note Google ne compte plus, une porte ouverte
    compte énormément, et l'urgence du besoin passe devant la découverte. */
 let modeAide = false;
+/* Chaque bascule possède son propre jeton d'affichage. Une réponse Aide
+   lancée avant un geste rapide (sortie du mode, changement de feuille, retour
+   GPS) peut encore terminer côté réseau ; elle ne doit plus avoir le droit de
+   repeindre l'écran qu'un geste plus récent a choisi. */
+let revisionModeAide = 0;
 
 const CATS_AIDE = ["alimentaire","hebergement","asso","emploi","sante","toilettes",
   "collecte","securite","mairie"];
@@ -13774,6 +13779,7 @@ function majFiltres(){
    promesse en cours. */
 function basculerAide(){
   modeAide = !modeAide;
+  const revision = ++revisionModeAide;
   // on repart toujours de la question : « de quoi as-tu besoin ? »
   sousAide = null;
   besoinsExprimesAide = [];
@@ -13809,7 +13815,10 @@ function basculerAide(){
   if(modeAide && positionMoi){
     // les réseaux d'aide arrivent après coup, la carte est déjà utilisable
     chargerAideZone()
-      .then(()=>{ rendre(); majAccueil(); majFeuille2(); });
+      .then(()=>{
+        if(!modeAide || revision !== revisionModeAide) return;
+        rendre(); majAccueil(); majFeuille2();
+      });
   }
 }
 
@@ -14198,6 +14207,34 @@ function majAccueil(){
    quatre raccourcis et la feuille disent déjà où on en est. */
 function dessinerFiltres(){ majRaccourcis(); }
 
+/* Un appui sur l'avatar peut arriver pendant une demande GPS déjà en vol. Le
+   drapeau ne remplace pas cette demande : il donne simplement à sa réponse la
+   priorité de restaurer la zone physique, même si l'on regardait une ville. */
+let retourPositionDemande = false;
+
+function reinitialiserContextePourRetour(){
+  rechercheGeo = null;
+  intentionCourante = null;
+  zoneAffichee = null; // la feuille reprend ses recommandations locales
+  recherche = "";
+  if($("#rech")) $("#rech").value = "";
+  catsActives = null;
+  filtreActif = "tout";
+  selectionAccueil = null;
+}
+
+function rafraichirAideDepuisZone(){
+  if(!modeAide) return Promise.resolve([]);
+  return chargerAideZone().then(()=>{
+    /* Le retour peut être suivi immédiatement d'un autre geste. Le bassin
+       est protégé par la génération de zone ; ce garde ne fait que retenir le
+       rendu de l'écran actuellement choisi. */
+    if(modeAide && !destinationActive())
+      planifierRendu({accueil:true, carte:true, feuille:true});
+    return true;
+  }).catch(()=>[]);
+}
+
 /* On ne demande plus la permission avant de construire quoi que ce soit :
    la carte s'affiche tout de suite à la dernière position connue, et glisse
    vers l'utilisateur dès que la géolocalisation répond. Un refus ou un échec
@@ -14209,9 +14246,17 @@ function dessinerFiltres(){ majRaccourcis(); }
 function appliquerPosition(p, opts){
   const o = opts || {};
   const c = [p.coords.latitude, p.coords.longitude];
+  const retourDemande = retourPositionDemande;
+  retourPositionDemande = false;
   const destinationAvant = destinationActive();
   noterAutorisationGeo(true);
   memoriserPosition(c, "gps");
+
+  /* Un avatar pressé est une commande de retour, pas une simple mesure de
+     veille. On efface la destination avant de calculer le régime et avant de
+     poser la nouvelle zone ; ainsi aucune réponse de la ville regardée ne
+     peut être conservée comme écran courant. */
+  if(retourDemande) reinitialiserContextePourRetour();
 
   /* Le GPS REMPLACE tout ce qui précède, il ne le complète pas. Venir
      d'une ville déduite d'une adresse IP et arriver sur le vrai point,
@@ -14222,11 +14267,15 @@ function appliquerPosition(p, opts){
   const premiereFois = !positionConnue();
   // le régime AVANT que cette mesure ne change la donne
   const regimeAvant = regimeZone(rechercheGeo);
-  const bouge = premiereFois || venaitDeLApproximation || !positionMoi
+  const bouge = retourDemande || premiereFois || venaitDeLApproximation || !positionMoi
     || distanceM(positionMoi[0],positionMoi[1],c[0],c[1]) > 150;
-  if(bouge && !destinationAvant){
-    annulerGeneration("demarrage");
-    annulerGeneration("zone:precalculee");
+  const doitRestaurerZone = retourDemande || !destinationAvant;
+  if(bouge && doitRestaurerZone){
+    if(retourDemande) annulerChargementsZone();
+    else {
+      annulerGeneration("demarrage");
+      annulerGeneration("zone:precalculee");
+    }
   }
   positionMoi = c;
   originePosition = "gps";
@@ -14234,7 +14283,7 @@ function appliquerPosition(p, opts){
   /* La zone active suit la position UNIQUEMENT quand c'est elle qu'on regarde.
      Explorer Lille et recevoir une mesure GPS de Tourcoing ne doit rien
      changer à ce qui s'affiche : c'est le point bleu qui bouge, pas la zone. */
-  if(bouge && CTX && (!zoneActive || zoneActive.type === CTX.TYPES.MOI))
+  if(bouge && CTX && (retourDemande || !zoneActive || zoneActive.type === CTX.TYPES.MOI))
     definirZoneActive(CTX.zoneMoi(c, commune));
 
   $("#bandeauGeo").hidden = true;
@@ -14256,11 +14305,12 @@ function appliquerPosition(p, opts){
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
 
-  if(bouge && !destinationAvant){
+  if(bouge && doitRestaurerZone){
     // le quartier réel se charge — court délai : on est encore au
     // démarrage, et l'écran montre déjà quelque chose
     chargerZone(c[0], c[1], {delai:OVERPASS_DELAI_BOOT});
     chargerDonneesTemporaires(c[0], c[1]);
+    if(modeAide) rafraichirAideDepuisZone();
     /* Le GPS peut répondre avant Leaflet. `chargerZone` sait alors attendre
        sans carte, mais l'ancien chemin de démarrage quittait la zone avant
        de lancer Google/DATAtourisme/Supabase : les événements arrivaient,
@@ -14406,6 +14456,10 @@ function suivreMaPosition(opts){
     },
     (err)=>{
       localisationEnCours = false;
+      /* Un retour demandé qui échoue ne doit pas rester armé pour une
+         prochaine veille GPS, sinon un relevé discret pourrait déplacer la
+         carte longtemps après le geste initial. */
+      if(retourPositionDemande) retourPositionDemande = false;
       // un refus efface l'autorisation mémorisée : on ne relancera plus d'office
       if(err && err.code === 1) noterAutorisationGeo(false);
       definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
@@ -15051,17 +15105,24 @@ $("#btnPoseOk").onclick=validerPose;
    filtre. C'était la condition posée — une seule porte, dans un sens comme
    dans l'autre. */
 function revenirAutourDeMoi(){
-  if(!positionMoi || !positionPrecise()) { suivreMaPosition({reproposer:true}); return; }
-  definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
+  if(!positionMoi || !positionPrecise()) {
+    retourPositionDemande = true;
+    suivreMaPosition({reproposer:true});
+    return;
+  }
+  retourPositionDemande = false;
+  const destinationAvant = destinationActive();
+  const dejaChezMoi = !destinationAvant && zoneActive &&
+    (!CTX || zoneActive.type === CTX.TYPES.MOI);
+  if(!dejaChezMoi) definirZoneActive(CTX ? CTX.zoneMoi(positionMoi, commune) : null);
   majEnteteLieu();
-  annulerChargementsZone();
-  rechercheGeo = null;
-  intentionCourante = null;
-  zoneAffichee = null;          // la feuille reprend ses recommandations locales
-  recherche = ""; if($("#rech")) $("#rech").value = "";
-  catsActives = null; filtreActif = "tout";
+  if(!dejaChezMoi) annulerChargementsZone();
+  reinitialiserContextePourRetour();
   allerVers(positionMoi, 16, {duration:.6});
-  chargerZone(positionMoi[0], positionMoi[1]);
+  if(!dejaChezMoi){
+    chargerZone(positionMoi[0], positionMoi[1]);
+    rafraichirAideDepuisZone();
+  }
   rendre(); majAccueil();
   if(feuilleNiveau !== null) majFeuille2();
   majBoutons();
@@ -15542,10 +15603,19 @@ poigneeFeuille.addEventListener("pointerup",e=>{
    doit rendre la poignée à son état de repos. Sans ça le glissement restait
    « en cours » et le geste suivant se comparait à une origine périmée. */
 poigneeFeuille.addEventListener("pointercancel",relacherPoignee);
-/* La pastille de lieu expose le contexte actif. Le retour GPS reste une action
-   explicite dans sa fiche lorsque l'on explore une autre zone. */
+/* La pastille de lieu expose le contexte actif. Le bitmoji, lui, est une
+   commande immédiate et stable : il ramène à la dernière position GPS connue
+   (ou déclenche une seule mesure si elle n'est pas encore précise), sans faire
+   passer l'utilisateur par une étape intermédiaire. Le reste de la pastille
+   conserve sa fiche de localisation. */
+if($("#hdAvatar")) $("#hdAvatar").onclick = e=>{
+  e.stopPropagation();
+  fermerLocalisation();
+  revenirAutourDeMoi();
+};
 $("#btnLieu").onclick = ()=>{
-  /* Le clic ne modifie pas la géographie : il rend visible l'état déjà actif. */
+  /* Le clic sur le lieu reste informatif ; le clic précis sur le bitmoji est
+     le retour GPS explicite. */
  const pop = $("#locationPopover");
   if(pop && !pop.hidden) fermerLocalisation();
   else ouvrirLocalisation();
