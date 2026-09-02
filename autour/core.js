@@ -882,7 +882,7 @@
     return Math.abs(existing.startsAt - item.startsAt) <= 3 * 3600 * 1000;
   }
 
-  function memeEnregistrement(existing, item, distanceBetween) {
+  function memeEnregistrement(existing, item, distanceBetween, options) {
     if (!!existing.isTemporary !== !!item.isTemporary) return false;
     if (existing.entity_type && item.entity_type && existing.entity_type !== item.entity_type) return false;
     /* Un identifiant fournisseur stable est une preuve plus forte qu'une
@@ -892,6 +892,13 @@
        sauter la liste au moment où le réseau répond. */
     if (existing.id != null && item.id != null && String(existing.id) === String(item.id)) return true;
     if (memeIdentifiantExterne(existing, item)) return true;
+    /* Un contexte éditorial peut contenir deux animations distinctes au même
+       endroit et dans la même fenêtre — par exemple la Braderie des enfants
+       et un atelier associé. Quand leurs identifiants diffèrent, l'absence de
+       référence externe commune doit préserver les deux occurrences au lieu
+       d'appliquer la déduplication géographique des lieux. */
+    if (options && options.preserveDistinctEvents && existing.isTemporary && item.isTemporary)
+      return false;
     /* Une station et une destination peuvent porter exactement le même
        nom à la même adresse. Les fusionner donne à la station la photo, la
        note et la catégorie du café voisin, puis la fait remonter dans Manger.
@@ -945,7 +952,7 @@
     return memeFenetre(existing, item);
   }
 
-  function dedupeItems(items, distanceBetween) {
+  function dedupeItems(items, distanceBetween, options) {
     const result = [];
     /* Toutes les heuristiques géographiques sont bornées à 500 m. Parcourir
        toute la collection pour chaque fiche rendait pourtant l'ingestion
@@ -992,7 +999,7 @@
     };
     (items || []).forEach((item) => {
       const found = candidats(item).find((index) =>
-        memeEnregistrement(result[index], item, distanceBetween));
+        memeEnregistrement(result[index], item, distanceBetween, options));
       if (found === undefined) {
         const index = result.length;
         result.push(item);
@@ -1810,7 +1817,9 @@
     const position = Array.isArray(ctx.position) ? ctx.position : [0, 0];
     const categories = Array.isArray(ctx.categories) && ctx.categories.length ? ctx.categories : profile.categories;
     const radius = Number.isFinite(Number(ctx.radius)) ? Number(ctx.radius) : Infinity;
-    const deduped = dedupeItems(results || [], distanceBetween);
+    const deduped = dedupeItems(results || [], distanceBetween, {
+      preserveDistinctEvents: !!ctx.preserveDistinctEvents,
+    });
 
     /* ---- Filtrage temporel, AVANT toute notion de pertinence --------------
        La proximité et les centres d'intérêt ne doivent jamais faire remonter

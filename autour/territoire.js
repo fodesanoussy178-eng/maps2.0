@@ -50,6 +50,7 @@
   const PHASES = Object.freeze({
     ABSENT:  "absent",
     AVANT:   "avant",
+    JOUR:    "jour",
     PENDANT: "pendant",
     APRES:   "apres",
   });
@@ -86,6 +87,18 @@
     const t = temporal && typeof temporal.toEpochInZone === "function"
       ? temporal.toEpochInZone(valeur, timeZone || DEFAULT_TIMEZONE) : Date.parse(String(valeur));
     return Number.isFinite(t) ? t : null;
+  }
+
+  function memeJourLocal(a, b, timeZone) {
+    if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return false;
+    try {
+      const options = {timeZone: timeZone || DEFAULT_TIMEZONE,
+        year: "numeric", month: "2-digit", day: "2-digit"};
+      const formatter = new Intl.DateTimeFormat("en-CA", options);
+      return formatter.format(new Date(Number(a))) === formatter.format(new Date(Number(b)));
+    } catch (e) {
+      return false;
+    }
   }
 
   function point(p) {
@@ -171,6 +184,7 @@
       apercuLe: horodatage(c.preview_starts_at != null ? c.preview_starts_at : c.apercuLe, fuseau),
       fuseau,
       territoire: c.territory_slug || c.territoire || null,
+      majorEventMotifTitre: c.major_event_motif_titre || c.majorEventMotifTitre || null,
       priorite: nombre(c.priority != null ? c.priority : c.priorite) || 100,
       urlOfficielle: c.official_url || c.urlOfficielle || null,
       /* Les sources qui font autorité SUR CETTE MANIFESTATION. Elles ne sont
@@ -181,6 +195,12 @@
         (Array.isArray(meta.sources_officielles) ? meta.sources_officielles : [])
           .map((s) => String(s).trim().toLowerCase()).filter(Boolean)),
       rayonVisibiliteM: nombre(meta.rayon_visibilite_m) || RAYON_VISIBILITE_DEFAUT_M,
+      phaseJourAvantOuverture: meta.phase_jour_avant_ouverture === true,
+      etatsBouton: Object.freeze(
+        meta.etats_bouton && typeof meta.etats_bouton === "object"
+          ? meta.etats_bouton
+          : meta.etatsBouton && typeof meta.etatsBouton === "object"
+            ? meta.etatsBouton : {}),
       zones: Object.freeze(zones),
       metadata: meta,
     });
@@ -209,11 +229,12 @@
   /* ===================================================================
      3. LE BOUTON
 
-     Trois états visibles, et une disparition qui ne demande aucune
+     Les états visibles sont configurables par le contexte, et une disparition qui ne demande aucune
      intervention :
 
-       avant    🧺 Braderie · bientôt   (le programme, ce qui est déjà certain)
-       pendant  🧺 Braderie             (ce qui vaut la peine, là, autour)
+       avant    emoji + libellé + suffixe configurés (le programme, ce qui est déjà certain)
+       jour     emoji + libellé + suffixe configurés (le jour J, avant ouverture)
+       pendant  emoji + libellé + suffixe configurés (ce qui vaut la peine, là, autour)
        après    —                       (le lundi, Autour redevient Autour)
      =================================================================== */
   function phase(contexte, maintenant) {
@@ -221,22 +242,30 @@
     if (!contexte) return PHASES.ABSENT;
     if (t >= contexte.finLe) return PHASES.APRES;
     if (t >= contexte.debutLe) return PHASES.PENDANT;
+    if (contexte.phaseJourAvantOuverture && contexte.apercuLe != null &&
+        t >= contexte.apercuLe && memeJourLocal(t, contexte.debutLe, contexte.fuseau))
+      return PHASES.JOUR;
     if (contexte.apercuLe != null && t >= contexte.apercuLe) return PHASES.AVANT;
     return PHASES.ABSENT;
   }
 
-  const VISIBLES = Object.freeze([PHASES.AVANT, PHASES.PENDANT]);
+  const VISIBLES = Object.freeze([PHASES.AVANT, PHASES.JOUR, PHASES.PENDANT]);
 
   function bouton(contexte, maintenant) {
     const p = phase(contexte, maintenant);
     if (VISIBLES.indexOf(p) < 0) return null;
+    const configuration = contexte.etatsBouton[p] || {};
+    const suffixeParDefaut = p === PHASES.AVANT ? "· bientôt"
+      : p === PHASES.JOUR ? "· aujourd’hui" : "";
+    const suffixe = configuration.suffixe == null
+      ? suffixeParDefaut : String(configuration.suffixe);
     return Object.freeze({
       slug: contexte.slug,
       phase: p,
-      emoji: contexte.emoji,
-      /* Le suffixe est le seul écart entre les deux états. Deux boutons
-         différents demanderaient à être appris deux fois. */
-      libelle: p === PHASES.AVANT ? contexte.libelle + " · bientôt" : contexte.libelle,
+      emoji: String(configuration.emoji || contexte.emoji),
+      /* Le contexte déclare les mots de son état ; les valeurs par défaut
+         gardent le contrat historique des contextes déjà publiés. */
+      libelle: suffixe ? contexte.libelle + " " + suffixe : contexte.libelle,
       actif: p === PHASES.PENDANT,
     });
   }
@@ -611,6 +640,9 @@
   function estOfficiel(item, contexte) {
     if (!item || !contexte) return false;
     if (item.contexteTerritorial === contexte.slug) return true;
+    if (item.context_relation === "associated" &&
+        item.major_event_motif_titre &&
+        item.major_event_motif_titre === contexte.majorEventMotifTitre) return true;
     if (!contexte.sourcesOfficielles.length) return false;
     return sourcesDe(item).some((s) => contexte.sourcesOfficielles.indexOf(s) >= 0);
   }

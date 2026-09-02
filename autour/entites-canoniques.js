@@ -343,6 +343,7 @@
       image_source_url: text(first(raw, ["image_source_url", "imageSourceUrl"])),
       image_author: clean(first(raw, ["image_author", "imageAuthor"])),
       image_license: clean(first(raw, ["image_license", "imageLicense"])),
+      image_updated_at: first(raw, ["image_updated_at", "imageUpdatedAt", "updatedAt"]) || null,
       image_confidence: source(first(raw, ["image_confidence", "imageConfidence"])),
       image_width: number(first(raw, ["image_width", "imageWidth", "width"])),
       image_height: number(first(raw, ["image_height", "imageHeight", "height"])),

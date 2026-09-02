@@ -1269,6 +1269,7 @@ function mediaDe(l){
     image_source_url:l.image_source_url || "",
     image_author:l.image_author || "",
     image_license:l.image_license || "",
+    image_updated_at:l.image_updated_at || null,
     image_type:l.image_type || null,
     image_scope:estTemporaire(l) ? "event" : "place",
   };
@@ -2728,6 +2729,9 @@ function versEvenementCanonique(e){
     metro_area:e.metro_area || null,
     metroArea:e.metro_area || null,
     territory_slug:e.territory_slug || null,
+    major_event_motif_titre:e.major_event_motif_titre || null,
+    context_relation:e.context_relation || null,
+    contextRelation:e.context_relation || null,
     importance_level:e.importance_level || "local",
     importanceLevel:e.importance_level || "local",
     importance_score:e.importance_score != null ? e.importance_score : null,
@@ -6962,9 +6966,11 @@ function attributionPhoto(l){
   const auteurs = Array.isArray(brut) ? brut : (brut ? [{name:brut,url:""}] : []);
   if(!auteurs.length) return "";
   return auteurs.map(a=>{
-    const nom = esc(a && a.name || "");
+    const nomBrut = String(a && a.name || "").trim();
+    const nom = esc(nomBrut);
+    const prefixe = /^©\s*/.test(nomBrut) ? "" : "© ";
     const url = urlSiteSure(a && a.url);
-    return url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener">© '+nom+'</a>' : '© '+nom;
+    return url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener">'+prefixe+nom+'</a>' : prefixe+nom;
   }).join(" · ");
 }
 
@@ -7004,6 +7010,30 @@ function photoAutoriseeAide(l){
   const origine = media && media.image_source || l.imageSource || l.image_source || "";
   if(IMAGES && IMAGES.SOURCES.includes(origine)) return image;
   return ["datatourisme_licence", "autour_verifie"].includes(origine) ? image : "";
+}
+
+/* Les résultats Aide sont d'abord peints avec leur texte et leurs données.
+   Les quelques structures réellement retenues sont ensuite proposées au
+   résolveur commun : source canonique déjà attachée, référence OSM/Commons
+   exploitable, photo Autour vérifiée. Google reste le chemin historique séparé
+   de ce passage, et n'est jamais sollicité comme une recherche d'image. */
+let clePhotosAidePlanifiee = "";
+function programmerPhotosAide(){
+  if(!IMAGES || feuilleNiveau !== "aide" || aideUrgencesOuvert || redirectionExplorer) return;
+  const candidats = solutionsAide(IMAGES.MAX_CANDIDATS || 8, {noModel:true})
+    .filter((l)=>!photoAutoriseeAide(l));
+  if(!candidats.length){ clePhotosAidePlanifiee = ""; return; }
+  const cle = idZoneActive()+"|"+revisionBassinAide+"|"+
+    candidats.map((l)=>l && l.id).filter(Boolean).join(",");
+  if(cle === clePhotosAidePlanifiee) return;
+  clePhotosAidePlanifiee = cle;
+  apresPeinture(()=>IMAGES.resoudreLot(candidats, {
+    /* Les fiches Aide ne partent pas chercher une image par nom. Une source
+       traçable ou le fallback graphique suffit ; les résultats visibles
+       restent prioritaires et les images du dessous restent lazy. */
+    google:false,
+    redessiner:()=>{ if(feuilleNiveau === "aide") majFeuille2(); },
+  }).catch(()=>{}));
 }
 
 function couvertureAide(l, c){
@@ -8558,9 +8588,16 @@ function enrichirPhotosAideGoogle(fiches) {
       cible.imageSource = fiche.imageSource || "google_places";
       cible.imageAttribution = fiche.imageAttribution || "";
       cible.imageSourceUrl = fiche.imageSourceUrl || "";
+      cible.imageAuthor = fiche.imageAuthor || "";
+      cible.imageLicense = fiche.imageLicense ||
+        (IMAGES ? IMAGES.licenceImplicite("google_places") : "");
+      cible.imageUpdatedAt = fiche.imageUpdatedAt || fiche.updatedAt || null;
       cible.image_url = fiche.image;
       cible.image_source = cible.imageSource;
       cible.image_source_url = cible.imageSourceUrl;
+      cible.image_author = cible.imageAuthor;
+      cible.image_license = cible.imageLicense;
+      cible.image_updated_at = cible.imageUpdatedAt;
       enrichis += 1;
     }
     cible.sourceRefs = Object.assign({}, cible.sourceRefs || {},
@@ -9709,7 +9746,7 @@ function majFeuille2(){
     }else{
       const jeton = ++generationAccueil;
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-      corps.innerHTML = ongletsTemps()+
+      corps.innerHTML = ongletsTemps()+(modeTerritorial ? enTeteTerritoriale() : "")+
         '<div class="rc-tete"><strong>'+esc(titre)+'</strong></div>'+
         '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+piedFeuille();
       if(!recoCache || recoCache.cle !== cleReco()){
@@ -9750,6 +9787,7 @@ function majFeuille2(){
   }
 
   brancherFeuille2();
+  programmerPhotosAide();
   restaurerPanneau(corps, stabilite);
   requestAnimationFrame(synchroniserHauteurFeuille);
   } finally {
@@ -10040,33 +10078,66 @@ function recommandationsBientot(limite){
   if(!centre || !TEMPS || typeof TEMPS.fenetreSurface !== "function") return [];
   const now = Date.now();
   const fenetre = TEMPS.fenetreSurface("bientot", now, "Europe/Paris");
-  const classement = rankResults(lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l)), {
+  const locaux = lieux.filter(l=>dansZoneActive(l));
+  const editoriaux = modeTerritorial && contexteTerritorial
+    ? evenementsContexteEditorial.filter((l)=>
+        l && l.territory_slug === contexteTerritorial.territoire)
+    : [];
+  const idsEditorial = new Set(editoriaux.map((l)=>l && l.id).filter(Boolean));
+  /* Une capsule éditoriale doit ouvrir le programme réellement présent dans
+     le bassin, même si une animation commence dans quelques jours et dépasse
+     la petite fenêtre glissante de « Bientôt ». La fenêtre normale reste
+     inchangée pour tous les résultats ordinaires. */
+  const fenetreEditoriale = modeTerritorial && contexteTerritorial
+    ? Object.assign({}, fenetre, {fin:Math.max(fenetre.fin, contexteTerritorial.finLe)})
+    : fenetre;
+  /* Le cache local peut avoir conservé une ancienne fiche sous le même UUID
+     qu'une occurrence éditoriale fraîche, avec un titre différent. Le serveur
+     reste l'autorité du contexte : on remplace cet objet précis au lieu de
+     perdre l'animation ou d'en afficher deux versions. Les autres événements
+     locaux restent dans le classement normal. */
+  const candidats = locaux.filter((l)=>!l || !idsEditorial.has(l.id)).concat(editoriaux);
+  const classement = rankResults(candidats.filter(l=>nomExploitable(l) && isDiscoveryCandidate(l)), {
     intent:"sortir",
     intention:intentionCourante,
     categories:catsActives && catsActives.size ? [...catsActives] : CATS_ACCUEIL(),
     position:centre,
     now,
-    radius:rayonDeLaZone(),
+    radius:modeTerritorial && contexteTerritorial
+      ? Math.max(rayonDeLaZone(), contexteTerritorial.rayonVisibiliteM)
+      : rayonDeLaZone(),
     distanceBetween:distanceM,
     horsService,
     saison:contexteSaison(),
     diversite:diversiteDemandee(),
     territorial:contexteTerritorialClassement(),
+    preserveDistinctEvents:modeTerritorial && !!editoriaux.length,
   });
   const choix = classement.filter((l)=>{
     const etat = l.temporal || statutTemps(l, now);
     const debut = etat && etat.debut;
-    if(!etat || !Number.isFinite(debut) || debut <= now || debut >= fenetre.fin) return false;
+    const borne = idsEditorial.has(l.id) ? fenetreEditoriale : fenetre;
+    if(!etat || !Number.isFinite(debut) || debut <= now || debut >= borne.fin) return false;
     if(estTemporaire(l)){
       /* Une occurrence doit avoir ses bornes réelles pour être partagée entre
          la carte et le panneau. Un début sans fin reste affichable dans une
          fiche, mais n'est pas assez fiable pour une surface éditoriale. */
-      return TEMPS.estDansFenetre(l, fenetre, now);
+      return TEMPS.estDansFenetre(l, borne, now);
     }
     /* Pour un lieu permanent, le début canonique est la prochaine ouverture.
        Un lieu déjà ouvert ne doit pas être dupliqué dans « Bientôt ». */
     return etat.openingStatus === "closed" && !!(etat.availability && etat.availability.opensAt);
   });
+  if(modeTerritorial && idsEditorial.size){
+    /* La couche éditoriale est exceptionnelle : elle ne crée pas une
+       deuxième liste, mais ses événements liés doivent rester visibles dans
+       la coupe du contexte avant les propositions ordinaires. */
+    const editoriauxChoisis = choix.filter((l)=>idsEditorial.has(l.id));
+    const ordinaires = choix.filter((l)=>!idsEditorial.has(l.id));
+    const max = Number.isFinite(limite) ? Math.max(0, limite) : choix.length;
+    return editoriauxChoisis.slice(0, max).concat(
+      ordinaires.slice(0, Math.max(0, max - editoriauxChoisis.length)));
+  }
   return Number.isFinite(limite) ? choix.slice(0, Math.max(0, limite)) : choix;
 }
 
@@ -10082,7 +10153,7 @@ function recommandationsAccueil(limite, options){
   // Rien de classé encore ? On montre tout de suite un échantillon réel et
   // varié tiré du cache et des favoris, plutôt qu'un écran vide. Il sera
   // remplacé silencieusement dès que le classement complet arrive.
-  if(!lieux.length) return [];
+  if(!lieux.length && !(modeTerritorial && evenementsContexteEditorial.length)) return [];
 
   /* « Maintenant » n'est pas une liste de recherche avec un aperçu. C'est
      une sélection éditorialisée unique, calculée par maintenant.js. La
@@ -10862,6 +10933,10 @@ let contextesTerritoriaux = [];
 let contexteTerritorial = null;
 let zoneTerritoriale = null;
 let modeTerritorial = false;
+let evenementsContexteEditorial = [];
+let contexteEditorialEnVol = null;
+let contexteEditorialChargeSlug = "";
+let etatAvantContexteTerritorial = null;
 /* La mémoire de la dernière évaluation : c'est elle qui permet de ne PAS
    recalculer parce que le GPS a varié de huit mètres. */
 let etatTerritorial = null;
@@ -10947,9 +11022,12 @@ function majContexteTerritorial(){
      la manifestation se termine, il est minuit. Le mode se referme tout seul :
      aucun code à retirer après le week-end. */
   if(!contexteTerritorial && modeTerritorial){
-    modeTerritorial = false;
-    reglerBattementTerritorial();
+    fermerModeTerritorial();
   }
+  /* Le contexte arrive après le premier rendu. La barre desktop est une
+     surface fixe, indépendante de la feuille : elle doit donc être
+     resynchronisée ici, y compris lorsque le contexte disparaît. */
+  poserBesoinsRapides();
   /* On ne compte PAS le changement de zone ici : `reevaluerTerritorial` le
      fait déjà, et c'est lui qui sait si le changement mérite une réévaluation.
      Deux compteurs pour un même fait donneraient un chiffre faux. */
@@ -10961,6 +11039,36 @@ function majContexteTerritorial(){
    actif, disparu — et il n'y a rien à retirer à la main le lundi. */
 function boutonTerritorial(){
   return TERR && contexteTerritorial ? TERR.bouton(contexteTerritorial, Date.now()) : null;
+}
+
+/* Le clic sur la capsule ne fabrique pas une « fiche Braderie ». Il demande
+   les occurrences présentes dans le bassin, déjà dédoublonnées côté serveur,
+   puis les fait entrer dans le même classement que le reste. Le mode s'ouvre
+   immédiatement : une panne de cette lecture ne masque ni le texte ni les
+   événements déjà connus localement. */
+function chargerEvenementsContexteEditorial(){
+  if(!sbLecture || !contexteTerritorial) return Promise.resolve([]);
+  const slug = contexteTerritorial.slug;
+  if(contexteEditorialChargeSlug === slug) return Promise.resolve(evenementsContexteEditorial);
+  if(contexteEditorialEnVol) return contexteEditorialEnVol;
+  contexteEditorialEnVol = Promise.resolve(sbLecture.rpc("evenements_contexte", {
+    p_context:slug, p_limite:120,
+  })).then(({data, error})=>{
+    if(error){ console.error("Événements du contexte :", error.message); return evenementsContexteEditorial; }
+    const vus = new Set();
+    evenementsContexteEditorial = (data || []).map(versEvenementCanonique)
+      .filter((l)=>l && l.id && !vus.has(l.id) && vus.add(l.id));
+    contexteEditorialChargeSlug = slug;
+    /* Les événements éditoriaux n'entrent pas dans `lieux.length` : invalider
+       explicitement le cache de recommandations pour que le même panneau se
+       recalcule avec les associations fraîchement chargées. */
+    recoCache = null;
+    recoBurstCache = null;
+    oublierItemsMaintenant();
+    planifierRendu({accueil:true, feuille:true, carte:true});
+    return evenementsContexteEditorial;
+  }).catch(()=>evenementsContexteEditorial).finally(()=>{ contexteEditorialEnVol = null; });
+  return contexteEditorialEnVol;
 }
 
 /* Les entrées rapides du moment : les quatre habituelles, et le contexte
@@ -10983,7 +11091,9 @@ function besoinsDuMoment(){
    `territoire.js`, et ils s'ajoutent au score existant. */
 function contexteTerritorialClassement(){
   if(!TERR || !contexteTerritorial) return null;
-  if(TERR.phase(contexteTerritorial, Date.now()) !== TERR.PHASES.PENDANT) return null;
+  const p = TERR.phase(contexteTerritorial, Date.now());
+  if(p !== TERR.PHASES.PENDANT &&
+     !(modeTerritorial && [TERR.PHASES.AVANT, TERR.PHASES.JOUR].includes(p))) return null;
   return {contexte:contexteTerritorial, zone:zoneTerritoriale};
 }
 
@@ -11066,9 +11176,26 @@ function reglerBattementTerritorial(){
 function ouvrirModeTerritorial(){
   if(!contexteTerritorial) return;
   if(modeAide) basculerAide();
+  const corps = $("#fbCorps");
+  const feuille = $("#feuilleBesoins");
+  etatAvantContexteTerritorial = {
+    creneau,
+    filtreMaintenant,
+    ongletCourant,
+    contexteExplorer,
+    selectionAccueil,
+    zoneAffichee,
+    sousChoisi,
+    feuilleNiveau,
+    feuilleVisible: !!(feuille && !feuille.hidden),
+    feuilleEtat: etatFeuille(),
+    scrollTop: corps ? corps.scrollTop : 0,
+    historiqueFeuilleBesoins,
+  };
   modeTerritorial = true;
-  creneau = "maintenant";
-  filtreMaintenant = true;
+  const p = TERR ? TERR.phase(contexteTerritorial, Date.now()) : null;
+  creneau = p === TERR.PHASES.PENDANT ? "maintenant" : "bientot";
+  filtreMaintenant = creneau === "maintenant";
   ongletCourant = "explorer";
   marquerNavigation("explorer");
   contexteExplorer = null;
@@ -11079,12 +11206,45 @@ function ouvrirModeTerritorial(){
   rendre();
   majFeuille2();
   reglerBattementTerritorial();
+  void chargerEvenementsContexteEditorial();
 }
 
 function fermerModeTerritorial(){
   if(!modeTerritorial) return;
   modeTerritorial = false;
+  evenementsContexteEditorial = [];
+  contexteEditorialChargeSlug = "";
+  oublierItemsMaintenant();
   reglerBattementTerritorial();
+  const avant = etatAvantContexteTerritorial;
+  etatAvantContexteTerritorial = null;
+  if(avant){
+    creneau = avant.creneau;
+    filtreMaintenant = avant.filtreMaintenant;
+    ongletCourant = avant.ongletCourant;
+    contexteExplorer = avant.contexteExplorer;
+    selectionAccueil = avant.selectionAccueil;
+    zoneAffichee = avant.zoneAffichee;
+    sousChoisi = avant.sousChoisi;
+    if(avant.feuilleNiveau === null){
+      /* `ouvrirFeuille2` a poussé une entrée uniquement si la feuille était
+         fermée. Revenir depuis le contexte doit aussi rendre cette entrée à
+         l'historique, sinon le bouton Retour du navigateur rouvrirait une
+         feuille fantôme. */
+      fermerFeuille2({nettoyerHistorique:historiqueFeuilleBesoins && !avant.historiqueFeuilleBesoins});
+    }else{
+      feuilleNiveau = avant.feuilleNiveau;
+      const feuille = $("#feuilleBesoins");
+      if(feuille){
+        feuille.hidden = !avant.feuilleVisible;
+        if(avant.feuilleVisible){
+          reglerEtatFeuille(avant.feuilleEtat);
+          const corps = $("#fbCorps");
+          if(corps) corps.scrollTop = avant.scrollTop;
+        }
+      }
+    }
+  }
   planifierRendu({accueil:true, feuille:true});
 }
 
@@ -12706,6 +12866,13 @@ function itemsMaintenant(ctx){
      sans le second, « Maintenant » à Lille proposait un café de Tourcoing
      encore présent en mémoire. */
   const source = lieux.filter(dansZoneActive);
+  if(modeTerritorial && contexteTerritorial && evenementsContexteEditorial.length){
+    const bassin = evenementsContexteEditorial.filter((l)=>
+      l && l.territory_slug === contexteTerritorial.territoire);
+    const idsEditorial = new Set(bassin.map((l)=>l && l.id).filter(Boolean));
+    source.splice(0, source.length, ...source.filter((l)=>!l || !idsEditorial.has(l.id)));
+    source.push(...bassin);
+  }
   const cle = idZoneActive() + "|" + minute + "|" + source.length;
   if(itemsMemo.cle === cle) return itemsMemo.items;
   /* `lieux` est déjà dédoublonné par les sources, mais les flux canoniques
