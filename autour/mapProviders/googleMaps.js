@@ -60,11 +60,14 @@
   let chargement = null;
   let actif = false;
   let synchronisation = false;
-  let rafPlanifie = 0;        // l'image où la synchro Leaflet est regroupée
+  let rafPlanifie = 0;        // l'image où la transformation du pane est regroupée
   let enGeste = false;        // vrai entre le premier bounds_changed et l'idle
   let finalisationGeste = false; // vrai pendant la dernière synchro Leaflet
-  let zoomEnGeste = false;    // un zoom Leaflet par frame est trop coûteux sous WebKit
-  let zoomObserve = null;
+  let vueGeste = null;        // vue Leaflet réellement rendue avant le geste
+  let paneMarqueurs = null;
+  let transformAvantGeste = "";
+  let origineAvantGeste = "";
+  let willChangeAvantGeste = "";
   let conteneur = null;
   let authRefusee = false;
   let surveillanceAuthInstallee = false;
@@ -165,48 +168,142 @@
   function lierLeaflet(instance) {
     leaflet = instance || null;
     if (!carte || !leaflet || !root.google || !root.google.maps) return;
-    /* LES MARQUEURS SE DÉCOLLAIENT DE LA CARTE PENDANT QU'ON LA DÉPLAÇAIT.
+    /* LES MARQUEURS ET LA CARTE DOIVENT ÊTRE UNE SEULE SURFACE PHYSIQUE.
 
-       Dans ce montage, c'est Google qui reçoit les gestes : la couche Leaflet
-       est en `pointer-events:none`, seuls ses marqueurs restent cliquables.
-       Leaflet n'était resynchronisé que sur `idle`, c'est-à-dire une fois le
-       doigt relevé. Pendant tout le déplacement, les tuiles glissaient et les
-       marqueurs restaient figés à l'écran : ils se retrouvaient sur d'autres
-       rues, superposés les uns aux autres, et ne reprenaient leur place qu'à
-       la fin du geste. Vu de l'utilisateur, ça ressemble exactement à des
-       marqueurs qu'on déplace à la main.
+       Google reçoit les gestes et anime sa propre caméra. Les marqueurs Autour
+       restent dans un pane Leaflet séparé, au-dessus du fond Google. Un
+       `setView` Leaflet pendant chaque image reprojette tous les marqueurs et
+       relance la cascade coûteuse de l'application ; ne rien faire laisse le
+       pane figé pendant le pinch. Les deux comportements sont visuellement
+       faux.
 
-       `bounds_changed` part à chaque image du déplacement et du zoom : la
-       couche Leaflet suit Google en continu, les marqueurs restent collés à
-       leur rue. `idle` reste branché comme filet — il ferme les écarts
-       d'arrondi en fin de geste. */
-    /* UN SEUL SETVIEW PAR IMAGE, ET RIEN DE PLUS PENDANT LE GESTE.
+       On conserve donc la dernière vue Leaflet réellement rendue comme base,
+       puis on applique au `markerPane` la transformation caméra Web Mercator
+       (translation + échelle). Le navigateur compose cette couche avec le
+       fond Google, sans recalculer les positions individuelles. `setView` ne
+       revient qu'une fois, à `idle`, pour réconcilier la vue réelle et retirer
+       la transformation temporaire. */
+    paneMarqueurs = typeof leaflet.getPane === "function"
+      ? leaflet.getPane("markerPane") : null;
 
-       `bounds_changed` part PLUSIEURS FOIS par image chez Google. Y répondre
-       par un `setView` synchrone à chaque fois, c'était reprojeter tout Leaflet
-       — panes et marqueurs — deux ou trois fois pour une seule image affichée,
-       et déclencher à chaque fois la cascade d'Autour (épaisseurs, étiquettes,
-       collisions). Mesuré : 181 `setView` et 182 `resoudreCollisions` pour un
-       déplacement de trois secondes, avec des images espacées de plus de
-       400 ms en zone dense — la saccade décrite.
+    const sauvegarderStylePane = () => {
+      if (!paneMarqueurs) return;
+      transformAvantGeste = paneMarqueurs.style.transform || "";
+      origineAvantGeste = paneMarqueurs.style.transformOrigin || "";
+      willChangeAvantGeste = paneMarqueurs.style.willChange || "";
+      paneMarqueurs.style.transformOrigin = "0 0";
+      paneMarqueurs.style.willChange = "transform";
+    };
+    const restaurerStylePane = () => {
+      if (!paneMarqueurs) return;
+      paneMarqueurs.style.transform = transformAvantGeste;
+      paneMarqueurs.style.transformOrigin = origineAvantGeste;
+      paneMarqueurs.style.willChange = willChangeAvantGeste;
+      vueGeste = null;
+    };
+    const positionMapPane = () => {
+      const mapPane = typeof leaflet.getPane === "function"
+        ? leaflet.getPane("mapPane") : null;
+      const conteneurCarte = typeof leaflet.getContainer === "function"
+        ? leaflet.getContainer() : null;
+      if (mapPane && conteneurCarte) {
+        const paneRect = mapPane.getBoundingClientRect();
+        const carteRect = conteneurCarte.getBoundingClientRect();
+        if (Number.isFinite(paneRect.left) && Number.isFinite(paneRect.top))
+          return {x:paneRect.left-carteRect.left, y:paneRect.top-carteRect.top};
+      }
+      if (leaflet.DomUtil && typeof leaflet.DomUtil.getPosition === "function" && mapPane)
+        return leaflet.DomUtil.getPosition(mapPane);
+      return {x:0, y:0};
+    };
+    const normaliserPositionsPane = () => {
+      if (!paneMarqueurs || typeof leaflet.eachLayer !== "function" ||
+          typeof leaflet.project !== "function" ||
+          typeof leaflet.getCenter !== "function" ||
+          typeof leaflet.getSize !== "function") return;
+      const centre = leaflet.getCenter();
+      const taille = leaflet.getSize();
+      const zoom = leaflet.getZoom();
+      if (!centre || !taille || !Number.isFinite(Number(zoom))) return;
+      const centreProjete = leaflet.project(centre, zoom);
+      const offsetMapPane = positionMapPane();
+      /* Marker.update() arrondit la position du DOM. Cette perte d'un demi
+         pixel est invisible à zoom 16, mais elle est multipliée par le scale
+         pendant un pinch. On ne touche aux icônes qu'une fois, au début du
+         geste, pour conserver leur projection fractionnaire de référence dans
+         le repère exact du viewport ; aucune position individuelle n'est
+         recalculée pendant les frames. */
+      leaflet.eachLayer(layer => {
+        if (!layer || typeof layer.getElement !== "function" ||
+            typeof layer.getLatLng !== "function") return;
+        const element = layer.getElement();
+        if (!element || element.parentNode !== paneMarqueurs) return;
+        /* latLngToLayerPoint() arrondit volontairement au pixel. Pour le
+           geste, on veut au contraire conserver le point projeté exact avant
+           que le scale du pane ne l'amplifie. */
+        const projete = leaflet.project(layer.getLatLng(), zoom);
+        const position = {
+          x:Number(taille.x) / 2 + projete.x - centreProjete.x - offsetMapPane.x,
+          y:Number(taille.y) / 2 + projete.y - centreProjete.y - offsetMapPane.y,
+        };
+        if (!position || !Number.isFinite(position.x) ||
+            !Number.isFinite(position.y)) return;
+        if (leaflet.DomUtil && typeof leaflet.DomUtil.setPosition === "function") {
+          leaflet.DomUtil.setPosition(element, position);
+        } else {
+          element._leaflet_pos = position;
+          element.style.transform = "translate3d("+position.x+"px,"+
+            position.y+"px,0)";
+        }
+      });
+    };
+    const capturerVueGeste = () => {
+      if (!leaflet || typeof leaflet.getCenter !== "function") return;
+      const centre = leaflet.getCenter();
+      const taille = typeof leaflet.getSize === "function" ? leaflet.getSize() : null;
+      if (!centre || !taille || typeof leaflet.project !== "function") return;
+      vueGeste = {
+        centre:{lat:Number(centre.lat), lng:Number(centre.lng)},
+        zoom:Number(leaflet.getZoom()),
+        largeur:Number(taille.x), hauteur:Number(taille.y),
+      };
+      sauvegarderStylePane();
+      normaliserPositionsPane();
+    };
+    const appliquerTransformationCamera = () => {
+      if (!carte || !leaflet || !paneMarqueurs || !vueGeste) return;
+      const centre = carte.getCenter();
+      const zoom = Number(carte.getZoom());
+      const taille = typeof leaflet.getSize === "function" ? leaflet.getSize() : null;
+      if (!centre || !taille || !Number.isFinite(zoom) ||
+          typeof leaflet.project !== "function") return;
 
-       On regroupe donc : les `bounds_changed` d'une même image ne planifient
-       qu'UN `setView`, sur la prochaine image. L'alignement des marqueurs est
-       intact — c'est `setView` qui les recolle, et il a toujours lieu, une fois
-       par image au plus.
+      /* Dans le repère du pane, le centre de la vue de base est au centre de
+         l'écran. On projette le centre Google à l'ancien zoom pour obtenir sa
+         position dans ce même repère, puis on applique la transformation
+         affine exacte du monde Web Mercator. */
+      const baseCentre = leaflet.project(vueGeste.centre, vueGeste.zoom);
+      const centreCourant = leaflet.project(
+        {lat:Number(centre.lat()), lng:Number(centre.lng())}, vueGeste.zoom);
+      const offsetMapPane = positionMapPane();
+      const facteur = Math.pow(2, zoom - vueGeste.zoom);
+      const baseX = centreCourant.x - baseCentre.x + Number(taille.x) / 2 - offsetMapPane.x;
+      const baseY = centreCourant.y - baseCentre.y + Number(taille.y) / 2 - offsetMapPane.y;
+      const centreX = Number(taille.x) / 2 - offsetMapPane.x;
+      const centreY = Number(taille.y) / 2 - offsetMapPane.y;
+      const tx = centreX - facteur * baseX;
+      const ty = centreY - facteur * baseY;
+      paneMarqueurs.style.transform =
+        "translate3d("+tx+"px,"+ty+"px,0) scale("+facteur+")";
+    };
 
-       Et pendant le geste, Autour ne recompose PAS le reste. `enGeste` le dit à
-       la couche application, qui saute étiquettes/épaisseurs/collisions tant
-       qu'on bouge et les réconcilie une seule fois à `idle`. */
     const appliquerVue = () => {
       rafPlanifie = 0;
       if (!carte || !leaflet) return;
-      /* Pendant un pinch, Google anime déjà sa caméra. Reprojeter la couche
-         Leaflet à chaque palier de zoom force WebKit à relayout tous ses
-         marqueurs, même si Autour ne change aucune donnée. Le déplacement
-         garde sa synchro image par image ; le zoom, lui, est réconcilié une
-         seule fois à `idle`, après que la carte a rendu le geste. */
-      if (zoomEnGeste && !finalisationGeste) return;
+      if (!finalisationGeste) {
+        appliquerTransformationCamera();
+        return;
+      }
       const centre = carte.getCenter();
       if (!centre) return;
       synchronisation = true;
@@ -215,27 +312,34 @@
     };
     const suivre = () => {
       if (synchronisation) return;
-      const zoom = carte.getZoom();
-      if (zoomObserve == null) zoomObserve = zoom;
-      else if (zoom !== zoomObserve) zoomEnGeste = true;
-      zoomObserve = zoom;
       if (!enGeste) {
+        capturerVueGeste();
         enGeste = true;
         root.dispatchEvent(new Event("autour:google-map-gesture-start"));
       }
+      /* Le style est une simple composition GPU : l'appliquer dès le signal
+         Google évite qu'un snapshot ou une peinture intermédiaire voie le fond
+         déjà déplacé avec le pane encore sur l'image précédente. Le RAF reste
+         le filet qui regroupe le dernier état, mais aucune position de marker
+         n'est recalculée ici. */
+      appliquerTransformationCamera();
       if (!rafPlanifie) rafPlanifie = root.requestAnimationFrame(appliquerVue);
     };
-    /* Fin du geste : on annule l'image en attente, on rend la main à Autour
-       AVANT la dernière synchro — pour que la cascade complète s'exécute une
-       fois sur ce dernier `setView` —, puis on réconcilie exactement. */
+    /* Fin du geste : la transformation reste active pendant le seul setView
+       réel. Leaflet met alors à jour les coordonnées des marqueurs dans la vue
+       finale ; son retrait immédiat ne peut donc produire aucun saut visuel. */
     const reconcilier = () => {
       if (rafPlanifie) { root.cancelAnimationFrame(rafPlanifie); rafPlanifie = 0; }
       enGeste = false;
       finalisationGeste = true;
       appliquerVue();
+      /* La vue finale peut avoir repassé par Marker.update(), qui arrondit
+         volontairement ses positions. Réutiliser la projection exacte ici,
+         une seule fois, fait coïncider le dernier pixel composé avec le pane
+         revenu à son état normal et supprime le saut à idle. */
+      normaliserPositionsPane();
       finalisationGeste = false;
-      zoomEnGeste = false;
-      zoomObserve = carte && carte.getZoom();
+      restaurerStylePane();
       root.dispatchEvent(new Event("autour:google-map-gesture-end"));
     };
     carte.addListener("bounds_changed", suivre);

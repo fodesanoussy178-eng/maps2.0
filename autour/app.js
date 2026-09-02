@@ -10229,11 +10229,13 @@ function majFeuille2(){
        ne vient diluer la réponse immédiate. */
     if(creneau === "maintenant"){
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-      corps.innerHTML = ongletsTemps()+blocMaintenantAccueil()+blocAideAccueil();
+      corps.innerHTML = besoinsRapidesPanneauHTML()+
+        ongletsTemps()+blocMaintenantAccueil()+blocAideAccueil();
     }else{
       const jeton = ++generationAccueil;
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-      corps.innerHTML = ongletsTemps()+(modeTerritorial ? enTeteTerritoriale() : "")+
+      corps.innerHTML = besoinsRapidesPanneauHTML()+ongletsTemps()+
+        (modeTerritorial ? enTeteTerritoriale() : "")+
         '<div class="rc-tete"><strong>'+esc(titre)+'</strong></div>'+
         '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+piedFeuille();
       if(!recoCache || recoCache.cle !== cleReco()){
@@ -11613,9 +11615,13 @@ function contexteTerritorialClassement(){
    changement de zone, une information expirée ou un retour au premier plan
    après une longue absence, oui. */
 function reevaluerTerritorial(options){
-  if(!TERR || !contexteTerritorial) return null;
+  if(!TERR) return null;
   const o = options || {};
   const zoneAvant = zoneTerritoriale && zoneTerritoriale.slug;
+  /* Le contexte peut être absent au démarrage, puis devenir visible quand le
+     point regardé entre dans son rayon. Il faut donc recalculer la sélection
+     avant de décider s'il y a quelque chose à réévaluer : sortir ici quand
+     `contexteTerritorial` vaut null figeait l'absence jusqu'au rechargement. */
   majContexteTerritorial();
   const courant = {
     maintenant: Date.now(),
@@ -11951,6 +11957,13 @@ function besoinsRapidesHTML(){
         (b.annonce?" br-annonce":"")+'" data-br="'+b.id+'">'+
         '<em>'+b.emoji+'</em>'+esc(b.label)+'</button>';
     }).join("")+'</div>';
+}
+
+/* Sur petit écran, la barre fixe n'est pas une surface visible : les mêmes
+   raccourcis vivent donc dans la feuille racine. Le contexte territorial reste
+   celui qui décide si la capsule existe et quel état temporel elle porte. */
+function besoinsRapidesPanneauHTML(){
+  return NAV_FLOTTANTE.matches ? "" : besoinsRapidesHTML();
 }
 
 /* ---- Les quatre groupes de temps, en tête de l'accueil -------------------
