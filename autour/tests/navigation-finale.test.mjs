@@ -134,8 +134,9 @@ test("la barre basse garde une géométrie stable entre desktop et mobile", () =
   assert.match(html, /#navBas\{width:100%;left:0;right:0;bottom:0/);
   assert.match(html, /--maquette-nav-h:88px/);
   assert.match(html, /--maquette-nav-h-mobile:76px/);
+  assert.match(html, /--maquette-nav-bas-mobile:16px/);
   assert.match(html, /bottom:24px;\s*width:var\(--maquette-nav-w\);\s*height:var\(--maquette-nav-h\)/);
-  assert.match(html, /bottom:16px;\s*width:calc\(100% - \(2 \* var\(--maquette-bord-mobile\)\)\);\s*height:var\(--maquette-nav-h-mobile\)/);
+  assert.match(html, /bottom:var\(--maquette-nav-bas-mobile\);\s*width:calc\(100% - \(2 \* var\(--maquette-bord-mobile\)\)\);\s*height:var\(--maquette-nav-h-mobile\)/);
   assert.match(html, /#navBas\{position:absolute;left:0;right:0;bottom:0;z-index:910;/);
   assert.match(html, /#pourToi \.pt-corps\{padding-bottom:calc\(14px \+ var\(--safe-b\)\)\}/);
 });
@@ -161,6 +162,8 @@ test("les panneaux partagent un axe haut et restent hors de la zone de navigatio
   assert.match(html, /--maquette-panneau-top:144px/);
   assert.match(html, /#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie,[\s\S]*?#pourToi\{\s*top:calc\(var\(--safe-t\) \+ var\(--maquette-panneau-top\)\)/);
   assert.match(html, /max-height:calc\(100dvh - var\(--safe-t\) - var\(--maquette-panneau-top\) -[\s\S]*?var\(--maquette-nav-h\)/);
-  assert.match(html, /bottom:calc\(16px \+ var\(--maquette-nav-h-mobile\) \+ var\(--maquette-ecart-mobile\)\)/);
+  assert.match(html, /bottom:calc\(var\(--maquette-nav-bas-mobile\) \+ var\(--maquette-nav-h-mobile\) \+\s*var\(--maquette-ecart-mobile\) \+ var\(--safe-b\)\)/);
+  assert.match(html, /body\.aide #feuilleBesoins\{\s*bottom:calc\(var\(--maquette-nav-bas-mobile\) \+\s*var\(--maquette-nav-h-mobile\) \+ var\(--maquette-ecart-mobile\) \+ var\(--safe-b\)\)/);
+  assert.match(html, /body\.aide #feuilleBesoins \.fb-corps\{min-height:0;overflow-y:auto\}/);
   assert.match(html, /#onboardingLocalisation:not\(\[hidden\]\) ~ #pourToi\{\s*top:calc\(var\(--safe-t\) \+ 264px\)/);
 });

@@ -2482,6 +2482,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
     --maquette-bord-mobile:8px;
     --maquette-ecart-mobile:24px;
     --maquette-nav-h-mobile:76px;
+    --maquette-nav-bas-mobile:16px;
   }
 
   /* La carte reste visible autour de la nav : 8 px latéraux et 16 px bas,
@@ -2490,7 +2491,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
     top:auto;
     left:var(--maquette-bord-mobile);
     right:auto;
-    bottom:16px;
+    bottom:var(--maquette-nav-bas-mobile);
     width:calc(100% - (2 * var(--maquette-bord-mobile)));
     height:var(--maquette-nav-h-mobile);
     min-height:var(--maquette-nav-h-mobile);
@@ -2509,16 +2510,32 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   #feuilleBesoins.reduite,#pourToi{
     left:var(--maquette-bord-mobile);
     right:var(--maquette-bord-mobile);
-    bottom:calc(16px + var(--maquette-nav-h-mobile) + var(--maquette-ecart-mobile));
+    bottom:calc(var(--maquette-nav-bas-mobile) + var(--maquette-nav-h-mobile) +
+      var(--maquette-ecart-mobile) + var(--safe-b));
     width:auto;
   }
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
   #feuilleBesoins.reduite{border-bottom:1px solid var(--bord);border-radius:20px}
-  #pourToi{max-height:calc(100dvh - var(--safe-t) - 16px -
-    var(--maquette-nav-h-mobile) - var(--maquette-ecart-mobile) - 16px);
+  #pourToi{max-height:calc(100dvh - var(--safe-t) -
+    var(--maquette-nav-bas-mobile) - var(--maquette-nav-h-mobile) -
+    var(--maquette-ecart-mobile) - 16px - var(--safe-b));
     border-bottom:1px solid var(--bord)}
   #pourToi .pt-corps{padding-bottom:calc(14px + var(--safe-b))}
   #btnProfilEntete{margin-left:auto}
+
+  /* Aide avait une règle plus spécifique qui réservait seulement
+     `--nav-height` et laissait donc 16 px de son bas derrière la nav.
+     Le bord haut reste inchangé : on retire exactement la nouvelle réserve
+     du bas et le corps de la feuille prend le défilement. */
+  body.aide #feuilleBesoins{
+    bottom:calc(var(--maquette-nav-bas-mobile) +
+      var(--maquette-nav-h-mobile) + var(--maquette-ecart-mobile) + var(--safe-b));
+    height:calc(100dvh - var(--header-bas) - 50px - var(--nav-height) -
+      var(--maquette-nav-bas-mobile) - var(--maquette-ecart-mobile) - var(--safe-b));
+    max-height:calc(100dvh - var(--header-bas) - 50px - var(--nav-height) -
+      var(--maquette-nav-bas-mobile) - var(--maquette-ecart-mobile) - var(--safe-b));
+  }
+  body.aide #feuilleBesoins .fb-corps{min-height:0;overflow-y:auto}
 
   /* Même règle sur petit écran : l'onboarding conserve sa place haute et
      Pour toi ne peut pas remonter sous lui lorsque sa liste est longue. */
