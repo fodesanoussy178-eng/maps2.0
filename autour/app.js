@@ -2426,7 +2426,7 @@ function monEmail(){
    porte déjà des métadonnées privées par utilisateur : elles évitent une
    migration et restent associées au compte, contrairement à une clé locale
    globale. Le localStorage reste le repli pour les visiteurs. */
-const CLE_INTERETS_COMPTE = "autour_interets";
+const CLE_INTERETS_COMPTE = "autour_interests";
 
 function interetsCompte(){
   const meta = session && session.user && session.user.user_metadata;
