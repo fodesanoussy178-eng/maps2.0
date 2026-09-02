@@ -72,8 +72,8 @@ test("la sélection des goûts est un brouillon validé en une seule fois", () =
   assert.match(selection, /data-testid="selection-gouts"/);
   assert.match(selection, /data-env-cancel/);
   assert.match(selection, /data-env-submit/);
-  assert.match(selection, /ENVIES\.basculerBrouillon\(editionEnvies\.ids/);
-  assert.match(selection, /ENVIES\.remplacer\(ids\)/);
+  assert.match(selection, /(?:ENVIES|envies)\.basculerBrouillon\(editionEnvies\.ids/);
+  assert.match(selection, /(?:ENVIES|envies)\.remplacer\(ids\)/);
   assert.match(selection, /rebaserPourToiApresChangementGouts\(\)/);
   assert.match(selection, /function annulerEditionEnvies\(\)[\s\S]*?fermerPourToi\(\)/);
   assert.doesNotMatch(selection, /ENVIES\.basculer\(/,
@@ -134,6 +134,24 @@ test("Pour toi distingue goûts absents, hydratation, zéro résultat et résult
   assert.match(pourToi, /panneau\.dataset\.etat = etat/);
   assert.match(source, /function chargerInteretsCompte\(\)[\s\S]*?actualiserSurfacePourToi\(\)/);
   assert.match(source, /function appliquerSession\([\s\S]*?actualiserSurfacePourToi\(\)/);
+});
+
+test("Pour toi récupère le module de goûts publié après le premier rendu", () => {
+  const synchroniseur = source.slice(
+    source.indexOf("function synchroniserEnvies"),
+    source.indexOf("function estConnecte")
+  );
+  const fenetre = {};
+  const estConnecte = () => false;
+  const synchroniser = new Function(
+    "window", "estConnecte", "moiId",
+    'let ENVIES = null; ' + synchroniseur + '; return synchroniserEnvies;'
+  )(fenetre, estConnecte, null);
+  assert.equal(synchroniser(), null);
+
+  const api = { definirContexte() {} };
+  fenetre.AutourEnvies = api;
+  assert.equal(synchroniser(), api);
 });
 
 test("Pour toi est invalidé par les changements de zone, GPS et données", () => {

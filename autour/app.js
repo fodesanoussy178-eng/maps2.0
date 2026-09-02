@@ -2355,6 +2355,23 @@ const ETATS_HYDRATATION_ENVIES = Object.freeze({
 });
 let etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
 let generationHydratationEnvies = 0;
+let ENVIES = window.AutourEnvies || null;
+
+/* `envies.js` est chargé séparément. Même si le navigateur respecte l'ordre
+   des scripts différés, un premier rendu peut arriver avant que son module ait
+   publié son API. Garder une référence résolue une seule fois permet de
+   reprendre l'état existant sans remplacer l'interface par un faux état vide
+   ou laisser le chargement tourner indéfiniment. */
+function synchroniserEnvies(){
+  const disponibles = window.AutourEnvies || null;
+  if(disponibles && ENVIES !== disponibles){
+    ENVIES = disponibles;
+    if(typeof ENVIES.definirContexte === "function"){
+      ENVIES.definirContexte(estConnecte() ? moiId : null);
+    }
+  }
+  return ENVIES;
+}
 
 function estConnecte(){ return etatCompte === "connecte"; }
 
@@ -2362,8 +2379,9 @@ function estConnecte(){ return etatCompte === "connecte"; }
    la colonne invisible à se peindre : en dehors de l'ouverture, seule la
    pastille doit être recalculée. */
 function actualiserSurfacePourToi(){
+  const envies = synchroniserEnvies();
   const panneau = document.getElementById("pourToi");
-  if(!panneau || !window.AutourEnvies) return;
+  if(!panneau || !envies) return;
   if(!panneau.hidden && document.body.classList.contains("pourtoi-ouvert")){
     if(typeof majPourToi === "function") majPourToi();
   }else if(typeof majPastillePourToi === "function"){
@@ -2378,7 +2396,7 @@ function appliquerSession(s){
   session = s || null;
   moiId = session && session.user ? session.user.id : null;
   etatCompte = COMPTES ? COMPTES.etatDe(session) : (moiId ? "anonyme" : "visiteur");
-  const envies = window.AutourEnvies;
+  const envies = synchroniserEnvies();
   if(envies && typeof envies.definirContexte === "function"){
     envies.definirContexte(estConnecte() ? moiId : null);
   }
@@ -2418,7 +2436,8 @@ function interetsCompte(){
 
 async function chargerInteretsCompte(){
   const generation = generationHydratationEnvies;
-  if(!ENVIES || !estConnecte()){
+  const envies = synchroniserEnvies();
+  if(!envies || !estConnecte()){
     etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
     actualiserSurfacePourToi();
     return false;
@@ -2426,7 +2445,7 @@ async function chargerInteretsCompte(){
   try{
     const distants = interetsCompte();
     if(!Array.isArray(distants)) return false;
-    ENVIES.remplacer(distants);
+    envies.remplacer(distants);
     return true;
   }finally{
     /* Un SIGNED_OUT ou un autre compte peut être arrivé entre-temps : une
@@ -2440,9 +2459,10 @@ async function chargerInteretsCompte(){
 }
 
 async function enregistrerInteretsCompte(ids){
-  if(!sb || !moiId || !estConnecte() || !ENVIES) return true;
+  const envies = synchroniserEnvies();
+  if(!sb || !moiId || !estConnecte() || !envies) return true;
   try{
-    const choix = ENVIES.normaliserChoix(ids);
+    const choix = envies.normaliserChoix(ids);
     const {data, error} = await sb.auth.updateUser({
       data:{[CLE_INTERETS_COMPTE]: choix}
     });
@@ -12098,7 +12118,6 @@ const ORDO = window.AutourOrdonnanceur || null;
    Il est peint APRÈS le chemin critique — c'est une information secondaire,
    elle n'a pas le droit de retarder la carte ni « Maintenant ». */
 
-const ENVIES = window.AutourEnvies || null;
 const ANNONCES = window.AutourAnnoncesClassement || null;
 const TAXONOMIE_ANNONCES = window.AutourAnnoncesTaxonomie || null;
 const POURTOI_TOUT_MAX = 300;
@@ -12368,8 +12387,11 @@ function dateAnnonceProposition(value){
 
 function groupesInteretsPourToi(propositions){
   if(!TAXONOMIE_ANNONCES) return [];
+  /* Le repli garde cette fonction testable seule, sans dépendre de
+     l'initialisation globale de l'application. */
+  const envies = typeof synchroniserEnvies === "function" ? synchroniserEnvies() : ENVIES;
   const groupes = new Map();
-  const ordre = (ENVIES ? ENVIES.choisies() : []).map((id)=>{
+  const ordre = (envies ? envies.choisies() : []).map((id)=>{
     const canonique = TAXONOMIE_ANNONCES.normaliserInteret(id);
     return { id:canonique, label: TAXONOMIE_ANNONCES.INTEREST_LABELS[canonique] || String(id) };
   });
@@ -12386,14 +12408,15 @@ function groupesInteretsPourToi(propositions){
 }
 
 function propositionsPourToi(limite = POURTOI_MAX){
-  if(!ENVIES || etatHydratationEnvies === ETATS_HYDRATATION_ENVIES.EN_COURS ||
-     !ENVIES.choisies().length || !ANNONCES) return [];
+  const envies = synchroniserEnvies();
+  if(!envies || etatHydratationEnvies === ETATS_HYDRATATION_ENVIES.EN_COURS ||
+     !envies.choisies().length || !ANNONCES) return [];
   const vues = marquesVues();
   /* Le classement vit dans `annonces-classement.js`, pas ici : c'est lui qui
      sait apparier tags et envies, et il travaille sur le bassin entier. */
   const classes = ANNONCES.classerPourToi(bassinPourToi(), {
     now: Date.now(),
-    interests: ENVIES.choisies(),
+    interests: envies.choisies(),
     seenIds: [...vues],
     hiddenIds: [...marquesMasquees()],
     limit: Number.isFinite(Number(limite)) ? Math.max(0, Number(limite)) : POURTOI_MAX,
@@ -12561,27 +12584,30 @@ function actionsProposition(l){
 let editionEnvies = null;
 
 function commencerEditionEnvies(cible){
-  if(!ENVIES) return null;
+  const envies = synchroniserEnvies();
+  if(!envies) return null;
   const reprise = editionEnvies && editionEnvies.cible === "panneau"
     ? editionEnvies.ids.slice() : null;
   editionEnvies = {
     cible: cible || "feuille",
-    ids: reprise || (ENVIES.brouillon ? ENVIES.brouillon() : ENVIES.choisies().slice())
+    ids: reprise || (envies.brouillon ? envies.brouillon() : envies.choisies().slice())
   };
   return editionEnvies;
 }
 
 function idsEditionEnvies(){
-  return editionEnvies ? editionEnvies.ids.slice() : (ENVIES ? ENVIES.choisies() : []);
+  const envies = synchroniserEnvies();
+  return editionEnvies ? editionEnvies.ids.slice() : (envies ? envies.choisies() : []);
 }
 
 function selectionEnviesHTML(){
-  if(!ENVIES) return "";
+  const envies = synchroniserEnvies();
+  if(!envies) return "";
   const choix = new Set(idsEditionEnvies());
   return '<section class="pt-choix-envies" data-testid="selection-gouts">'+
     '<h3>Choisis tes centres d’intérêt</h3>'+
     '<p class="env-intro">Sélectionne plusieurs goûts pour personnaliser « Pour toi ».</p>'+
-    '<div class="env-liste">'+ENVIES.CATALOGUE.map(e=>{
+    '<div class="env-liste">'+envies.CATALOGUE.map(e=>{
       const on = choix.has(e.id);
       return '<button type="button" class="env-b'+(on?" actif":"")+'" '+
         'data-env="'+esc(e.id)+'" aria-pressed="'+on+'">'+
@@ -12602,10 +12628,11 @@ function annulerEditionEnvies(){
 }
 
 function validerEditionEnvies(){
-  if(!ENVIES || !editionEnvies) return;
+  const envies = synchroniserEnvies();
+  if(!envies || !editionEnvies) return;
   const cible = editionEnvies.cible;
   const ids = editionEnvies.ids.slice();
-  ENVIES.remplacer(ids);
+  envies.remplacer(ids);
   editionEnvies = null;
   /* Le rendu repart de la sélection validée. La synchronisation du compte
      n'est pas sur le chemin critique : le localStorage est déjà à jour. */
@@ -12619,8 +12646,9 @@ function brancherSelectionEnvies(racine){
   if(!racine) return;
   racine.querySelectorAll("[data-env]").forEach((bouton)=>{
     bouton.onclick = ()=>{
-      if(!editionEnvies || !ENVIES) return;
-      editionEnvies.ids = ENVIES.basculerBrouillon(editionEnvies.ids, bouton.dataset.env);
+      const envies = synchroniserEnvies();
+      if(!editionEnvies || !envies) return;
+      editionEnvies.ids = envies.basculerBrouillon(editionEnvies.ids, bouton.dataset.env);
       const actif = editionEnvies.ids.includes(bouton.dataset.env);
       bouton.classList.toggle("actif", actif);
       bouton.setAttribute("aria-pressed", String(actif));
@@ -12635,8 +12663,9 @@ function brancherSelectionEnvies(racine){
 }
 
 function blocSurveillances(){
-  if(!ENVIES) return "";
-  const suivies = ENVIES.details();
+  const envies = synchroniserEnvies();
+  if(!envies) return "";
+  const suivies = envies.details();
   return '<section class="pt-envies">'+
     '<div class="pt-envies-tete"><strong>Tes surveillances</strong>'+
       '<button id="ptGerer">Modifier mes goûts</button></div>'+
@@ -12648,7 +12677,7 @@ function blocSurveillances(){
         '</div>'
       : '<p class="pt-envies-vide">Valide quelques goûts ci-dessous pour lancer '+
         'tes recommandations.</p>')+
-    (ENVIES.persistant() ? ''
+    (envies.persistant() ? ''
       : '<p class="pt-envies-vide">Ton navigateur n’enregistre pas ces choix : '+
         'ils vaudront pour cette visite seulement.</p>')+
     '</section>';
@@ -12767,8 +12796,9 @@ function majPourToi(){
   const corps = $("#ptCorps");
   if(!panneau || !corps) return;
   const debutCpu = performance.now();
-  const suivies = ENVIES ? ENVIES.choisies().length : 0;
-  const hydratationEnCours = !ENVIES ||
+  const envies = synchroniserEnvies();
+  const suivies = envies ? envies.choisies().length : 0;
+  const hydratationEnCours = !envies ||
     etatHydratationEnvies === ETATS_HYDRATATION_ENVIES.EN_COURS;
   const donneesEnCours = etatDonneesPourToi === ETAT_DONNEES_POURTOI.EN_COURS;
   const propositions = !hydratationEnCours && suivies && !donneesEnCours
@@ -12919,7 +12949,7 @@ function marquerVu(ids){
    Le brouillon est indépendant des préférences validées. « Annuler » ferme
    l'écran sans écrire ; « Valider » est le seul geste qui persiste. */
 function ouvrirEnvies(){
-  if(!ENVIES) return;
+  if(!synchroniserEnvies()) return;
   if(!NAV_FLOTTANTE.matches) fermerPourToi();
   commencerEditionEnvies("feuille");
   pileEcrans = [];
@@ -12941,9 +12971,10 @@ function ouvrirEnvies(){
 
 function peindreEnvies(){
   const zone = $("#envListe");
-  if(!zone || !ENVIES) return;
+  const envies = synchroniserEnvies();
+  if(!zone || !envies) return;
   const choix = new Set(idsEditionEnvies());
-  zone.innerHTML = ENVIES.CATALOGUE.map(e=>{
+  zone.innerHTML = envies.CATALOGUE.map(e=>{
     const on = choix.has(e.id);
     return '<button type="button" class="env-b'+(on?" actif":"")+'" '+
       'data-env="'+esc(e.id)+'" aria-pressed="'+on+'">'+
@@ -12957,6 +12988,7 @@ function peindreEnvies(){
 function ouvrirPourToi(){
   const p = $("#pourToi");
   if(!p) return;
+  synchroniserEnvies();
   p.hidden = false;
   document.body.classList.add("pourtoi-ouvert");
   /* Après un reload, `evenementsMetropole` repart vide. Le bassin peut déjà
