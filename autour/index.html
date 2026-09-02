@@ -2391,6 +2391,144 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   #onboardingLocalisation:not([hidden]) ~ #badgeMaintenant{display:none}
   body.aide #onboardingLocalisation{display:none}
 }
+
+/* ---- Contrat géométrique de la maquette ---------------------------------
+   La navigation visible reprend les cinq slots de la maquette. L'accès Profil
+   reste disponible dans l'en-tête : aucune capacité produit ne disparaît,
+   mais Créer dispose bien d'une colonne centrale indépendante de la largeur
+   des libellés voisins. Les dimensions ci-dessous sont les seules références
+   de placement : elles évitent que les règles desktop, tablette et mobile se
+   contredisent en fin de feuille. */
+#navBas{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  align-items:stretch;
+}
+#navBas .nb{width:auto;flex:none}
+#navBas .nb[data-nb="maintenant"]{grid-column:1}
+#navBas .nb[data-nb="explorer"]{grid-column:2}
+#navBas .nb[data-nb="pourtoi"]{grid-column:4}
+#navBas .nb[data-nb="aide"]{grid-column:5}
+#navBas .nb[data-nb="profil"]{display:none}
+#navBas .nb-creer{
+  position:absolute;
+  left:50%;
+  top:0;
+  width:20%;
+  height:100%;
+  transform:translateX(-50%);
+  z-index:2;
+}
+#navBas .nb-creer.actif{transform:translateX(-50%)}
+
+@media (min-width:1100px){
+  :root{
+    --maquette-bord:32px;
+    --maquette-ecart:24px;
+    --maquette-nav-h:88px;
+    --maquette-nav-w:min(1120px,calc(100vw - (2 * var(--maquette-bord))));
+    --maquette-panneau-top:144px;
+  }
+
+  /* Nav centrée sur la fenêtre, jamais sur la carte ou sur la zone libre. */
+  #navBas{
+    top:auto;
+    left:50%;
+    right:auto;
+    bottom:24px;
+    width:var(--maquette-nav-w);
+    height:var(--maquette-nav-h);
+    min-height:var(--maquette-nav-h);
+    padding:0;
+    gap:0;
+    border:0;
+    border-radius:99px;
+  }
+  #navBas .nb{font-size:14px;padding:8px 10px;gap:5px;justify-content:center}
+  #navBas .nb svg{width:25px;height:25px}
+  #navBas .nb-creer{padding:0 10px;justify-content:flex-start}
+  #navBas .nb-creer .nb-plus{width:64px;height:64px;margin-top:-18px}
+
+  /* Les deux panneaux partagent le même axe haut. Leur limite basse reste
+     toujours à 24 px de la nav : une fiche longue défile dans son propre
+     corps, elle ne passe pas sous Créer ou sous un autre onglet. */
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite,#pourToi{
+    top:calc(var(--safe-t) + var(--maquette-panneau-top));
+    bottom:auto;
+    max-height:calc(100dvh - var(--safe-t) - var(--maquette-panneau-top) -
+      var(--maquette-ecart) - var(--maquette-nav-h) - var(--maquette-ecart));
+  }
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite{left:var(--maquette-bord);right:auto}
+  #pourToi{left:auto;right:var(--maquette-bord)}
+  #btnTransports{right:var(--maquette-bord);bottom:calc(24px + var(--maquette-nav-h) + var(--maquette-ecart))}
+
+  /* L'onboarding de localisation est une surface temporaire de la zone haute.
+     S'il est encore visible au moment où Pour toi est ouvert, les deux
+     panneaux ne se recouvrent pas : le second prend le prochain cran de la
+     grille (264 px) et conserve un dégagement de 24 px. */
+  #bandeauGeo:not([hidden]) ~ #pourToi,
+  #bandeauVide:not([hidden]) ~ #pourToi,
+  #onboardingLocalisation:not([hidden]) ~ #pourToi{
+    top:calc(var(--safe-t) + 264px);
+    max-height:calc(100dvh - var(--safe-t) - 264px -
+      var(--maquette-ecart) - var(--maquette-nav-h) - var(--maquette-ecart));
+  }
+}
+
+@media (max-width:1099px){
+  :root{
+    --maquette-bord-mobile:8px;
+    --maquette-ecart-mobile:24px;
+    --maquette-nav-h-mobile:76px;
+  }
+
+  /* La carte reste visible autour de la nav : 8 px latéraux et 16 px bas,
+     comme dans la maquette 390 px. */
+  #navBas{
+    top:auto;
+    left:var(--maquette-bord-mobile);
+    right:auto;
+    bottom:16px;
+    width:calc(100% - (2 * var(--maquette-bord-mobile)));
+    height:var(--maquette-nav-h-mobile);
+    min-height:var(--maquette-nav-h-mobile);
+    padding:0;
+    border:0;
+    border-radius:20px;
+    transform:none;
+  }
+  #navBas .nb{font-size:11px;padding:8px 2px;gap:4px;justify-content:center}
+  #navBas .nb-creer{padding:0 2px;justify-content:flex-start}
+  #navBas .nb-creer .nb-plus{width:56px;height:56px;margin-top:-14px}
+
+  /* Un panneau ouvert s'arrête avant la nav. Ce dégagement est fixe : il ne
+     dépend ni du contenu rendu ni de la hauteur calculée par l'ordonnanceur. */
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite,#pourToi{
+    left:var(--maquette-bord-mobile);
+    right:var(--maquette-bord-mobile);
+    bottom:calc(16px + var(--maquette-nav-h-mobile) + var(--maquette-ecart-mobile));
+    width:auto;
+  }
+  #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
+  #feuilleBesoins.reduite{border-bottom:1px solid var(--bord);border-radius:20px}
+  #pourToi{max-height:calc(100dvh - var(--safe-t) - 16px -
+    var(--maquette-nav-h-mobile) - var(--maquette-ecart-mobile) - 16px);
+    border-bottom:1px solid var(--bord)}
+  #pourToi .pt-corps{padding-bottom:calc(14px + var(--safe-b))}
+  #btnProfilEntete{margin-left:auto}
+
+  /* Même règle sur petit écran : l'onboarding conserve sa place haute et
+     Pour toi ne peut pas remonter sous lui lorsque sa liste est longue. */
+  #bandeauGeo:not([hidden]) ~ #pourToi,
+  #bandeauVide:not([hidden]) ~ #pourToi,
+  #onboardingLocalisation:not([hidden]) ~ #pourToi{
+    max-height:calc(100dvh - var(--safe-t) - 256px -
+      16px - var(--maquette-nav-h-mobile) - var(--maquette-ecart-mobile) - 16px);
+  }
+}
 </style>
 </head>
 <body>
@@ -2450,6 +2588,9 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   <button class="hd-icone" id="btnNotifs" aria-label="Notifications">
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
     <i id="notifPastille" hidden></i>
+  </button>
+  <button class="hd-icone hd-profil" id="btnProfilEntete" aria-label="Profil">
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
   </button>
 </header>
 
@@ -2700,6 +2841,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=b96b7b93" defer></script>
-<script src="app.js?v=acc82561" defer></script>
+<script src="app.js?v=99734164" defer></script>
 </body>
 </html>

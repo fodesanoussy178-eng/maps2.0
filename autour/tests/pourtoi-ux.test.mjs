@@ -122,6 +122,27 @@ test("sans goûts, Pour toi affiche l'onboarding au lieu d'inventer une personna
   assert.match(pourToi, /selectionEnviesHTML\(\)/);
 });
 
+test("Pour toi distingue goûts absents, hydratation, zéro résultat et résultats", () => {
+  assert.match(source, /const ETATS_POURTOI = Object\.freeze\(\{/);
+  for(const etat of ["AUCUN_GOUT", "SANS_RESULTAT", "CHARGEMENT", "RESULTATS"])
+    assert.match(source, new RegExp(etat+":"));
+  assert.match(source, /const ETAT_DONNEES_POURTOI = Object\.freeze\(\{/);
+  const pourToi = source.slice(source.indexOf("function majPourToi"), source.indexOf("function brancherPourToi"));
+  assert.match(pourToi, /hydratationEnCours \|\| \(suivies && donneesEnCours\)/);
+  assert.match(pourToi, /etat = ETATS_POURTOI\.SANS_RESULTAT/);
+  assert.match(pourToi, /Pas encore assez de recommandations ici pour tes goûts/);
+  assert.match(pourToi, /panneau\.dataset\.etat = etat/);
+  assert.match(source, /function chargerInteretsCompte\(\)[\s\S]*?actualiserSurfacePourToi\(\)/);
+  assert.match(source, /function appliquerSession\([\s\S]*?actualiserSurfacePourToi\(\)/);
+});
+
+test("Pour toi est invalidé par les changements de zone, GPS et données", () => {
+  assert.match(source, /function definirZoneActive\([\s\S]*?actualiserSurfacePourToi\(\)/);
+  assert.match(source, /function appliquerPosition\([\s\S]*?if\(bouge\) actualiserSurfacePourToi\(\)/);
+  assert.match(source, /function finaliserFusion\([\s\S]*?marquerDonneesPourToiPretes\(\)/);
+  assert.match(source, /function rafraichirMetropole\([\s\S]*?marquerDonneesPourToiPretes\(\)/);
+});
+
 test("la pastille exclut les recommandations vues et les goûts nouvellement pertinents", () => {
   const logique = source.slice(source.indexOf("function rebaserPourToiApresChangementGouts"), source.indexOf("function peindrePastillePourToi"));
   assert.match(logique, /const propositions = propositionsPourToi\(POURTOI_TOUT_MAX\)/);

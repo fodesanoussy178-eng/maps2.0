@@ -326,6 +326,7 @@ function viderDonneesContexte(){
   candidatsAideMemo = {cle:null, items:null, etrangersEcartes:false};
   aideEtrangersEcartes = false;
   generationAccueil += 1;
+  remettreDonneesPourToiEnChargement();
 }
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
    d'un coup tout travail en vol — et rend le nouveau numéro à l'appelant. */
@@ -361,6 +362,7 @@ function definirZoneActive(zone){
   evenementsMetropole = [];
   metropoleEnCours = null;
   programmerPrechargementAide();
+  actualiserSurfacePourToi();
   return porteeCourante;
 }
 
@@ -2343,7 +2345,31 @@ let session = null;          // la session Supabase, telle que Auth la rend
 let monProfil = null;        // { display_name, notifications } — jamais l'e-mail
 let etatCompte = COMPTES ? COMPTES.VISITEUR : "visiteur";
 
+/* Les goûts locaux sont lisibles immédiatement. Pour un compte connecté,
+   `user_metadata` peut toutefois arriver après le premier rendu : tant que
+   cette lecture n'est pas terminée, « Pour toi » doit dire qu'il charge, pas
+   conclure à tort qu'il n'y a aucun goût. */
+const ETATS_HYDRATATION_ENVIES = Object.freeze({
+  EN_COURS:"en_cours",
+  PRETE:"prete",
+});
+let etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
+let generationHydratationEnvies = 0;
+
 function estConnecte(){ return etatCompte === "connecte"; }
+
+/* Le panneau et sa pastille partagent cette invalidation. Elle ne force pas
+   la colonne invisible à se peindre : en dehors de l'ouverture, seule la
+   pastille doit être recalculée. */
+function actualiserSurfacePourToi(){
+  const panneau = document.getElementById("pourToi");
+  if(!panneau || !window.AutourEnvies) return;
+  if(!panneau.hidden && document.body.classList.contains("pourtoi-ouvert")){
+    if(typeof majPourToi === "function") majPourToi();
+  }else if(typeof majPastillePourToi === "function"){
+    majPastillePourToi();
+  }
+}
 
 /* Une seule fonction met l'état à jour, et une seule met l'écran à jour après
    elle. Deux endroits qui recalculent « suis-je connecté ? » finissent
@@ -2356,6 +2382,21 @@ function appliquerSession(s){
   if(envies && typeof envies.definirContexte === "function"){
     envies.definirContexte(estConnecte() ? moiId : null);
   }
+  generationHydratationEnvies += 1;
+  if(estConnecte()){
+    /* `getSession()` transporte normalement déjà les métadonnées. Les
+       appliquer ici rend le premier rendu juste, sans attendre `profiles`. */
+    const distants = interetsCompte();
+    if(envies && Array.isArray(distants)){
+      envies.remplacer(distants);
+      etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
+    }else{
+      etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.EN_COURS;
+    }
+  }else{
+    etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
+  }
+  actualiserSurfacePourToi();
   return etatCompte;
 }
 
@@ -2376,11 +2417,26 @@ function interetsCompte(){
 }
 
 async function chargerInteretsCompte(){
-  if(!ENVIES || !estConnecte()) return false;
-  const distants = interetsCompte();
-  if(!distants) return false;
-  ENVIES.remplacer(distants);
-  return true;
+  const generation = generationHydratationEnvies;
+  if(!ENVIES || !estConnecte()){
+    etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
+    actualiserSurfacePourToi();
+    return false;
+  }
+  try{
+    const distants = interetsCompte();
+    if(!Array.isArray(distants)) return false;
+    ENVIES.remplacer(distants);
+    return true;
+  }finally{
+    /* Un SIGNED_OUT ou un autre compte peut être arrivé entre-temps : une
+       réponse tardive ne doit pas repeindre le compte courant avec les goûts
+       de l'ancien. */
+    if(generation === generationHydratationEnvies && estConnecte()){
+      etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
+      actualiserSurfacePourToi();
+    }
+  }
 }
 
 async function enregistrerInteretsCompte(ids){
@@ -2403,19 +2459,29 @@ async function enregistrerInteretsCompte(ids){
    retire aucune propriété, l'usurper n'en donne aucune. */
 async function chargerProfil(){
   if(!sb || !moiId) { monProfil = null; return null; }
+  const generation = generationHydratationEnvies;
   try{
     const { data, error } = await sb.from("profiles")
       .select("display_name,notifications").eq("id", moiId).maybeSingle();
     if(error) throw error;
     monProfil = data || null;
     if(monProfil && monProfil.display_name) monPseudo = monProfil.display_name;
-    await chargerInteretsCompte();
-    lireConsultationCompte();
-    return monProfil;
   }catch(e){
     console.error("Profil indisponible :", e.message || e);
-    return null;
   }
+  /* Les goûts sont indépendants de la ligne publique `profiles`. Même si
+     cette lecture échoue, l'hydratation privée doit se terminer et débloquer
+     l'état C du panneau. */
+  try{ await chargerInteretsCompte(); }
+  catch(e){
+    journal.warn("Hydratation des goûts indisponible :", e.message || e);
+    if(generation === generationHydratationEnvies && estConnecte()){
+      etatHydratationEnvies = ETATS_HYDRATATION_ENVIES.PRETE;
+      actualiserSurfacePourToi();
+    }
+  }
+  lireConsultationCompte();
+  return monProfil;
 }
 
 /* LE PORTILLON.
@@ -2943,6 +3009,7 @@ function actualiserBassinTerritorial(lat,lng){
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(bassinsTerritoriauxResolus.has(cle)){
     bassinTerritorialActif = bassinsTerritoriauxResolus.get(cle);
+    rafraichirMetropole();
     return Promise.resolve(bassinTerritorialActif);
   }
   /* La résolution mutualise la synchronisation par territoire. Elle ne
@@ -2960,6 +3027,7 @@ function actualiserBassinTerritorial(lat,lng){
       if(error){
         console.error("Résolution du territoire :", error.message);
         bassinTerritorialActif = null;
+        marquerDonneesPourToiPretes();
         return null;
       }
       bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
@@ -2969,9 +3037,11 @@ function actualiserBassinTerritorial(lat,lng){
          uniquement après avoir été déterminé, et cette couche est elle-même
          idempotente. */
       rafraichirMetropole();
+      if(!bassinTerritorialActif) marquerDonneesPourToiPretes();
       return bassinTerritorialActif;
     }catch(e){
       bassinTerritorialActif = null;
+      marquerDonneesPourToiPretes();
       return null;
     }finally{ finTerritoire(); }
   });
@@ -4437,6 +4507,10 @@ function finaliserFusion(opts){
   const debutCpu = performance.now();
   const o = opts || {};
   reconstruireLieux();
+  /* Un premier lot local suffit à rendre « Pour toi » calculable. Le panneau
+     n'attend pas les enrichissements secondaires si des données minimales
+     sont déjà disponibles ; elles le mettront simplement à jour ensuite. */
+  marquerDonneesPourToiPretes();
   if(!window.__premiereDonnee){
     window.__premiereDonnee = true;
     performance.mark("autour:donnees");
@@ -5014,6 +5088,7 @@ function chargerZone(lat, lng, opts){
     if(chargementsZone.get(cle) === promesse) chargementsZone.delete(cle);
     chargementEnCours = chargementsZone.size > 0;
     if(generationCourante(generation)){
+      marquerDonneesPourToiPretes();
       if(!o.osmSeulement) definirEtatRechercheVersionne("places",sourceExploitable || lieux.length
         ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
       terminerGeneration(generation);
@@ -5111,6 +5186,7 @@ function chargerDonneesTemporaires(lat, lng, opts){
   }).finally(()=>{
     if(chargementsTemporaires.get(cle) === promesse) chargementsTemporaires.delete(cle);
     if(generationCourante(generation)){
+      marquerDonneesPourToiPretes();
       charge(null);
       planifierRendu({accueil:true, feuille:true});
       terminerGeneration(generation);
@@ -5796,6 +5872,7 @@ function avecDelai(promesse, ms, valeur, signal){
    Les sources partent ENSEMBLE : aucune n'attend le résultat d'une autre. */
 function chargerLeDemarrage(rapide){
   if(!positionMoi){
+    marquerDonneesPourToiPretes();
     attendreLeaflet();
     proposerPosition();
     return;
@@ -5880,6 +5957,7 @@ function chargerLeDemarrage(rapide){
   Promise.allSettled(travaux).then(()=>{
     if(!generationCourante(generation)) return;
     definirEtatRechercheVersionne("places",lieux.length ? SEARCH_STATES.SUCCESS : SEARCH_STATES.EMPTY,generation);
+    marquerDonneesPourToiPretes();
     majSignalMaj(false);
     charge(null);
     PERF.jalon("demarrage_termine");
@@ -12015,6 +12093,34 @@ const CLE_POURTOI_VU = "autour:pourtoi-vu:v1";
 const CLE_POURTOI_MASQUES = "autour:pourtoi-masque:v1";
 const POURTOI_MAX = 6;
 
+/* Les quatre états sont volontairement exclusifs :
+   A = aucune sélection réelle, B = sélection réelle sans correspondance,
+   C = goûts ou données encore en hydratation, D = recommandations visibles.
+   Le panneau expose aussi cet état dans `data-etat` pour le diagnostic et les
+   tests sans déduire « aucun goût » d'une liste momentanément vide. */
+const ETATS_POURTOI = Object.freeze({
+  AUCUN_GOUT:"aucun-gout",
+  SANS_RESULTAT:"gouts-sans-resultat",
+  CHARGEMENT:"chargement",
+  RESULTATS:"resultats",
+});
+const ETAT_DONNEES_POURTOI = Object.freeze({
+  EN_COURS:"en_cours",
+  PRETES:"pretes",
+});
+let etatDonneesPourToi = ETAT_DONNEES_POURTOI.EN_COURS;
+
+function remettreDonneesPourToiEnChargement(){
+  if(typeof etatDonneesPourToi === "undefined") return;
+  etatDonneesPourToi = ETAT_DONNEES_POURTOI.EN_COURS;
+}
+
+function marquerDonneesPourToiPretes(){
+  if(etatDonneesPourToi === ETAT_DONNEES_POURTOI.PRETES) return;
+  etatDonneesPourToi = ETAT_DONNEES_POURTOI.PRETES;
+  actualiserSurfacePourToi();
+}
+
 /* LA PASTILLE « +N » DE POUR TOI.
 
    Elle compte les nouveautés, elle ne dit pas seulement qu'il y en a. Son
@@ -12152,6 +12258,7 @@ function rafraichirMetropole(){
         retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
         rebasePourToiEnAttente = false;
       }
+      marquerDonneesPourToiPretes();
       metropoleEnCours = null;
       majPourToi();
       return;
@@ -12166,6 +12273,7 @@ function rafraichirMetropole(){
       retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
       rebasePourToiEnAttente = false;
     }
+    marquerDonneesPourToiPretes();
     majPourToi();
   }).catch(()=>{
     if(rebasePourToiEnAttente){
@@ -12173,6 +12281,7 @@ function rafraichirMetropole(){
       rebasePourToiEnAttente = false;
     }
     metropoleEnCours = null;
+    marquerDonneesPourToiPretes();
     majPourToi();
   });
 }
@@ -12264,7 +12373,8 @@ function groupesInteretsPourToi(propositions){
 }
 
 function propositionsPourToi(limite = POURTOI_MAX){
-  if(!ENVIES || !ENVIES.choisies().length || !ANNONCES) return [];
+  if(!ENVIES || etatHydratationEnvies === ETATS_HYDRATATION_ENVIES.EN_COURS ||
+     !ENVIES.choisies().length || !ANNONCES) return [];
   const vues = marquesVues();
   /* Le classement vit dans `annonces-classement.js`, pas ici : c'est lui qui
      sait apparier tags et envies, et il travaille sur le bassin entier. */
@@ -12644,11 +12754,19 @@ function majPourToi(){
   const corps = $("#ptCorps");
   if(!panneau || !corps) return;
   const debutCpu = performance.now();
-  const propositions = propositionsPourToi(POURTOI_TOUT_MAX);
   const suivies = ENVIES ? ENVIES.choisies().length : 0;
+  const hydratationEnCours = !ENVIES ||
+    etatHydratationEnvies === ETATS_HYDRATATION_ENVIES.EN_COURS;
+  const donneesEnCours = etatDonneesPourToi === ETAT_DONNEES_POURTOI.EN_COURS;
+  const propositions = !hydratationEnCours && suivies && !donneesEnCours
+    ? propositionsPourToi(POURTOI_TOUT_MAX) : [];
 
-  let contenu;
-  if(!suivies){
+  let contenu, etat = ETATS_POURTOI.AUCUN_GOUT;
+  if(hydratationEnCours || (suivies && donneesEnCours)){
+    etat = ETATS_POURTOI.CHARGEMENT;
+    contenu = '<p class="pt-vide pt-chargement" role="status" aria-live="polite">'+
+      'Chargement de tes recommandations…</p>';
+  }else if(!suivies){
     /* Première utilisation : la sélection est visible immédiatement. Les
        clics restent dans `editionEnvies`; aucune préférence validée ne bouge
        avant le bouton « Valider ». */
@@ -12657,9 +12775,11 @@ function majPourToi(){
       ? selectionEnviesHTML()
       : '<p class="pt-vide">Choisis tes goûts pour commencer.</p>';
   }else if(!propositions.length){
-    contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
+    etat = ETATS_POURTOI.SANS_RESULTAT;
+    contenu = '<p class="pt-vide">Pas encore assez de recommandations ici pour tes goûts. '+
       'Autour continue de regarder.</p>';
   }else{
+    etat = ETATS_POURTOI.RESULTATS;
     /* Groupé par envie, et non en liste plate : « Rap · 4 » dit pourquoi
        chaque carte est là. Deux cartes visibles par groupe, le reste derrière
        un bouton — le panneau reste lisible quand la métropole donne beaucoup. */
@@ -12668,12 +12788,18 @@ function majPourToi(){
       "pourtoi-interet-" + groupe.id,
       groupe.propositions
     )).join("");
-    if(!contenu) contenu = '<p class="pt-vide">Rien de neuf dans cette zone pour ce que tu suis. '+
+    if(!contenu){
+      etat = ETATS_POURTOI.SANS_RESULTAT;
+      contenu = '<p class="pt-vide">Pas encore assez de recommandations ici pour tes goûts. '+
       'Autour continue de regarder.</p>';
+    }
   }
   /* Les surveillances restent EN HAUT : c'est ce que la personne a demandé
      explicitement de suivre, ça passe avant ce qu'Autour propose. */
-  corps.innerHTML = blocSurveillances() + contenu;
+  panneau.dataset.etat = etat;
+  corps.dataset.etat = etat;
+  if(hydratationEnCours) corps.innerHTML = contenu;
+  else corps.innerHTML = blocSurveillances() + contenu;
 
   const nonVues = nouveautesPourToi(propositions).length;
   const toutVu = $("#ptToutVu");
@@ -14897,6 +15023,11 @@ function appliquerPosition(p, opts){
      appartient à la personne qui la regarde. */
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
+  /* Une nouvelle position peut changer le bassin, la distance ou la ville
+     effectivement regardée. Le recalcul reste limité aux déplacements qui
+     ont déjà invalidé le contexte ; les micro-variations GPS de la veille ne
+     relancent donc pas le moteur. */
+  if(bouge) actualiserSurfacePourToi();
 
   if(bouge && doitRestaurerZone){
     // le quartier réel se charge — court délai : on est encore au
@@ -15916,6 +16047,16 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   }
   if(id === "profil"){ ouvrirProfil(); return; }
 });
+
+/* Sur la grille de référence, Profil n'occupe pas un sixième slot qui
+   rapprocherait Pour toi de Créer. Il reste un accès produit de premier rang
+   dans l'en-tête, avec la même destination que l'onglet historique. */
+if($("#btnProfilEntete")) $("#btnProfilEntete").onclick=()=>{
+  ongletCourant = "profil";
+  marquerNavigation("profil");
+  fermerPourToi();
+  ouvrirProfil();
+};
 
 /* Ce qui reprend après une connexion. Chaque entrée est le geste exact qui a
    déclenché la demande de compte, rejoué à l'identique : on ne dépose personne

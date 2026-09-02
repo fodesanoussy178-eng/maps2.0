@@ -132,7 +132,35 @@ test("la barre basse garde une géométrie stable entre desktop et mobile", () =
   assert.match(html, /#navBas\.nb, #navBas \.nb-creer|#navBas \.nb, #navBas \.nb-creer/);
   assert.match(html, /#navBas \.nb\.actif\{margin:0;transform:none\}/);
   assert.match(html, /#navBas\{width:100%;left:0;right:0;bottom:0/);
-  assert.match(html, /#navBas\{bottom:20px;min-height:96px/);
+  assert.match(html, /--maquette-nav-h:88px/);
+  assert.match(html, /--maquette-nav-h-mobile:76px/);
+  assert.match(html, /bottom:24px;\s*width:var\(--maquette-nav-w\);\s*height:var\(--maquette-nav-h\)/);
+  assert.match(html, /bottom:16px;\s*width:calc\(100% - \(2 \* var\(--maquette-bord-mobile\)\)\);\s*height:var\(--maquette-nav-h-mobile\)/);
   assert.match(html, /#navBas\{position:absolute;left:0;right:0;bottom:0;z-index:910;/);
-  assert.match(html, /#pourToi \.pt-corps\{padding-bottom:calc\(14px \+ var\(--nav-height\) \+ 20px\)\}/);
+  assert.match(html, /#pourToi \.pt-corps\{padding-bottom:calc\(14px \+ var\(--safe-b\)\)\}/);
+});
+
+test("Créer est centré par une colonne centrale réservée", () => {
+  assert.match(html, /#navBas\{\s*display:grid;\s*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(html, /#navBas \.nb-creer\{\s*position:absolute;\s*left:50%;\s*top:0;\s*width:20%;\s*height:100%;\s*transform:translateX\(-50%\)/);
+  assert.match(html, /#navBas \.nb\[data-nb="explorer"\]\{grid-column:2\}/);
+  assert.match(html, /#navBas \.nb\[data-nb="pourtoi"\]\{grid-column:4\}/);
+  assert.match(html, /#navBas \.nb-creer\.actif\{transform:translateX\(-50%\)\}/);
+  assert.match(html, /#navBas \.nb-creer \.nb-plus\{width:64px;height:64px;margin-top:-18px\}/);
+  assert.match(html, /#navBas \.nb-creer \.nb-plus\{width:56px;height:56px;margin-top:-14px\}/);
+  assert.match(html, /#navBas \.nb-creer\{padding:0 10px;justify-content:flex-start\}/);
+  assert.match(html, /#navBas \.nb-creer\{padding:0 2px;justify-content:flex-start\}/);
+  assert.match(html, /#navBas \.nb\[data-nb="profil"\]\{display:none\}/);
+  assert.match(html, /id="btnProfilEntete"/);
+  assert.match(html, /if\(\$\("#btnProfilEntete"\)\)[\s\S]*?ongletCourant = "profil";[\s\S]*?ouvrirProfil\(\);/);
+});
+
+test("les panneaux partagent un axe haut et restent hors de la zone de navigation", () => {
+  assert.match(html, /--maquette-bord:32px/);
+  assert.match(html, /--maquette-ecart:24px/);
+  assert.match(html, /--maquette-panneau-top:144px/);
+  assert.match(html, /#feuilleBesoins,#feuilleBesoins\.accueil,#feuilleBesoins\.deplie,[\s\S]*?#pourToi\{\s*top:calc\(var\(--safe-t\) \+ var\(--maquette-panneau-top\)\)/);
+  assert.match(html, /max-height:calc\(100dvh - var\(--safe-t\) - var\(--maquette-panneau-top\) -[\s\S]*?var\(--maquette-nav-h\)/);
+  assert.match(html, /bottom:calc\(16px \+ var\(--maquette-nav-h-mobile\) \+ var\(--maquette-ecart-mobile\)\)/);
+  assert.match(html, /#onboardingLocalisation:not\(\[hidden\]\) ~ #pourToi\{\s*top:calc\(var\(--safe-t\) \+ 264px\)/);
 });
