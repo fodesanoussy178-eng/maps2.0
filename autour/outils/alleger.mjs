@@ -32,6 +32,7 @@
 
 import { readFile, readdir, stat, writeFile, mkdir, rm, cp } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { transform } from "esbuild";
@@ -72,13 +73,15 @@ const HORS_LIVRAISON = new Set([
   "prod-reconstruite",
   /* ce que Vercel lit à la racine du projet, pas dans la sortie */
   "api", "middleware.js", "vercel.json", "package.json", "package-lock.json",
-  ".vercelignore", ".vercel",
+  ".vercelignore", ".vercel", "shell.js",
 ]);
 
 const args = process.argv.slice(2);
 const verifierSeulement = args.includes("--verifier");
 const iSortie = args.indexOf("--sortie");
 const SORTIE = join(RACINE, iSortie === -1 ? "livraison" : args[iSortie + 1]);
+const INDEX_SOURCE = await readFile(join(RACINE, "index.html"), "utf8");
+const SHELL_SOURCE = await readFile(join(RACINE, "shell.js"), "utf8");
 
 /* Les déclarations de premier niveau, avant et après : c'est le contrat
    observable du fichier. Si l'une disparaît ou change d'ordre, la
@@ -138,6 +141,70 @@ console.log("\n  soit " + ((gzAvant - gzApres) / 1024).toFixed(1) +
 
 if (verifierSeulement || process.exitCode) process.exit(process.exitCode || 0);
 
+/* Un seul fichier pour le chemin critique. Les scripts étaient déjà `defer`
+   et se téléchargeaient en parallèle, mais quarante réponses distinctes
+   imposaient quarante en-têtes, quarante validations et quarante passages de
+   planification avant que le dernier `defer` puisse s'exécuter. On garde
+   exactement l'ordre déclaré par le HTML — il est le contrat d'exécution —
+   et on ne touche pas au dépôt source. Les noms restent lisibles et les
+   fonctions de premier niveau restent globales ; seul l'espace et la syntaxe
+   redondante partent du paquet livré. */
+const scriptsHTML = [...INDEX_SOURCE.matchAll(/<script\s+src="([^"]+)"\s+defer><\/script>/g)]
+  .map((m) => m[1].split("?")[0]);
+const modulesCritiques = scriptsHTML.filter((module) => alleges.has(module));
+const manquantsHTML = MODULES.filter((module) => !modulesCritiques.includes(module));
+const inconnusHTML = modulesCritiques.filter((module) => !A_ALLEGER.includes(module));
+if (manquantsHTML.length || inconnusHTML.length) {
+  console.error("✗ l'ordre de livraison ne correspond pas au manifeste HTML.");
+  if (manquantsHTML.length) console.error("  absents : " + manquantsHTML.join(", "));
+  if (inconnusHTML.length) console.error("  inconnus : " + inconnusHTML.join(", "));
+  process.exitCode = 1;
+  process.exit(1);
+}
+const codeCritique = modulesCritiques.map((module) => alleges.get(module)).join("\n");
+const { code: bundle } = await transform(codeCritique, {
+  loader: "js",
+  minify: false,
+  minifyIdentifiers: true,
+  minifySyntax: true,
+  minifyWhitespace: true,
+  legalComments: "none",
+  target: "esnext",
+});
+const empreinte = createHash("sha256").update(bundle).digest("hex").slice(0, 8);
+
+/* Une attribution par famille, volontairement séparée du paquet final. Une
+   compression globale ne sait pas dire « cet octet vient de tel module » :
+   les noms et les motifs se partagent le dictionnaire. On minifie donc chaque
+   famille avec les mêmes réglages que le bundle, puis on affiche son poids
+   gzip autonome comme contribution lisible — le bundle final reste la mesure
+   d'autorité. */
+const familles = new Map([
+  ["application / app", ["app.js"]],
+  ["Aide", A_ALLEGER.filter((m) => m.startsWith("aide") || m.includes("/aide"))],
+  ["commun / classement", A_ALLEGER.filter((m) =>
+    !m.startsWith("aide") && !m.includes("/aide") &&
+    m !== "app.js" && !m.startsWith("providers/") && !m.startsWith("mapProviders/") &&
+    !["maintenant.js", "contexte.js", "territoire.js", "annonces-taxonomie.js", "annonces-classement.js"].includes(m) &&
+    !m.startsWith("differe/"))],
+  ["territoire / Maintenant", A_ALLEGER.filter((m) =>
+    ["maintenant.js", "contexte.js", "territoire.js", "annonces-taxonomie.js", "annonces-classement.js"].includes(m))],
+  ["providers", A_ALLEGER.filter((m) => m.startsWith("providers/"))],
+  ["carte / Google", A_ALLEGER.filter((m) => m.startsWith("mapProviders/"))],
+  ["écrans différés", A_ALLEGER.filter((m) => m.startsWith("differe/"))],
+]);
+const compressionFamilles = [];
+for (const [nom, modules] of familles) {
+  const presents = modules.filter((m) => alleges.has(m));
+  if (!presents.length) continue;
+  const codeFamille = presents.map((m) => alleges.get(m)).join("\n");
+  const { code: minifie } = await transform(codeFamille, {
+    loader: "js", minifyIdentifiers:true, minifySyntax:true,
+    minifyWhitespace:true, legalComments:"none", target:"esnext",
+  });
+  compressionFamilles.push({nom, modules:presents, octets:gzipSync(minifie, {level:9}).length});
+}
+
 /* La copie : tout le dossier servi, puis les fichiers allégés par-dessus.
    Copier d'abord garantit qu'on n'oublie ni une image, ni `manifest.json`,
    ni une tuile de `zones/` le jour où il s'en ajoute une. */
@@ -147,9 +214,48 @@ await mkdir(SORTIE, { recursive: true });
    de recopier un dossier dans l'un de ses propres sous-dossiers. */
 for (const entree of await readdir(RACINE)) {
   if (HORS_LIVRAISON.has(entree)) continue;
-  await cp(join(RACINE, entree), join(SORTIE, entree), { recursive: true });
+await cp(join(RACINE, entree), join(SORTIE, entree), { recursive: true });
 }
 for (const [module, code] of alleges) await writeFile(join(SORTIE, module), code);
+await writeFile(join(SORTIE, "autour.js"), bundle);
+const urlMoteur = "autour.js?v=" + empreinte;
+const shellAvecLien = SHELL_SOURCE.replaceAll("__AUTOUR_MOTEUR_URL__", urlMoteur);
+const { code: shell } = await transform(shellAvecLien, {
+  loader: "js", minifyIdentifiers:true, minifySyntax:true,
+  minifyWhitespace:true, legalComments:"none", target:"esnext",
+});
+const empreinteShell = createHash("sha256").update(shell).digest("hex").slice(0, 8);
+await writeFile(join(SORTIE, "autour-shell.js"), shell);
+const indexSansScripts = INDEX_SOURCE.replace(
+  /(?:<script\s+src="[^"]+"\s+defer><\/script>\s*\n?)+/,
+  '<script src="autour-shell.js?v=' + empreinteShell + '" defer fetchpriority="high"></script>\n',
+);
+if (indexSansScripts === INDEX_SOURCE) {
+  console.error("✗ impossible de remplacer les scripts critiques dans index.html");
+  process.exitCode = 1;
+  process.exit(1);
+}
+const indexLivre = indexSansScripts.replace(
+  "</head>",
+  '<link rel="preload" as="script" fetchpriority="high" href="autour-shell.js?v=' + empreinteShell + '" />\n' +
+  '<link rel="preload" as="script" fetchpriority="low" data-autour-moteur="1" href="' + urlMoteur + '" />\n</head>',
+);
+if (indexLivre === indexSansScripts) {
+  console.error("✗ impossible de précharger le bundle critique depuis index.html");
+  process.exitCode = 1;
+  process.exit(1);
+}
+await writeFile(join(SORTIE, "index.html"), indexLivre);
+console.log("  chemin critique : " + modulesCritiques.length + " scripts → autour.js?v=" + empreinte +
+  " (" + (Buffer.byteLength(bundle) / 1024).toFixed(1) + " ko brut, " +
+  (gzipSync(bundle, { level: 9 }).length / 1024).toFixed(1) + " ko gzip)");
+console.log("  shell critique  : autour-shell.js?v=" + empreinteShell +
+  " (" + (Buffer.byteLength(shell) / 1024).toFixed(1) + " ko brut, " +
+  (gzipSync(shell, { level: 9 }).length / 1024).toFixed(1) + " ko gzip)");
+console.log("\n──── contribution approximative du moteur complet ────\n");
+compressionFamilles.forEach(({nom, modules, octets}) =>
+  console.log("  " + nom.padEnd(26) + (octets / 1024).toFixed(1).padStart(7) +
+    " ko gzip · " + modules.length + " module(s)"));
 
 /* L'INVENTAIRE DE CE QUI PART. Une livraison qu'on ne relit pas est une
    livraison où un dossier s'ajoute un jour sans que personne ne le remarque. */

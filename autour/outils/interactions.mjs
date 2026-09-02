@@ -68,6 +68,8 @@ const contexte = await navigateur.newContext(Object.assign({}, devices["Pixel 5"
   locale: "fr-FR", hasTouch: true, isMobile: true,
 }));
 const page = await contexte.newPage();
+const positionTest = process.env.AUTOUR_TEST_POSITION
+  ? "?testPosition=" + encodeURIComponent(process.env.AUTOUR_TEST_POSITION) : "";
 /* L'extérieur est coupé : ces gestes ne dépendent d'aucune source, et une
    requête qui traîne rendrait le banc capricieux. */
 const session = await contexte.newCDPSession(page);
@@ -79,7 +81,7 @@ await session.send("Network.setBlockedURLs", {
 const erreurs = [];
 page.on("pageerror", (e) => erreurs.push(String(e.message || e).slice(0, 160)));
 
-await page.goto("http://127.0.0.1:" + port + "/index.html", { waitUntil: "commit" });
+await page.goto("http://127.0.0.1:" + port + "/index.html" + positionTest, { waitUntil: "commit" });
 await page.waitForFunction(() => window.AutourPerf && window.AutourPerf.temps.ui_ready, null,
   { timeout: 15000 });
 await page.waitForTimeout(1200);

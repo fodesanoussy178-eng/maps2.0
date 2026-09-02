@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <title>Autour · ce qui se passe dans ton quartier</title>
+<script>
+/* Premier jalon : le HTML est disponible avant les feuilles et le bundle. */
+performance.mark("autour:html_disponible");
+window.AutourBootTiming={html_disponible:performance.now()};
+</script>
 <meta name="description" content="Ce qui se passe autour de toi, maintenant : événements, aide alimentaire, associations, commerces ouverts et itinéraires. Sans compte, sans installation." />
 
 <!-- aperçu quand le lien est collé dans un message : sans ça, le partage
@@ -2631,6 +2636,31 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
      c'est un décor, pas une condition pour afficher les propositions. Le
      téléchargement ne concurrence donc plus le HTML et les scripts utiles au
      démarrage sur un téléphone. -->
+<script>
+/* Le shell est visible avant le JavaScript différé. Un appui très précoce doit
+   donc donner un signe immédiat et être rejoué quand les handlers sont prêts. */
+(()=>{
+  const enAttente=[];
+  const pont=window.AutourBootInteractions={pret:false,pretARejouer(){
+    this.pret=true;
+    const gestes=enAttente.splice(0);
+    queueMicrotask(()=>gestes.forEach(b=>{if(b.isConnected)b.click();}));
+  }};
+  document.addEventListener("click",e=>{
+    const b=e.target instanceof Element ? e.target.closest("#btnAide,[data-nb]") : null;
+    if(!b) return;
+    if(b.matches("[data-nb]")){
+      const nav=b.closest("#navBas");
+      if(!nav) return;
+      nav.querySelectorAll("[data-nb]").forEach(x=>x.classList.toggle("actif",x===b));
+    }else{
+      b.classList.add("actif");
+      b.setAttribute("aria-pressed","true");
+    }
+    if(!pont.pret) enAttente.push(b);
+  },true);
+})();
+</script>
 <script src="availability.js?v=6a6564df" defer></script>
 <script src="comprendre.js?v=674ea341" defer></script>
 <script src="donnees.js?v=49ec48a8" defer></script>
@@ -2638,7 +2668,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="intentions.js?v=39e671d2" defer></script>
 <script src="comptes.js?v=9f5e8a5d" defer></script>
 <script src="maintenant.js?v=5ae1dc33" defer></script>
-<script src="ordonnanceur.js?v=c8368526" defer></script>
+<script src="ordonnanceur.js?v=ac58eaf0" defer></script>
 <script src="plafonds.js?v=a922a210" defer></script>
 <script src="annonces-taxonomie.js?v=3a17b2a2" defer></script>
 <script src="annonces-classement.js?v=77148c1f" defer></script>
@@ -2669,7 +2699,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideAutour.js?v=63b99e8c" defer></script>
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
-<script src="mapProviders/googleMaps.js?v=c0cec031" defer></script>
-<script src="app.js?v=7467988f" defer></script>
+<script src="mapProviders/googleMaps.js?v=b96b7b93" defer></script>
+<script src="app.js?v=acc82561" defer></script>
 </body>
 </html>

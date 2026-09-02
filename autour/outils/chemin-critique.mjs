@@ -31,6 +31,8 @@ import { chromium, devices } from "playwright";
 const RACINE = process.env.RACINE_MESURE || join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME = process.env.AUTOUR_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const LEAFLET = process.env.AUTOUR_LEAFLET_DIST || "node_modules/leaflet/dist";
+const POSITION_TEST = process.env.AUTOUR_TEST_POSITION
+  ? "?testPosition=" + encodeURIComponent(process.env.AUTOUR_TEST_POSITION) : "";
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
@@ -286,7 +288,22 @@ async function mesurer(nomProfil, options) {
   page.on("pageerror", (e) => erreurs.push(String(e.message || e).slice(0, 200)));
 
   const t0 = Date.now();
-  await page.goto("http://127.0.0.1:" + port + "/index.html", { waitUntil: "commit" });
+  await page.goto("http://127.0.0.1:" + port + "/index.html" + POSITION_TEST, { waitUntil: "commit" });
+  /* Le shell doit répondre à un contact avant que le moteur complet ne soit
+     évalué. On déclenche un `pointerdown` dès que le shell se déclare prêt et
+     mesure le temps synchrone jusqu'à l'état actif du bouton. */
+  await page.waitForFunction(() =>
+    performance.getEntriesByName("autour:shell_ready").length > 0,
+    null, { timeout: 3000 }).catch(() => {});
+  const reactionShell = await page.evaluate(() => {
+    const cible = document.querySelector("#btnAide,[data-nb]");
+    if (!cible) return null;
+    const debut = performance.now();
+    cible.dispatchEvent(new Event("pointerdown", { bubbles:true, cancelable:true }));
+    const fin = performance.now();
+    const actif = cible.classList.contains("actif") || cible.getAttribute("aria-pressed") === "true";
+    return { ms: Math.round(fin - debut), actif };
+  });
   // on laisse la séquence de démarrage se dérouler entièrement
   await page.waitForTimeout(o.attente || 9000);
   /* LA DEUXIÈME VISITE EST LA VRAIE VISITE.
@@ -310,11 +327,11 @@ async function mesurer(nomProfil, options) {
              "*/api/*", "*basemaps*", "*cdnjs*", "*fonts.g*", "*jsdelivr*",
              "*maps.googleapis*"],
     });
-    await page.goto("http://127.0.0.1:" + port + "/index.html", { waitUntil: "commit" });
+    await page.goto("http://127.0.0.1:" + port + "/index.html" + POSITION_TEST, { waitUntil: "commit" });
     await page.waitForTimeout(o.attente || 6000);
   }
 
-  const releve = await page.evaluate(() => {
+  const releve = await page.evaluate((reactionShell) => {
     const P = window.AutourPerf;
     const peintures = {};
     performance.getEntriesByType("paint").forEach((e) => {
@@ -340,20 +357,23 @@ async function mesurer(nomProfil, options) {
       },
       jalons: P ? P.rapport() : {},
       chaine: P ? P.chaine() : [],
+      tranches100: P ? P.tranches100(2000) : [],
       verdict: P ? P.verdict() : {},
       reseau: P ? P.reseau : null,
       cache: P ? P.cache : null,
+      cpu: P ? P.cpu : null,
       lcp: P ? Math.round(P.lcp) : 0,
       ressources,
       taches: (window.__tachesLongues || []).slice(0, 25),
       premierePeintureUtile: window.__premierePeintureUtile || null,
+      reactionShell,
     };
-  });
+  }, reactionShell);
 
   releve.profil = nomProfil;
   releve.erreurs = erreurs;
   releve.journalReseau = journalReseau.map((x) => ({
-    categorie: x.categorie, ms: x.ms == null ? "panne" : x.ms,
+    categorie: x.categorie, url: x.url, ms: x.ms == null ? "panne" : x.ms,
   }));
   releve.total = Date.now() - t0;
 
@@ -388,11 +408,18 @@ function afficher(r) {
   Object.entries(r.navigation).forEach(([k, v]) =>
     console.log("     " + k.padEnd(26) + (v + " ms").padStart(9)));
   if (r.lcp) console.log("     " + "LCP".padEnd(26) + (r.lcp + " ms").padStart(9));
+  if (r.reactionShell) console.log("     " + "réaction shell".padEnd(26) +
+    (r.reactionShell.ms + " ms").padStart(9) +
+    (r.reactionShell.actif ? "   état actif ✓" : "   état actif ✗"));
 
   console.log("\n── Chaîne de démarrage ──");
   r.chaine.forEach((l) =>
     console.log("     " + l.etape.padEnd(22) + String(l.a).padStart(9) +
                 "   (+" + l.duree + ")"));
+
+  console.log("\n── Tranches de 100 ms (0–2000 ms) ──");
+  r.tranches100.forEach((l) => console.log("     " + String(l.debut).padStart(4) +
+    "–" + String(l.fin).padEnd(4) + "  " + (l.jalons.join(" · ") || "—")));
 
   console.log("\n── Jalons, dans l'ordre ──");
   Object.entries(r.jalons).forEach(([k, v]) =>
@@ -419,6 +446,16 @@ function afficher(r) {
 
   console.log("\n── Réseau simulé ──");
   console.log("     " + JSON.stringify(r.journalReseau));
+  if (r.reseau) {
+    console.log("\n── Requêtes réellement parties ──");
+    console.log("     total : " + r.reseau.total +
+      " · démarrage : " + r.reseau.demarrage +
+      " · Promises partagées : " + r.reseau.partages);
+    Object.entries(r.reseau.parSource || {}).forEach(([source, nombre]) =>
+      console.log("     " + source.padEnd(24) + nombre));
+    if (Object.keys(r.reseau.partagesParSource || {}).length)
+      console.log("     partages : " + JSON.stringify(r.reseau.partagesParSource));
+  }
   if (r.cache) console.log("     cache : " + JSON.stringify(r.cache));
   if (r.erreurs.length) {
     console.log("\n── Erreurs JS ──");

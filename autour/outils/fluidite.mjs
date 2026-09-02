@@ -55,6 +55,10 @@ const serveur = createServer(async (req, res) => {
 });
 await new Promise((r) => serveur.listen(0, r));
 const BASE = "http://127.0.0.1:" + serveur.address().port;
+const POSITION_TEST = process.env.AUTOUR_TEST_POSITION
+  ? "?testPosition=" + encodeURIComponent(process.env.AUTOUR_TEST_POSITION) : "";
+const DENSE_ONLY = process.env.AUTOUR_FLUIDITE_DENSE_ONLY === "1";
+const GESTE_ONLY = process.env.AUTOUR_FLUIDITE_ONLY || "";
 
 const HUB = { lat: 50.6371, lng: 3.0713, nom: "Lille-Flandres" };
 
@@ -116,18 +120,24 @@ function scriptInstrumentation() {
     t0: performance.now(),
     counts: { setView: 0, rendre: 0, majFeuille2: 0, resoudreCollisions: 0, boundsChanged: 0 },
     heartbeatWorstMs: 0, rafWorstGapMs: 0,
+    captureGeste: false, gesteHeartbeatWorstMs: 0, gesteRafWorstGapMs: 0,
     longTasks: 0, longTaskWorstMs: 0, longTaskTotalMs: 0,
     reset() {
       this.t0 = performance.now();
       Object.keys(this.counts).forEach((k) => (this.counts[k] = 0));
       this.heartbeatWorstMs = 0; this.rafWorstGapMs = 0;
+      this.captureGeste = false; this.gesteHeartbeatWorstMs = 0; this.gesteRafWorstGapMs = 0;
       this.longTasks = 0; this.longTaskWorstMs = 0; this.longTaskTotalMs = 0;
     },
+    debuterGeste() { this.captureGeste = true; },
+    finirGeste() { this.captureGeste = false; },
     read() {
       return { ...this.counts, heartbeatWorstMs: Math.round(this.heartbeatWorstMs),
         rafWorstGapMs: Math.round(this.rafWorstGapMs), longTasks: this.longTasks,
         longTaskWorstMs: Math.round(this.longTaskWorstMs),
-        longTaskTotalMs: Math.round(this.longTaskTotalMs) };
+        longTaskTotalMs: Math.round(this.longTaskTotalMs),
+        gesteHeartbeatWorstMs: Math.round(this.gesteHeartbeatWorstMs),
+        gesteRafWorstGapMs: Math.round(this.gesteRafWorstGapMs) };
     },
   };
   window.__fluid = F;
@@ -140,6 +150,8 @@ function scriptInstrumentation() {
     const t = performance.now(), ecart = t - dernier - 32;
     dernier = t;
     if (ecart > F.heartbeatWorstMs) F.heartbeatWorstMs = ecart;
+    if (F.captureGeste && ecart > F.gesteHeartbeatWorstMs)
+      F.gesteHeartbeatWorstMs = ecart;
   }, 32);
 
   /* L'espacement des images : rAF devrait revenir toutes les ~16 ms. Un grand
@@ -149,6 +161,8 @@ function scriptInstrumentation() {
     const t = performance.now(), gap = t - dernierRaf;
     dernierRaf = t;
     if (gap > F.rafWorstGapMs) F.rafWorstGapMs = gap;
+    if (F.captureGeste && gap > F.gesteRafWorstGapMs)
+      F.gesteRafWorstGapMs = gap;
     requestAnimationFrame(battementRaf);
   };
   requestAnimationFrame(battementRaf);
@@ -215,7 +229,7 @@ async function ouvrir(navigateur, opts) {
   await page.addInitScript(scriptGoogleStub);
   await page.addInitScript(scriptInstrumentation);
   await page.addInitScript(scriptSupabaseStub);
-  await page.goto(BASE + "/index.html");
+  await page.goto(BASE + "/index.html" + POSITION_TEST);
 
   await page.waitForFunction(() => {
     const e = document.querySelector('[data-testid="maintenant-liste"]');
@@ -290,8 +304,10 @@ async function mesurer(page, nom, action) {
   await page.evaluate(() => {
     window.__fluid.reset();
     window.__cpuBase = JSON.parse(JSON.stringify((window.AutourPerf && AutourPerf.cpu) || {}));
+    window.__fluid.debuterGeste();
   });
   await action();
+  await page.evaluate(() => window.__fluid.finirGeste());
   await page.waitForTimeout(500);               // laisser retomber le travail différé
   const r = await page.evaluate(() => window.__fluid.read());
   const cpu = await page.evaluate(() => {
@@ -309,7 +325,7 @@ async function mesurer(page, nom, action) {
 async function scenarios(navigateur, etiquette) {
   const out = [];
   // 1 · déplacement continu 3 s, densité normale
-  {
+  if(!DENSE_ONLY && !GESTE_ONLY){
     const { ctx, page } = await ouvrir(navigateur, { centre: HUB, lieux: 40, evenements: 6 });
     out.push(await mesurer(page, "pan 3 s (40 lieux)", () => panContinu(page, 3000)));
     out.push(await mesurer(page, "pinch zoom (40 lieux)", () => pincementZoom(page)));
@@ -318,8 +334,11 @@ async function scenarios(navigateur, etiquette) {
   // 6 · zone dense ~120 lieux
   {
     const { ctx, page } = await ouvrir(navigateur, { centre: HUB, lieux: 120, evenements: 12 });
-    out.push(await mesurer(page, "pan 3 s (120 lieux)", () => panContinu(page, 3000)));
-    out.push(await mesurer(page, "pinch zoom (120 lieux)", () => pincementZoom(page)));
+    if(!GESTE_ONLY || GESTE_ONLY === "pan")
+      out.push(await mesurer(page, "pan 3 s (120 lieux)", () => panContinu(page, 3000)));
+    if(!GESTE_ONLY || GESTE_ONLY === "pinch")
+      out.push(await mesurer(page, "pinch zoom (120 lieux)", () => pincementZoom(page)));
+    if(GESTE_ONLY) { await ctx.close(); return out.map((m) => ({ ...m, navigateur: etiquette })); }
     // 3/4/5 · panneaux, sur la même page dense
     out.push(await mesurer(page, "ouvrir/fermer Explorer", async () => {
       await page.evaluate(() => { const b = document.querySelector('[data-nb="explorer"]'); if (b) b.click(); });
@@ -370,12 +389,13 @@ try {
 }
 
 const c = (v, n = 6) => String(v == null ? "—" : v).padStart(n);
-console.log("\n  scénario                          nav        setV  bChg  rend  mF2  coll  LT>50 pireLT  bloc  rafGap");
+console.log("\n  scénario                          nav        setV  bChg  rend  mF2  coll  LT>50 pireLT  bloc  rafGap  gBloc  gRaf");
 for (const m of lignes) {
   console.log("  " + m.nom.padEnd(32) + " " + m.navigateur.padEnd(9) +
     c(m.setView) + c(m.boundsChanged) + c(m.rendre) + c(m.majFeuille2, 5) +
     c(m.resoudreCollisions) + c(m.longTasks, 6) + c(m.longTaskWorstMs, 7) +
-    c(m.heartbeatWorstMs, 6) + c(m.rafWorstGapMs, 7));
+    c(m.heartbeatWorstMs, 6) + c(m.rafWorstGapMs, 7) +
+    c(m.gesteHeartbeatWorstMs, 6) + c(m.gesteRafWorstGapMs, 6));
 }
 
 console.log("\n──── où va le temps CPU (ms cumulés par sous-phase) ────");

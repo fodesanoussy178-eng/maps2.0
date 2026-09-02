@@ -47,11 +47,25 @@
       const id = root.requestIdleCallback(fn, { timeout: delai });
       return () => { try { root.cancelIdleCallback(id); } catch (e) {} };
     }
-    const id = setTimeout(() => fn({
-      didTimeout: true,
-      timeRemaining: () => 0,
-    }), 0);
-    return () => clearTimeout(id);
+    /* Un `setTimeout(0)` rend parfois la main, mais sous WebKit il peut être
+       rejoué avant le prochain frame et enchaîner plusieurs lots lourds. On
+       impose d'abord une image, puis une tâche suivante : le geste a ainsi
+       une vraie occasion de peindre, sans ajouter artificiellement les 200 à
+       400 ms du timeout d'idle à chaque travail différé. */
+    let minuterie = null;
+    let frame = null;
+    const lancer = () => {
+      minuterie = setTimeout(() => fn({
+        didTimeout: true,
+        timeRemaining: () => 0,
+      }), 0);
+    };
+    if (typeof root.requestAnimationFrame === "function") frame = root.requestAnimationFrame(lancer);
+    else lancer();
+    return () => {
+      if (frame != null && root.cancelAnimationFrame) root.cancelAnimationFrame(frame);
+      if (minuterie != null) clearTimeout(minuterie);
+    };
   }
 
   /* ===================================================================
@@ -92,6 +106,8 @@
   function parLots(items, traiter, options) {
     const o = options || {};
     const liste = items || [];
+    const lotMin = Number.isFinite(o.lotMin) && o.lotMin > 0 ? o.lotMin : LOT_MIN;
+    const budget = Number.isFinite(o.budgetMs) && o.budgetMs > 0 ? o.budgetMs : BUDGET_MS;
     let i = 0;
     let annule = false;
     let stopCourant = null;
@@ -110,7 +126,7 @@
           dansCeLot += 1;
           const reste = echeance && typeof echeance.timeRemaining === "function"
             ? echeance.timeRemaining() : 0;
-          if (dansCeLot >= LOT_MIN && (reste <= 1 || now() - debut >= BUDGET_MS)) break;
+          if (dansCeLot >= lotMin && (reste <= 1 || now() - debut >= budget)) break;
         }
         if (typeof o.apresLot === "function") o.apresLot(i, liste.length);
         if (i >= liste.length) return fini({ annule: false, traites: i });

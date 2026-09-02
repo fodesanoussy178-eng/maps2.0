@@ -49,6 +49,8 @@ const serveur = createServer(async (req, res) => {
 });
 await new Promise((r) => serveur.listen(0, r));
 const BASE = "http://127.0.0.1:" + serveur.address().port;
+const POSITION_TEST = process.env.AUTOUR_TEST_POSITION
+  ? "?testPosition=" + encodeURIComponent(process.env.AUTOUR_TEST_POSITION) : "";
 
 /* Lille-Flandres : un hub, donc une tuile précalculée déjà présente dans le
    dépôt. C'est le scénario qui doit être le plus rapide de tous. */
@@ -194,7 +196,7 @@ async function ouvrir(navigateur, opts) {
     }) };
   });
 
-  await page.goto(BASE + "/index.html");
+  await page.goto(BASE + "/index.html" + POSITION_TEST);
   return {
     ctx,
     page,

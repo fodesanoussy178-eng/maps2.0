@@ -835,7 +835,9 @@ const PERF = {
   rendus: {panneau:0, carte:0},
   cpu: Object.create(null),
   erreurs: 0,
-  reseau: {total:0, demarrage:0, parSource:Object.create(null)},
+  /* Le noyau historique commence par `reseau: {total:0, demarrage:0, parSource:Object.create(null)}` ; les compteurs de partage s'ajoutent sans changer ce contrat de lecture utilisé par les outils existants. */
+  reseau: {total:0, demarrage:0, partages:0,
+           parSource:Object.create(null), partagesParSource:Object.create(null)},
   demarrageTermine: false,
   expositionPlanifiee: false,
   exposer(){
@@ -865,6 +867,16 @@ const PERF = {
     }catch(e){}
     this.exposer();
   },
+  jalonAt(nom, instant){
+    if(this.vus.has(nom)) return;
+    this.vus.add(nom);
+    try{
+      const t = Number(instant);
+      this.temps[nom] = Math.round(Number.isFinite(t) ? t : performance.now());
+      performance.mark("autour:"+nom, {startTime:this.temps[nom]});
+    }catch(e){}
+    this.exposer();
+  },
   requete(source){
     const nom = String(source || "autre");
     this.reseau.total += 1;
@@ -876,6 +888,12 @@ const PERF = {
        secondes. Sans ça, « Autour est lent » reste une impression. */
     const depart = (typeof performance !== "undefined" ? performance.now() : Date.now());
     return ()=>this.fini(nom, depart);
+  },
+  partage(source){
+    const nom = String(source || "autre");
+    this.reseau.partages += 1;
+    this.reseau.partagesParSource[nom] = (this.reseau.partagesParSource[nom] || 0) + 1;
+    this.exposer();
   },
   /* Une source qui dépasse la seconde est nommée. C'est la seule façon de
      répondre à « qu'est-ce qui est lent ? » par autre chose qu'une hypothèse. */
@@ -954,16 +972,27 @@ const PERF = {
      Un maillon absent n'a pas eu lieu — une source en panne, un cache vide —
      et c'est une information, pas un trou. */
   CHAINE: [
-    ["boot UI",              "ui_ready"],
-    ["position",             ["position_serveur","position_memoire","geolocation_ready","position_inconnue"]],
-    ["cache local",          "cache_lu"],
-    ["1re source locale",    "source_locale"],
-    ["Overpass",             "overpass_done"],
-    ["Nominatim",            "nominatim_done"],
-    ["Supabase",             "supabase_pret"],
-    ["classement",           "scoring_fait"],
-    ["1re suggestion",       "premier_lieu"],
+    ["HTML disponible",          "html_disponible"],
+    ["shell téléchargé",         "shell_telecharge"],
+    ["shell évalué",             "shell_evalue"],
+    ["shell utilisable",         "shell_ready"],
+    ["bundle téléchargé",        "bundle_telecharge"],
+    ["bundle évalué",            "bundle_evalue"],
+    ["UI prête",                 "ui_ready"],
+    ["initialisation carte",     "map_init_debut"],
+    ["carte utilisable",         "map_ready"],
+    ["position disponible",      "position_disponible"],
+    ["contexte territorial",     "contexte_territorial_disponible"],
+    ["bassin local disponible",  "bassin_local_disponible"],
+    ["premier classement",       "premier_classement_termine"],
+    ["premiers marqueurs",       "premiers_marqueurs_rendus"],
+    ["premier panneau",          "premier_panneau_utilisable"],
+    ["premier contenu visible",  "premier_contenu_visible"],
   ],
+  /* Noms historiques conservés pour les rapports et scripts qui consomment
+     encore la chaîne précédente ; ils ne changent pas les jalons détaillés. */
+  CHAINES_COMPATIBILITE: ["boot UI", "position", "cache local", "1re source locale",
+    "Overpass", "Nominatim", "Supabase", "classement", "1re suggestion"],
   chaine(){
     const r = this.rapport();
     const lire = (cle)=>{
@@ -973,15 +1002,56 @@ const PERF = {
       }
       return r[cle] != null ? r[cle] : null;
     };
+    /* La carte est volontairement initialisée APRÈS le premier contenu. Une
+       lecture linéaire de `CHAINE` ferait donc mesurer le bassin depuis
+       `map_ready` et transformerait son vrai coût en zéro. Les durées suivent
+       les dépendances réelles, tout en conservant l'ordre lisible demandé par
+       le rapport. */
+    const dependances = {
+      html_disponible: [],
+      shell_telecharge: ["html_disponible"],
+      shell_evalue: ["shell_telecharge"],
+      shell_ready: ["shell_evalue"],
+      bundle_telecharge_debut: ["shell_ready"],
+      bundle_telecharge: ["bundle_telecharge_debut"],
+      bundle_evalue: ["bundle_telecharge"],
+      ui_ready: ["bundle_evalue"],
+      map_init_debut: ["ui_ready"],
+      map_ready: ["map_init_debut"],
+      /* En position de test, le jalon est posé dans la même pile que `demarrer`,
+         juste avant `ui_ready`. Le bundle évalué est donc sa vraie frontière,
+         sinon la lecture lui attribue à tort tout le temps de téléchargement. */
+      position_disponible: ["bundle_evalue"],
+      contexte_territorial_disponible: ["position_disponible"],
+      bassin_local_disponible: ["position_disponible"],
+      premier_classement_termine: ["position_disponible", "bassin_local_disponible"],
+      premiers_marqueurs_rendus: ["position_disponible", "map_ready", "premier_classement_termine"],
+      premier_panneau_utilisable: ["ui_ready"],
+      premier_contenu_visible: ["position_disponible", "bassin_local_disponible", "premier_classement_termine"],
+    };
     const lignes = [];
-    let precedent = 0;
     this.CHAINE.forEach(([nom, cle])=>{
       const t = lire(cle);
       if(t == null){ lignes.push({etape:nom, a:"—", duree:"—"}); return; }
+      const avant = (dependances[cle] || []).map(lire)
+        .filter(v=>v != null && v <= t);
+      const precedent = avant.length ? Math.max(...avant) : 0;
       lignes.push({etape:nom, a:t+" ms", duree:Math.max(0, t-precedent)+" ms"});
-      precedent = Math.max(precedent, t);
     });
     return lignes;
+  },
+  tranches100(max = 2000){
+    const r = this.rapport();
+    const points = Object.entries(r)
+      .filter(([,t])=>Number.isFinite(t) && t >= 0 && t <= max)
+      .sort((a,b)=>a[1]-b[1]);
+    const out = [];
+    for(let debut = 0; debut < max; debut += 100){
+      const fin = debut + 100;
+      out.push({debut, fin,
+        jalons:points.filter(([,t])=>t >= debut && t < fin).map(([nom,t])=>nom+"="+t+"ms")});
+    }
+    return out;
   },
 };
 try{
@@ -992,6 +1062,35 @@ try{
 window.AutourPerf = PERF;
 window.addEventListener("error",()=>{ PERF.erreurs += 1; PERF.exposer(); });
 window.addEventListener("unhandledrejection",()=>{ PERF.erreurs += 1; PERF.exposer(); });
+
+/* Une seule porte par requête logique, même quand deux moteurs demandent la
+   même donnée dans la même image. Les générations gardent leur rôle : elles
+   décident si une réponse peut encore modifier l'écran ; ce registre décide
+   seulement si le réseau doit être appelé une ou deux fois.
+
+   La Promise partagée n'est volontairement pas liée à l'AbortSignal d'un
+   appelant. Un changement d'écran peut donc abandonner son résultat sans
+   avorter la donnée dont un autre moteur a encore besoin. La réponse reste
+   disponible pour le cache applicatif une fois terminée. */
+const requetesEnVol = new Map();
+function partagerRequete(cle, source, producteur){
+  const nom = String(cle);
+  const existante = requetesEnVol.get(nom);
+  if(existante){
+    PERF.partage(source);
+    return existante;
+  }
+  let promesse;
+  promesse = Promise.resolve().then(producteur).finally(()=>{
+    if(requetesEnVol.get(nom) === promesse) requetesEnVol.delete(nom);
+  });
+  requetesEnVol.set(nom, promesse);
+  return promesse;
+}
+function jalonBassinLocal(){
+  PERF.jalon("bassin_local_disponible");
+  PERF.jalon("source_locale");
+}
 
 /* ---- Un seul rendu par image ---------------------------------------------
    Chaque source de données (cache, Google, OpenStreetMap, événements,
@@ -1035,6 +1134,19 @@ function planifierRendu(quoi){
 function apresPeinture(f){
   if(typeof requestAnimationFrame !== "function"){ setTimeout(f, 0); return; }
   requestAnimationFrame(()=>requestAnimationFrame(()=>f()));
+}
+let premierContenuVisiblePlanifie = false;
+function marquerPremierContenuVisible(){
+  if(PERF.vus.has("premier_contenu_visible") || premierContenuVisiblePlanifie) return;
+  if(!(lieux.length || (selectionAccueil && selectionAccueil.length))) return;
+  premierContenuVisiblePlanifie = true;
+  const marquer = ()=>{
+    premierContenuVisiblePlanifie = false;
+    if(lieux.length || (selectionAccueil && selectionAccueil.length))
+      PERF.jalon("premier_contenu_visible");
+  };
+  if(typeof requestAnimationFrame === "function") requestAnimationFrame(marquer);
+  else setTimeout(marquer, 16);
 }
 /* `requestIdleCallback` SANS délai n'a aucune échéance : tant que le fil
    principal a du travail — et au démarrage il en a en permanence — il peut
@@ -2827,34 +2939,42 @@ function ecrireCacheMetropole(bassin, liste){
 }
 
 function actualiserBassinTerritorial(lat,lng){
-  if(!sbLecture) return;
+  if(!sbLecture) return Promise.resolve(null);
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  if(bassinsTerritoriauxResolus.has(cle)){
+    bassinTerritorialActif = bassinsTerritoriauxResolus.get(cle);
+    return Promise.resolve(bassinTerritorialActif);
+  }
   /* La résolution mutualise la synchronisation par territoire. Elle ne
      déclenche aucune collecte et n'influence ni l'interface ni le classement
      de cette requête ; une zone inconnue devient seulement un candidat DB. */
-  const finTerritoire = PERF.requete("supabase_territoire");
-  void Promise.resolve(sbLecture.rpc("resoudre_territoire", {
-    p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
-  })).then(({data, error})=>{
-    /* La résolution servait uniquement à mutualiser la synchronisation ; on
-       retient désormais son résultat, parce que c'est lui qui nomme le bassin
-       dans lequel « Pour toi » a le droit de chercher. */
-    if(error){
-      console.error("Résolution du territoire :", error.message);
+  return partagerRequete("territoire:bassin:"+cle, "supabase_territoire", async()=>{
+    const finTerritoire = PERF.requete("supabase_territoire");
+    try{
+      const {data, error} = await sbLecture.rpc("resoudre_territoire", {
+        p_lat:Number(lat), p_lng:Number(lng), p_nom:communeUtile() || null
+      });
+      /* La résolution servait uniquement à mutualiser la synchronisation ; on
+         retient désormais son résultat, parce que c'est lui qui nomme le
+         bassin dans lequel « Pour toi » a le droit de chercher. */
+      if(error){
+        console.error("Résolution du territoire :", error.message);
+        bassinTerritorialActif = null;
+        return null;
+      }
+      bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
+      bassinsTerritoriauxResolus.set(cle, bassinTerritorialActif);
+      if(bassinTerritorialActif) PERF.jalon("bassin_territorial_disponible");
+      /* Le bassin ne retient jamais Explorer : il déclenche sa propre couche
+         uniquement après avoir été déterminé, et cette couche est elle-même
+         idempotente. */
+      rafraichirMetropole();
+      return bassinTerritorialActif;
+    }catch(e){
       bassinTerritorialActif = null;
-      return;
-    }
-    bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
-    /* LE DÉCLENCHEMENT EST ICI, ET PAS AILLEURS. La résolution du territoire
-       n'est pas attendue — pour ne pas retarder Explorer — mais le bassin ne
-       porte un nom qu'une fois qu'elle a répondu. Le seul appel qui existait
-       partait à la fin du chargement des couches : il arrivait presque
-       toujours AVANT cette réponse, trouvait `bassinTerritorialActif` à null,
-       sortait aussitôt, et rien ne réessayait jamais. « Pour toi » restait
-       vide en permanence. On déclenche donc au moment exact où le bassin
-       devient connu. `rafraichirMetropole` est idempotente, l'autre appel
-       reste sans effet quand il double celui-ci. */
-    rafraichirMetropole();
-  }).catch(()=>{ bassinTerritorialActif = null; }).finally(finTerritoire);
+      return null;
+    }finally{ finTerritoire(); }
+  });
 }
 
 async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
@@ -3608,16 +3728,34 @@ function communeUtile(){
 }
 
 let relaisDatatourisme = null;
+const CACHE_DATATOURISME_MS = 5 * 60 * 1000;
+const cacheDatatourisme = new Map();
 async function lieuxDatatourisme(lat,lng,signal){
   if(relaisDatatourisme === false) return [];
   try{
     const fournisseur = window.AutourProviders && AutourProviders.datatourisme;
     if(!fournisseur) return [];
-    PERF.requete("datatourisme");
-    const places = await fournisseur.nearby(lat,lng,{signal});
-    relaisDatatourisme = true;
-    return places.map(p=>AutourProviders.versInterne(p))
-      .filter(l=>l && !estTemporaire(l));
+    /* Le démarrage et le chargement de zone partent volontairement ensemble.
+       L'API arrondit déjà la coordonnée à deux décimales : c'est donc la clé
+       exacte de ce que le serveur considère comme la même zone. */
+    const cle = "datatourisme:"+lat.toFixed(2)+","+lng.toFixed(2);
+    const cache = cacheDatatourisme.get(cle);
+    if(cache && Date.now()-cache.t < CACHE_DATATOURISME_MS){
+      PERF.touche("datatourisme", true);
+      return cache.places;
+    }
+    PERF.touche("datatourisme", false);
+    return await partagerRequete(cle, "datatourisme", async()=>{
+      PERF.requete("datatourisme");
+      /* Le signal appartient à un moteur, pas à la donnée partagée. Les
+         générations filtrent ensuite une réponse devenue obsolète. */
+      const places = await fournisseur.nearby(lat,lng,{});
+      relaisDatatourisme = true;
+      const resultat = places.map(p=>AutourProviders.versInterne(p))
+        .filter(l=>l && !estTemporaire(l));
+      cacheDatatourisme.set(cle, {t:Date.now(), places:resultat});
+      return resultat;
+    });
   }catch(e){ return []; }
 }
 
@@ -3631,6 +3769,10 @@ async function evenementsOpenAgenda(){
 }
 
 let dernierNom = [0,0];         // là où le nom de commune a été demandé
+let derniereVillePosition = null;
+const SEUIL_REVERSE_GEOCODAGE_M = 1200;
+const CACHE_REVERSE_GEOCODAGE_MS = 30 * 60 * 1000;
+const cacheReverseGeocodage = new Map();
 
 /* Nominatim, comme Overpass, passe par notre propre origine quand elle existe :
    sa politique d'usage plafonne à une requête par seconde et interdit le
@@ -3638,7 +3780,7 @@ let dernierNom = [0,0];         // là où le nom de commune a été demandé
    pas — c'est exactement ce qu'un cache doit absorber. Le repli direct reste
    en place pour le développement local et les hébergements sans fonctions. */
 let relaisCommune = null;            // null = pas encore su, false = absent
-const communesEnVol = new Map();     // une seule requête par quartier à la fois
+const communesEnVol = new Map();     // compatibilité locale : même Promise par quartier
 async function communeRelayee(lat,lng){
   if(relaisCommune === false) return undefined;
   /* `nomCommune`, `detecterVille` et le rechargement de zone demandaient la
@@ -3647,7 +3789,7 @@ async function communeRelayee(lat,lng){
      promesse — le CDN ne peut pas dédoublonner ce qui part simultanément. */
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
   if(communesEnVol.has(cle)) return communesEnVol.get(cle);
-  const promesse = (async ()=>{
+  const promesse = partagerRequete("commune:"+cle, "commune", async()=>{
   try{
     PERF.requete("commune");
     const r = await fetch("/api/commune?lat="+lat+"&lng="+lng);
@@ -3658,21 +3800,46 @@ async function communeRelayee(lat,lng){
     PERF.jalon("nominatim_done");
     return (j && j.commune) || null;
   }catch(e){ return undefined; }
-  })();
+  });
   communesEnVol.set(cle, promesse);
   promesse.finally(()=>communesEnVol.delete(cle));
   return promesse;
 }
 
+async function reverseCommune(lat,lng){
+  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  const cache = cacheReverseGeocodage.get(cle);
+  if(cache && Date.now()-cache.t < CACHE_REVERSE_GEOCODAGE_MS){
+    PERF.touche("reverse", true);
+    return cache.nom;
+  }
+  PERF.touche("reverse", false);
+  return partagerRequete("reverse:"+cle, "reverse", async()=>{
+    const parRelais = await communeRelayee(lat,lng);
+    if(parRelais !== undefined){
+      cacheReverseGeocodage.set(cle, {t:Date.now(), nom:parRelais || null});
+      return parRelais || null;
+    }
+    const fini = PERF.requete("reverse");
+    let minuteur = null;
+    try{
+      const stop = new AbortController();
+      minuteur = setTimeout(()=>stop.abort(), 6000);
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`,
+        {signal:stop.signal, headers:{"Accept-Language":"fr"}});
+      if(!r.ok) return null;
+      const j = await r.json(); const a=j.address||{};
+      PERF.jalon("nominatim_done");
+      const nom = a.city||a.town||a.village||a.municipality||a.suburb||null;
+      cacheReverseGeocodage.set(cle, {t:Date.now(), nom});
+      return nom;
+    }catch(e){ return null; }
+    finally{ clearTimeout(minuteur); fini(); }
+  });
+}
+
 async function nomCommune(lat,lng){
-  const parRelais = await communeRelayee(lat,lng);
-  if(parRelais !== undefined) return parRelais || "ton quartier";
-  try{
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`);
-    const j = await r.json(); const a=j.address||{};
-    PERF.jalon("nominatim_done");
-    return a.city||a.town||a.village||a.municipality||a.suburb||"ton quartier";
-  }catch(e){ return "ton quartier"; }
+  return (await reverseCommune(lat,lng)) || "ton quartier";
 }
 
 /* ================================================================== */
@@ -4512,6 +4679,23 @@ const cleZoneStatique = (lat,lng)=> lat.toFixed(1)+","+lng.toFixed(1);
    en afficher cinq. Le reste de la tuile ne sert à rien tant qu'on n'a pas
    bougé — et si on bouge, les vraies sources auront répondu depuis longtemps. */
 const RAPIDE_VOISINAGE = 25;
+const RAPIDE_PREMIERE_PASSE = 8;
+
+function fusionnerZoneParEtapes(liste, estCourante, options){
+  const o = options || {};
+  const immediats = liste.slice(0, RAPIDE_PREMIERE_PASSE);
+  const reste = liste.slice(RAPIDE_PREMIERE_PASSE);
+  if(immediats.length) fusionner(immediats, o.flux, o.immediat);
+  if(!reste.length) return;
+  /* Un premier lot court donne un classement et un contenu peignable. Le
+     reliquat reste strictement identique au résultat final, mais arrive après
+     la première image pour ne pas transformer 25 normalisations en une seule
+     tâche WebKit de plus de 200 ms. */
+  quandLibre(()=>{
+    if(!estCourante()) return;
+    fusionner(reste, o.flux, o.reste);
+  });
+}
 
 async function lieuxDeZone(lat,lng){
   if(zonesDisponibles === false) return null;
@@ -5297,13 +5481,20 @@ function installerCarte(){
      niveau de zoom. Tant qu'elle ne change pas, rien ne repart — ni le rendu,
      ni le réseau. Dès qu'elle change, tout repart normalement. */
   let empreinteVue = null;
+  let moveendApresGeste = false;
   const empreinteDeLaVue = ()=>{
     const c = map.getCenter();
     return c.lat.toFixed(3)+","+c.lng.toFixed(3)+"@"+map.getZoom();
   };
   map.on("moveend zoomend", ()=>{
     const fournisseurGoogleActif = window.AutourMapProviders && AutourMapProviders.googleMaps;
-    if(fournisseurGoogleActif) fournisseurGoogleActif.synchroniserDepuisLeaflet(map);
+    const repriseGeste = moveendApresGeste;
+    moveendApresGeste = false;
+    /* Ce moveend est notre reprise différée de la synchro finale : la vue
+       Google vient déjà d'en être la source. La renvoyer vers Google ici
+       recréerait un bounds_changed artificiel et parfois un second cycle de
+       geste sous WebKit. */
+    if(fournisseurGoogleActif && !repriseGeste) fournisseurGoogleActif.synchroniserDepuisLeaflet(map);
     document.body.classList.toggle("loin", map.getZoom() < 15);
     /* PENDANT UN GESTE GOOGLE, ON NE RECOMPOSE PAS À CHAQUE IMAGE.
 
@@ -5316,7 +5507,7 @@ function installerCarte(){
        bouge pas ; seul le travail redondant disparaît. */
     if(fournisseurGoogleActif && fournisseurGoogleActif.enGeste && fournisseurGoogleActif.enGeste())
       return;
-    majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions();
+    if(!repriseGeste) majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions();
     // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
     // faisait saccader la carte sur téléphone
     // on ne relance rien tant que la carte bouge : un balayage de trois
@@ -5326,7 +5517,7 @@ function installerCarte(){
       const vue = empreinteDeLaVue();
       if(vue === empreinteVue) return;   // même vue : rien à refaire
       empreinteVue = vue;
-      rendre();                          // les grappes suivent le zoom
+      rendre({progressif:true});         // les grappes suivent le zoom par lots
       const c = map.getCenter();
       chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
       chargerDonneesTemporaires(c.lat, c.lng);
@@ -5339,13 +5530,25 @@ function installerCarte(){
          feuille. Quand la zone était déjà en cache, rien n'arrivait, rien ne
          se redessinait, et le bloc continuait d'afficher « rien en cours près
          de toi » au-dessus d'une carte pleine d'événements en cours. */
-      planifierRendu({accueil:true, feuille:true});
+      /* Le fond et les marqueurs ont déjà répondu au geste. Le classement de
+         la feuille n'a pas à retenir le frame de sortie d'un pinch : il peut
+         suivre dans une tranche d'inactivité bornée, comme les autres
+         enrichissements hors viewport. */
+      quandLibre(()=>planifierRendu({accueil:true, feuille:true}));
       /* Le contexte territorial suit le point regardé — et il décide LUI-MÊME
          s'il faut réévaluer. Un déplacement de trente mètres ne déclenche
          rien ; quatre cents mètres ou un changement de zone, oui. Et
          réévaluer ne veut jamais dire rappeler une source. */
       reevaluerTerritorial();
     }, 350);
+  });
+  /* Le fournisseur garde son état « geste » pendant la dernière synchro
+     Leaflet afin que le listener ci-dessus ne lance pas de cascade lourde dans
+     le même frame. Une image plus tard, on rejoue seulement l'événement de
+     fin : la logique existante cadre, charge et planifie le rendu progressif. */
+  window.addEventListener("autour:google-map-gesture-end",()=>{
+    moveendApresGeste = true;
+    requestAnimationFrame(()=>{ if(map) map.fire("moveend"); });
   });
   // toucher la carte referme la feuille : la carte reprend tout l'écran
   map.on("click", ()=>{ if(feuilleNiveau !== null) fermerFeuille2(); });
@@ -5439,6 +5642,7 @@ async function demarrer(coords){
     positionMoi = null; commune = COMMUNE_INCONNUE;
   }
   PERF.jalon("position_" + (originePosition || "inconnue"));
+  if(positionMoi) PERF.jalon("position_disponible");
   // un lien partagé décide de ce qu'on regarde, sans toucher à ta position
   const partage = lieuPartage();
   // un lien vers un événement ne porte pas de coordonnées : on reste sur la
@@ -5496,7 +5700,7 @@ async function demarrer(coords){
     majEnteteLieu();
     majAccueil();
   }
-  if(rapide){ PERF.jalon("premier_lieu"); PERF.jalon("source_locale"); }
+  if(rapide){ PERF.jalon("premier_lieu"); jalonBassinLocal(); }
 
   /* Rien en mémoire : c'est le tout premier démarrage. On va chercher le jeu
      pré-calculé de la zone TOUT DE SUITE — avant la peinture, parce que c'est
@@ -5544,8 +5748,8 @@ function demarrerSurZonePrecalculee(lat,lng){
   lieuxDeZone(lat,lng).then(depart=>{
     if(!generationCourante(generation) || !depart || !depart.length) return;
     if(lieux.length) return;          // le réseau a déjà répondu : tant mieux
-    fusionner(depart);
-    PERF.jalon("source_locale");
+    fusionnerZoneParEtapes(depart, ()=>generationCourante(generation));
+    jalonBassinLocal();
     PERF.jalon("premier_lieu");
     charge(null);
   }).catch(()=>{}).finally(()=>terminerGeneration(generation));
@@ -5572,7 +5776,7 @@ function precalculPourZone(lat, lng, portee){
        est exactement le cas qu'elle est censée couvrir : réseau lent, Overpass
        qui traîne. Quand les données fraîches sont déjà là, elle se tait. */
     if(lieux.some(dansZoneActive)) return;
-    fusionner(depart);
+    fusionnerZoneParEtapes(depart, ()=>porteeValide(portee));
     PERF.jalon("hub_zone_demandee");
     planifierRendu({accueil:true, carte:true, feuille:true});
   }).catch(()=>{});
@@ -5621,7 +5825,7 @@ function chargerLeDemarrage(rapide){
     fusionner(enCache);
     charge(null);
     PERF.jalon("cached_pois_visible");
-    PERF.jalon("source_locale");
+    jalonBassinLocal();
     PERF.jalon("premier_lieu");
   }
 
@@ -6465,14 +6669,199 @@ function empreinteMarqueur(l){
     .map(v=>v==null?"":String(v)).join("|");
 }
 
-function rendre(){
+/* Le pinch dense ne doit pas confondre « sélection complète » et « tout le
+   DOM maintenant ». La sélection reste entière ; après un geste on donne
+   seulement la priorité aux marqueurs déjà présents et à ceux dans le
+   viewport, puis le reste passe par le même rendu réutilisable, par lots. */
+const RENDU_PROGRESSIF_MAX_INITIAL = 36;
+let renduCarteProgressif = null;
+let annulerRenduCarteProgressif = null;
+let renduCarteEnAttente = false;
+const RENDU_GESTE_MAX_VISIBLE = 36;
+let restaurationDensitePlanifiee = 0;
+
+function reduireDensitePendantGeste(){
+  let visibles = 0;
+  marqueurs.forEach((marqueur, id)=>{
+    const element = marqueur && marqueur.getElement && marqueur.getElement();
+    if(!element) return;
+    const garder = visibles < RENDU_GESTE_MAX_VISIBLE || id === lieuEnAvant;
+    if(garder) visibles++;
+    /* `display:none` retire les nœuds secondaires du calcul de peinture de
+       Leaflet pendant le geste ; ils restent toutefois dans `marqueurs` et
+       sont réactivés progressivement après stabilisation. */
+    element.style.display = garder ? "" : "none";
+    if(map && !garder && map.hasLayer(marqueur)) map.removeLayer(marqueur);
+  });
+}
+
+function restaurerDensiteApresGeste(){
+  const liste = [...marqueurs.values()];
+  const finir = ()=>{
+    if(map){ majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions(); }
+  };
+  if(!ORDO || !ORDO.parLots){
+    let i = 0;
+    const suite = ()=>{
+      const fin = Math.min(i+6,liste.length);
+      for(;i<fin;i++){
+        const element = liste[i] && liste[i].getElement && liste[i].getElement();
+        if(element) element.style.visibility = "";
+      }
+      if(i<liste.length) setTimeout(suite,0); else finir();
+    };
+    suite();
+    return;
+  }
+  ORDO.parLots(liste,(marqueur)=>{
+    const element = marqueur && marqueur.getElement && marqueur.getElement();
+    if(element) element.style.display = "";
+  },{lotMin:6,budgetMs:3}).then(finir,finir);
+}
+
+function planifierRestaurationDensite(){
+  clearTimeout(restaurationDensitePlanifiee);
+  /* Laisser plusieurs frames de stabilité avant de remettre les 120 nœuds et
+     de mesurer toutes leurs étiquettes. Le geste est déjà terminé ; cette
+     marge garantit néanmoins qu'un relâchement ne se transforme pas en trou
+     de frame immédiatement après le pinch. */
+  restaurationDensitePlanifiee = setTimeout(()=>{
+    restaurationDensitePlanifiee = 0;
+    restaurerDensiteApresGeste();
+    if(map){ majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions(); }
+  }, 650);
+}
+
+window.addEventListener("autour:google-map-gesture-start",()=>{
+  if(annulerRenduCarteProgressif) annulerRenduCarteProgressif();
+  annulerRenduCarteProgressif = null;
+  renduCarteProgressif = null;
+  clearTimeout(restaurationDensitePlanifiee);
+  restaurationDensitePlanifiee = 0;
+  reduireDensitePendantGeste();
+});
+
+function identifiantItemCarte(item){
+  if(item && item.seul) return item.seul.id;
+  if(item && item.pile){
+    const tete = item.pile[0];
+    return tete ? "pile:"+tete.id+"x"+item.pile.length : null;
+  }
+  if(item && item.grappe){
+    const g = item.grappe;
+    if(!g.length) return null;
+    const lat = g.reduce((s,l)=>s+l.lat,0)/g.length;
+    const lng = g.reduce((s,l)=>s+l.lng,0)/g.length;
+    return "grappe:"+lat.toFixed(4)+","+lng.toFixed(4)+"x"+g.length;
+  }
+  return null;
+}
+
+function coordonneesItemCarte(item){
+  if(item && item.seul) return [item.seul.lat,item.seul.lng];
+  if(item && item.pile){
+    const l = item.pile[0];
+    return l ? [l.lat,l.lng] : null;
+  }
+  if(item && item.grappe){
+    const g = item.grappe;
+    if(!g.length) return null;
+    return [g.reduce((s,l)=>s+l.lat,0)/g.length,
+      g.reduce((s,l)=>s+l.lng,0)/g.length];
+  }
+  return null;
+}
+
+function carteEstEnGeste(){
+  const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
+  return !!(fournisseur && fournisseur.enGeste && fournisseur.enGeste());
+}
+
+function itemsPrioritairesCarte(items){
+  if(!map || items.length <= RENDU_PROGRESSIF_MAX_INITIAL) return items;
+  const presents = items.filter(item=>marqueurs.has(identifiantItemCarte(item)));
+  const bounds = map.getBounds().pad(.18);
+  const proches = items.filter(item=>{
+    const c = coordonneesItemCarte(item);
+    return c && bounds.contains(c);
+  });
+  const vus = new Set(), out = [];
+  [...presents,...proches,...items].forEach(item=>{
+    const id = identifiantItemCarte(item);
+    if(id == null || vus.has(id) || out.length >= RENDU_PROGRESSIF_MAX_INITIAL) return;
+    vus.add(id); out.push(item);
+  });
+  return out;
+}
+
+function programmerRenduCarteProgressif(items, premier, attendus){
+  const reste = items.filter(item=>!premier.includes(item));
+  if(!reste.length) return;
+  const jeton = {};
+  if(annulerRenduCarteProgressif) annulerRenduCarteProgressif();
+  renduCarteProgressif = {jeton, attendus};
+  if(!ORDO || !ORDO.parLots){
+    /* Ce chemin n'existe que si le module d'ordonnancement n'a pas pu être
+       chargé. Il reste fragmenté par une tâche afin que Safari respire. */
+    let i = 0;
+    const suite = ()=>{
+      if(!renduCarteProgressif || renduCarteProgressif.jeton !== jeton || carteEstEnGeste()) return;
+      const fin = Math.min(i+3,reste.length);
+      for(;i<fin;i++) rendre({progressif:true,lot:true,item:reste[i],attendus,jeton});
+      if(i<reste.length) setTimeout(suite,0);
+      else terminer();
+    };
+    const terminer = ()=>{
+      if(!renduCarteProgressif || renduCarteProgressif.jeton !== jeton) return;
+      renduCarteProgressif = null; annulerRenduCarteProgressif = null;
+      planifierRestaurationDensite();
+    };
+    setTimeout(suite,0);
+    return;
+  }
+  const valide = ()=>renduCarteProgressif && renduCarteProgressif.jeton === jeton && !carteEstEnGeste();
+  const terminer = ()=>{
+    if(!renduCarteProgressif || renduCarteProgressif.jeton !== jeton) return;
+    renduCarteProgressif = null; annulerRenduCarteProgressif = null;
+    planifierRestaurationDensite();
+  };
+  const travail = ORDO.parLots(reste,
+    item=>{ if(valide()) rendre({progressif:true,lot:true,item,attendus,jeton}); },
+    {lotMin:3, budgetMs:4, valide,
+      recevoirAnnulation:(annuler)=>{ annulerRenduCarteProgressif = annuler; }});
+  travail.then(terminer,terminer);
+}
+
+function rendre(options){
+  const o = options || {};
   const debutCpu = performance.now();
   PERF.rendus.carte += 1;
   PERF.exposer();
   // la pastille ne dépend pas de la carte : elle doit suivre même si Leaflet
   // n'est pas arrivé, sinon elle reste muette là où l'application marche
   majBadgeMaintenant();
-  if(!map){ PERF.travail("rendu_carte", debutCpu); return; }
+  if(!map){
+    marquerPremierContenuVisible();
+    PERF.travail("rendu_carte", debutCpu);
+    return;
+  }
+  /* Une arrivée de données peut demander un rendu au milieu d'un pinch. Le
+     geste garde le fil principal ; la passe post-geste le reprendra avec une
+     sélection progressive. */
+  if(carteEstEnGeste() && !o.progressif){
+    renduCarteEnAttente = true;
+    PERF.travail("rendu_carte", debutCpu);
+    return;
+  }
+  if(o.lot && (!renduCarteProgressif || renduCarteProgressif.jeton !== o.jeton || carteEstEnGeste())){
+    PERF.travail("rendu_carte", debutCpu);
+    return;
+  }
+  if(renduCarteProgressif && !o.lot && annulerRenduCarteProgressif){
+    annulerRenduCarteProgressif();
+    annulerRenduCarteProgressif = null;
+    renduCarteProgressif = null;
+  }
   majIndexEvenements();
   if(!rendre.mesure){ rendre.mesure = true; PERF.jalon("markers_ready"); }
   // en navigation, la carte n'appartient qu'à l'itinéraire
@@ -6483,12 +6872,18 @@ function rendre(){
     return;
   }
   const garder = new Set();
-  const choisis = limiterMarqueurs(selectionner());
-  majBandeauVide(choisis.length);
+  const choisis = o.lot ? [] : limiterMarqueurs(selectionner());
+  if(!o.lot) majBandeauVide(choisis.length);
   /* La carte ne reconstruit plus le panneau. Les deux consomment la même
      sélection, mais sont planifiés séparément : un zoom ou un changement de
      marqueur ne doit pas recréer tous les boutons et perdre le focus. */
-  empilerEvenements(grouper(choisis)).forEach(item=>{
+  const items = o.lot ? [o.item] : empilerEvenements(grouper(choisis));
+  const attendus = o.attendus || new Set(items.map(identifiantItemCarte).filter(Boolean));
+  const aRendre = (!o.lot && o.progressif && items.length > RENDU_PROGRESSIF_MAX_INITIAL)
+    ? itemsPrioritairesCarte(items) : items;
+  if(!o.lot && o.progressif && items.length > aRendre.length)
+    programmerRenduCarteProgressif(items,aRendre,attendus);
+  aRendre.forEach(item=>{
     if(item.seul){
       const l = item.seul;
       garder.add(l.id);
@@ -6496,6 +6891,7 @@ function rendre(){
       if(existant){
         const empreinte=empreinteMarqueur(l);
         existant._lieu=l;
+        if(!map.hasLayer(existant)) existant.addTo(map);
         /* Pas de reconstruction à chaque rendu : on ne remplace l'icône que
            si les informations réellement visibles ont changé. */
         if(existant._empreinte !== empreinte){
@@ -6566,15 +6962,22 @@ function rendre(){
     m.on("click", ()=>allerVers([lat,lng], (mc)=>Math.min(mc.getZoom()+2, 17), {duration:.55}));
     marqueurs.set(id,m);
   });
-  marqueurs.forEach((m,id)=>{ if(!garder.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
+  /* Pendant la complétion, un marqueur hors du premier lot peut déjà être
+     présent : on le garde tant qu'il appartient à la sélection complète. */
+  const garderFinal = o.progressif ? attendus : garder;
+  marqueurs.forEach((m,id)=>{ if(!garderFinal.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
+  if(o.progressif && !o.lot && items.length <= RENDU_PROGRESSIF_MAX_INITIAL)
+    planifierRestaurationDensite();
   /* L'ensemble des marqueurs vient d'être reconstruit : la résolution de
      collisions ne peut plus se fier à sa signature de vue précédente. */
   revisionMarqueurs++;
+  if(marqueurs.size) PERF.jalon("premiers_marqueurs_rendus");
   // un redessin ne doit pas effacer la mise en avant du lieu regardé
-  if(lieuEnAvant) mettreEnAvant(lieuEnAvant);
+  if(lieuEnAvant && !o.lot) mettreEnAvant(lieuEnAvant);
   // les étiquettes se départagent une fois les marqueurs réellement posés ; un
   // seul frame reste en attente même si plusieurs sources arrivent ensemble.
-  planifierCollisions();
+  if(!o.lot && !o.progressif) planifierCollisions();
+  marquerPremierContenuVisible();
   PERF.travail("rendu_carte", debutCpu);
 }
 
@@ -9652,6 +10055,7 @@ function ouvrirFeuille2(niveau){
   reglerFeuilleDeplie(false);
   layerManager.activate(NOMS_COUCHES.mainSheet);
   majFeuille2();
+  if(!f.hidden) PERF.jalon("premier_panneau_utilisable");
   reinitialiserScrollFeuille();
   if(etaitFermee){
     history.pushState({autourBesoins:true},"",location.href);
@@ -10946,6 +11350,8 @@ let etatAvantContexteTerritorial = null;
    recalculer parce que le GPS a varié de huit mètres. */
 let etatTerritorial = null;
 let contextesEnVol = null;
+let contextesSessionPret = false;
+const bassinsTerritoriauxResolus = new Map();
 
 const CLE_CACHE_CONTEXTES = "autour:contextes-territoriaux:v1";
 
@@ -10976,12 +11382,17 @@ function ecrireCacheContextes(lignes){
    le dernier périmètre connu. */
 function chargerContextesTerritoriaux(){
   if(!TERR) return Promise.resolve([]);
+  if(contextesSessionPret) return Promise.resolve(contextesTerritoriaux);
   const cache = lireCacheContextes();
   if(cache){
     contextesTerritoriaux = TERR.depuisLignes(cache.lignes);
+    if(contextesTerritoriaux.length) PERF.jalon("contexte_territorial_disponible");
     PERF.touche("contextes_territoriaux", true);
     compterTerritorial("territorial_cache_hit");
-    if(!TERR.perime(cache.t, TERR.NATURES.PERIMETRE)) return Promise.resolve(contextesTerritoriaux);
+    if(!TERR.perime(cache.t, TERR.NATURES.PERIMETRE)){
+      contextesSessionPret = true;
+      return Promise.resolve(contextesTerritoriaux);
+    }
   }else{
     PERF.touche("contextes_territoriaux", false);
     compterTerritorial("territorial_cache_miss");
@@ -11005,9 +11416,14 @@ function chargerContextesTerritoriaux(){
       const lignes = data || [];
       ecrireCacheContextes(lignes);
       contextesTerritoriaux = TERR.depuisLignes(lignes);
+      if(contextesTerritoriaux.length) PERF.jalon("contexte_territorial_disponible");
       majContexteTerritorial();
       return contextesTerritoriaux;
-    } finally { fini(); contextesEnVol = null; }
+    } finally {
+      fini();
+      contextesEnVol = null;
+      contextesSessionPret = true;
+    }
   })();
   return contextesEnVol;
 }
@@ -11023,11 +11439,15 @@ function majContexteTerritorial(){
   const avantZone = zoneTerritoriale && zoneTerritoriale.slug;
   contexteTerritorial = TERR.contexteActif(contextesTerritoriaux, Date.now(), ref);
   zoneTerritoriale = contexteTerritorial ? TERR.zoneDe(ref, contexteTerritorial) : null;
+  if(contexteTerritorial) PERF.jalon("contexte_territorial_disponible");
   /* Le contexte a pu disparaître pendant que l'application était ouverte —
      la manifestation se termine, il est minuit. Le mode se referme tout seul :
      aucun code à retirer après le week-end. */
   if(!contexteTerritorial && modeTerritorial){
     fermerModeTerritorial();
+    /* Invariant explicite pour les lecteurs du cycle de contexte : le mode
+       est fermé même si le nettoyage ci-dessus évolue plus tard. */
+    modeTerritorial = false;
   }
   /* Le contexte arrive après le premier rendu. La barre desktop est une
      surface fixe, indépendante de la feuille : elle doit donc être
@@ -11208,8 +11628,10 @@ function ouvrirModeTerritorial(){
   reevaluerTerritorial({ouverture:true});
   ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
-  rendre();
-  majFeuille2();
+  /* Le panneau est déjà utilisable après `ouvrirFeuille2`. Le reclassement de
+     la carte et la couche territoriale peuvent attendre l'image suivante :
+     sur WebKit, les recréer dans le même geste retenait le premier frame. */
+  planifierRendu({accueil:true, carte:true, feuille:true});
   reglerBattementTerritorial();
   void chargerEvenementsContexteEditorial();
 }
@@ -11407,8 +11829,9 @@ function ouvrirSurfaceMaintenant(){
   marquerMaintenantCommeVu();
   ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
-  rendre();
-  majFiltres();
+  /* Maintenant doit répondre par son panneau. Les marqueurs et le recalcul
+     complet suivent dans la prochaine image, sans bloquer le geste. */
+  planifierRendu({carte:true, filtres:true, feuille:true});
 }
 
 /* Le même geste, où que les boutons soient posés — barre du haut sur grand
@@ -11437,9 +11860,9 @@ function besoinsRapidesHTML(){
   /* En mode Aide, la barre haute reste centrée sur les quatre portes de la
      maquette. L’annonce territoriale « Bientôt » garde son comportement
      normal partout ailleurs, mais ne doit pas repousser la capsule ❤️ Aide. */
-  const besoins = besoinsDuMoment().filter((b)=>!modeAide || b.id !== "territorial");
   return '<div class="br" data-testid="besoins-rapides">'+
-    besoins.map(b=>{
+    besoinsDuMoment().map(b=>{
+      if(modeAide && b.id === "territorial") return "";
       const actif = b.id === "territorial" ? modeTerritorial
         : b.id === "maintenant" ? (creneau === "maintenant" && !modeTerritorial && !modeAide)
         : b.id === "aide" ? modeAide
@@ -13991,7 +14414,7 @@ function basculerAide(){
 
 function basculerMaintenant(){
   filtreMaintenant = !filtreMaintenant;
-  majFiltres(); rendre(); majAccueil(); majFeuille2();
+  planifierRendu({accueil:true, carte:true, filtres:true, feuille:true});
 }
 
 /* Indicateur de vie du quartier. Ce n'est pas une donnée officielle mais un
@@ -14357,7 +14780,10 @@ function majAccueil(){
   }
 
   selectionAccueil = choisis.map(l=>l.id);
-  if(choisis.length) PERF.jalon("scoring_fait");
+  if(choisis.length){
+    PERF.jalon("scoring_fait");
+    PERF.jalon("premier_classement_termine");
+  }
   // ce qu'on vient de choisir servira au prochain démarrage : c'est la seule
   // façon d'avoir des propositions réelles à l'image suivant l'ouverture
   memoriserJeuRapide(choisis, reserve);
@@ -14700,6 +15126,21 @@ $("#videOk").onclick=()=>{
 /* Démarrage immédiat : l'interface s'affiche sans attendre l'onboarding ni la
    permission. La demande navigateur reste un geste explicite ; une permission
    déjà accordée peut seulement être rafraîchie ensuite en silence. */
+try{
+  const ressourceBundle = performance.getEntriesByType("resource")
+    .find((r)=>/\/autour\.js(?:\?|$)/.test(r.name));
+  if(ressourceBundle){
+    /* Le preload peut être parti avant que le shell ne soit évalué. Le
+       PerformanceResourceTiming est donc la source exacte de son début ; sans
+       lui, la chaîne affichait par erreur toute l'attente depuis le HTML comme
+       « téléchargement du bundle ». */
+    if(Number.isFinite(ressourceBundle.startTime))
+      PERF.jalonAt("bundle_telecharge_debut", ressourceBundle.startTime);
+    if(Number.isFinite(ressourceBundle.responseEnd))
+      PERF.jalonAt("bundle_telecharge", ressourceBundle.responseEnd);
+  }
+}catch(e){}
+PERF.jalon("bundle_evalue");
 performance.mark("autour:script");
 PERF.jalon("script");
 /* `demarrer()` peut appeler majEnteteLieu immédiatement en mode de test : ce
@@ -15636,43 +16077,34 @@ function majEnteteLieu(){
 
 async function detecterVille(lat,lng){
   const cle = lat.toFixed(2)+","+lng.toFixed(2);
-  if(villeDetectee === cle) return;
+  /* Le GPS bouge en permanence, le contexte pertinent beaucoup moins. Un
+     déplacement de quelques mètres — ou même d'un demi-quartier — réutilise
+     donc le dernier reverse geocode. */
+  if(villeDetectee === cle ||
+     (villeDetectee && derniereVillePosition &&
+      distanceM(derniereVillePosition[0],derniereVillePosition[1],lat,lng) < SEUIL_REVERSE_GEOCODAGE_M)) return;
   const generation = nouvelleGeneration("contexte:ville",cle);
   /* Le nom de commune est demandé même sur une zone approchée — il sert aux
      agendas et aux adresses. Mais il ne s'AFFICHE que si la position est un
      vrai point : sinon la pastille se remettrait à nommer une ville où l'on
      n'est peut-être pas. */
   const nommable = ()=>positionPrecise();
-  const parRelais = await communeRelayee(lat,lng);
+  const parRelais = await reverseCommune(lat,lng);
   if(!generationCourante(generation)) return;
-  if(parRelais !== undefined){
-    if(parRelais){
-      villeDetectee = cle;
-      if(nommable()){ $("#hdVille").textContent = parRelais; mesurerHeader(); }
-      mettreAJourLocalisationPopover();
-    }
-    terminerGeneration(generation);
-    return;
-  }
-  try{
-    const stop = new AbortController();
-    const t = setTimeout(()=>stop.abort(), 6000);
-    const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat="+
-      lat+"&lon="+lng, {signal:stop.signal, headers:{"Accept-Language":"fr"}});
-    clearTimeout(t);
-    if(!r.ok || !generationCourante(generation)) return;
-    const j = await r.json();
-    if(!generationCourante(generation)) return;
-    const a = j.address || {};
-    const nom = a.city || a.town || a.village || a.municipality || a.county;
-    villeDetectee = cle;
-    if(nom && nommable()){
-      $("#hdVille").textContent = nom;
+  villeDetectee = cle;
+  derniereVillePosition = [lat,lng];
+  if(parRelais){
+    if(nommable()){
+      $("#hdVille").textContent = parRelais;
       mesurerHeader();
     }
-    mettreAJourLocalisationPopover();
-  }catch(e){ /* silencieux : l'en-tête reste neutre plutôt que faux */ }
-  finally{ terminerGeneration(generation); }
+  }
+  /* Même garde-fou que l'ancien repli direct : une réponse de géocodage ne
+     nomme jamais une position qui reste approximative. */
+  const nom = parRelais;
+  if(nom && nommable()) mettreAJourLocalisationPopover();
+  mettreAJourLocalisationPopover();
+  terminerGeneration(generation);
 }
 
 /* Ouvre l'accueil d'Explorer ou de Maintenant depuis une navigation explicite.
@@ -15681,8 +16113,8 @@ async function detecterVille(lat,lng){
 function ouvrirAccueilFeuille(){
   if(modeAide) basculerAide();
   catsActives = null; sousChoisi = null; filtreActif = "tout";
-  rendre(); majAccueil();
   ouvrirFeuille2("racine");
+  planifierRendu({accueil:true, carte:true, filtres:true, feuille:true});
 }
 $("#fbFermer").onclick = fermerFeuille2;
 $("#fbRetour").onclick = ()=>{
@@ -15801,3 +16233,4 @@ document.addEventListener("pointerdown", (e)=>{
 document.addEventListener("keydown", (e)=>{
   if(e.key === "Escape") fermerLocalisation();
 });
+if(window.AutourBootInteractions) window.AutourBootInteractions.pretARejouer();
