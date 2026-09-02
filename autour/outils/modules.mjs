@@ -16,7 +16,7 @@
 export const MODULES = [
   "availability.js", "comprendre.js", "donnees.js", "aide-intentions.js", "intentions.js", "comptes.js",
   "maintenant.js", "ordonnanceur.js", "contexte.js", "territoire.js", "plafonds.js",
-  "annonces-taxonomie.js", "annonces-classement.js",
+  "annonces-taxonomie.js", "annonces-classement.js", "envies.js",
   "aide-taxonomie.js", "aide-classement.js", "aide-structures.js", "aide-rayon.js", "aide-contexte-ia.js",
   "aide.js",
   "signaux.js", "temporel.js", "evenements-canoniques.js", "entites-canoniques.js", "explications.js", "events.js", "images.js", "core.js",
