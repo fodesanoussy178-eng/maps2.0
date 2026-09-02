@@ -173,7 +173,7 @@ test("la pastille exclut les recommandations vues et les goûts nouvellement per
 test("un compte recharge et synchronise ses goûts sans migration de profil", () => {
   const compte = source.slice(source.indexOf("const CLE_INTERETS_COMPTE"), source.indexOf("/* Le pseudo public"));
   assert.match(compte, /const CLE_INTERETS_COMPTE = "autour_interests"/);
-  assert.doesNotMatch(compte, /autour_interets/);
+  assert.doesNotMatch(compte, new RegExp(["autour", "interets"].join("_")));
   assert.match(compte, /user_metadata/);
   assert.match(compte, /auth\.updateUser\(\{[\s\S]*data:\{\[CLE_INTERETS_COMPTE\]: choix\}/);
   assert.match(source, /await chargerInteretsCompte\(\)/);
