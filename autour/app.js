@@ -12609,6 +12609,206 @@ function majorCrossZonePool(){
   });
 }
 
+/* ---- LE LIEU D'UN ÉVÉNEMENT ---------------------------------------------
+
+   « Théâtre municipal » écrit sous un concert n'était qu'un texte. Le lieu
+   existe pourtant très souvent déjà dans Autour — il est sur la carte, à
+   quelques mètres, avec ses horaires et sa catégorie. Ce qui manquait n'était
+   pas la donnée mais le LIEN.
+
+   L'identité d'un lieu est déjà définie ici : `cleLieu(nom, lat, lng)` de
+   `enrichissements.js`, nom normalisé et coordonnées au dix-millième — la même
+   règle des deux côtés, client et serveur. On ne fabrique donc pas un
+   identifiant de plus : le lien d'un événement vers son lieu EST cette clé.
+   C'est aussi elle qui empêche deux fiches pour le même endroit, puisque deux
+   événements du même théâtre tombent sur la même clé.
+
+   Aucune source externe n'intervient : on ne rapproche que de ce qu'Autour
+   connaît déjà. Un lieu inconnu reste inconnu — la ligne redevient du texte,
+   ce qui est une réponse honnête. */
+const MEMO_LIEU_EVENEMENT = "autour:lieu-evenement:v1";
+const MEMO_LIEU_MAX = 400;
+/* Deux adresses postales voisines peuvent être deux salles ; au-delà d'un
+   pâté de maisons, ce n'est plus « le même endroit ». */
+const RAYON_MEME_LIEU_M = 120;
+let memoLieuEvenement = null;
+
+function lireMemoLieu(){
+  if(memoLieuEvenement) return memoLieuEvenement;
+  memoLieuEvenement = new Map();
+  try{
+    const brut = JSON.parse(localStorage.getItem(MEMO_LIEU_EVENEMENT) || "null");
+    if(brut && typeof brut === "object")
+      Object.keys(brut).forEach(k=>memoLieuEvenement.set(k, brut[k]));
+  }catch(e){}
+  return memoLieuEvenement;
+}
+
+/* La résolution est stable mais pas gratuite : on la fait une fois par
+   événement, puis on la relit. Le lien mémorisé est une CLÉ, pas un
+   identifiant de session : il reste valable au prochain démarrage. */
+function memoriserLieuEvenement(idEvenement, cle){
+  if(idEvenement == null || !cle) return;
+  const memo = lireMemoLieu();
+  if(memo.get(String(idEvenement)) === cle) return;
+  memo.set(String(idEvenement), cle);
+  try{
+    const objet = {};
+    [...memo.entries()].slice(-MEMO_LIEU_MAX).forEach(([k,v])=>{ objet[k] = v; });
+    localStorage.setItem(MEMO_LIEU_EVENEMENT, JSON.stringify(objet));
+  }catch(e){}
+}
+
+const nomLieuEvenement = (l)=> (l && (l.venue_name || l.venueName ||
+  l.place_name || l.placeName)) || "";
+
+/* La clé canonique d'un item, qu'il soit lieu ou événement. Pour un lieu,
+   c'est son nom ; pour un événement, celui de sa salle — jamais son titre,
+   qui décrirait la soirée et non l'endroit. */
+function cleLieuItem(l, commeEvenement){
+  if(!l || !ENR || !ENR.cleLieu) return null;
+  const nom = commeEvenement ? nomLieuEvenement(l) : (l.titre || l.nom || "");
+  if(!nom) return null;
+  return ENR.cleLieu(nom, l.lat, l.lng);
+}
+
+const estItemEvenement = (l)=> !!(l && (l.isTemporary || l.debutLe || l.start_at ||
+  (typeof AutourEntites !== "undefined" && AutourEntites.estEvenement &&
+    AutourEntites.estEvenement(l))));
+
+/* Les candidats : ce qu'Autour a déjà sous la main, jamais une requête.
+
+   Cette liste est relue à chaque carte peinte. La reconstruire à chaque fois
+   rendait le rendu quadratique — quelques milliers de distances par feuille
+   sur mobile, pour un résultat identique d'une carte à l'autre. On la garde
+   donc le temps d'une passe, et une empreinte grossière (zone, tailles des
+   collections) suffit à la jeter dès que quelque chose bouge. */
+let cacheLieuxConnus = null;
+function empreinteLieuxConnus(){
+  const aides = typeof candidatsAideZone === "function" ? candidatsAideZone().length : 0;
+  return idZoneActive()+"|"+(typeof lieux !== "undefined" ? lieux.length : 0)+"|"+aides;
+}
+function lieuxConnus(){
+  const empreinte = empreinteLieuxConnus();
+  if(cacheLieuxConnus && cacheLieuxConnus.empreinte === empreinte)
+    return cacheLieuxConnus.liste;
+  const liste = construireLieuxConnus();
+  cacheLieuxConnus = {empreinte, liste};
+  return liste;
+}
+function construireLieuxConnus(){
+  const vus = new Set();
+  const sortie = [];
+  const ajouter = (liste)=>(liste || []).forEach(l=>{
+    if(!l || estItemEvenement(l) || l.id == null) return;
+    const cle = String(l.id);
+    if(vus.has(cle)) return;
+    vus.add(cle);
+    sortie.push(l);
+  });
+  ajouter(typeof lieux !== "undefined" ? lieux : []);
+  ajouter(typeof candidatsAideZone === "function" ? candidatsAideZone() : []);
+  return sortie;
+}
+
+/* L'ordre demandé, du plus sûr au plus faible. On s'arrête au premier qui
+   répond : un identifiant vaut mieux qu'une distance, une distance mieux
+   qu'un nom, un nom mieux qu'une rue. La ville seule ne désigne aucun
+   endroit — elle ne sert qu'à départager deux homonymes. */
+function lieuDeLEvenement(l){
+  if(!l || !estItemEvenement(l)) return null;
+  const connus = lieuxConnus();
+  if(!connus.length) return null;
+
+  /* 1. un identifiant de source déjà porté par l'événement */
+  const memo = lireMemoLieu().get(String(l.id));
+  const parCle = (cle)=> cle ? connus.find(c=>cleLieuItem(c, false) === cle) : null;
+  const memorise = parCle(memo || l.place_key || l.placeKey);
+  if(memorise) return memorise;
+  const refs = typeof AutourCore !== "undefined" && AutourCore.identifiantsExternes
+    ? AutourCore.identifiantsExternes(l) : null;
+  if(refs && refs.size){
+    const parRef = connus.find(c=>{
+      const autres = AutourCore.identifiantsExternes(c);
+      for(const r of refs) if(autres.has(r)) return true;
+      return false;
+    });
+    if(parRef) return retenirLieu(l, parRef);
+  }
+
+  const nom = nomLieuEvenement(l);
+  const proches = connus
+    .map(c=>({c, d:distanceM(l.lat, l.lng, c.lat, c.lng)}))
+    .filter(x=>Number.isFinite(x.d) && x.d <= RAYON_MEME_LIEU_M)
+    .sort((a,b)=>a.d - b.d);
+
+  /* 2. la clé canonique elle-même : même nom de salle, mêmes coordonnées */
+  const cleEvenement = cleLieuItem(l, true);
+  if(cleEvenement){
+    const exact = parCle(cleEvenement);
+    if(exact) return retenirLieu(l, exact);
+  }
+
+  /* 3. le nom de la salle, parmi les lieux proches seulement */
+  if(nom && proches.length){
+    const normaliser = (v)=>String(v || "").normalize("NFD")
+      .replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const vise = normaliser(nom);
+    const parNom = proches.find(x=>{
+      const t = normaliser(x.c.titre || x.c.nom);
+      return t && vise && (t === vise || t.includes(vise) || vise.includes(t));
+    });
+    if(parNom) return retenirLieu(l, parNom.c);
+  }
+
+  /* 4. l'adresse, toujours parmi les proches */
+  if(l.adresse && proches.length){
+    const rue = String(l.adresse).toLowerCase();
+    const parAdresse = proches.find(x=>{
+      const a = String(x.c.adresse || "").toLowerCase();
+      return a && (a === rue || a.includes(rue) || rue.includes(a));
+    });
+    if(parAdresse) return retenirLieu(l, parAdresse.c);
+  }
+
+  /* 5. la ville : elle ne décide jamais seule. Sans nom ni adresse
+        exploitables, le plus proche l'emporte, et seulement s'il est
+        vraiment à côté. */
+  if(proches.length && proches[0].d <= RAYON_MEME_LIEU_M / 2)
+    return retenirLieu(l, proches[0].c);
+  return null;
+}
+
+function retenirLieu(evenement, lieu){
+  const cle = cleLieuItem(lieu, false);
+  if(cle) memoriserLieuEvenement(evenement && evenement.id, cle);
+  return lieu;
+}
+
+/* Les autres événements du même endroit — lus dans ce qu'on a déjà. */
+function evenementsDuLieu(lieu, saufId){
+  if(!lieu) return [];
+  const cleCible = cleLieuItem(lieu, false);
+  const sources = [
+    typeof lieux !== "undefined" ? lieux : [],
+    typeof evenementsMajeursHorsZone !== "undefined" ? evenementsMajeursHorsZone : [],
+  ];
+  const vus = new Set();
+  const sortie = [];
+  sources.forEach(liste=>(liste || []).forEach(l=>{
+    if(!l || !estItemEvenement(l) || String(l.id) === String(saufId)) return;
+    if(vus.has(String(l.id))) return;
+    const rattache = lieuDeLEvenement(l);
+    const meme = rattache
+      ? String(rattache.id) === String(lieu.id)
+      : (cleCible && cleLieuItem(l, true) === cleCible);
+    if(!meme) return;
+    vus.add(String(l.id));
+    sortie.push(l);
+  }));
+  return sortie;
+}
+
 function lieuParId(id){
   /* OUVRIR CE QU'ON PROPOSE.
 
@@ -14231,7 +14431,15 @@ function carteRecommandation(l){
       '<span class="rc-haut"><span class="rc-cats" style="--cat:'+teinte+'">'+
         (l.annule ? '<b class="rc-annule">Annulé</b>' : esc(cats))+'</span>'+boutonCoeur(l)+'</span>'+
       '<span class="rc-nom">'+esc(l.titre)+'</span>'+
-      (ou ? '<span class="rc-ou">'+esc(ou)+'</span>' : '')+
+      /* Quand la salle est un lieu qu'Autour connaît déjà, cette ligne cesse
+         d'être une légende et devient la porte vers sa fiche. Le texte ne
+         change pas — seul l'accès s'ajoute, et seulement s'il mène quelque
+         part. */
+      (ou ? (()=>{ const lie = lieuDeLEvenement(l);
+        return lie
+          ? '<span class="rc-ou rc-ou-lien" role="link" tabindex="0" data-lieu="'+
+              esc(lie.id)+'" title="Voir ce lieu">'+esc(ou)+'</span>'
+          : '<span class="rc-ou">'+esc(ou)+'</span>'; })() : '')+
       (quand ? '<span class="rc-quand'+classeQuand+'" data-testid="carte-quand">'+esc(quand)+'</span>' : '')+
       (()=>{ const r = raisonCourte(l);
         // sur un événement, la date dit déjà pourquoi : pas deux fois
@@ -16241,6 +16449,28 @@ function revenirAutourDeMoi(){
   majBoutons();
 }
 $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
+
+/* La ligne du lieu d'un événement ouvre la fiche de CE lieu, pas la fiche de
+   l'événement qui la porte. Elle vit à l'intérieur d'une carte qui a déjà son
+   propre geste : on écoute donc en capture et on arrête l'événement là, sinon
+   les deux ouvertures se marcheraient dessus. Aucune recherche n'est lancée —
+   `ouvrirDetail` lit ce qu'Autour a déjà. */
+document.addEventListener("click", (e)=>{
+  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]");
+  if(!cible) return;
+  const id = cible.getAttribute("data-lieu");
+  if(!id) return;
+  e.preventDefault();
+  e.stopPropagation();
+  pousserEcran(()=>ouvrirDetail(id));
+}, true);
+document.addEventListener("keydown", (e)=>{
+  if(e.key !== "Enter" && e.key !== " ") return;
+  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]");
+  if(!cible) return;
+  e.preventDefault();
+  pousserEcran(()=>ouvrirDetail(cible.getAttribute("data-lieu")));
+}, true);
 
 $("#btnPartager").onclick=partagerApp;
 $("#navFermer").onclick=quitterNav;
