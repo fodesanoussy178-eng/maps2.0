@@ -4658,15 +4658,28 @@ function fusionnerLots(lots, opts){
    recherche peut donc finir côté réseau, mais elle ne touche plus l'écran ni
    l'état global. Le coordinateur rend les sources indépendantes : une panne
    ou une réponse lente n'empêche jamais les autres de devenir visibles. */
-async function coordonnerSourcesVersionnees(sources, estCourante){
+/* `surPremierResultat` est appelé UNE fois, dès qu'une source a publié quelque
+   chose d'utilisable. C'est ce qui sépare « il y a de quoi lire » de « tout le
+   monde a répondu » : la seconde réponse peut ne jamais venir. Sans cette
+   distinction, un bandeau de chargement posé avant la cascade attendait la
+   source la plus lente — DORA ou FINESS qui traînent, et l'écran affichait
+   « Recherche des points d'aide… » par-dessus des résultats déjà lisibles. */
+async function coordonnerSourcesVersionnees(sources, estCourante, surPremierResultat){
   let exploitable = false;
+  const annoncerPremier = ()=>{
+    if(exploitable) return;
+    exploitable = true;
+    if(typeof surPremierResultat === "function"){
+      try{ surPremierResultat(); }catch(e){ journal.warn("premier résultat :", e); }
+    }
+  };
   const travaux = (sources || []).map(async source=>{
     try{
       const reponse = await source.charger();
       if(!estCourante()) return false;
       const publie = await source.publier(reponse);
       if(!estCourante()) return false;
-      if(publie) exploitable = true;
+      if(publie) annoncerPremier();
       return !!publie;
     }catch(e){
       if(estCourante() && typeof source.echec === "function") source.echec(e);
@@ -9210,6 +9223,10 @@ async function chargerAide(lat,lng,options){
     finally{
       if(generationCourante(generation)){
         aideEnCours = false;
+        /* Filet : quoi qu'il arrive au-dessus — une source qui jette, une
+           cascade interrompue — le bandeau ne survit pas à la recherche qui
+           l'a posé. Il est normalement déjà parti au premier résultat. */
+        if(!contexte.preload) charge(null);
         const aides = candidatsAideZone();
         const trouve = contexte.besoins.length
           ? aides.some((l)=>estSolutionAideLiee(l) && aideSuffisammentFiable(l, contexte.besoins))
@@ -9460,7 +9477,12 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
         return !!(garder && garder.length);
       },
     },
-  ], ()=>generationCourante(generation));
+  ], ()=>generationCourante(generation),
+     /* Le bandeau appartient au premier résultat lisible, pas à la dernière
+        source. DORA ou FINESS peuvent traîner ou tomber : ce qui est déjà
+        publié se lit pendant ce temps, sans « Recherche des points d'aide… »
+        posé par-dessus. Le reste continue de s'ajouter derrière. */
+     ()=>{ if(!contexte.preload && generationCourante(generation)) charge(null); });
   if(generationCourante(generation)){
     /* Toutes les sources fiables ont fini : le rapprochement photo se fait
        maintenant, jamais au hasard de l'ordre des promesses. */
