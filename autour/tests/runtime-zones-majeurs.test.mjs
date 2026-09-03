@@ -5,6 +5,9 @@ import {readFile} from "node:fs/promises";
 const migration = await readFile(new URL(
   "../supabase/migrations/20260903110000_event_areas_partitions_majeurs.sql",
   import.meta.url), "utf8");
+const melMigration = await readFile(new URL(
+  "../supabase/migrations/20260903133000_mel_partitions_techniques.sql",
+  import.meta.url), "utf8");
 const fonction = await readFile(new URL(
   "../supabase/functions/sync-datatourisme/index.ts", import.meta.url), "utf8");
 const workflow = await readFile(new URL(
@@ -40,6 +43,18 @@ test("le synchroniseur peut exécuter une partition sans changer le zone_id util
   assert.match(fonction, /partition: partitionDemandee/);
   assert.match(workflow, /paris_centre paris_nord paris_est paris_sud paris_ouest/);
   assert.match(workflow, /area=\$\{ZONE\}&partition=\$\{partition\}/);
+});
+
+test("la MEL centrale est découpée sans changer son identité produit", () => {
+  for (const partition of [
+    "mel_centre_nord_ouest", "mel_centre_nord_est",
+    "mel_centre_sud_ouest", "mel_centre_sud_est",
+  ]) {
+    assert.match(melMigration, new RegExp(`['\\"]${partition}['\\"]`));
+  }
+  assert.match(melMigration, /select p\.code, 'mel'/);
+  assert.match(workflow, /mel_centre_nord_ouest mel_centre_nord_est mel_centre_sud_ouest mel_centre_sud_est/);
+  assert.match(melMigration, /commune_keys = excluded\.commune_keys/);
 });
 
 test("un événement majeur est explicite et le scope city ne franchit pas une zone", () => {

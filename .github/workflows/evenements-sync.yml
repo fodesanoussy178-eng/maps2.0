@@ -103,7 +103,7 @@ jobs:
             if [ "${ZONE}" = "paris" ]; then
               partitions=(paris_centre paris_nord paris_est paris_sud paris_ouest)
             else
-              partitions=(mel mel-nord mel-est mel-sud mel-ouest)
+              partitions=(mel_centre_nord_ouest mel_centre_nord_est mel_centre_sud_ouest mel_centre_sud_est mel-nord mel-est mel-sud mel-ouest)
             fi
             reponses=()
             for partition in "${partitions[@]}"; do
