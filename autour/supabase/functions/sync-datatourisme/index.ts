@@ -176,16 +176,22 @@ async function fetchAvecReprise(url: string): Promise<Response> {
 type Zone = {
   id: number; code: string; zone_id: string; name: string; timezone: string;
   min_lat: number; min_lng: number; max_lat: number; max_lng: number;
+  sync_partition: boolean;
   /* La liste des communes de la zone. Quand elle est renseignée, c'est elle
      qui décide, et le rectangle ne sert plus qu'à interroger le catalogue. */
   commune_keys: string[] | null;
 };
 
-async function zones(codeDemande: string | null): Promise<Zone[]> {
-  const filtre = codeDemande ? `&zone_id=eq.${encodeURIComponent(codeDemande)}` : "";
+async function zones(
+  codeDemande: string | null,
+  partitionDemandee: string | null = null,
+): Promise<Zone[]> {
+  const filtres = ["enabled=is.true", "sync_partition=is.true"];
+  if (codeDemande) filtres.push(`zone_id=eq.${encodeURIComponent(codeDemande)}`);
+  if (partitionDemandee) filtres.push(`code=eq.${encodeURIComponent(partitionDemandee)}`);
   const reponse = await rest(
-    `event_areas?select=id,code,zone_id,name,timezone,min_lat,min_lng,max_lat,max_lng,commune_keys` +
-    `&enabled=is.true${filtre}&order=priorite.asc`);
+    `event_areas?select=id,code,zone_id,name,timezone,min_lat,min_lng,max_lat,max_lng,commune_keys,sync_partition` +
+    `&${filtres.join("&")}&order=priorite.asc`);
   if (!reponse.ok) throw new Error(`lecture des zones : HTTP ${reponse.status}`);
   return await reponse.json();
 }
@@ -558,12 +564,13 @@ Deno.serve(async (requete: Request) => {
 
   const url = new URL(requete.url);
   const demandee = url.searchParams.get("area");
+  const partitionDemandee = demandee ? url.searchParams.get("partition") : null;
   const debut = Date.now();
   const scope = demandee ?? "toutes";
   const course = await ouvrirCourse(scope);
 
   try {
-    const liste = await zones(demandee);
+    const liste = await zones(demandee, partitionDemandee);
     if (!liste.length) {
       await fermerCourse(course, {
         status: "error", duration_ms: Date.now() - debut,
@@ -585,7 +592,7 @@ Deno.serve(async (requete: Request) => {
         total.majs += resultat.majs;
         total.fusionnes += resultat.fusionnes;
         total.rejetes += resultat.rejetes;
-        parZone[zone.zone_id] = {
+        parZone[zone.code] = {
           vus: resultat.vus, inseres: resultat.inseres, majs: resultat.majs,
           fusionnes: resultat.fusionnes, rejetes: resultat.rejetes,
           echecs: resultat.echecs.length,
@@ -593,13 +600,13 @@ Deno.serve(async (requete: Request) => {
           retourne: resultat.retourne, pages: resultat.pages,
           gardes: resultat.gardes, motifs: resultat.motifs,
         };
-        echecs.push(...resultat.echecs.map((e) => `${zone.zone_id}: ${e}`));
+        echecs.push(...resultat.echecs.map((e) => `${zone.code}: ${e}`));
       } catch (erreur) {
         // une zone qui échoue n'emporte pas les autres : c'est tout l'intérêt
         // d'itérer sur une table plutôt que d'écrire une procédure par ville
         const message = erreur instanceof Error ? erreur.message : String(erreur);
-        parZone[zone.zone_id] = {erreur: message};
-        echecs.push(`${zone.zone_id}: ${message}`);
+        parZone[zone.code] = {erreur: message};
+        echecs.push(`${zone.code}: ${message}`);
       }
     }
 
@@ -635,7 +642,9 @@ Deno.serve(async (requete: Request) => {
        arrivées ; faire échouer la tâche parce qu'un POI sur trois cents était
        mal formé apprendrait à ignorer le rouge, ce qui coûte plus cher que le
        défaut qu'on signale. Le journal, lui, garde la nuance. */
-    return new Response(JSON.stringify({status, scope, ...total, zones: parZone}),
+    return new Response(JSON.stringify({
+      status, scope, partition: partitionDemandee, ...total, zones: parZone,
+    }),
       {status: status === "error" ? 502 : 200,
        headers: {"Content-Type": "application/json"}});
   } catch (erreur) {

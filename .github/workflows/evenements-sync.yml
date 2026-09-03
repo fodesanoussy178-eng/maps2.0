@@ -96,15 +96,55 @@ jobs:
 
           # --fail-with-body : on veut le corps de la réponse ET un code de
           # sortie non nul. Sans lui, une erreur 502 passait pour un succès.
-          reponse=$(curl --silent --show-error --fail-with-body \
-            --max-time 600 \
-            --header "x-sync-secret: ${SYNC_SECRET}" \
-            --request POST \
-            "${BASE}/sync-datatourisme?area=${ZONE}") || {
-              echo "::error::synchronisation de ${ZONE} en échec"
-              echo "${reponse:-}"
-              exit 1
-            }
+          # Paris conserve un seul zone_id utilisateur, mais ses cinq
+          # partitions sont des invocations indépendantes : un worker ne
+          # porte plus toute la capitale, et le résumé reste agrégé ici.
+          if [ "${ZONE}" = "paris" ]; then
+            partitions=(paris_centre paris_nord paris_est paris_sud paris_ouest)
+            reponses=()
+            for partition in "${partitions[@]}"; do
+              reponse=$(curl --silent --show-error --fail-with-body \
+                --max-time 600 \
+                --header "x-sync-secret: ${SYNC_SECRET}" \
+                --request POST \
+                "${BASE}/sync-datatourisme?area=${ZONE}&partition=${partition}") || {
+                  echo "::error::synchronisation de ${ZONE}/${partition} en échec"
+                  echo "${reponse:-}"
+                  exit 1
+                }
+              if ! jq -e '.status == "success"' >/dev/null <<<"${reponse}"; then
+                echo "::error::résultat non réussi pour ${ZONE}/${partition}"
+                echo "${reponse}"
+                exit 1
+              fi
+              reponses+=("${reponse}")
+            done
+            reponse=$(printf '%s\n' "${reponses[@]}" | jq -s '
+              {status: (if all(.[]; .status == "success") then "success" else "partial" end),
+               scope: "paris", batches: length,
+               vus: (map(.vus // 0) | add),
+               inseres: (map(.inseres // 0) | add),
+               majs: (map(.majs // 0) | add),
+               fusionnes: (map(.fusionnes // 0) | add),
+               rejetes: (map(.rejetes // 0) | add),
+               zones: (reduce .[] as $item ({}; . * ($item.zones // {})))}')
+          else
+            reponse=$(curl --silent --show-error --fail-with-body \
+              --max-time 600 \
+              --header "x-sync-secret: ${SYNC_SECRET}" \
+              --request POST \
+              "${BASE}/sync-datatourisme?area=${ZONE}") || {
+                echo "::error::synchronisation de ${ZONE} en échec"
+                echo "${reponse:-}"
+                exit 1
+              }
+          fi
+
+          if ! jq -e '.status == "success"' >/dev/null <<<"${reponse}"; then
+            echo "::error::résultat non réussi pour ${ZONE}"
+            echo "${reponse}"
+            exit 1
+          fi
 
           echo "${reponse}"
           echo "### Zone ${ZONE}" >> "${GITHUB_STEP_SUMMARY}"

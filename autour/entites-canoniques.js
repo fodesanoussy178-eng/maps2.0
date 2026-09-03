@@ -437,6 +437,14 @@
       territory_slug: first(raw, ["territory_slug", "territorySlug"]) || null,
       importance_level: first(raw, ["importance_level", "importanceLevel"]) || "local",
       importanceLevel: first(raw, ["importance_level", "importanceLevel"]) || "local",
+      is_major: first(raw, ["is_major", "isMajor"]) != null
+        ? first(raw, ["is_major", "isMajor"]) === true
+        : (first(raw, ["importance_level", "importanceLevel"]) || "local") === "major",
+      isMajor: first(raw, ["is_major", "isMajor"]) != null
+        ? first(raw, ["is_major", "isMajor"]) === true
+        : (first(raw, ["importance_level", "importanceLevel"]) || "local") === "major",
+      major_scope: first(raw, ["major_scope", "majorScope"]) || null,
+      majorScope: first(raw, ["major_scope", "majorScope"]) || null,
       announced_at: first(raw, ["announced_at", "announcedAt"]) || null,
       announcedAt: first(raw, ["announced_at", "announcedAt"]) || null,
       source: source(first(raw, ["event_source", "eventSource", "primary_source", "primarySource", "source"])),

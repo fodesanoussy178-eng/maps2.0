@@ -58,6 +58,16 @@
   function importanceLevel(event) {
     return String(event?.importance_level || event?.importanceLevel || "local");
   }
+  function isMajor(event) {
+    const explicit = event?.is_major ?? event?.isMajor;
+    if (explicit != null) return explicit === true || explicit === "true";
+    return importanceLevel(event) === "major";
+  }
+  function majorScope(event) {
+    const scope = String(event?.major_scope || event?.majorScope || "").trim().toLowerCase();
+    if (["city", "regional", "national"].includes(scope)) return scope;
+    return isMajor(event) ? "regional" : null;
+  }
   function eventBasin(event) {
     return String(event?.metro_area || event?.metroArea || event?.territory_group || "").trim();
   }
@@ -75,7 +85,7 @@
     if(!itemZone) return false;
     const pool = o.pool || "local";
     if(pool === "major_cross_zone"){
-      return itemZone !== active && importanceLevel(event) === "major" &&
+      return itemZone !== active && isMajor(event) && majorScope(event) !== "city" &&
         Number(event?.importance_score ?? event?.importanceScore) >=
           (Number(o.majorCrossZoneMinScore) || CROSS_ZONE_MIN_SCORE);
     }
@@ -88,7 +98,7 @@
       return TAXONOMIE.INTEREST_LABELS[canonique] || String(match.id);
     });
     const niveau = importanceLevel(e);
-    const qualificatif = niveau === "major" ? "\xE9v\xE9nement majeur" : niveau === "important" ? "\xE9v\xE9nement important" : "\xE9v\xE9nement local";
+    const qualificatif = isMajor(e) ? "\xE9v\xE9nement majeur" : niveau === "important" ? "\xE9v\xE9nement important" : "\xE9v\xE9nement local";
     const bassin = String(e.metro_area_label || e.metroAreaLabel || e.territory_label || "").trim();
     return labels.join(" \xB7 ") + " \xB7 " + qualificatif + (bassin ? " dans " + bassin : "");
   }
@@ -98,7 +108,7 @@
     const basin = eventBasin(event);
     const distance = Number(distanceMeters);
     if(options?.pool === "major_cross_zone"){
-      return level === "major" && (!Number.isFinite(distance) ||
+      return isMajor(event) && majorScope(event) !== "city" && (!Number.isFinite(distance) ||
         distance <= (Number(options?.crossZoneMaxDistance) || 350e3));
     }
     if (level === "local") {
@@ -170,6 +180,10 @@
       matched_interests: matchedInterests,
       matching_tags: matchingTags,
       importance_level: importanceLevel(e),
+      is_major: isMajor(e),
+      isMajor: isMajor(e),
+      major_scope: majorScope(e),
+      majorScope: majorScope(e),
       matches,
       score,
       reason: reasonFor(e, matches),
@@ -231,6 +245,8 @@
     libelleDate
     ,CROSS_ZONE_MIN_SCORE
     ,eventZoneId
+    ,isMajor
+    ,majorScope
     ,poolAutorise
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

@@ -2976,6 +2976,12 @@ function versEvenementCanonique(e){
     contextRelation:e.context_relation || null,
     importance_level:e.importance_level || "local",
     importanceLevel:e.importance_level || "local",
+    is_major:e.is_major != null ? e.is_major === true :
+      (e.isMajor != null ? e.isMajor === true : e.importance_level === "major"),
+    isMajor:e.is_major != null ? e.is_major === true :
+      (e.isMajor != null ? e.isMajor === true : e.importance_level === "major"),
+    major_scope:e.major_scope || e.majorScope || null,
+    majorScope:e.major_scope || e.majorScope || null,
     importance_score:e.importance_score != null ? e.importance_score : null,
     announced_at:e.announced_at || null,
     announcedAt:e.announced_at || null,
@@ -12407,6 +12413,21 @@ function ecrireCacheMajeursCross(zoneId, evenements){
   })); }catch(e){}
 }
 
+function evenementEstMajeur(event){
+  if(ANNONCES && typeof ANNONCES.isMajor === "function") return ANNONCES.isMajor(event);
+  const explicite = event && (event.is_major ?? event.isMajor);
+  return explicite == null
+    ? String(event && (event.importance_level || event.importanceLevel) || "") === "major"
+    : explicite === true;
+}
+
+function porteeEvenementMajeur(event){
+  if(ANNONCES && typeof ANNONCES.majorScope === "function") return ANNONCES.majorScope(event);
+  const scope = String(event && (event.major_scope || event.majorScope) || "").toLowerCase();
+  return ["city", "regional", "national"].includes(scope)
+    ? scope : (evenementEstMajeur(event) ? "regional" : null);
+}
+
 async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante){
   if(!sbLecture || !zoneId || zoneId === "sans-zone") return [];
   if(majeursCrossEnCours && majeursCrossEnCours.zoneId === zoneId) return majeursCrossEnCours.promise;
@@ -12414,7 +12435,8 @@ async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante)
   if(enCache.length){
     evenementsMajeursHorsZone = enCache.filter((event)=>{
       const id = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
-      return id && id !== zoneId && String(event.importance_level || "") === "major" &&
+      return id && id !== zoneId && evenementEstMajeur(event) &&
+        porteeEvenementMajeur(event) !== "city" &&
         Number(event.importance_score) >= MAJEUR_CROSS_MIN_SCORE;
     });
     if(evenementsMajeursHorsZone.length) majPourToi();
@@ -12429,7 +12451,8 @@ async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante)
       if(portee !== porteeCourante || idZoneActive() !== zoneId) return [];
       const liste = (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter((event)=>{
         const id = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
-        return id && id !== zoneId && String(event.importance_level || "") === "major" &&
+        return id && id !== zoneId && evenementEstMajeur(event) &&
+          porteeEvenementMajeur(event) !== "city" &&
           Number(event.importance_score) >= MAJEUR_CROSS_MIN_SCORE;
       });
       evenementsMajeursHorsZone = liste;
@@ -12544,8 +12567,8 @@ function majorCrossZonePool(){
   const activeId = idZoneActive();
   return (evenementsMajeursHorsZone || []).filter((event)=>{
     const eventId = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
-    return eventId && eventId !== activeId &&
-      String(event.importance_level || event.importanceLevel || "") === "major" &&
+    return eventId && eventId !== activeId && evenementEstMajeur(event) &&
+      porteeEvenementMajeur(event) !== "city" &&
       Number(event.importance_score ?? event.importanceScore) >= MAJEUR_CROSS_MIN_SCORE;
   });
 }

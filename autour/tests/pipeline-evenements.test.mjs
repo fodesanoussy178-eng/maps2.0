@@ -83,7 +83,7 @@ test("le secret est vérifié avant tout travail", () => {
   const handler = fonction.slice(fonction.indexOf("Deno.serve("));
   const porte = handler.indexOf("memeSecret(fourni, SYNC_SECRET)");
   const premiereEcriture = handler.indexOf("ouvrirCourse(");
-  const premiereLecture = handler.indexOf("zones(demandee)");
+  const premiereLecture = handler.indexOf("zones(demandee, partitionDemandee)");
   assert.ok(porte > 0 && porte < premiereEcriture && porte < premiereLecture,
     "un appel non autorisé ne doit ni écrire, ni lire, ni rien apprendre");
 });
