@@ -8,6 +8,9 @@ const migration = await readFile(new URL(
 const melMigration = await readFile(new URL(
   "../supabase/migrations/20260903133000_mel_partitions_techniques.sql",
   import.meta.url), "utf8");
+const melCouronnesMigration = await readFile(new URL(
+  "../supabase/migrations/20260903143000_mel_couronne_partitions.sql",
+  import.meta.url), "utf8");
 const fonction = await readFile(new URL(
   "../supabase/functions/sync-datatourisme/index.ts", import.meta.url), "utf8");
 const workflow = await readFile(new URL(
@@ -56,6 +59,16 @@ test("la MEL centrale est découpée sans changer son identité produit", () => 
   assert.match(melMigration, /select p\.code, 'mel'/);
   assert.match(workflow, /mel_centre_nord_ouest mel_centre_nord_est mel_centre_sud_ouest mel_centre_sud_est/);
   assert.match(melMigration, /commune_keys = excluded\.commune_keys/);
+});
+
+test("les couronnes MEL sont aussi bornées par petites emprises", () => {
+  for (const partition of [
+    "mel_nord_ouest", "mel_nord_est", "mel_sud_ouest_bas", "mel_sud_est_bas",
+    "mel_sud_ouest_haut", "mel_sud_est_haut", "mel_ouest_sud", "mel_ouest_nord",
+    "mel_est_sud", "mel_est_nord",
+  ]) assert.match(melCouronnesMigration, new RegExp(`['\\"]${partition}['\\"]`));
+  assert.match(melCouronnesMigration, /select p\.code, 'mel'/);
+  assert.match(workflow, /mel_nord_ouest mel_nord_est mel_sud_ouest_bas/);
 });
 
 test("un événement majeur est explicite et le scope city ne franchit pas une zone", () => {
