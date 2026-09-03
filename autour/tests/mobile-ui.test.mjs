@@ -461,13 +461,15 @@ test("les transports sont chargés mais pas dessinés sans qu'on les demande",()
 });
 
 test("le plafond de marqueurs suit l'ordre de la sélection de la carte",()=>{
-  // il se fiait à dernierClassement, construit ailleurs : dès que les deux
-  // listes ne se recouvraient plus — après un déplacement vers une autre ville
-  // — aucun lieu n'avait de rang et la carte se vidait entièrement
-  assert.match(html,/const retenus = new Set\(liste\.slice\(0, MARQUEURS_MAX_DEZOOME\)\.map\(l=>l\.id\)\);/);
+  // Sur mobile, les lieux de la viewport passent devant le reste, puis le
+  // premier lot est plafonné avant la complétion progressive.
+  assert.match(html,/const candidats = estMobilePerformance\(\) \? \[\.\.\.visibles,\.\.\.liste\] : liste;/);
+  assert.match(html,/const retenus = new Set\(candidats\.slice\(0, limite\)\.map\(l=>l\.id\)\);/);
   assert.doesNotMatch(html,/dernierClassement\.forEach\(\(l,i\)=>rang/);
-  // un événement publié reste malgré tout affiché
-  assert.match(html,/liste\.forEach\(l=>\{ if\(estTemporaire\(l\)\) retenus\.add\(l\.id\); \}\);/);
+  // les événements publiés restent accessibles dans Explorer ; la carte
+  // respecte toutefois le même budget initial pour éviter une reconstruction
+  // massive dans les zones denses.
+  assert.doesNotMatch(html,/liste\.forEach\(l=>\{ if\(estTemporaire\(l\)\) retenus\.add\(l\.id\); \}\);/);
 });
 
 test("le classement se réfère à la zone regardée quand on est parti ailleurs",()=>{
@@ -619,9 +621,10 @@ test("Partager ne vit plus sur la carte",()=>{
 test("les marqueurs sont plafonnés quand la carte est dézoomée",()=>{
   assert.match(html,/const MARQUEURS_MAX_DEZOOME = 10;/);
   assert.match(html,/function limiterMarqueurs/);
-  assert.match(html,/const choisis = limiterMarqueurs\(selectionner\(\)\);/);
-  // un événement publié n'est jamais masqué
-  assert.match(html,/if\(estTemporaire\(l\)\) retenus\.add\(l\.id\);/);
+  assert.match(html,/const choisis = o\.lot \? \[\] : limiterMarqueurs\(selectionner\(\)\);/);
+  assert.match(html,/const RENDU_PROGRESSIF_MAX_INITIAL_MOBILE = 18;/);
+  // les événements publiés ne contournent pas le budget de marqueurs
+  assert.doesNotMatch(html,/if\(estTemporaire\(l\)\) retenus\.add\(l\.id\);/);
 });
 
 test("les images du carousel sont paresseuses et n'attendent rien",()=>{
@@ -1938,7 +1941,7 @@ test("chaque étape du démarrage est mesurée, pas ressentie",()=>{
 test("un seul rendu par image, quel que soit le nombre de sources",()=>{
   assert.match(html,/function planifierRendu\(quoi\)\{/);
   // fusionner ne redessine plus trois fois de suite
-  assert.match(html,/planifierRendu\(\{carte:true, accueil:true, filtres:true\}\);/);
+  assert.match(html,/planifierRendu\(\{carte:true, carteProgressif:estMobilePerformance\(\), accueil:true, filtres:true\}\);/);
   assert.doesNotMatch(html,/reindexerCategories\(\);\s*\n\s*rendre\(\);\s*\n\s*dessinerFiltres\(\);/);
   // la carte ne reconstruit jamais le panneau : un zoom ne déplace aucun bouton
   const debutRendu = html.indexOf("function rendre(){");

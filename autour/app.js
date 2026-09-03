@@ -319,6 +319,7 @@ function viderDonneesContexte(){
   chargementsTemporaires.clear();
   derniersChargementsTemporaires.clear();
   requetesCouchesSupabase.clear();
+  chargementsCouchesSupabaseSecondaires.clear();
   signaturesCouchesPubliees.clear();
   zonesResto.clear();
   restaurationsEnCours.clear();
@@ -354,14 +355,11 @@ function definirZoneActive(zone){
   zoneActive = zone || null;
   activeLocationContext = contexteDepuisZone(zoneActive);
   memoriserZoneActive(zoneActive);
+  commencerTransitionZoneCarte(zoneActive);
   viderDonneesContexte();
   porteeCourante += 1;
   bassinTerritorialActif = null;
-  evenementsMetropole = [];
   evenementsMajeursHorsZone = [];
-  metropoleEnCours = null;
-  porteeMetropole = 0;
-  bassinCourant = null;
   /* Les mémoires qui portent sur « les lieux qu'on montre » ne valent plus
      rien : elles ont été calculées pour l'autre ville. */
   oublierItemsMaintenant();
@@ -377,8 +375,11 @@ function definirZoneActive(zone){
      Les réponses en vol sont en plus gardées sous la portée ci-dessous et ne
      pourront donc pas repeupler ces mémoires périmées. */
   bassinTerritorialActif = null;
-  evenementsMetropole = [];
-  metropoleEnCours = null;
+  annulerGeneration("demarrage");
+  annulerGeneration("zone:precalculee");
+  annulerGeneration("donnees:temporaires");
+  annulerGeneration("zone:exploration");
+  annulerGeneration("zone:categories");
   programmerPrechargementAide();
   actualiserSurfacePourToi();
   return porteeCourante;
@@ -1136,7 +1137,7 @@ function jalonBassinLocal(){
    On note donc ce qu'il y a à refaire, et on le fait UNE fois à la prochaine
    image. Les fonctions restent appelables directement — un test, un clic ou
    une saisie ont le droit d'exiger un rendu immédiat. */
-const aRefaire = {carte:false, accueil:false, filtres:false, feuille:false};
+const aRefaire = {carte:false, carteProgressif:false, accueil:false, filtres:false, feuille:false};
 let renduPlanifie = 0;
 let renduEnLot = false;
 
@@ -1146,12 +1147,13 @@ function planifierRendu(quoi){
   const executer = ()=>{
     renduPlanifie = 0;
     const q = Object.assign({}, aRefaire);
-    aRefaire.carte = aRefaire.accueil = aRefaire.filtres = aRefaire.feuille = false;
+    aRefaire.carte = aRefaire.carteProgressif = aRefaire.accueil =
+      aRefaire.filtres = aRefaire.feuille = false;
     renduEnLot = true;
     try{
       if(q.accueil)  majAccueil();
       if(q.filtres)  dessinerFiltres();
-      if(q.carte)    rendre();
+      if(q.carte)    rendre(q.carteProgressif ? {progressif:true} : undefined);
       if(q.feuille || q.accueil || q.carte) majFeuille2();
     } finally { renduEnLot = false; }
     PERF.jalon("rendu_final");
@@ -2138,21 +2140,11 @@ const SUPABASE_CLE = "sb_publishable_T4_3er0DEI9vX4YdEhPDIw_m3yV_FlM";
 const CLE_PSEUDO_CREATEUR = "autour:creator_name";
 let sb = null, sbLecture = null, moiId = null, monPseudo = "";
 
-/* LE BASSIN MÉTROPOLITAIN. « Pour toi » cherche dans toute la métropole, pas
-   dans la commune où l'on se tient. Ces trois-là sont déclarés ici, et non
-   près des fonctions qui les emploient, parce que `rafraichirMetropole()` est
-   appelée pendant le chargement des couches — bien avant. */
+/* Le contexte territorial sert uniquement à filtrer les recommandations et à
+   déclencher le petit pool cross-zone des événements majeurs. */
 let bassinTerritorialActif = null;
-let evenementsMetropole = [];
 let evenementsMajeursHorsZone = [];
-let metropoleEnCours = null;
-let porteeMetropole = 0;
-let bassinCourant = null;
-const METROPOLE_LIMITE = 300;
-const CLE_CACHE_METROPOLES = "autour:pourtoi-bassins:v1";
 const CLE_CACHE_MAJEURS_CROSS = "autour:pourtoi-majeurs-cross:v1";
-const CACHE_METROPOLE_MAX_MS = 30 * 60 * 1000;
-const CACHE_METROPOLES_MAX = 3;
 const CACHE_MAJEURS_CROSS_MAX_MS = 30 * 60 * 1000;
 const MAJEUR_CROSS_MIN_SCORE = 80;
 let majeursCrossEnCours = null;
@@ -2755,11 +2747,24 @@ const CACHE_COUCHE_FRAICHE_MS = 5 * 60 * 1000;
 const CACHE_COUCHE_MAX_MS = 30 * 60 * 1000;
 const CACHE_COUCHES_ZONES_MAX = 4;
 const requetesCouchesSupabase = new Map();
+const chargementsCouchesSupabaseSecondaires = new Map();
 const signaturesCouchesPubliees = new Map();
 let cacheCouchesSupabaseMemo = null;
+const DELAI_COUCHE_SUPABASE_SECONDAIRE_MOBILE = 4000;
 
-function cleCoucheSupabase(lat,lng){
-  return "zone:"+idZoneActive()+"|geo@"+Number(lat).toFixed(2)+","+Number(lng).toFixed(2);
+function estMobilePerformance(){
+  return typeof window !== "undefined" && (
+    Number(window.innerWidth || 0) <= 767 ||
+    !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+  );
+}
+
+function cleCoucheSupabase(lat,lng,zoneId=idZoneActive()){
+  return "zone:"+zoneId+"|geo@"+Number(lat).toFixed(2)+","+Number(lng).toFixed(2);
+}
+
+function contexteCoucheSupabaseCourant(zoneId, portee){
+  return !!zoneId && zoneId !== "sans-zone" && porteeValide(portee) && idZoneActive() === zoneId;
 }
 
 function cacheCouchesSupabase(){
@@ -2816,16 +2821,16 @@ function signatureCoucheSupabase(entree){
   ].join("|");
 }
 
-function coucheSupabaseToujoursCourante(cle, portee, lat, lng){
-  if(!porteeValide(portee)) return false;
+function coucheSupabaseToujoursCourante(cle, portee, lat, lng, zoneId=idZoneActive()){
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return false;
   const centre = centreDonnees();
   if(!centre) return false;
-  return cleCoucheSupabase(centre[0], centre[1]) === cle &&
+  return cleCoucheSupabase(centre[0], centre[1], zoneId) === cle &&
     distanceM(centre[0], centre[1], lat, lng) < 1600;
 }
 
-function publierCoucheSupabase(cle, entree, portee, lat, lng){
-  if(!coucheSupabaseToujoursCourante(cle, portee, lat, lng)) return false;
+function publierCoucheSupabase(cle, entree, portee, lat, lng, zoneId=idZoneActive()){
+  if(!coucheSupabaseToujoursCourante(cle, portee, lat, lng, zoneId)) return false;
   const signature = signatureCoucheSupabase(entree);
   if(signaturesCouchesPubliees.get(cle) === signature) return false;
   signaturesCouchesPubliees.set(cle, signature);
@@ -2836,10 +2841,12 @@ function publierCoucheSupabase(cle, entree, portee, lat, lng){
   return !!((entree.publications || []).length || (entree.evenements || []).length);
 }
 
-async function chargerPublications(lat,lng){
+async function chargerPublications(lat,lng,options){
   if(!sbLecture) return null;
-  const zoneId = idZoneActive();
-  if(!zoneId || zoneId === "sans-zone") return [];
+  const o = options || {};
+  const zoneId = o.zoneId || idZoneActive();
+  const portee = o.portee == null ? porteeCourante : o.portee;
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return null;
   const b = emprisePublications(lat, lng);
   const fini = PERF.requete("supabase_publications");
   try{
@@ -2849,6 +2856,7 @@ async function chargerPublications(lat,lng){
       p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
     });
     if(error){ console.error("Lecture des publications :", error.message); return null; }
+    if(!contexteCoucheSupabaseCourant(zoneId, portee)) return null;
     return (data||[]).map(versLieu);
   } finally { fini(); }
 }
@@ -3032,55 +3040,17 @@ function versEvenementCanonique(e){
   }, e.primary_source || "datatourisme");
 }
 
-/* Le bassin métropolitain est une couche de lecture : après un reload, les
-   événements locaux peuvent être restitués par le cache Supabase, mais la
-   réponse « dans mon bassin » n'y était pas conservée. Pour toi repartait
-   alors avec un tableau vide le temps d'une requête — et restait vide si cette
-   requête échouait. Garder une copie courte, bornée et périssable permet de
-   reconstruire le même bassin immédiatement ; la requête fraîche le remplace
-   dès qu'elle répond. Ce cache ne contient aucun état de vue ou de goût. */
-function cacheMetropoles(){
-  let cache = {};
-  try{ cache = JSON.parse(localStorage.getItem(CLE_CACHE_METROPOLES) || "{}") || {}; }
-  catch(e){ cache = {}; }
-  const maintenant = Date.now();
-  Object.keys(cache).forEach(cle=>{
-    const entree = cache[cle];
-    if(!entree || !Number.isFinite(entree.t) || maintenant - entree.t > CACHE_METROPOLE_MAX_MS ||
-       !Array.isArray(entree.evenements)) delete cache[cle];
-  });
-  return cache;
-}
-
-function lireCacheMetropole(bassin){
-  if(!bassin) return [];
-  const entree = cacheMetropoles()[idZoneActive()+"|"+String(bassin)];
-  return entree && Array.isArray(entree.evenements) ? entree.evenements : [];
-}
-
-function ecrireCacheMetropole(bassin, liste){
-  if(!bassin || !Array.isArray(liste) || !liste.length) return;
-  const cache = cacheMetropoles();
-  const cle = idZoneActive()+"|"+String(bassin);
-  cache[cle] = {t:Date.now(), zone_id:idZoneActive(), evenements:liste.slice(0, METROPOLE_LIMITE)};
-  const cles = Object.keys(cache).sort((a,b)=>(cache[b].t||0)-(cache[a].t||0));
-  cles.slice(CACHE_METROPOLES_MAX).forEach(cle=>delete cache[cle]);
-  try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify(cache)); }
-  catch(e){
-    /* Un quota plein ne doit pas empêcher la réponse réseau de servir la
-       session courante : on garde au moins le bassin le plus récent. */
-    const courant = cache[cle];
-    try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify({[cle]:courant})); }
-    catch(e2){}
-  }
-}
-
-function actualiserBassinTerritorial(lat,lng){
+function actualiserBassinTerritorial(lat,lng,options){
   if(!sbLecture) return Promise.resolve(null);
-  const cle = idZoneActive()+"|"+lat.toFixed(2)+","+lng.toFixed(2);
+  const o = options || {};
+  const zoneId = o.zoneId || idZoneActive();
+  const portee = o.portee == null ? porteeCourante : o.portee;
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return Promise.resolve(null);
+  const cle = zoneId+"|"+lat.toFixed(2)+","+lng.toFixed(2);
   if(bassinsTerritoriauxResolus.has(cle)){
+    if(!contexteCoucheSupabaseCourant(zoneId, portee)) return Promise.resolve(null);
     bassinTerritorialActif = bassinsTerritoriauxResolus.get(cle);
-    rafraichirMetropole();
+    rafraichirMetropole(zoneId, portee);
     return Promise.resolve(bassinTerritorialActif);
   }
   /* La résolution mutualise la synchronisation par territoire. Elle ne
@@ -3097,40 +3067,47 @@ function actualiserBassinTerritorial(lat,lng){
          bassin dans lequel « Pour toi » a le droit de chercher. */
       if(error){
         console.error("Résolution du territoire :", error.message);
-        bassinTerritorialActif = null;
-        marquerDonneesPourToiPretes();
+        if(contexteCoucheSupabaseCourant(zoneId, portee)){
+          bassinTerritorialActif = null;
+          marquerDonneesPourToiPretes();
+        }
         return null;
       }
+      if(!contexteCoucheSupabaseCourant(zoneId, portee)) return null;
       bassinTerritorialActif = Array.isArray(data) ? (data[0] || null) : (data || null);
       bassinsTerritoriauxResolus.set(cle, bassinTerritorialActif);
       if(bassinTerritorialActif) PERF.jalon("bassin_territorial_disponible");
       /* Le bassin ne retient jamais Explorer : il déclenche sa propre couche
          uniquement après avoir été déterminé, et cette couche est elle-même
          idempotente. */
-      rafraichirMetropole();
+      rafraichirMetropole(zoneId, portee);
       if(!bassinTerritorialActif) marquerDonneesPourToiPretes();
       return bassinTerritorialActif;
     }catch(e){
-      bassinTerritorialActif = null;
-      marquerDonneesPourToiPretes();
+      if(contexteCoucheSupabaseCourant(zoneId, portee)){
+        bassinTerritorialActif = null;
+        marquerDonneesPourToiPretes();
+      }
       return null;
     }finally{ finTerritoire(); }
   });
 }
 
-async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
+async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante,options){
   if(!sbLecture) return null;
-  const zoneId = idZoneActive();
-  if(!zoneId || zoneId === "sans-zone") return [];
+  const o = options || {};
+  const zoneId = o.zoneId || idZoneActive();
+  const limite = Number.isFinite(Number(o.limite)) ? Number(o.limite) : 120;
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return null;
   const porteeEvenements = portee;
   const b = emprisePublications(lat, lng);
-  actualiserBassinTerritorial(lat,lng);
+  actualiserBassinTerritorial(lat,lng,{zoneId,portee});
   const fini = PERF.requete("supabase_evenements");
   try{
     const { data, error } = await sbLecture.rpc("evenements_locaux", {
       p_zone_id:zoneId,
       p_sud:Number(b.s), p_ouest:Number(b.o),
-      p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
+      p_nord:Number(b.n), p_est:Number(b.e), p_limite:limite
     });
     if(error){
       /* Une couche indisponible ne vide pas la carte : les autres sources
@@ -3138,20 +3115,61 @@ async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
       console.error("Lecture des événements :", error.message);
       return null;
     }
-    if(porteeEvenements !== porteeCourante) return;
+    if(!contexteCoucheSupabaseCourant(zoneId, porteeEvenements)) return null;
     return (data||[]).map(versEvenementCanonique).filter(Boolean);
   } finally { fini(); }
 }
 
-async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
+function programmerCoucheSupabaseSecondaire(cle, lat, lng, zoneId, portee, entree){
+  if(!estMobilePerformance() || !entree || (entree.evenements || []).length < 24 ||
+     chargementsCouchesSupabaseSecondaires.has(cle)) return;
+  const lancer = async()=>{
+    if(!contexteCoucheSupabaseCourant(zoneId, portee)) return null;
+    const complets = await chargerEvenementsCanoniques(lat,lng,portee,{zoneId,limite:120});
+    if(!Array.isArray(complets) || complets.length <= (entree.evenements || []).length ||
+       !contexteCoucheSupabaseCourant(zoneId, portee)) return null;
+    const courant = cacheCouchesSupabase()[cle] || entree;
+    const parId = new Map((courant.evenements || []).map((event)=>[String(event.id),event]));
+    complets.forEach((event)=>parId.set(String(event.id),event));
+    const enrichie = Object.assign({}, courant, {
+      t:Date.now(), evenements:[...parId.values()]
+    });
+    cacheCouchesSupabase()[cle] = enrichie;
+    ecrireCacheCouchesSupabase(cle, enrichie);
+    publierCoucheSupabase(cle, enrichie, portee, lat, lng, zoneId);
+    return enrichie;
+  };
+  const promesse = Promise.resolve().then(lancer).finally(()=>{
+    if(chargementsCouchesSupabaseSecondaires.get(cle) === promesse)
+      chargementsCouchesSupabaseSecondaires.delete(cle);
+  });
+  chargementsCouchesSupabaseSecondaires.set(cle, promesse);
+  /* Le premier RPC mobile est volontairement court. Le lot complet ne doit
+     pas arriver dans la même fenêtre que le premier classement : sinon la
+     fusion de 120 événements invalide le rendu progressif et repousse les
+     premiers marqueurs derrière le travail de Paris. */
+  setTimeout(()=>{
+    if(chargementsCouchesSupabaseSecondaires.get(cle) !== promesse) return;
+    quandLibre(()=>promesse.catch(()=>null));
+  }, DELAI_COUCHE_SUPABASE_SECONDAIRE_MOBILE);
+}
+
+async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee,
+                                         zoneId=idZoneActive(), options){
   if(requetesCouchesSupabase.has(cle)) return requetesCouchesSupabase.get(cle);
+  const o = options || {};
+  const limiteEvenements = Number.isFinite(Number(o.limiteEvenements))
+    ? Number(o.limiteEvenements) : (estMobilePerformance() ? 24 : 120);
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return Promise.resolve(null);
   let promesse;
   promesse = (async()=>{
+    if(!contexteCoucheSupabaseCourant(zoneId, portee)) return null;
     if(!(await connecter())) return precedent || {
       t:0, publications:[], evenements:[], okPublications:false, okEvenements:false,
     };
     const [publications, evenements] = await Promise.all([
-      chargerPublications(lat,lng), chargerEvenementsCanoniques(lat,lng,portee)
+      chargerPublications(lat,lng,{zoneId,portee}),
+      chargerEvenementsCanoniques(lat,lng,portee,{zoneId,limite:limiteEvenements})
     ]);
     const okPublications = Array.isArray(publications);
     const okEvenements = Array.isArray(evenements);
@@ -3162,15 +3180,16 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
       okPublications, okEvenements,
     };
     /* Une panne ne transforme jamais une réponse valide en tableau vide. */
-    if(okPublications || okEvenements){
+    if((okPublications || okEvenements) && contexteCoucheSupabaseCourant(zoneId, portee)){
       cacheCouchesSupabase()[cle] = entree;
       ecrireCacheCouchesSupabase(cle, entree);
-      publierCoucheSupabase(cle, entree, portee, lat, lng);
+      publierCoucheSupabase(cle, entree, portee, lat, lng, zoneId);
+      programmerCoucheSupabaseSecondaire(cle, lat, lng, zoneId, portee, entree);
     }
     /* Hors du chemin critique, et après la couche locale : le bassin ne fait
        attendre personne, et le territoire vient d'être résolu — c'est lui qui
        donne son nom au bassin. */
-    rafraichirMetropole();
+    if(contexteCoucheSupabaseCourant(zoneId, portee)) rafraichirMetropole(zoneId, portee);
     return entree;
   })().finally(()=>{
     if(requetesCouchesSupabase.get(cle) === promesse) requetesCouchesSupabase.delete(cle);
@@ -3181,26 +3200,28 @@ async function rafraichirCoucheSupabase(cle, lat, lng, precedent, portee){
 
 function chargerCoucheSupabase(lat,lng){
   if(!coordonneesValides(lat,lng)) return Promise.resolve(null);
-  const cle = cleCoucheSupabase(lat,lng);
+  const zoneId = idZoneActive();
   const portee = porteeCourante;
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return Promise.resolve(null);
+  const cle = cleCoucheSupabase(lat,lng,zoneId);
   const cache = cacheCouchesSupabase();
   const entree = cache[cle];
   const age = entree ? Date.now()-entree.t : Infinity;
   if(entree && age <= CACHE_COUCHE_MAX_MS){
     PERF.touche("supabase_zone", true);
-    publierCoucheSupabase(cle, entree, portee, lat, lng);
-    /* Le cache local contient les événements proches mais pas le nom du
-       bassin métropolitain. Le résoudre aussi sur ce chemin est indispensable
-       après reload/nouvel onglet : sinon aucune réponse ne pouvait relancer
+    publierCoucheSupabase(cle, entree, portee, lat, lng, zoneId);
+    /* Le cache local contient les événements proches mais pas le pool majeur
+       cross-zone. Le résoudre aussi sur ce chemin est indispensable après
+       reload/nouvel onglet : sinon aucune réponse ne pouvait relancer
        `rafraichirMetropole()`, et Pour toi restait vide malgré les goûts
        persistés. */
-    actualiserBassinTerritorial(lat,lng);
+    actualiserBassinTerritorial(lat,lng,{zoneId,portee});
     if(age > CACHE_COUCHE_FRAICHE_MS)
-      void rafraichirCoucheSupabase(cle, lat, lng, entree, portee);
+      void rafraichirCoucheSupabase(cle, lat, lng, entree, portee, zoneId);
     return Promise.resolve(Object.assign({},entree,{depuisCache:true}));
   }
   PERF.touche("supabase_zone", false);
-  return rafraichirCoucheSupabase(cle, lat, lng, null, portee);
+  return rafraichirCoucheSupabase(cle, lat, lng, null, portee, zoneId);
 }
 
 const Store = {
@@ -4183,7 +4204,7 @@ window.addEventListener("autour:google-map-failed", ()=>{
 function preparerCarteGoogle(centre, zoom){
   const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
   if(!fournisseur || !CLE_GOOGLE) return Promise.resolve(false);
-  promesseCarteGoogle = fournisseur.activer(document.getElementById("map"), centre, zoom, CLE_GOOGLE)
+  const activer = ()=>fournisseur.activer(document.getElementById("map"), centre, zoom, CLE_GOOGLE)
     .then(ok=>{
       if(ok){
         const attribution = document.querySelector("#attribution span");
@@ -4194,6 +4215,17 @@ function preparerCarteGoogle(centre, zoom){
       }
       return ok;
     }).catch(()=>false);
+  /* Google est un enrichissement du fond, pas une dépendance du premier
+     écran. Sur mobile, le fond autonome et les marqueurs locaux peuvent être
+     peints avant de charger le SDK Places/Maps, qui représente à lui seul une
+     rafale réseau et plusieurs centaines de kilo-octets. */
+  if(estMobilePerformance()){
+    promesseCarteGoogle = new Promise(resolve=>{
+      setTimeout(()=>quandLibre(()=>activer().then(resolve,()=>resolve(false))),2500);
+    });
+  } else {
+    promesseCarteGoogle = activer();
+  }
   return promesseCarteGoogle;
 }
 async function googleMapsActif(){
@@ -4597,7 +4629,7 @@ function finaliserFusion(opts){
   // démarrage) et ne veut surtout pas d'un reclassement avant la première image
   if(!o.silencieux){
     // un seul rendu par image, quel que soit le nombre de sources qui arrivent
-    planifierRendu({carte:true, accueil:true, filtres:true});
+    planifierRendu({carte:true, carteProgressif:estMobilePerformance(), accueil:true, filtres:true});
     ouvrirLieuPartage();    // le lieu d'un lien partagé s'ouvre dès qu'il arrive
   }
   /* De nouveaux événements peuvent concerner ce qu'on suit. Le panneau se
@@ -5628,6 +5660,49 @@ function centreCarte(){
 }
 
 let carteEnAttente = null;
+let transitionZoneCarte = null;
+
+/* Une recherche de ville change la zone logique avant que l'animation de la
+   carte ait atteint son nouveau centre. Pendant cette fenêtre, `moveend` peut
+   encore lire l'ancien centre MEL et l'envoyer à une requête qui porte déjà
+   le contexte Rennes/Paris. On bloque seulement les lectures dépendantes de
+   la vue jusqu'au centre cible ; les requêtes de la nouvelle zone sont déjà
+   parties depuis son centre canonique. */
+function commencerTransitionZoneCarte(zone){
+  if(!map || !zone || !coordonneesValides(zone.lat, zone.lng)) return;
+  if(transitionZoneCarte && transitionZoneCarte.timer)
+    clearTimeout(transitionZoneCarte.timer);
+  const transition = {
+    zoneId:idZoneActive(), portee:porteeCourante,
+    lat:Number(zone.lat), lng:Number(zone.lng), timer:0,
+  };
+  transition.timer = setTimeout(()=>{
+    if(transitionZoneCarte === transition) transitionZoneCarte = null;
+  }, 5000);
+  transitionZoneCarte = transition;
+}
+
+function annulerTransitionZoneCarte(){
+  if(transitionZoneCarte && transitionZoneCarte.timer)
+    clearTimeout(transitionZoneCarte.timer);
+  transitionZoneCarte = null;
+}
+
+function transitionZoneCarteEnCours(){
+  const transition = transitionZoneCarte;
+  if(!transition) return false;
+  if(transition.portee !== porteeCourante || transition.zoneId !== idZoneActive()){
+    annulerTransitionZoneCarte();
+    return false;
+  }
+  if(!map) return true;
+  const c = map.getCenter();
+  if(c && distanceM(c.lat,c.lng,transition.lat,transition.lng) <= 1500){
+    annulerTransitionZoneCarte();
+    return false;
+  }
+  return true;
+}
 
 /* La feuille de style de Leaflet n'est plus bloquante — c'est ce qui a rendu
    le premier écran instantané, et on le garde. Mais elle ne fait pas que du
@@ -5735,18 +5810,18 @@ function installerCarte(){
        fournisseur réconcilie tout à `idle` (un dernier `setView` hors geste),
        et c'est là que cette cascade s'exécute — une fois. L'alignement ne
        bouge pas ; seul le travail redondant disparaît. */
+    if(transitionZoneCarteEnCours()) return;
     if(fournisseurGoogleActif && fournisseurGoogleActif.enGeste && fournisseurGoogleActif.enGeste())
       return;
-    if(!repriseGeste) majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions();
-    // temporisation : recomposer 400 marqueurs à chaque micro-déplacement
-    // faisait saccader la carte sur téléphone
-    // on ne relance rien tant que la carte bouge : un balayage de trois
-    // secondes déclenchait une dizaine de requêtes pour un seul quartier
+    // Pendant le geste, seuls les transforms natifs de la carte bougent. Toutes
+    // les opérations coûteuses sont regroupées dans une unique réconciliation
+    // après stabilisation.
     clearTimeout(minuteurRendu);
     minuteurRendu = setTimeout(()=>{
       const vue = empreinteDeLaVue();
       if(vue === empreinteVue) return;   // même vue : rien à refaire
       empreinteVue = vue;
+      renduCarteEnAttente = false;
       rendre({progressif:true});         // les grappes suivent le zoom par lots
       const c = map.getCenter();
       chargerZone(c.lat, c.lng);         // et le quartier exploré se remplit
@@ -5770,7 +5845,7 @@ function installerCarte(){
          rien ; quatre cents mètres ou un changement de zone, oui. Et
          réévaluer ne veut jamais dire rappeler une source. */
       reevaluerTerritorial();
-    }, 350);
+    }, estMobilePerformance() ? 120 : 350);
   });
   /* Le fournisseur garde son état « geste » pendant la dernière synchro
      Leaflet afin que le listener ci-dessus ne lance pas de cascade lourde dans
@@ -5799,6 +5874,10 @@ function installerCarte(){
      s'affichait (c'est notre propre élément), et aucune tuile n'était jamais
      réclamée. On revient au comportement d'avant : `poserFond()` est appelé
      dans la foulée de `L.map()`, exactement comme il l'était dans `demarrer()`. */
+  /* Le fond autonome part immédiatement. Le SDK Google peut encore être en
+     attente : sa promesse remplacera simplement le fond quand il sera prêt,
+     sans retenir la carte, les marqueurs ni le premier écran. */
+  void remettreFondAutonome();
   (promesseCarteGoogle || Promise.resolve(false)).then(googleActif=>{
     const fournisseur = window.AutourMapProviders && AutourMapProviders.googleMaps;
     if(googleActif && fournisseur && fournisseur.estActif && fournisseur.estActif()) return;
@@ -6070,10 +6149,27 @@ function chargerLeDemarrage(rapide){
     return true;
   };
 
-  /* Google, DATAtourisme et Supabase portent les premières recommandations.
-     Chacun possède un délai borné et publie son résultat indépendamment : la
-     source la plus lente ne garde plus l'interface en état de chargement. */
+  /* Supabase local est la seule source réseau indispensable au premier écran :
+     cache éventuel d'abord, deux RPC parallèles ensuite, une publication. */
   const travaux = [
+    avecDelai(chargerCoucheSupabase(lat,lng),4500,null,signal)
+      .then(couche=>{
+        if(!generationCourante(generation) || !couche) return;
+        if((couche.publications || []).length)
+          PERF.jalon("supabase_publications_ready");
+        if((couche.evenements || []).length)
+          PERF.jalon("supabase_evenements_ready");
+        if((couche.publications || []).length || (couche.evenements || []).length)
+          sourcePrete("supabase_pret");
+      }),
+  ];
+
+  /* Le nom, Google Places, DATAtourisme, canaux et favoris enrichissent une
+     session existante ; aucun n'est requis pour afficher la zone locale. Les
+     fabriquer en fonctions évite surtout de lancer leurs Promises avant le
+     premier paint, ce qui était invisible dans le code mais mesurable dans le
+     budget réseau mobile. */
+  const travauxSecondaires = ()=>[
     avecDelai(nomCommune(lat,lng),2500,null,signal)
       .then(n=>{ if(generationCourante(generation) && n) commune = n; }),
 
@@ -6090,23 +6186,17 @@ function chargerLeDemarrage(rapide){
       sourcePrete("datatourisme_done");
     }),
 
-    /* Au démarrage à froid, la couche territoriale est une seule opération :
-       cache éventuel d'abord, deux RPC parallèles ensuite, une publication.
-       Les autres chemins du démarrage partagent exactement cette promesse. */
-    avecDelai(chargerCoucheSupabase(lat,lng),4500,null,signal)
-      .then(couche=>{
-        if(!generationCourante(generation) || !couche) return;
-        if((couche.publications || []).length)
-          PERF.jalon("supabase_publications_ready");
-        if((couche.evenements || []).length)
-          PERF.jalon("supabase_evenements_ready");
-        if((couche.publications || []).length || (couche.evenements || []).length)
-          sourcePrete("supabase_pret");
-      }),
-
     avecDelai(connecter().then(()=>Promise.allSettled([rafraichirCanaux(), chargerFavoris()])),4500,[],signal)
       .then(()=>{ if(generationCourante(generation)) PERF.jalon("supabase_pret"); }),
   ];
+
+  if(estMobilePerformance()){
+    setTimeout(()=>{
+      if(generationCourante(generation)) quandLibre(()=>Promise.allSettled(travauxSecondaires()));
+    },1800);
+  } else {
+    travaux.push(...travauxSecondaires());
+  }
 
   Promise.allSettled(travaux).then(()=>{
     if(!generationCourante(generation)) return;
@@ -6884,10 +6974,18 @@ const MARQUEURS_MAX_DEZOOME = 10;
    entièrement. C'est ce qui arrivait après un déplacement vers une autre
    ville : le classement de la feuille parlait encore de l'ancienne zone. */
 function limiterMarqueurs(liste){
-  if(!map || map.getZoom() >= 16) return liste;
-  const retenus = new Set(liste.slice(0, MARQUEURS_MAX_DEZOOME).map(l=>l.id));
-  // un événement publié n'est jamais masqué : c'est la raison d'être de l'app
-  liste.forEach(l=>{ if(estTemporaire(l)) retenus.add(l.id); });
+  if(!map) return liste;
+  if(!estMobilePerformance() && map.getZoom() >= 16) return liste;
+  const limite = estMobilePerformance() ? RENDU_PROGRESSIF_MAX_INITIAL_MOBILE : MARQUEURS_MAX_DEZOOME;
+  const visibles = estMobilePerformance() && map.getBounds
+    ? liste.filter((l)=>l && Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng)) &&
+        map.getBounds().pad(.18).contains([Number(l.lat),Number(l.lng)]))
+    : [];
+  const candidats = estMobilePerformance() ? [...visibles,...liste] : liste;
+  const retenus = new Set(candidats.slice(0, limite).map(l=>l.id));
+  /* Les événements restent accessibles dans Explorer et dans la feuille, mais
+     ne contournent plus le budget de peinture de la carte : à Paris un lot de
+     120 annonces transformait le premier rendu en reconstruction complète. */
   return liste.filter(l=>retenus.has(l.id));
 }
 
@@ -6906,6 +7004,10 @@ function empreinteMarqueur(l){
    seulement la priorité aux marqueurs déjà présents et à ceux dans le
    viewport, puis le reste passe par le même rendu réutilisable, par lots. */
 const RENDU_PROGRESSIF_MAX_INITIAL = 36;
+const RENDU_PROGRESSIF_MAX_INITIAL_MOBILE = 18;
+function limiteRenduProgressif(){
+  return estMobilePerformance() ? RENDU_PROGRESSIF_MAX_INITIAL_MOBILE : RENDU_PROGRESSIF_MAX_INITIAL;
+}
 let renduCarteProgressif = null;
 let annulerRenduCarteProgressif = null;
 let renduCarteEnAttente = false;
@@ -6938,7 +7040,7 @@ function restaurerDensiteApresGeste(){
       const fin = Math.min(i+6,liste.length);
       for(;i<fin;i++){
         const element = liste[i] && liste[i].getElement && liste[i].getElement();
-        if(element) element.style.visibility = "";
+        if(element) element.style.display = "";
       }
       if(i<liste.length) setTimeout(suite,0); else finir();
     };
@@ -6960,7 +7062,6 @@ function planifierRestaurationDensite(){
   restaurationDensitePlanifiee = setTimeout(()=>{
     restaurationDensitePlanifiee = 0;
     restaurerDensiteApresGeste();
-    if(map){ majEpaisseurs(); majEtiquettes(); majBoutons(); planifierCollisions(); }
   }, 650);
 }
 
@@ -7010,7 +7111,8 @@ function carteEstEnGeste(){
 }
 
 function itemsPrioritairesCarte(items){
-  if(!map || items.length <= RENDU_PROGRESSIF_MAX_INITIAL) return items;
+  const limite = limiteRenduProgressif();
+  if(!map || items.length <= limite) return items;
   const presents = items.filter(item=>marqueurs.has(identifiantItemCarte(item)));
   const bounds = map.getBounds().pad(.18);
   const proches = items.filter(item=>{
@@ -7020,7 +7122,7 @@ function itemsPrioritairesCarte(items){
   const vus = new Set(), out = [];
   [...presents,...proches,...items].forEach(item=>{
     const id = identifiantItemCarte(item);
-    if(id == null || vus.has(id) || out.length >= RENDU_PROGRESSIF_MAX_INITIAL) return;
+    if(id == null || vus.has(id) || out.length >= limite) return;
     vus.add(id); out.push(item);
   });
   return out;
@@ -7080,7 +7182,7 @@ function rendre(options){
   /* Une arrivée de données peut demander un rendu au milieu d'un pinch. Le
      geste garde le fil principal ; la passe post-geste le reprendra avec une
      sélection progressive. */
-  if(carteEstEnGeste() && !o.progressif){
+  if(carteEstEnGeste()){
     renduCarteEnAttente = true;
     PERF.travail("rendu_carte", debutCpu);
     return;
@@ -7111,7 +7213,7 @@ function rendre(options){
      marqueur ne doit pas recréer tous les boutons et perdre le focus. */
   const items = o.lot ? [o.item] : empilerEvenements(grouper(choisis));
   const attendus = o.attendus || new Set(items.map(identifiantItemCarte).filter(Boolean));
-  const aRendre = (!o.lot && o.progressif && items.length > RENDU_PROGRESSIF_MAX_INITIAL)
+  const aRendre = (!o.lot && o.progressif && items.length > limiteRenduProgressif())
     ? itemsPrioritairesCarte(items) : items;
   if(!o.lot && o.progressif && items.length > aRendre.length)
     programmerRenduCarteProgressif(items,aRendre,attendus);
@@ -7198,7 +7300,7 @@ function rendre(options){
      présent : on le garde tant qu'il appartient à la sélection complète. */
   const garderFinal = o.progressif ? attendus : garder;
   marqueurs.forEach((m,id)=>{ if(!garderFinal.has(id)){ map.removeLayer(m); marqueurs.delete(id); } });
-  if(o.progressif && !o.lot && items.length <= RENDU_PROGRESSIF_MAX_INITIAL)
+  if(o.progressif && !o.lot && items.length <= limiteRenduProgressif())
     planifierRestaurationDensite();
   /* L'ensemble des marqueurs vient d'être reconstruit : la résolution de
      collisions ne peut plus se fier à sa signature de vue précédente. */
@@ -8727,13 +8829,13 @@ const RESEAUX_AIDE = [
 ];
 
 /* Le bassin Aide est une couche de données locale, pas une variante de la carte
-   générale. Il est rempli après la première peinture, conservé par zone et
-   seulement projeté dans les marqueurs quand Aide est actif. Ainsi l'application
-   peut déjà connaître les ressources fiables avant le clic, sans modifier la
-   surface normale d'Autour. */
+   générale. Il est restauré depuis le cache sans réseau au démarrage, puis
+   rempli uniquement après une demande explicite, et projeté dans les marqueurs
+   seulement quand Aide est actif. */
 const zonesAideChargees = new Map();
 const chargementsAideEnCours = new Map();
 const AIDE_RAYON_RECHARGE = 5000;
+const AIDE_RAYON_INITIAL = 5000;
 const RAYON_AIDE = window.AutourAideRayon || null;
 const AIDE_CACHE_PREFIX = "autour:bassin-aide:v3:";
 const AIDE_CACHE_HEURES = 36;
@@ -8922,14 +9024,14 @@ function prechargerBassinAideZone() {
 }
 
 function programmerPrechargementAide() {
-  if (prechargementAideProgramme || !centreDonnees()) return;
+  /* Aide est strictement à la demande. Le démarrage peut restaurer un cache
+     déjà présent, mais ne doit jamais lancer DORA/FINESS/OSM/DATAtourisme ni
+     télécharger le catalogue complet d'une grande zone. */
+  if(prechargementAideProgramme || !centreDonnees()) return;
   prechargementAideProgramme = true;
-  const lancer = () => {
-    prechargementAideProgramme = false;
-    prechargerBassinAideZone().catch(() => {});
-  };
-  if (ORDO && ORDO.differer) ORDO.differer(lancer, {timeout: 5000});
-  else setTimeout(lancer, 1800);
+  const centre = centreDonnees();
+  if(centre) hydraterBassinAide(centre[0], centre[1]);
+  prechargementAideProgramme = false;
 }
 /* Les besoins que la phrase n'a pas nommés mais que la taxonomie propose. Ils
    entrent dans la recherche, à poids réduit : élargir n'est pas détourner. */
@@ -9145,7 +9247,7 @@ async function lieuxAideInstitutionnels(lat, lng, contexte, signal){
   const besoins = besoinsPourCollecteAide(contexte);
   if(!fournisseur || !besoins.length) return [];
   try{
-    const places = await fournisseur.nearby(lat, lng, { needs:besoins, radius:15000, signal });
+    const places = await fournisseur.nearby(lat, lng, { needs:besoins, radius:AIDE_RAYON_INITIAL, signal });
     return places.map(p=> AutourProviders.versInterne(p)).filter(Boolean);
   }catch(e){
     return [];
@@ -9160,7 +9262,7 @@ async function lieuxAideSource(source, lat, lng, contexte, signal){
   if(!fournisseur) return [];
   try{
     const places = await fournisseur.nearby(lat, lng, {
-      needs:besoinsPourCollecteAide(contexte), radius:15000, signal,
+      needs:besoinsPourCollecteAide(contexte), radius:AIDE_RAYON_INITIAL, signal,
       records:source === "aideAutour"
         ? permanentPlaces.filter((lieu) => lieu && lieu.aideStructure === true)
         : undefined,
@@ -9174,7 +9276,7 @@ async function lieuxAideAutour(lat, lng, contexte, signal){
   if(!fournisseur) return [];
   try{
     const places = await fournisseur.nearby(lat, lng, {
-      needs:contexte && contexte.besoins || [], radius:15000, signal,
+      needs:contexte && contexte.besoins || [], radius:AIDE_RAYON_INITIAL, signal,
       records:permanentPlaces.filter((lieu) => lieu && lieu.aideStructure === true),
     });
     return places.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
@@ -12360,42 +12462,6 @@ function estCanonique(l){
   return !maitre || String(maitre) === String(l.id);
 }
 
-async function chargerEvenementsMetropole(bassin){
-  if(!sbLecture || !bassin) return [];
-  /* On ne demande plus un rectangle de 25 km — on demandait bien 25 km, et
-     `evenements_proches` les ramenait à 5 : elle recalcule son rayon d'après
-     le territoire qui contient le centre, et pour quelqu'un à Tourcoing c'est
-     Tourcoing, rayon 5 km. Le bassin métropolitain n'existait donc pas à
-     l'exécution.
-
-     `evenements_bassin` pose l'autre question : non pas « qu'y a-t-il à moins
-     de N kilomètres » mais « qu'y a-t-il dans MON bassin ». L'appartenance
-     territoriale décide, la distance ne plafonne plus rien — c'est le
-     classement qui la pondère ensuite. `Maintenant` continue de passer par
-     `evenements_proches`, inchangée. */
-  const fini = PERF.requete("supabase_metropole");
-  try{
-    const { data, error } = await sbLecture.rpc("evenements_bassin", {
-      p_group_slug: String(bassin),
-      p_limite: METROPOLE_LIMITE
-    });
-    if(error){
-      journal.warn("Bassin métropolitain indisponible :", error.message);
-      return [];
-    }
-    /* `metro_area` vient de la base, qui sait à quel territoire l'événement
-       appartient. On ne l'écrase pas par le bassin de la personne : affirmer
-       que tout ce qui est à 25 km est « du même bassin » ferait passer pour
-       métropolitain ce qui ne l'est pas. */
-    return (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter(Boolean);
-  }catch(error){
-    journal.warn("Bassin métropolitain indisponible :", error?.message || error);
-    return [];
-  }finally{
-    fini();
-  }
-}
-
 function lireCacheMajeursCross(zoneId){
   if(!zoneId) return [];
   try{
@@ -12440,6 +12506,7 @@ async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante)
         Number(event.importance_score) >= MAJEUR_CROSS_MIN_SCORE;
     });
     if(evenementsMajeursHorsZone.length) majPourToi();
+    finaliserRebasePourToiSiPret();
   }
   const promesse = (async()=>{
     const fini = PERF.requete("supabase_majeurs_cross");
@@ -12447,7 +12514,11 @@ async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante)
       const {data, error} = await sbLecture.rpc("evenements_majeurs_hors_zone", {
         p_active_zone_id:zoneId, p_limite:24
       });
-      if(error){ journal.warn("Événements majeurs hors zone indisponibles :", error.message); return evenementsMajeursHorsZone; }
+      if(error){
+        journal.warn("Événements majeurs hors zone indisponibles :", error.message);
+        finaliserRebasePourToiSiPret();
+        return evenementsMajeursHorsZone;
+      }
       if(portee !== porteeCourante || idZoneActive() !== zoneId) return [];
       const liste = (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter((event)=>{
         const id = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
@@ -12458,8 +12529,12 @@ async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante)
       evenementsMajeursHorsZone = liste;
       ecrireCacheMajeursCross(zoneId, liste);
       if(liste.length) majPourToi();
+      finaliserRebasePourToiSiPret();
       return liste;
-    }catch(e){ return evenementsMajeursHorsZone; }
+    }catch(e){
+      finaliserRebasePourToiSiPret();
+      return evenementsMajeursHorsZone;
+    }
     finally{ fini(); }
   })();
   majeursCrossEnCours = {zoneId, promise:promesse};
@@ -12469,86 +12544,26 @@ async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante)
 }
 
 function rafraichirMetropole(){
-  /* Le bassin ne dépend pas de l'endroit exact où l'on se tient : se déplacer
-     de Tourcoing à Lille ne change pas la métropole. La clé de cache est donc
-     le bassin lui-même, et non des coordonnées. */
-  const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
-  void chargerEvenementsMajeursHorsZone(idZoneActive(), porteeCourante);
-  if(!bassin || metropoleEnCours === bassin) return;
-  porteeMetropole = porteeCourante;
-  bassinCourant = bassin;
-  metropoleEnCours = bassin;
-  const cachee = lireCacheMetropole(bassin);
-  if(cachee.length && !evenementsMetropole.length){
-    evenementsMetropole = cachee;
-    /* Le cache est une reconstruction du bassin, pas une consultation. Le
-       badge reste donc calculé par les mêmes IDs vus/non vus. Lors d'un
-       changement de goûts, le rebase reste en attente de la réponse fraîche
-       afin que des entrées chargées entre-temps ne deviennent pas
-       artificiellement des nouveautés. */
-    majPourToi();
-  }
-  chargerEvenementsMetropole(bassin).then((liste)=>{
-    /* Une liste vide n'est pas un résultat : c'est un chargement qui n'a rien
-       ramené, souvent parce que le réseau a flanché. Garder la clé de cache
-       interdirait tout nouvel essai jusqu'au rechargement de la page. */
-    if(porteeMetropole !== porteeCourante || bassinCourant !== bassin) return;
-    if(!liste.length){
-      /* Une réponse vide ou une panne ne doit pas effacer un bassin restauré
-         depuis le cache : elle n'est pas une preuve que le bassin est vide. */
-      if(!evenementsMetropole.length) evenementsMetropole = [];
-      if(rebasePourToiEnAttente){
-        retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
-        rebasePourToiEnAttente = false;
-      }
-      marquerDonneesPourToiPretes();
-      metropoleEnCours = null;
-      majPourToi();
-      return;
-    }
-    evenementsMetropole = liste;
-    ecrireCacheMetropole(bassin, liste);
-    if(rebasePourToiEnAttente){
-      /* La validation a pu arriver pendant que le bassin était encore vide.
-         Le socle doit alors être pris après sa reconstruction, sinon les
-         recommandations fraîchement chargées deviennent artificiellement
-         des nouveautés. */
-      retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
-      rebasePourToiEnAttente = false;
-    }
-    marquerDonneesPourToiPretes();
-    majPourToi();
-  }).catch(()=>{
-    if(rebasePourToiEnAttente){
-      retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
-      rebasePourToiEnAttente = false;
-    }
-    metropoleEnCours = null;
-    marquerDonneesPourToiPretes();
-    majPourToi();
-  });
+  /* Le téléphone ne charge plus jamais un bassin complet. Pour toi reçoit la
+     couche locale déjà chargée et, séparément, un petit pool serveur de majeurs
+     cross-zone. */
+  const zoneId = arguments[0] || idZoneActive();
+  const portee = arguments[1] == null ? porteeCourante : arguments[1];
+  if(!contexteCoucheSupabaseCourant(zoneId, portee)) return;
+  const lancer = ()=>{
+    if(contexteCoucheSupabaseCourant(zoneId, portee))
+      void chargerEvenementsMajeursHorsZone(zoneId, portee);
+  };
+  /* Le pool cross-zone enrichit « Pour toi » ; il n'est pas une dépendance du
+     premier écran. Un appui explicite ouvre la porte immédiatement, sinon la
+     lecture attend une période d'inactivité et ne gonfle pas le budget de
+     démarrage mobile. */
+  if(document.body.classList.contains("pourtoi-ouvert")) lancer();
+  else quandLibre(lancer);
 }
 
 function bassinPourToi(){
-  /* Le bassin est chargé en dehors du rayon local : il doit néanmoins rester
-     borné par le contexte de destination. Sinon une réponse MEL ou un cache
-     de la ville précédente pouvait traverser jusqu'à « Pour toi ».
-
-     Les deux collections peuvent contenir la même occurrence. Il ne faut pas
-     laisser `lieux` gagner par ordre d'arrivée : la version locale est parfois
-     la moins enrichie (notamment sans `announcement_tags`) alors que la
-     version du bassin porte les artistes, les tags et la provenance. Le
-     dédoublonnage commun fusionne d'abord les preuves et reconstruit le
-     `CanonicalEvent`; le classement Pour toi ne voit ensuite qu'une fiche. */
-  if(typeof localPoolPourToi === "function") return localPoolPourToi();
-  /* Le corps est aussi exercé isolément par les tests de fusion historiques.
-     Ce repli conserve le même entonnoir local sans dépendre des déclarations
-     qui entourent le bundle complet. */
-  const locaux = typeof elementsDuContexte === "function"
-    ? elementsDuContexte(lieux) : (lieux || []);
-  const bassin = typeof elementsDuContexte === "function"
-    ? elementsDuContexte(evenementsMetropole) : (evenementsMetropole || []);
-  return dedupeItems([...locaux, ...bassin], distanceM).filter(estCanonique);
+  return typeof localPoolPourToi === "function" ? localPoolPourToi() : [];
 }
 
 function localPoolPourToi(){
@@ -12558,8 +12573,7 @@ function localPoolPourToi(){
     return ZONES.zoneIdForItem(item) === activeId;
   };
   const locaux = elementsDuContexte(lieux).filter(estCanonique).filter(appartient);
-  const bassin = elementsDuContexte(evenementsMetropole).filter(estCanonique).filter(appartient);
-  return dedupeItems([...locaux, ...bassin], distanceM)
+  return dedupeItems(locaux, distanceM)
     .filter(estCanonique).filter(appartient);
 }
 
@@ -12576,11 +12590,10 @@ function majorCrossZonePool(){
 function lieuParId(id){
   /* OUVRIR CE QU'ON PROPOSE.
 
-     « Pour toi » puise dans `bassinPourToi()`, donc aussi dans ce que le
-     bassin métropolitain a ramené. Ces événements-là ne sont dans `lieux` que
-     s'ils tombaient déjà dans le rayon local ; les autres n'existent que dans
-     `evenementsMetropole`. `ouvrirDetail` ne cherchait que dans `lieux` : la
-     carte se comportait comme un bouton, le gestionnaire partait, et
+     « Pour toi » puise dans `bassinPourToi()` pour la couche locale et dans le
+     pool majeur cross-zone. Une proposition ne doit pas dépendre d'un ancien
+     catalogue distant. `ouvrirDetail` ne cherchait que dans `lieux` : la carte
+     se comportait comme un bouton, le gestionnaire partait, et
      l'ouverture sortait en silence sur son `if(!l) return`. Rien ne se
      passait, sans la moindre erreur pour le dire.
 
@@ -12599,7 +12612,6 @@ function lieuParId(id){
   return fusionnes.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || aides.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
-      || evenementsMetropole.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || crossZone.find((x)=> x && String(x.id) === cle)
       || null;
 }
@@ -12972,6 +12984,12 @@ function ecrireMarquesAnnoncees(ids){
   }catch(e){}
 }
 
+function finaliserRebasePourToiSiPret(){
+  if(!rebasePourToiEnAttente) return;
+  retenirAnnoncees(propositionsPourToi(POURTOI_TOUT_MAX));
+  rebasePourToiEnAttente = false;
+}
+
 function ecrireConsultationPourToi(marque){
   try{ localStorage.setItem(CLE_POURTOI_CONSULTE, String(marque)); }catch(e){}
 }
@@ -12999,7 +13017,7 @@ function rebaserPourToiApresChangementGouts(){
   /* Si le bassin n'est pas encore reconstruit, le socle est incomplet. Le
      rappel au retour de la requête le complètera avant que la pastille puisse
      annoncer ces fiches comme nouvelles. */
-  rebasePourToiEnAttente = !!sbLecture && !evenementsMetropole.length;
+  rebasePourToiEnAttente = !!sbLecture && !evenementsMajeursHorsZone.length;
   peindrePastillePourToi(0);
 }
 
@@ -13250,9 +13268,9 @@ function ouvrirPourToi(){
   synchroniserEnvies();
   p.hidden = false;
   document.body.classList.add("pourtoi-ouvert");
-  /* Après un reload, `evenementsMetropole` repart vide. Le bassin peut déjà
-     être résolu, ou le devenir juste après : dans les deux cas cet appel est
-     idempotent et garantit que l'ouverture réessaie la reconstruction. */
+  /* Après un reload, le petit pool majeur peut être vide. Cet appel est
+     idempotent et garantit que l'ouverture réessaie uniquement cette lecture
+     compacte, jamais un catalogue distant complet. */
   rafraichirMetropole();
   majPourToi();
 }

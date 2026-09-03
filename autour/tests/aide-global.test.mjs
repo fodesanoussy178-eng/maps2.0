@@ -6,12 +6,17 @@ const lire = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const app = lire("../app.js");
 const index = lire("../index.html");
 
-test("le bassin Aide est séparé, borné par la zone et préchargé après la peinture", () => {
+test("le bassin Aide est séparé, borné par la zone et chargé à la demande", () => {
   assert.match(app, /const AIDE_CACHE_PREFIX = "autour:bassin-aide:v3:"/);
   assert.ok(app.includes("AIDE_CACHE_PREFIX + encodeURIComponent(idZoneActive())"));
   assert.ok(app.includes("Date.now() - Number(entree.t) > AIDE_CACHE_HEURES"));
   assert.ok(app.includes("function programmerPrechargementAide()"));
   assert.ok(app.includes("apresPeinture(()=>programmerPrechargementAide());"));
+  const precharge = app.slice(app.indexOf("function programmerPrechargementAide()"),
+    app.indexOf("/* Les besoins que la phrase", app.indexOf("function programmerPrechargementAide()")));
+  assert.doesNotMatch(precharge, /chargerAide\(/,
+    "le premier écran ne doit pas télécharger les structures Aide");
+  assert.match(app, /const AIDE_RAYON_INITIAL = 5000;/);
   assert.ok(app.includes("if(modeAide){") && app.includes("candidatsAideZone()"));
 });
 

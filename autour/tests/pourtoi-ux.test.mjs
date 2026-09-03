@@ -98,7 +98,7 @@ test("les goûts et les recommandations sont reconstruits par ID après reload",
   const pastille = source.slice(source.indexOf("function peindrePastillePourToi"), source.indexOf("function majPastillePourToi"));
   assert.match(pastille, /dataset\.count = String\(compte\)/);
   assert.match(source, /let rebasePourToiEnAttente = false/);
-  assert.match(source, /if\(rebasePourToiEnAttente\)[\s\S]*?retenirAnnoncees\(propositionsPourToi\(POURTOI_TOUT_MAX\)\)/);
+  assert.match(source, /function finaliserRebasePourToiSiPret\(\)[\s\S]*?retenirAnnoncees\(propositionsPourToi\(POURTOI_TOUT_MAX\)\)/);
 });
 
 test("Maintenant expose le bassin complet et son badge FOMO canonique", () => {
@@ -158,7 +158,9 @@ test("Pour toi est invalidé par les changements de zone, GPS et données", () =
   assert.match(source, /function definirZoneActive\([\s\S]*?actualiserSurfacePourToi\(\)/);
   assert.match(source, /function appliquerPosition\([\s\S]*?if\(bouge\) actualiserSurfacePourToi\(\)/);
   assert.match(source, /function finaliserFusion\([\s\S]*?marquerDonneesPourToiPretes\(\)/);
-  assert.match(source, /function rafraichirMetropole\([\s\S]*?marquerDonneesPourToiPretes\(\)/);
+  assert.match(source, /function rafraichirMetropole\([\s\S]*?chargerEvenementsMajeursHorsZone\(/);
+  assert.doesNotMatch(source, /evenements_bassin/,
+    "Pour toi ne doit plus charger un bassin distant complet");
 });
 
 test("la pastille exclut les recommandations vues et les goûts nouvellement pertinents", () => {

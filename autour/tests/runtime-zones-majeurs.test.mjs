@@ -5,6 +5,9 @@ import {readFile} from "node:fs/promises";
 const migration = await readFile(new URL(
   "../supabase/migrations/20260903110000_event_areas_partitions_majeurs.sql",
   import.meta.url), "utf8");
+const mobileCrossZone = await readFile(new URL(
+  "../supabase/migrations/20260903170000_mobile_cross_zone_pool.sql",
+  import.meta.url), "utf8");
 const melMigration = await readFile(new URL(
   "../supabase/migrations/20260903133000_mel_partitions_techniques.sql",
   import.meta.url), "utf8");
@@ -115,4 +118,15 @@ test("le RPC cross-zone exige majeur régional/national, score, futur et tags", 
   assert.match(migration, /e\.start_at > now\(\)/);
   assert.match(migration, /cardinality\(e\.announcement_tags\)/);
   assert.match(migration, /e\.duplicate_of is null/);
+});
+
+test("le pool cross-zone mobile est compact et plafonné", () => {
+  assert.match(mobileCrossZone, /returns table \(/i);
+  assert.doesNotMatch(mobileCrossZone, /returns setof public\.events/i);
+  assert.match(mobileCrossZone, /limit least\(greatest\(coalesce\(p_limite, 24\), 1\), 24\)/);
+  assert.doesNotMatch(mobileCrossZone, /select\s+e\.\*/i);
+  for (const field of ["id", "title", "start_at", "zone_id", "announcement_tags",
+                       "importance_score", "is_major", "major_scope"]) {
+    assert.match(mobileCrossZone, new RegExp("e\\." + field));
+  }
 });

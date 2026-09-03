@@ -34,8 +34,8 @@ test("un démarrage sans localisation n'invente plus Tourcoing", () => {
 });
 
 test("une panne d'une couche laisse les autres sources visibles", () => {
-  assert.match(app, /Promise\.all\(\[\s*chargerPublications\(lat,lng\), chargerEvenementsCanoniques\(lat,lng,portee\)\s*\]\)/s);
-  assert.match(app, /okPublications \|\| okEvenements/);
+  assert.match(app, /Promise\.all\(\[\s*chargerPublications\(lat,lng,\{zoneId,portee\}\),\s*chargerEvenementsCanoniques\(lat,lng,portee,\{zoneId,limite:limiteEvenements\}\)\s*\]\)/s);
+  assert.match(app, /\(okPublications \|\| okEvenements\) && contexteCoucheSupabaseCourant\(zoneId, portee\)/);
   assert.match(app, /Promise\.allSettled\(travaux\)/);
   assert.match(app, /lieuxDatatourisme/);
 });
