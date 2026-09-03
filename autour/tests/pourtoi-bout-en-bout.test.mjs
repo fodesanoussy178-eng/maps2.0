@@ -50,7 +50,8 @@ function extraireVersEvenement() {
 }
 const versEvenementCanonique = extraireVersEvenement();
 
-/* Une ligne telle que `evenements_bassin('mel')` la rend réellement. */
+/* Une ligne issue du pool local garde son contrat canonique jusque dans le
+   classement. Les majeurs cross-zone suivent un RPC séparé et compact. */
 const DEMAIN = new Date(Date.now() + 36 * 3600 * 1000);
 const ligneRpc = {
   id: "11111111-2222-3333-4444-555555555555",
@@ -102,9 +103,9 @@ test("une ligne RPC taguée rap ressort pour une surveillance Rap", () => {
   assert.ok(classes[0].score > 0);
 });
 
-test("la copie locale sans tags est fusionnée avec la copie MEL enrichie", () => {
+test("la couche locale reste le seul socle de Pour toi", () => {
   const {local, enrichie} = lignesDoublons();
-  const fusion = bassinPourToiAvec([local], [enrichie]);
+  const fusion = bassinPourToiAvec([enrichie], [local]);
   assert.equal(fusion.length, 1);
   assert.deepEqual(fusion[0].announcement_tags, ["rap", "concert", "exposition"]);
   assert.deepEqual(fusion[0].eventCanonical.announcement_tags, ["rap", "concert", "exposition"]);
@@ -114,34 +115,29 @@ test("la copie locale sans tags est fusionnée avec la copie MEL enrichie", () =
   assert.equal(fusion[0].eventCanonical.reservation_required, false);
 });
 
-test("la fusion reste identique quand la version MEL arrive avant la locale", () => {
+test("un catalogue distant ignoré ne peut pas enrichir la couche locale", () => {
   const {local, enrichie} = lignesDoublons();
-  const fusion = bassinPourToiAvec([enrichie], [local]);
+  const fusion = bassinPourToiAvec([local], [enrichie]);
   assert.equal(fusion.length, 1);
-  assert.deepEqual(fusion[0].eventCanonical.announcement_tags, ["rap", "concert", "exposition"]);
-  assert.deepEqual(fusion[0].eventCanonical.artist_names, ["Ninho"]);
-  assert.match(fusion[0].eventCanonical.image_url, /affiche-rap\.jpg$/);
+  assert.deepEqual(fusion[0].announcement_tags, []);
+  assert.deepEqual(fusion[0].artist_names, []);
 });
 
-test("deux sources apportent chacune des faits sans s'effacer", () => {
+test("les faits locaux restent cohérents sans seconde collecte de bassin", () => {
   const {local, enrichie} = lignesDoublons();
-  local.eventCanonical.price_text = "4 € par enfant";
-  local.price_text = "4 € par enfant";
-  local.eventCanonical.audience = "Enfants et familles";
-  local.audience = "Enfants et familles";
-  const fusion = bassinPourToiAvec([local], [enrichie]);
+  const fusion = bassinPourToiAvec([enrichie], [local]);
   const event = fusion[0].eventCanonical;
-  assert.equal(event.price_text, "4 € par enfant");
-  assert.equal(event.audience, "Enfants et familles");
+  assert.equal(event.price_text, null);
+  assert.equal(event.audience, null);
   assert.equal(event.reservation_required, false);
-  assert.ok(event.description.includes("artiste invité"));
+  assert.equal(event.description, "Concert rap et exposition avec artiste invité.");
   assert.equal(event.event_source, "openagenda");
   assert.equal(event.image_source, "openagenda");
 });
 
 test("après un rechargement propre, le même événement MEL est recommandable", () => {
   const {local, enrichie} = lignesDoublons();
-  const reponseFraiche = bassinPourToiAvec([local], [enrichie]);
+  const reponseFraiche = bassinPourToiAvec([enrichie], [local]);
   const classes = ANNONCES.classerPourToi(reponseFraiche, optionsClassement(["rap"]));
   assert.equal(classes.length, 1);
   assert.ok(classes[0].matched_interests.includes("rap"));
@@ -150,7 +146,7 @@ test("après un rechargement propre, le même événement MEL est recommandable"
 
 test("Rap, Artistes & concerts et Expositions matchent séparément et ensemble", () => {
   const {local, enrichie} = lignesDoublons();
-  const event = bassinPourToiAvec([local], [enrichie])[0];
+  const event = bassinPourToiAvec([enrichie], [local])[0];
   for (const interest of ["rap", "Artistes & concerts", "Expositions"]) {
     const classes = ANNONCES.classerPourToi([event], optionsClassement([interest]));
     assert.equal(classes.length, 1, interest);
@@ -191,10 +187,10 @@ test("sans les tags, le classement ne peut rien proposer — la régression d'or
     "c'est bien l'absence de tags qui vidait le panneau");
 });
 
-test("un chargement métropolitain vide libère la clé pour un nouvel essai", () => {
-  const i = app.search(/^function rafraichirMetropole\(/m);
-  const bloc = app.slice(i, app.indexOf("catch", i));
-  assert.match(bloc, /if\(!liste\.length\)\{[\s\S]*?metropoleEnCours = null;\s*majPourToi\(\);\s*return;\s*\}/);
+test("Pour toi ne déclenche jamais un chargement de bassin complet", () => {
+  assert.doesNotMatch(app, /evenements_bassin|chargerEvenementsMetropole/);
+  assert.match(app, /rpc\("evenements_majeurs_hors_zone"/);
+  assert.match(app, /p_limite:24/);
 });
 
 /* OUVRIR CE QU'ON PROPOSE.
@@ -220,14 +216,17 @@ function extraireFonction(source, nom) {
 }
 
 function bassinPourToiAvec(lieux, evenementsMetropole) {
-  const bassin = extraireFonction(app, "bassinPourToi");
+  const bassin = extraireFonction(app, "localPoolPourToi") +
+    extraireFonction(app, "bassinPourToi");
   return new Function(
     "lieux", "evenementsMetropole", "elementsDuContexte", "estCanonique", "dedupeItems", "distanceM",
+    "idZoneActive", "dansZoneActive", "ZONES",
     bassin + "; return bassinPourToi;")(
     lieux, evenementsMetropole, (items) => items || [], () => true,
     globalThis.AutourCore.dedupeItems,
     (lat1, lng1, lat2, lng2) => Math.hypot((Number(lat1) - Number(lat2)) * 111000,
-      (Number(lng1) - Number(lng2)) * 70000)
+      (Number(lng1) - Number(lng2)) * 70000),
+    () => null, () => true, null
   )();
 }
 
@@ -274,12 +273,13 @@ function optionsClassement(interests) {
   };
 }
 
-function resolveurAvec(lieux, evenementsMetropole) {
-  return new Function("lieux", "evenementsMetropole",
-    extraireFonction(app, "lieuParId") + "; return lieuParId;")(lieux, evenementsMetropole);
+function resolveurAvec(lieux, evenementsMajeursHorsZone) {
+  return new Function("lieux", "evenementsMajeursHorsZone", "bassinPourToi", "candidatsAideZone", "dansZoneActive",
+    extraireFonction(app, "lieuParId") + "; return lieuParId;")(
+    lieux, evenementsMajeursHorsZone, () => [], () => [], () => true);
 }
 
-test("une proposition venue du seul bassin métropolitain est ouvrable", () => {
+test("une proposition majeure cross-zone est ouvrable sans catalogue distant", () => {
   const item = versEvenementCanonique(ligneRpc);
   const classes = ANNONCES.classerPourToi([item], {
     now: Date.now(), interests: ["rap"], seenIds: [], hiddenIds: [], limit: 6,
@@ -295,11 +295,11 @@ test("une proposition venue du seul bassin métropolitain est ouvrable", () => {
 
   const lieuParId = resolveurAvec(lieuxLocaux, [item]);
   const trouve = lieuParId(id);
-  assert.ok(trouve, "l'ouverture doit retrouver l'événement métropolitain");
+  assert.ok(trouve, "l'ouverture doit retrouver l'événement cross-zone");
   assert.equal(trouve.titre, "Concert rap au Grand Mix");
 });
 
-test("`lieux` reste prioritaire sur la copie métropolitaine", () => {
+test("`lieux` reste prioritaire sur le pool cross-zone", () => {
   const frais = { id: "evt1", titre: "Version fraîche" };
   const metro = { id: "evt1", titre: "Version du bassin" };
   const lieuParId = resolveurAvec([frais], [metro]);
@@ -316,37 +316,19 @@ test("ouvrirDetail passe par le résolveur et non par `lieux` seul", () => {
 });
 
 test("Pour toi suit réellement bassin → CanonicalEvent → tags → matching → rendu", async () => {
-  const trace = [];
-  const lecture = {
-    async rpc(nom, parametres) {
-      trace.push({nom, parametres});
-      return {data: [ligneRpc], error: null};
-    },
-  };
-  const chargeur = new Function(
-    "sbLecture", "PERF", "journal", "METROPOLE_LIMITE", "versEvenementCanonique",
-    extraireFonction(app, "chargerEvenementsMetropole") +
-      "; return chargerEvenementsMetropole;")(
-    lecture, {requete: () => () => {}}, {warn: () => {}}, 300, versEvenementCanonique);
+  const event = versEvenementCanonique(ligneRpc);
 
-  /* 1. Chargement du bassin réel, avec le même mapper que l'application. */
-  const bassin = await chargeur("mel");
-  assert.deepEqual(trace.map((appel) => appel.nom), ["evenements_bassin"]);
-  assert.equal(trace[0].parametres.p_group_slug, "mel");
-  assert.equal(bassin.length, 1);
-  const event = bassin[0];
-
-  /* 2–3. Le contrat est bien un événement canonique et ses faits de
+  /* 1–2. Le contrat est bien un événement canonique et ses faits de
      recommandation sont encore disponibles au moment du matching. */
   assert.equal(event.entity_type, "event");
   assert.equal(event.eventCanonical.entity_type, "event");
   assert.ok(TAXONOMIE.tagsDe(event).includes("rap"));
   assert.ok(TAXONOMIE.tagsDe(event).includes("concert"));
 
-  /* 4–5. Surveillances actives, classement, puis groupement et rendu de la
+  /* 3–4. Surveillances actives, classement, puis groupement et rendu de la
      carte : un événement compatible ne doit jamais disparaître entre deux
      étapes parce qu'un champ a changé de nom. */
-  const classes = ANNONCES.classerPourToi(bassin, {
+  const classes = ANNONCES.classerPourToi([event], {
     now: Date.now(), interests: ["rap", "concerts"], seenIds: [], hiddenIds: [],
     limit: 6, distanceFor: () => 2000, metroArea: "mel", territorySlug: "tourcoing",
   });
@@ -407,16 +389,17 @@ test("l'audit Paris conserve le bassin demandé sans dépendre d'un cas de titre
 test("un changement de zone invalide aussi les réponses de bassin arrivées en retard", () => {
   const zone = app.slice(app.indexOf("function definirZoneActive"), app.indexOf("function dansZoneActive"));
   assert.match(zone, /bassinTerritorialActif = null;/);
-  assert.match(zone, /evenementsMetropole = \[\];/);
-  assert.match(zone, /metropoleEnCours = null;/);
+  assert.match(zone, /annulerGeneration\("demarrage"\)/);
+  assert.match(zone, /annulerGeneration\("zone:exploration"\)/);
 
   const events = app.slice(app.indexOf("async function chargerEvenementsCanoniques"),
     app.indexOf("async function rafraichirCoucheSupabase"));
-  assert.match(events, /async function chargerEvenementsCanoniques\(lat,lng,portee = porteeCourante\)/);
-  assert.match(events, /if\(porteeEvenements !== porteeCourante\) return;/);
-  assert.match(app, /chargerEvenementsCanoniques\(lat,lng,portee\)/);
+  assert.match(events, /async function chargerEvenementsCanoniques\(lat,lng,portee = porteeCourante,options\)/);
+  assert.match(events, /contexteCoucheSupabaseCourant\(zoneId, porteeEvenements\)/);
+  assert.match(app, /chargerEvenementsCanoniques\(lat,lng,portee,\{zoneId,limite:limiteEvenements\}\)/);
 
   const metro = app.slice(app.indexOf("function rafraichirMetropole"),
     app.indexOf("function bassinPourToi"));
-  assert.match(metro, /porteeMetropole !== porteeCourante \|\| bassinCourant !== bassin/);
+  assert.match(metro, /chargerEvenementsMajeursHorsZone\(zoneId, portee\)/);
+  assert.doesNotMatch(metro, /evenements_bassin|evenementsMetropole/);
 });

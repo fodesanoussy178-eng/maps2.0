@@ -1750,12 +1750,17 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   #bandeauGeo,#bandeauVide,#onboardingLocalisation{left:auto;right:var(--marge-desktop);width:min(690px,45vw)}
   #charge{left:50%}
   #filtresHumains{width:auto;max-width:none}
-  /* desktop : l'en-tête flotte à gauche, le bouton se pose à sa droite plutôt
-     que dessous — il y a la place, et le centre appartient à la carte */
-  #btnAutourDeMoi{left:auto;right:var(--marge-desktop);transform:none;
-    margin-left:0;top:calc(var(--safe-t) + var(--marge-desktop));height:48px;
-    padding:0 18px;font-size:15px}
-  #btnAutourDeMoi:active{transform:scale(.96)}
+  /* Le bouton se posait à droite de l'en-tête, au même bord et à la même
+     hauteur que lui. Cela supposait un en-tête flottant à gauche — ce qu'il
+     n'est plus : il traverse la fenêtre (voir plus haut), et `#btnLoupe` est
+     précisément collée à ce bord droit par `margin-left:auto`. Le retour
+     recouvrait donc la loupe, qui cessait d'être cliquable : après un premier
+     changement de zone, on ne pouvait plus lancer de recherche.
+
+     Il n'y a plus de place « à sa droite » : le bouton reprend donc le
+     placement mobile, sous l'en-tête et centré, où seule la carte se trouve.
+     Seules restent ici les mesures propres au desktop. */
+  #btnAutourDeMoi{height:48px;padding:0 18px;font-size:15px}
 }
 
 /* ---- grappes de marqueurs quand la carte est éloignée ---- */
@@ -2392,6 +2397,28 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   body.aide #onboardingLocalisation{display:none}
 }
 
+/* « Revenir autour de moi » partage EXACTEMENT le créneau de la capsule
+   Maintenant : deux pastilles centrées à dix pixels sous l'en-tête. La
+   capsule est posée par-dessus (z-index 670 contre 604) et se trouve être
+   plus haute, si bien qu'après un changement de zone le bouton était
+   intégralement recouvert : visible, mais impossible à toucher — c'est la
+   capsule qui recevait le doigt. Empiler n'était pas une option, la capsule
+   changeant de hauteur selon qu'elle tient sur une ou deux lignes.
+
+   Alors la même règle que celle de l'onboarding ci-dessus, pour la même
+   raison : la capsule est informative et revient d'elle-même, tandis que le
+   retour est le seul geste qui ramène chez soi. Elle s'efface le temps du
+   retour et reparaît dès qu'il disparaît — soit dès qu'on est revenu.
+
+   La borne est 1099 et non 767 : le partage de créneau dure aussi longtemps
+   que le bouton se pose sous l'en-tête. À partir de 1100, la capsule remonte
+   dans la bande de l'en-tête et les deux cessent de se rencontrer — sur une
+   tablette de 834 ou 1024, en revanche, ils se recouvraient exactement comme
+   sur un téléphone. */
+@media (max-width:1099px){
+  body:has(#btnAutourDeMoi:not([hidden])) #badgeMaintenant{display:none}
+}
+
 /* ---- Contrat géométrique de la maquette ---------------------------------
    La navigation visible reprend les cinq slots de la maquette. L'accès Profil
    reste disponible dans l'en-tête : aucune capacité produit ne disparaît,
@@ -2859,6 +2886,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=ea7db26a" defer></script>
+<script src="app.js?v=f775c8d2" defer></script>
 </body>
 </html>

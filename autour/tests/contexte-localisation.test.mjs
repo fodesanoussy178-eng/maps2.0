@@ -67,25 +67,36 @@ const rennesEvent = item("rennes-concert", ...RENNES.centre, {
 });
 const tousLesEvenements = [melEvent, parisEvent, lilleEvent, rennesEvent];
 
-function bassinPourToi(lieux, evenementsMetropole, elementsDuContexte, estCanonique) {
+function bassinPourToi(lieux, elementsDuContexte, estCanonique, activeZoneId) {
   return new Function(
-    "lieux", "evenementsMetropole", "elementsDuContexte", "estCanonique", "dedupeItems", "distanceM",
-    extraireFonction("bassinPourToi") + "; return bassinPourToi();")(
-      lieux, evenementsMetropole, elementsDuContexte, estCanonique,
+    "lieux", "elementsDuContexte", "estCanonique", "dedupeItems", "distanceM", "idZoneActive", "ZONES", "dansZoneActive",
+    extraireFonction("localPoolPourToi") + extraireFonction("bassinPourToi") + "; return bassinPourToi();")(
+      lieux, elementsDuContexte, estCanonique,
       globalThis.AutourCore.dedupeItems,
       (lat1, lng1, lat2, lng2) => Math.hypot((Number(lat1) - Number(lat2)) * 111000,
-        (Number(lng1) - Number(lng2)) * 70000));
+        (Number(lng1) - Number(lng2)) * 70000),
+      () => activeZoneId,
+      {zoneIdForItem: (x) => {
+        if(String(x.id).startsWith("paris")) return "paris";
+        if(String(x.id).startsWith("lille")) return "mel";
+        if(String(x.id).startsWith("rennes")) return "rennes";
+        if(String(x.id).startsWith("mel")) return "mel";
+        return null;
+      }},
+      () => true);
 }
 
 function idsDeSurface(context) {
   const locaux = elementsDuContexte(tousLesEvenements, context);
-  const bassin = bassinPourToi(
-    tousLesEvenements,
+  const zoneId = String(context.city || "").toLowerCase() === "paris" ? "paris"
+    : String(context.city || "").toLowerCase() === "rennes" ? "rennes" : "mel";
+  const localPool = bassinPourToi(
     tousLesEvenements,
     (items) => elementsDuContexte(items, context),
     (event) => !event.duplicate_of,
+    zoneId,
   );
-  return { locaux: locaux.map((x) => x.id), bassin: bassin.map((x) => x.id) };
+  return { locaux: locaux.map((x) => x.id), localPool: localPool.map((x) => x.id) };
 }
 
 test("GPS Tourcoing → recherche Paris : le contexte de destination est exclusif", () => {
@@ -94,35 +105,35 @@ test("GPS Tourcoing → recherche Paris : le contexte de destination est exclusi
   assert.equal(gps.mode, "gps");
   assert.equal(paris.mode, "destination");
   assert.deepEqual(idsDeSurface(paris), {
-    locaux:["paris-concert"], bassin:["paris-concert"],
+    locaux:["paris-concert"], localPool:["paris-concert"],
   });
 });
 
 test("GPS Paris → recherche Lille : aucun événement Paris dans les surfaces Lille", () => {
   const lille = contexteDepuisZone(CTX.zoneRecherche("Lille", LILLE.centre, LILLE.emprise));
   const surfaces = idsDeSurface(lille);
-  assert.deepEqual(surfaces, {locaux:["lille-concert"], bassin:["lille-concert"]});
-  assert.equal(surfaces.bassin.includes("paris-concert"), false);
+  assert.deepEqual(surfaces, {locaux:["lille-concert"], localPool:["lille-concert"]});
+  assert.equal(surfaces.localPool.includes("paris-concert"), false);
 });
 
 test("Paris → Rennes : aucune donnée Paris résiduelle après changement de destination", () => {
   const rennes = contexteDepuisZone(CTX.zoneRecherche("Rennes", RENNES.centre, RENNES.emprise));
   assert.deepEqual(idsDeSurface(rennes), {
-    locaux:["rennes-concert"], bassin:["rennes-concert"],
+    locaux:["rennes-concert"], localPool:["rennes-concert"],
   });
 });
 
 test("retour à Ma position : le bassin GPS est restauré", () => {
   const tourcoing = contexteDepuisZone(CTX.zoneMoi(TOURCOING.centre, "Tourcoing"));
   assert.equal(tourcoing.mode, "gps");
-  assert.deepEqual(idsDeSurface(tourcoing), {locaux:["mel-rap"], bassin:["mel-rap"]});
+  assert.deepEqual(idsDeSurface(tourcoing), {locaux:["mel-rap"], localPool:["mel-rap"]});
 });
 
 test("Maintenant, Pour toi et Explorer partagent le même entonnoir actif", () => {
   assert.match(app, /function elementsDuContexte\(items\)/);
-  for (const nom of ["itemsMaintenant", "bassinPourToi", "visiblesBruts", "recommandationsAccueil"]) {
+  for (const nom of ["itemsMaintenant", "bassinPourToi", "localPoolPourToi", "visiblesBruts", "recommandationsAccueil"]) {
     const fonction = extraireFonction(nom);
-    assert.match(fonction, /dansZoneActive|elementsDuContexte/,
+    assert.match(fonction, /dansZoneActive|elementsDuContexte|localPoolPourToi/,
       nom + " ne lit pas le contexte géographique actif");
   }
   assert.match(app, /let activeLocationContext = null;/);
@@ -157,10 +168,10 @@ test("un changement de destination vide les mémoires de la ville quittée", () 
   const vider = extraireFonction("viderDonneesContexte");
   for (const ligne of [
     "permanentPlaces = [];", "datatourismePlaces = [];", "externalEvents = [];",
-    "userPublications = [];", "lieux = [];", "evenementsMetropole = [];",
+    "userPublications = [];", "lieux = [];", "evenementsMajeursHorsZone = [];",
     "bassinTerritorialActif = null;", "recoCache = null;",
   ]) {
-    const cible = /evenementsMetropole|bassinTerritorialActif/.test(ligne)
+    const cible = /bassinTerritorialActif|evenementsMajeursHorsZone/.test(ligne)
       ? extraireFonction("definirZoneActive") : vider;
     assert.match(cible, new RegExp(ligne.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

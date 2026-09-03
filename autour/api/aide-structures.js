@@ -10,6 +10,7 @@ export const config = { runtime: "edge" };
 const SOURCES = new Set(["autour", "dora", "finess"]);
 const RAYON_MIN = 500;
 const RAYON_MAX = 20000;
+const RESULTATS_MAX = 60;
 const DORA_API = "https://api.data.inclusion.beta.gouv.fr/api/v1/search";
 const ZONE_PRECALCULEE_MAX_M = 30000;
 
@@ -147,6 +148,8 @@ export default async function handler(request) {
   const lat = nombre(url.searchParams.get("lat"), 90);
   const lng = nombre(url.searchParams.get("lng"), 180);
   const rayon = Math.min(RAYON_MAX, Math.max(RAYON_MIN, nombre(url.searchParams.get("radius"), RAYON_MAX) || 15000));
+  const limite = Math.min(RESULTATS_MAX, Math.max(1,
+    Math.trunc(nombre(url.searchParams.get("limit"), RESULTATS_MAX) || RESULTATS_MAX)));
   if (!SOURCES.has(source) || lat == null || lng == null) return reponse({items: []}, 400, "public, max-age=60");
 
   let items = [];
@@ -179,7 +182,8 @@ export default async function handler(request) {
     if (source === "dora") {
       const q = new URL(DORA_API);
       q.searchParams.set("lat", String(lat)); q.searchParams.set("lon", String(lng));
-      q.searchParams.set("distance", String(Math.ceil(rayon / 1000))); q.searchParams.set("size", "500");
+      q.searchParams.set("distance", String(Math.ceil(rayon / 1000)));
+      q.searchParams.set("size", String(limite));
       q.searchParams.set("exclure_doublons", "false");
       const distant = await doraDistant(q, request.signal);
       items = items.concat(distant);
@@ -207,7 +211,7 @@ export default async function handler(request) {
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
-  return reponse({items: uniques, source, centre: {lat, lng}, rayon,
+  return reponse({items: uniques.slice(0, limite), source, centre: {lat, lng}, rayon,
     cityCode: commune && commune.code || null,
     snapshot: items.some((item) => item && item.source === "data_inclusion"),
     sourceStatus,
