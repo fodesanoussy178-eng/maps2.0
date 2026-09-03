@@ -1095,6 +1095,13 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
    ligne pousse l'état d'ouverture sous le pli, et c'est lui qu'on vient lire. */
 .rc-ou{font-size:12.5px;color:var(--ink2);line-height:1.25;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Quand cette ligne mène à la fiche du lieu, elle doit le dire. Le violet est
+   déjà, partout ailleurs, la couleur de ce sur quoi on appuie : on ne crée pas
+   un signal de plus, on réutilise celui que l'œil connaît. Le soulignement
+   discret suffit à distinguer un lien d'une pastille. */
+.rc-ou-lien{color:var(--violet);text-decoration:underline;
+  text-decoration-thickness:1px;text-underline-offset:2px;cursor:pointer}
+.rc-ou-lien:focus-visible{outline:2px solid var(--violet);outline-offset:2px;border-radius:3px}
 .rc-ligne{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
 .rc-note{font-size:12.5px;font-weight:650}
 .rc-note i{font-style:normal;font-weight:500;color:var(--ink2)}
@@ -2886,6 +2893,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=f775c8d2" defer></script>
+<script src="app.js?v=d0fff23a" defer></script>
 </body>
 </html>

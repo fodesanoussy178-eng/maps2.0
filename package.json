@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "banc:appareils": "node autour/outils/banc-appareils.mjs",
+    "banc:reactivite": "node autour/outils/reactivite.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
