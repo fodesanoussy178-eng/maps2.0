@@ -170,6 +170,7 @@ returns table (
   organizer_name text,
   ticket_url text,
   zone_id text,
+  duplicate_of uuid,
   is_major boolean,
   major_scope text
 )
@@ -193,7 +194,7 @@ as $function$
     e.announced_at, e.presale_at, e.tickets_open_at, e.announcement_tags,
     e.artist_names, e.music_genres, e.event_kind, e.importance_level,
     e.importance_score, e.performers, e.organizer, e.organizer_name,
-    e.ticket_url, e.zone_id, e.is_major, e.major_scope
+    e.ticket_url, e.zone_id, e.duplicate_of, e.is_major, e.major_scope
     from public.events e
    where e.zone_id = p_zone_id
      and e.lat between p_sud and p_nord
