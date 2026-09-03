@@ -99,8 +99,12 @@ jobs:
           # Paris conserve un seul zone_id utilisateur, mais ses cinq
           # partitions sont des invocations indépendantes : un worker ne
           # porte plus toute la capitale, et le résumé reste agrégé ici.
-          if [ "${ZONE}" = "paris" ]; then
-            partitions=(paris_centre paris_nord paris_est paris_sud paris_ouest)
+          if [ "${ZONE}" = "paris" ] || [ "${ZONE}" = "mel" ]; then
+            if [ "${ZONE}" = "paris" ]; then
+              partitions=(paris_centre paris_nord paris_est paris_sud paris_ouest)
+            else
+              partitions=(mel mel-nord mel-est mel-sud mel-ouest)
+            fi
             reponses=()
             for partition in "${partitions[@]}"; do
               reponse=$(curl --silent --show-error --fail-with-body \
@@ -119,9 +123,9 @@ jobs:
               fi
               reponses+=("${reponse}")
             done
-            reponse=$(printf '%s\n' "${reponses[@]}" | jq -s '
+            reponse=$(printf '%s\n' "${reponses[@]}" | jq -s --arg scope "${ZONE}" '
               {status: (if all(.[]; .status == "success") then "success" else "partial" end),
-               scope: "paris", batches: length,
+               scope: $scope, batches: length,
                vus: (map(.vus // 0) | add),
                inseres: (map(.inseres // 0) | add),
                majs: (map(.majs // 0) | add),
