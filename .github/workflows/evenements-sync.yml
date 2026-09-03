@@ -99,11 +99,13 @@ jobs:
           # Paris conserve un seul zone_id utilisateur, mais ses cinq
           # partitions sont des invocations indépendantes : un worker ne
           # porte plus toute la capitale, et le résumé reste agrégé ici.
-          if [ "${ZONE}" = "paris" ] || [ "${ZONE}" = "mel" ]; then
+          if [ "${ZONE}" = "paris" ] || [ "${ZONE}" = "mel" ] || [ "${ZONE}" = "rouen" ]; then
             if [ "${ZONE}" = "paris" ]; then
               partitions=(paris_centre paris_nord paris_est paris_sud paris_ouest)
-            else
+            elif [ "${ZONE}" = "mel" ]; then
               partitions=(mel_centre_nord_ouest mel_centre_nord_est mel_centre_sud_ouest mel_centre_sud_est mel_nord_ouest mel_nord_est mel_sud_ouest_bas_ouest mel_sud_ouest_bas_est mel_sud_est_bas_ouest mel_sud_est_bas_est mel_sud_ouest_haut_ouest mel_sud_ouest_haut_est mel_sud_est_haut_ouest mel_sud_est_haut_est mel_ouest_sud mel_ouest_nord mel_est_sud mel_est_nord)
+            else
+              partitions=(rouen_nord_ouest rouen_nord_est rouen_sud_ouest rouen_sud_est)
             fi
             reponses=()
             for partition in "${partitions[@]}"; do

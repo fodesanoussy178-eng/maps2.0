@@ -14,6 +14,9 @@ const melCouronnesMigration = await readFile(new URL(
 const melSudMigration = await readFile(new URL(
   "../supabase/migrations/20260903153000_mel_sud_partitions.sql",
   import.meta.url), "utf8");
+const rouenMigration = await readFile(new URL(
+  "../supabase/migrations/20260903163000_rouen_partitions.sql",
+  import.meta.url), "utf8");
 const fonction = await readFile(new URL(
   "../supabase/functions/sync-datatourisme/index.ts", import.meta.url), "utf8");
 const workflow = await readFile(new URL(
@@ -82,6 +85,13 @@ test("le sud MEL dense est subdivisé sans élargir la zone", () => {
   ]) assert.match(melSudMigration, new RegExp(`['\\"]${partition}['\\"]`));
   assert.match(melSudMigration, /select p\.code, 'mel'/);
   assert.match(workflow, /mel_sud_ouest_bas_ouest mel_sud_ouest_bas_est/);
+});
+
+test("Rouen est découpé pour éviter le timeout amont", () => {
+  for (const partition of ["rouen_nord_ouest", "rouen_nord_est", "rouen_sud_ouest", "rouen_sud_est"])
+    assert.match(rouenMigration, new RegExp(`['\\"]${partition}['\\"]`));
+  assert.match(rouenMigration, /select p\.code, 'rouen'/);
+  assert.match(workflow, /rouen_nord_ouest rouen_nord_est rouen_sud_ouest rouen_sud_est/);
 });
 
 test("un événement majeur est explicite et le scope city ne franchit pas une zone", () => {
