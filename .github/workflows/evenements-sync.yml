@@ -13,9 +13,10 @@
 # autres. Chaque zone a sa tâche, son budget et son résultat ; celles qui
 # passent sont enregistrées même si une autre échoue.
 #
-# Les zones sont lues dans `event_areas` — c'est-à-dire dans la base, pas ici.
-# Cette liste n'est qu'un plan de parallélisation : ajouter une ville se fait
-# par un INSERT, et la tâche « toutes » la ramassera au passage suivant.
+# Les cinq zones autonomes initiales sont déclarées explicitement dans la
+# matrice ci-dessous. `event_areas` porte leurs emprises de collecte, mais ne
+# peut pas élargir silencieusement le périmètre produit : toute nouvelle zone
+# devra modifier le registre, la matrice, les tests et les règles de lecture.
 #
 # Secrets attendus dans le dépôt :
 #   SUPABASE_FUNCTIONS_URL  https://<ref>.supabase.co/functions/v1
@@ -41,7 +42,7 @@ on:
   workflow_dispatch:
     inputs:
       zone:
-        description: "Code de zone (vide = toutes)"
+        description: "Zone autonome : mel, paris, angers, rennes ou rouen (vide = toutes)"
         required: false
         default: ""
 
@@ -65,16 +66,15 @@ jobs:
       matrix:
         # LA MATRICE EST LA LISTE DES ZONES À TRAITER, PAS UNE CONSTANTE.
         #
-        # Elle était figée à six entrées, et le code de zone saisi à la main
-        # était injecté DANS CHACUNE : demander « lille » lançait six tâches
-        # qui synchronisaient toutes Lille — six fois le même import, six
-        # lignes dans le journal, et six fois la charge sur le catalogue.
+        # Elle contient les cinq zones autonomes initiales. Un code saisi à la
+        # main est injecté dans la matrice elle-même, jamais dans chacune des
+        # tâches déjà créées.
         #
         # C'est donc la matrice elle-même qui doit changer. Un code saisi la
         # réduit à cette seule zone ; sans saisie — et c'est le cas de toute
         # exécution planifiée, où le contexte `inputs` n'existe même pas —
         # elle reste la liste complète.
-        zone: ${{ fromJSON(inputs.zone && format('["{0}"]', inputs.zone) || '["lille","paris","lyon","marseille","bordeaux","toulouse"]') }}
+        zone: ${{ fromJSON(inputs.zone && format('["{0}"]', inputs.zone) || '["mel","paris","angers","rennes","rouen"]') }}
 
     steps:
       - name: Synchroniser la zone ${{ matrix.zone }}
@@ -88,6 +88,11 @@ jobs:
             echo "::error::SUPABASE_FUNCTIONS_URL ou EVENT_SYNC_SECRET manquant"
             exit 1
           fi
+
+          case "${ZONE}" in
+            mel|paris|angers|rennes|rouen) ;;
+            *) echo "::error::zone autonome inconnue : ${ZONE}"; exit 1 ;;
+          esac
 
           # --fail-with-body : on veut le corps de la réponse ET un code de
           # sortie non nul. Sans lui, une erreur 502 passait pour un succès.

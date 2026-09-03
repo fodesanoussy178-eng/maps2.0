@@ -13,6 +13,7 @@
     verified_agenda: 16,
     unknown: 0
   });
+  const CROSS_ZONE_MIN_SCORE = 80;
   function epoch(value, timeZone) {
     if (value == null || value === "") return null;
     const T = root.AutourTemps;
@@ -60,6 +61,26 @@
   function eventBasin(event) {
     return String(event?.metro_area || event?.metroArea || event?.territory_group || "").trim();
   }
+  function eventZoneId(event) {
+    return String(event?.zone_id || event?.zoneId || "").trim().toLowerCase() || null;
+  }
+  function poolAutorise(event, options) {
+    const o = options || {};
+    const active = String(o.activeZoneId || "").trim().toLowerCase();
+    const itemZone = eventZoneId(event);
+    if(!active) return true;
+    /* Une donnée sans identité ne peut pas franchir la frontière d'une zone
+       autonome. Les appels historiques sans activeZoneId gardent leur contrat
+       pour permettre la migration progressive des fiches déjà en mémoire. */
+    if(!itemZone) return false;
+    const pool = o.pool || "local";
+    if(pool === "major_cross_zone"){
+      return itemZone !== active && importanceLevel(event) === "major" &&
+        Number(event?.importance_score ?? event?.importanceScore) >=
+          (Number(o.majorCrossZoneMinScore) || CROSS_ZONE_MIN_SCORE);
+    }
+    return itemZone === active;
+  }
   function reasonFor(event, matches) {
     const e = event || {};
     const labels = matches.map((match) => {
@@ -76,6 +97,10 @@
     const userBasin = String(options?.metroArea || options?.metro_area || options?.territoryGroup || "").trim();
     const basin = eventBasin(event);
     const distance = Number(distanceMeters);
+    if(options?.pool === "major_cross_zone"){
+      return level === "major" && (!Number.isFinite(distance) ||
+        distance <= (Number(options?.crossZoneMaxDistance) || 350e3));
+    }
     if (level === "local") {
       return !Number.isFinite(distance) || distance <= (Number(options?.localMaxDistance) || 8e3);
     }
@@ -114,8 +139,16 @@
     if (etat && (!["soon", "today", "tonight", "weekend", "upcoming"].includes(etat.status) || !etat.hasKnownDate)) return null;
     if (e.cancelled || e.annule || e.status === "cancelled") return null;
     const distance = typeof o.distanceFor === "function" ? o.distanceFor(e) : o.distanceMeters;
-    if (o.local === false || !territoireCompatible(e, o, distance)) return null;
-    if (!eventBasin(e) && proximityPoints(distance) < 0) return null;
+    if (!poolAutorise(e, o)) return null;
+    if (o.pool !== "major_cross_zone" && o.local === false) return null;
+    if (!territoireCompatible(e, o, distance)) return null;
+    /* Le bassin est un enrichissement utile au classement local, mais le pool
+       cross-zone a déjà une identité de zone et une limite de distance
+       explicites. Exiger `metro_area` ici rejetait un événement majeur Paris
+       reçu par le RPC dès qu'une ligne ancienne n'avait pas encore ce champ,
+       alors même qu'il satisfaisait parfaitement la règle « autre zone,
+       majeur, score >= 80, à moins de 350 km ». */
+    if (o.pool !== "major_cross_zone" && !eventBasin(e) && proximityPoints(distance) < 0) return null;
     if (!TAXONOMIE) return null;
     const matches = TAXONOMIE.correspondances(e, o.interests || []);
     if (!matches.length) return null;
@@ -125,7 +158,8 @@
     const matchingTags = [...new Set(matches.flatMap((match) => match.tags))];
     const announced = announcedAt(e);
     const score = Math.max(0, Math.round(
-      50 + sourcePriority(e) + importancePoints(e.importance_level || e.importanceLevel) + noveltyPoints(announced, now) + proximityPoints(distance) + (Number(e.local_rarity_score) || 0) + (Number(e.quality_score) || 0)
+      50 + sourcePriority(e) + importancePoints(e.importance_level || e.importanceLevel) + noveltyPoints(announced, now) + proximityPoints(distance) + (Number(e.local_rarity_score) || 0) + (Number(e.quality_score) || 0) +
+      (o.pool === "major_cross_zone" ? 12 : 0)
     ));
     return {
       event: e,
@@ -146,6 +180,8 @@
       temporal: etat,
       temporal_status: etat ? etat.status : null,
       isNew: announced != null && now - announced >= 0 && now - announced <= NOUVELLE_MS
+      ,pool: o.pool || "local"
+      ,crossZone: o.pool === "major_cross_zone"
     };
   }
   function classerPourToi(events, options) {
@@ -193,5 +229,8 @@
     classerPourToi,
     libelleGroupe,
     libelleDate
+    ,CROSS_ZONE_MIN_SCORE
+    ,eventZoneId
+    ,poolAutorise
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

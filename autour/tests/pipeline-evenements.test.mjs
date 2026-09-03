@@ -139,9 +139,9 @@ test("un refus reste diagnosticable par le propriétaire du projet", () => {
 /*  La matrice et la planification restent ce qu'elles étaient            */
 /* ====================================================================== */
 
-const ZONES = ["lille", "paris", "lyon", "marseille", "bordeaux", "toulouse"];
+const ZONES = ["mel", "paris", "angers", "rennes", "rouen"];
 
-test("les six zones et leur planification sont conservées", () => {
+test("les cinq zones autonomes et leur planification sont conservées", () => {
   const defaut = /\|\| '(\[[^']+\])'/.exec(workflow);
   assert.ok(defaut, "la liste complète doit rester lisible dans la matrice");
   assert.deepEqual(JSON.parse(defaut[1]), ZONES);
@@ -174,14 +174,14 @@ test("les trois cas de déclenchement donnent le bon nombre de tâches", () => {
     return eval(expression.replace(/inputs\.zone/g,
       inputs && inputs.zone !== undefined ? JSON.stringify(inputs.zone) : "undefined"));
   };
-  assert.deepEqual(evaluer({ zone: "lille" }), ["lille"], "saisie → une seule zone");
+  assert.deepEqual(evaluer({ zone: "mel" }), ["mel"], "saisie → une seule zone");
   assert.deepEqual(evaluer({ zone: "" }), ZONES, "saisie vide → toutes");
   assert.deepEqual(evaluer(null), ZONES, "exécution planifiée → toutes");
 });
 
 test("aucune ville n'est nommée dans la fonction", () => {
   // les zones sont des lignes d'une table, jamais des conditions dans le code
-  for (const ville of ["lille", "paris", "lyon", "marseille", "bordeaux", "toulouse"])
+  for (const ville of ["mel", "paris", "angers", "rennes", "rouen"])
     assert.doesNotMatch(fonction, new RegExp(ville, "i"));
   assert.match(fonction, /event_areas\?select=/);
 });

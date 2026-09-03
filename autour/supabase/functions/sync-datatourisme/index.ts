@@ -21,7 +21,7 @@
      · elle n'écrit jamais dans `publications` : la table des habitants n'est
        pas un dépotoir d'import ;
      · elle ne nomme aucune ville : elle itère sur `event_areas`, et le même
-       code vaut pour les six zones ouvertes comme pour la suivante ;
+       code vaut pour les cinq zones autonomes comme pour la suivante ;
      · elle n'abandonne pas une zone parce qu'un POI est mal formé.
 
    QUI A LE DROIT D'APPELER, ET AVEC QUOI ON ÉCRIT
@@ -174,7 +174,7 @@ async function fetchAvecReprise(url: string): Promise<Response> {
 
 /* ---- Zones : de la configuration, pas des conditions --------------------- */
 type Zone = {
-  id: number; code: string; name: string; timezone: string;
+  id: number; code: string; zone_id: string; name: string; timezone: string;
   min_lat: number; min_lng: number; max_lat: number; max_lng: number;
   /* La liste des communes de la zone. Quand elle est renseignée, c'est elle
      qui décide, et le rectangle ne sert plus qu'à interroger le catalogue. */
@@ -182,9 +182,9 @@ type Zone = {
 };
 
 async function zones(codeDemande: string | null): Promise<Zone[]> {
-  const filtre = codeDemande ? `&code=eq.${encodeURIComponent(codeDemande)}` : "";
+  const filtre = codeDemande ? `&zone_id=eq.${encodeURIComponent(codeDemande)}` : "";
   const reponse = await rest(
-    `event_areas?select=id,code,name,timezone,min_lat,min_lng,max_lat,max_lng,commune_keys` +
+    `event_areas?select=id,code,zone_id,name,timezone,min_lat,min_lng,max_lat,max_lng,commune_keys` +
     `&enabled=is.true${filtre}&order=priorite.asc`);
   if (!reponse.ok) throw new Error(`lecture des zones : HTTP ${reponse.status}`);
   return await reponse.json();
@@ -350,7 +350,7 @@ async function enregistrer(entree: Json, zone: Zone) {
     const faits = fusionnerEvenementFaits(canonique, entrant);
     const corps = {
       ...faits, ...fusionnerAnnonceFields(canonique, faits),
-      area_id: zone.id, last_synced_at: synchroniseLe,
+      area_id: zone.id, zone_id: zone.zone_id, last_synced_at: synchroniseLe,
     };
     const maj = await rest(`events?id=eq.${eventId}`, {
       method: "PATCH",
@@ -374,7 +374,7 @@ async function enregistrer(entree: Json, zone: Zone) {
       const faits = fusionnerEvenementFaits(canonique, evenement);
       const corps = {
         ...faits, ...fusionnerAnnonceFields(canonique, faits),
-        area_id: zone.id, last_synced_at: synchroniseLe,
+        area_id: zone.id, zone_id: zone.zone_id, last_synced_at: synchroniseLe,
       };
       const maj = await rest(`events?id=eq.${eventId}`, {
         method: "PATCH", body: JSON.stringify(corps),
@@ -382,7 +382,7 @@ async function enregistrer(entree: Json, zone: Zone) {
       if (!maj.ok) throw new Error(`fusion ${externalId} : HTTP ${maj.status}`);
     } else {
       const corps = {
-        ...evenement, area_id: zone.id, last_synced_at: synchroniseLe,
+        ...evenement, area_id: zone.id, zone_id: zone.zone_id, last_synced_at: synchroniseLe,
       };
       const insere = await rest("events", {
         method: "POST",
@@ -472,7 +472,8 @@ async function ouvrirCourse(scope: string): Promise<number | null> {
   const r = await rest("event_sync_runs", {
     method: "POST",
     headers: {Prefer: "return=representation"},
-    body: JSON.stringify([{source: "datatourisme", scope, status: "running"}]),
+    body: JSON.stringify([{source: "datatourisme", scope,
+      zone_id: scope === "toutes" ? null : scope, status: "running"}]),
   });
   if (!r.ok) return null;
   return (await r.json())?.[0]?.id ?? null;
@@ -584,7 +585,7 @@ Deno.serve(async (requete: Request) => {
         total.majs += resultat.majs;
         total.fusionnes += resultat.fusionnes;
         total.rejetes += resultat.rejetes;
-        parZone[zone.code] = {
+        parZone[zone.zone_id] = {
           vus: resultat.vus, inseres: resultat.inseres, majs: resultat.majs,
           fusionnes: resultat.fusionnes, rejetes: resultat.rejetes,
           echecs: resultat.echecs.length,
@@ -592,13 +593,13 @@ Deno.serve(async (requete: Request) => {
           retourne: resultat.retourne, pages: resultat.pages,
           gardes: resultat.gardes, motifs: resultat.motifs,
         };
-        echecs.push(...resultat.echecs.map((e) => `${zone.code}: ${e}`));
+        echecs.push(...resultat.echecs.map((e) => `${zone.zone_id}: ${e}`));
       } catch (erreur) {
         // une zone qui échoue n'emporte pas les autres : c'est tout l'intérêt
         // d'itérer sur une table plutôt que d'écrire une procédure par ville
         const message = erreur instanceof Error ? erreur.message : String(erreur);
-        parZone[zone.code] = {erreur: message};
-        echecs.push(`${zone.code}: ${message}`);
+        parZone[zone.zone_id] = {erreur: message};
+        echecs.push(`${zone.zone_id}: ${message}`);
       }
     }
 

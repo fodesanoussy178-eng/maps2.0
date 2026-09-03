@@ -1959,7 +1959,7 @@ test("rien de lourd avant la première peinture",()=>{
 });
 
 test("le jeu rapide affiche les propositions de la dernière session",()=>{
-  assert.match(html,/const CLE_RAPIDE = "autour:rapide:v1";/);
+  assert.match(html,/const CLE_RAPIDE = "autour:rapide:v2";/);
   assert.match(html,/const RAPIDE_MAX = 50;/);
   assert.match(html,/function memoriserJeuRapide\(choisis, reserve\)\{/);
   assert.match(html,/function lireJeuRapide\(lat,lng\)\{/);
@@ -2294,7 +2294,8 @@ test("la permission décide du démarrage, et Safari n'est pas oublié",()=>{
   assert.match(html,/navigator\.permissions\.query\(\{name:"geolocation"\}\)/);
   // Safari ne répond pas : on se souvient de l'autorisation déjà obtenue,
   // sinon il faudrait réappuyer à chaque ouverture
-  assert.match(html,/return geoDejaAutorisee\(\) \? "granted" : "prompt";/);
+  assert.match(html,/const memorise = lireEtatLocalisation\(\)\.location_permission_state;/);
+  assert.match(html,/const etat = geoDejaAutorisee\(\) \? "granted"\s*\n\s*: memorise === ETATS_PERMISSION_POSITION\.DENIED \? "denied" : "prompt";/);
   assert.match(html,/const CLE_GEO_OK = "autour:geo-autorisee";/);
   assert.match(html,/noterAutorisationGeo\(true\);/);
   // un refus efface la trace et n'est pas redemandé au démarrage

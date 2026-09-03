@@ -163,7 +163,7 @@ test("les lectures Supabase publiques n'héritent jamais du JWT de session",()=>
   assert.match(html,/Number\(claims\.iat\) > maintenant \+ 60/);
   assert.match(html,/sb\.auth\.refreshSession\(session\)/);
   assert.match(html,/sb\.auth\.signOut\(\{scope:"local"\}\)/);
-  assert.match(html,/const \{ data, error \} = await sbLecture\.rpc\("publications_proches"/);
+  assert.match(html,/const \{ data, error \} = await sbLecture\.rpc\("publications_locales"/);
 
   const fonctions = html.match(/function lireClaimsJwt\(jeton\)\{[\s\S]*?\n\}\n\nfunction sessionJwtDecalee\(session\)\{[\s\S]*?\n\}/);
   assert.ok(fonctions,"les gardes JWT doivent rester testables séparément");

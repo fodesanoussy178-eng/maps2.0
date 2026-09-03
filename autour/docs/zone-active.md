@@ -40,6 +40,20 @@ point bleu, pas la zone.
 `porteeCourante` est le numéro de la zone active. Tout travail asynchrone le
 note au départ et le revérifie à l'arrivée.
 
+### Identité stable des zones autonomes
+
+Le registre `AutourZones` et la table `autour_zones` portent cinq identifiants
+canoniques : `mel`, `paris`, `angers`, `rennes`, `rouen`. Une donnée normalisée
+porte `zone_id`, et la session conserve `active_zone_id`. Une recherche de
+Lille est donc rattachée à `mel` ; elle ne crée pas une sixième zone temporaire.
+
+`local_pool` contient uniquement les lieux, publications et événements dont
+`zone_id === active_zone_id`. `major_cross_zone_pool` est une collection
+séparée : elle exige une autre zone, `importance_level = major`, un score d'au
+moins 80 et une date future. Elle est classée séparément et n'alimente que
+`Pour toi` ; elle ne touche ni Explorer, ni Maintenant, ni Aide, ni les
+marqueurs de proximité.
+
 ## Le basculement, en un seul geste
 
 `rechercheGeographique` fait, dans cet ordre :
@@ -86,12 +100,13 @@ pas** : il arrive par une requête de géocodage inverse, deux secondes après l
 position, et la zone changerait d'identité toute seule en jetant ses caches au
 pire moment.
 
-- `cleZone(lat,lng,zoom,cats)` → `moi:50.72,3.16#50.72,3.16@8:depart`
+- `cleZone(lat,lng,zoom,cats)` → `mel#50.72,3.16@8:depart`
 - `cleCache(zone, categorie, periode)` → `recherche:50.63,3.06|resto|now`
 - la mémoire de `Maintenant` → `idZoneActive() + "|" + minute + "|" + n`
 
-Le cache disque des lieux (`autour:lieux:v5:lat,lng`) est déjà positionnel et
-n'accepte une tuile voisine qu'à 1,2 km : il est isolé par construction.
+Les caches Supabase, lieux, Aide, recommandations rapides et événements
+majeurs portent désormais aussi le `zone_id`. Une réponse ancienne ne peut pas
+réhydrater une zone nouvelle, même si les coordonnées sont proches.
 
 ## Ce que ça ne fait pas
 
@@ -100,7 +115,7 @@ pas Tourcoing au réseau : ses lieux sont là, ils repassent simplement le filtr
 
 ## Vérification
 
-    node --test tests/contexte.test.mjs      # 28 cas, dont les 7 obligatoires
+    node --test tests/contexte.test.mjs tests/zones-autonomes.test.mjs
     node outils/contextes.mjs                # le parcours réel, dans Chromium
 
 Le banc ouvre l'application à Tourcoing, cherche Lille, puis Paris, revient,

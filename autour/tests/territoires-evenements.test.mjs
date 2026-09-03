@@ -49,7 +49,7 @@ test("une zone inconnue crée seulement un candidat déterministe", () => {
 
 test("le navigateur résout la zone mais n'appelle aucune API fournisseur", () => {
   assert.match(app, /rpc\("resoudre_territoire"/);
-  assert.match(app, /rpc\("evenements_proches"/);
+  assert.match(app, /rpc\("evenements_locaux"/);
   assert.doesNotMatch(app, /api\.openagenda\.com|functions\/v1\/sync-openagenda/);
 });
 

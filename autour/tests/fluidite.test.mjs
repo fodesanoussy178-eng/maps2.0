@@ -702,7 +702,7 @@ test("la liste réutilise la fiche compacte, sans nouveau panneau", () => {
 /* ======================================================================== */
 
 test("le cache Supabase est géographique, court et borné", () => {
-  assert.match(html, /return "geo@"\+Number\(lat\)\.toFixed\(2\)\+","\+Number\(lng\)\.toFixed\(2\);/);
+  assert.match(html, /return "zone:"\+idZoneActive\(\)\+"\|geo@"\+Number\(lat\)\.toFixed\(2\)\+","\+Number\(lng\)\.toFixed\(2\);/);
   assert.match(html, /const CACHE_COUCHE_FRAICHE_MS = 5 \* 60 \* 1000;/);
   assert.match(html, /const CACHE_COUCHE_MAX_MS = 30 \* 60 \* 1000;/);
   assert.match(html, /const CACHE_COUCHES_ZONES_MAX = 4;/);

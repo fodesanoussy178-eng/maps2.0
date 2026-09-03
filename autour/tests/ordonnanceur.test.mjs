@@ -177,7 +177,7 @@ test("la disponibilité d'un lieu ne dépend plus du point de référence", () =
      539 ms mesurées, six fois de suite. */
   assert.match(html, /const APPROCHE_NOMINALE_MS = 10 \* 60000;/);
   assert.match(html, /function arriveeEstimee\(t\)\{ return t \+ APPROCHE_NOMINALE_MS; \}/);
-  assert.match(html, /const cle = l\.id \+ "\|" \+ minute;/);
+  assert.match(html, /const cle = idZoneActive\(\) \+ "\|" \+ l\.id \+ "\|" \+ minute;/);
 });
 
 test("le module est chargé avant le code qui s'en sert", () => {

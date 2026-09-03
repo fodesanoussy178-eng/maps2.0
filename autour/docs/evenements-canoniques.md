@@ -68,6 +68,7 @@ tout en paraissant configurable.
 
 ```
 event_areas     zones de synchronisation — des données, pas des règles
+autour_zones    identités produit stables : mel | paris | angers | rennes | rouen
 events          l'événement canonique, une ligne par événement réel
 event_sources   ses provenances — UNIQUE(source, external_id)
 event_sync_runs le journal des courses
@@ -79,10 +80,13 @@ habitants publient, avec ses quotas, sa propriété et ses canaux. Un
 déclencheur la projette dans `events` via `publication_id`, dans ce sens
 uniquement.
 
-La RPC `evenements_proches()` **exclut les publications par défaut** : elles
-continuent d'arriver par `publications_proches`, qui porte la propriété, les
-places et le prix. Les demander des deux côtés afficherait deux fois le même
-événement.
+La lecture de l'application passe par deux RPC locales strictes :
+`evenements_locaux(zone_id, ...)` et `publications_locales(zone_id, ...)`.
+Elles exigent `zone_id = active_zone_id` avant le retour des lignes. Les
+événements majeurs ayant `importance_level = 'major'` et un score d'au moins
+80 passent par `evenements_majeurs_hors_zone(active_zone_id, ...)`, uniquement
+pour `Pour toi` ; ils ne sont jamais une source de `Maintenant`, d'Explorer,
+d'Aide ou des marqueurs de proximité.
 
 ## Aucune ville n'est une règle
 
@@ -98,9 +102,11 @@ La synchronisation itère sur cette table et applique `syncArea(zone)`. Elle ne
 sait pas laquelle est Lille. Ouvrir une ville, c'est un `INSERT` ; la fermer,
 c'est `enabled = false`.
 
-Les zones d'acceptation couvrent notamment `tourcoing`, `paris`, `marseille`,
-`rennes` et `angers`. Elles utilisent le même flux national DATAtourisme et
-les mêmes providers de lieux ; aucune liste d'événements n'est codée par ville.
+Les cinq zones autonomes initiales sont `mel`, `paris`, `angers`, `rennes` et
+`rouen`. `mel` remplace le code historique `lille` au niveau produit ; l'ancien
+code d'aire peut rester dans l'historique de synchronisation. Les anciennes
+aires nationales restent désactivables séparément et ne sont pas dans la
+matrice GitHub tant qu'elles ne sont pas réouvertes explicitement.
 
 ## Artistes, genres et types de manifestation
 
@@ -132,7 +138,7 @@ DATAtourisme
 sync-datatourisme
       ↓            normalisation · dates · déduplication
 Supabase / PostGIS
-      ↓            evenements_proches()
+      ↓            evenements_locaux(zone_id)
    interface
 ```
 
@@ -203,15 +209,43 @@ tâche par zone. À la main :
 ```bash
 curl -X POST \
   -H "x-sync-secret: $EVENT_SYNC_SECRET" \
-  "https://<ref>.supabase.co/functions/v1/sync-datatourisme?area=lille"
+  "https://<ref>.supabase.co/functions/v1/sync-datatourisme?area=mel"
 ```
 
 Sans `?area=`, toutes les zones actives sont traitées.
 
+La matrice `.github/workflows/evenements-sync.yml` ne contient que ces cinq
+valeurs. Elle lit `SUPABASE_FUNCTIONS_URL` et `EVENT_SYNC_SECRET` depuis les
+secrets GitHub, puis envoie le secret exclusivement dans `x-sync-secret`.
+La fonction doit avoir `EVENT_SYNC_SECRET` avec exactement la même valeur et
+être déployée avec `--no-verify-jwt`. La clé d'écriture n'est pas un secret
+GitHub : elle reste dans `SUPABASE_SECRET_KEYS` côté fonction.
+
+#### Diagnostic du 401
+
+Un `401 {"error":"non autorisé"}` est volontairement identique pour un
+secret absent, un en-tête absent et deux valeurs différentes. Vérifier sans
+afficher la valeur :
+
+1. `EVENT_SYNC_SECRET` existe dans GitHub Actions et dans l'environnement de
+   `sync-datatourisme` ;
+2. le workflow utilise bien `SUPABASE_FUNCTIONS_URL` comme base et
+   `x-sync-secret` comme seul en-tête d'authentification ;
+3. la fonction déployée est la version courante et utilise
+   `--no-verify-jwt` ;
+4. les logs Edge montrent `secret_configure: true` et
+   `entete_presente: true` — jamais le secret lui-même.
+
+Le Vault `event_sync_secret` utilisé par `private.invoke_datatourisme_sync`
+doit également être aligné avec `EVENT_SYNC_SECRET`. Le code ne peut pas
+réparer une valeur secrète divergente : cette dernière étape est une rotation
+de configuration à faire dans GitHub/Supabase, puis à vérifier avec une seule
+zone, par exemple `area=mel`.
+
 ### Lire le journal
 
 ```sql
-select scope, status, started_at, duration_ms,
+select zone_id, scope, status, started_at, duration_ms,
        events_seen, events_inserted, events_updated, events_merged,
        events_rejected, errors
   from public.event_sync_runs

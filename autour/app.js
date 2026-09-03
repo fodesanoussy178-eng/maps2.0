@@ -175,6 +175,7 @@ function pointGeographiqueValide(point){
    Tourcoing qui revient après le passage à Lille porte l'ancienne portée et
    est jetée, quelle que soit la source qui l'a produite. */
 const CTX = window.AutourContexte || null;
+const ZONES = window.AutourZones || null;
 const ECRANS_DIFFERES = [
   /* la fiche d'un lieu */
   "ouvrirFicheCompacte", "ouvrirDetail", "faitsAide",
@@ -280,12 +281,17 @@ const porteeValide = (p)=> p === porteeCourante;
 
 function contexteDepuisZone(zone){
   if(!zone) return null;
+  /* Plusieurs tests isolent cette fonction du bundle complet. Lire le registre
+     via le global garde ce contrat autonome tout en laissant le navigateur
+     utiliser les cinq zones chargées avant app.js. */
+  const zones = typeof globalThis !== "undefined" ? globalThis.AutourZones : null;
   const recherche = !!(zone.type === "recherche" ||
     (CTX && zone.type === CTX.TYPES.RECHERCHE));
   return Object.freeze({
     mode: recherche ? "destination" : "gps",
     source: recherche ? "search" : "gps",
     key: CTX ? CTX.idZone(zone) : zone.type+":"+zone.lat.toFixed(2)+","+zone.lng.toFixed(2),
+    zone_id: zones ? zones.zoneIdForContext(zone) : null,
     lat: zone.lat, lng: zone.lng,
     city: zone.nom || null,
     zone,
@@ -331,16 +337,28 @@ function viderDonneesContexte(){
 /* Le seul endroit qui change de zone. Il incrémente la portée — ce qui périme
    d'un coup tout travail en vol — et rend le nouveau numéro à l'appelant. */
 function definirZoneActive(zone){
+  const stableAvant = ZONES && ZONES.zoneIdForContext(zoneActive);
+  const stableApres = ZONES && ZONES.zoneIdForContext(zone);
+  if(stableAvant && stableApres && stableAvant === stableApres){
+    /* Le déplacement GPS reste dans la même zone autonome : on actualise le
+       point de référence sans invalider le pool local ni ses caches. */
+    zoneActive = zone;
+    activeLocationContext = contexteDepuisZone(zone);
+    memoriserZoneActive(zoneActive);
+    return porteeCourante;
+  }
   if(CTX && zoneActive && zone && CTX.memeZone(zoneActive, zone)){
     activeLocationContext = activeLocationContext || contexteDepuisZone(zone);
     return porteeCourante;
   }
   zoneActive = zone || null;
   activeLocationContext = contexteDepuisZone(zoneActive);
+  memoriserZoneActive(zoneActive);
   viderDonneesContexte();
   porteeCourante += 1;
   bassinTerritorialActif = null;
   evenementsMetropole = [];
+  evenementsMajeursHorsZone = [];
   metropoleEnCours = null;
   porteeMetropole = 0;
   bassinCourant = null;
@@ -372,6 +390,17 @@ function definirZoneActive(zone){
 function dansZoneActive(l){
   const zone = activeLocationContext?.zone || zoneActive;
   if(!CTX || !zone) return true;
+  const zones = typeof globalThis !== "undefined" ? globalThis.AutourZones : null;
+  const activeId = zones ? zones.zoneIdForContext(zone) : null;
+  const itemId = zones ? zones.zoneIdForItem(l) : null;
+  /* Une zone autonome est la frontière de données. La géométrie reste le
+     repli des lieux hors des cinq zones initiales, mais elle ne peut plus
+     réintroduire une ligne d'une autre zone autonome. */
+  /* Dans une zone autonome, l'absence d'identité est un refus : le repli
+     géométrique ne doit pas laisser entrer une ligne étrangère ou encore non
+     rattachée. Il reste disponible pour les contextes historiques sans zone
+     autonome stable. */
+  if(activeId) return itemId === activeId;
   return CTX.dansZone(l, zone, {vue: bornesVue()});
 }
 
@@ -415,7 +444,8 @@ function centreZoneActive(){
     return [zoneActive.lat, zoneActive.lng];
   return pointGeographiqueValide(positionMoi) ? positionMoi : null;
 }
-const idZoneActive = ()=> CTX ? CTX.idZone(zoneActive) : "sans-zone";
+const idZoneActive = ()=> (ZONES && ZONES.zoneIdForContext(zoneActive)) ||
+  (CTX ? CTX.idZone(zoneActive) : "sans-zone");
 
 /* LA DISTANCE AUSSI PART DE LA ZONE.
 
@@ -1317,7 +1347,11 @@ if(window.ResizeObserver){
 }
 
 function normaliserItem(item, source){
-  const normalise = toCommonItem(item, {source});
+  let normalise = toCommonItem(item, {source});
+  if(ZONES){
+    const zoneId = ZONES.zoneIdForItem(normalise);
+    if(zoneId) normalise = Object.assign(normalise, {zone_id:zoneId, zoneId});
+  }
   if(normalise.isTemporary && ENTITES && ENTITES.normaliserEvenement){
     normalise.entity_type = "event";
     normalise.eventCanonical = normalise.eventCanonical || ENTITES.normaliserEvenement(Object.assign({}, normalise, {
@@ -2110,13 +2144,18 @@ let sb = null, sbLecture = null, moiId = null, monPseudo = "";
    appelée pendant le chargement des couches — bien avant. */
 let bassinTerritorialActif = null;
 let evenementsMetropole = [];
+let evenementsMajeursHorsZone = [];
 let metropoleEnCours = null;
 let porteeMetropole = 0;
 let bassinCourant = null;
 const METROPOLE_LIMITE = 300;
 const CLE_CACHE_METROPOLES = "autour:pourtoi-bassins:v1";
+const CLE_CACHE_MAJEURS_CROSS = "autour:pourtoi-majeurs-cross:v1";
 const CACHE_METROPOLE_MAX_MS = 30 * 60 * 1000;
 const CACHE_METROPOLES_MAX = 3;
+const CACHE_MAJEURS_CROSS_MAX_MS = 30 * 60 * 1000;
+const MAJEUR_CROSS_MIN_SCORE = 80;
+let majeursCrossEnCours = null;
 try{ monPseudo = String(localStorage.getItem(CLE_PSEUDO_CREATEUR) || "").trim().slice(0,50); }catch(e){}
 
 /* LE SDK VIENT DE CHEZ NOUS, ET C'EST TOUTE L'AFFAIRE.
@@ -2640,6 +2679,7 @@ function versLieu(p){
     creatorId:createdBy, creatorName:p.creator_name || "",
     verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
     lat:p.lat, lng:p.lng,
+    zone_id:p.zone_id || p.zoneId || null,
     timezone:p.timezone || p.timeZone || "Europe/Paris",
     categories:Array.isArray(p.categories) ? p.categories : [p.cat],
     debutLe: (()=>{ const v = premiereDateObjet(p, ["start_at", "startAt", "debut_le", "debutLe"]);
@@ -2710,7 +2750,7 @@ function emprisePublications(lat, lng){
    peuvent jamais partager une entrée. Quatre
    zones au plus, trente minutes au plus — assez pour un retour en arrière,
    trop peu pour transformer un ancien statut temporel en vérité durable. */
-const CLE_CACHE_COUCHES_SUPABASE = "autour:supabase-zones:v1";
+const CLE_CACHE_COUCHES_SUPABASE = "autour:supabase-zones:v2";
 const CACHE_COUCHE_FRAICHE_MS = 5 * 60 * 1000;
 const CACHE_COUCHE_MAX_MS = 30 * 60 * 1000;
 const CACHE_COUCHES_ZONES_MAX = 4;
@@ -2719,7 +2759,7 @@ const signaturesCouchesPubliees = new Map();
 let cacheCouchesSupabaseMemo = null;
 
 function cleCoucheSupabase(lat,lng){
-  return "geo@"+Number(lat).toFixed(2)+","+Number(lng).toFixed(2);
+  return "zone:"+idZoneActive()+"|geo@"+Number(lat).toFixed(2)+","+Number(lng).toFixed(2);
 }
 
 function cacheCouchesSupabase(){
@@ -2767,7 +2807,7 @@ function signatureCoucheSupabase(entree){
     l && l.event_source, l && l.event_source_url, l && l.place_source,
     l && l.description,
     l && l.status, l && l.annule, l && l.cancelled,
-    l && l.lat, l && l.lng, l && l.majLe, l && l.last_synced_at,
+    l && l.lat, l && l.lng, l && l.zone_id, l && l.majLe, l && l.last_synced_at,
   ].join("~");
   return [
     ...(entree.publications || []).map(champs),
@@ -2798,10 +2838,13 @@ function publierCoucheSupabase(cle, entree, portee, lat, lng){
 
 async function chargerPublications(lat,lng){
   if(!sbLecture) return null;
+  const zoneId = idZoneActive();
+  if(!zoneId || zoneId === "sans-zone") return [];
   const b = emprisePublications(lat, lng);
   const fini = PERF.requete("supabase_publications");
   try{
-    const { data, error } = await sbLecture.rpc("publications_proches", {
+    const { data, error } = await sbLecture.rpc("publications_locales", {
+      p_zone_id:zoneId,
       p_sud:Number(b.s), p_ouest:Number(b.o),
       p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
     });
@@ -2896,6 +2939,7 @@ function versEvenementCanonique(e){
     adresse:e.place_name || e.address || "",
     cp:[e.city, e.insee_code].filter(Boolean).join(" ") || commune,
     lat:e.lat, lng:e.lng,
+    zone_id:e.zone_id || e.zoneId || null,
     debutLe:debut, finLe:fin,
     timezone:e.timezone || "Europe/Paris",
     start_at:e.start_at || null,
@@ -3004,29 +3048,30 @@ function cacheMetropoles(){
 
 function lireCacheMetropole(bassin){
   if(!bassin) return [];
-  const entree = cacheMetropoles()[String(bassin)];
+  const entree = cacheMetropoles()[idZoneActive()+"|"+String(bassin)];
   return entree && Array.isArray(entree.evenements) ? entree.evenements : [];
 }
 
 function ecrireCacheMetropole(bassin, liste){
   if(!bassin || !Array.isArray(liste) || !liste.length) return;
   const cache = cacheMetropoles();
-  cache[String(bassin)] = {t:Date.now(), evenements:liste.slice(0, METROPOLE_LIMITE)};
+  const cle = idZoneActive()+"|"+String(bassin);
+  cache[cle] = {t:Date.now(), zone_id:idZoneActive(), evenements:liste.slice(0, METROPOLE_LIMITE)};
   const cles = Object.keys(cache).sort((a,b)=>(cache[b].t||0)-(cache[a].t||0));
   cles.slice(CACHE_METROPOLES_MAX).forEach(cle=>delete cache[cle]);
   try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify(cache)); }
   catch(e){
     /* Un quota plein ne doit pas empêcher la réponse réseau de servir la
        session courante : on garde au moins le bassin le plus récent. */
-    const courant = cache[String(bassin)];
-    try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify({[String(bassin)]:courant})); }
+    const courant = cache[cle];
+    try{ localStorage.setItem(CLE_CACHE_METROPOLES, JSON.stringify({[cle]:courant})); }
     catch(e2){}
   }
 }
 
 function actualiserBassinTerritorial(lat,lng){
   if(!sbLecture) return Promise.resolve(null);
-  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  const cle = idZoneActive()+"|"+lat.toFixed(2)+","+lng.toFixed(2);
   if(bassinsTerritoriauxResolus.has(cle)){
     bassinTerritorialActif = bassinsTerritoriauxResolus.get(cle);
     rafraichirMetropole();
@@ -3069,12 +3114,15 @@ function actualiserBassinTerritorial(lat,lng){
 
 async function chargerEvenementsCanoniques(lat,lng,portee = porteeCourante){
   if(!sbLecture) return null;
+  const zoneId = idZoneActive();
+  if(!zoneId || zoneId === "sans-zone") return [];
   const porteeEvenements = portee;
   const b = emprisePublications(lat, lng);
   actualiserBassinTerritorial(lat,lng);
   const fini = PERF.requete("supabase_evenements");
   try{
-    const { data, error } = await sbLecture.rpc("evenements_proches", {
+    const { data, error } = await sbLecture.rpc("evenements_locaux", {
+      p_zone_id:zoneId,
       p_sud:Number(b.s), p_ouest:Number(b.o),
       p_nord:Number(b.n), p_est:Number(b.e), p_limite:120
     });
@@ -3175,6 +3223,7 @@ const Store = {
       cat:l.cat, titre:l.titre, adresse:l.adresse, cp:l.cp, quand:l.quand,
       gratuit:l.gratuit, prix:l.prix, places:l.places,
       lat:l.lat, lng:l.lng,
+      zone_id:idZoneActive() === "sans-zone" ? null : idZoneActive(),
       image_url:l.image || null,
       debut_le:l.debutLe ? new Date(l.debutLe).toISOString() : null,
       fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
@@ -3828,7 +3877,7 @@ async function lieuxDatatourisme(lat,lng,signal){
     /* Le démarrage et le chargement de zone partent volontairement ensemble.
        L'API arrondit déjà la coordonnée à deux décimales : c'est donc la clé
        exacte de ce que le serveur considère comme la même zone. */
-    const cle = "datatourisme:"+lat.toFixed(2)+","+lng.toFixed(2);
+    const cle = idZoneActive()+"|datatourisme:"+lat.toFixed(2)+","+lng.toFixed(2);
     const cache = cacheDatatourisme.get(cle);
     if(cache && Date.now()-cache.t < CACHE_DATATOURISME_MS){
       PERF.touche("datatourisme", true);
@@ -3877,7 +3926,7 @@ async function communeRelayee(lat,lng){
      même commune en même temps : trois requêtes parties avant que la première
      ne réponde, donc trois passages complets par Nominatim. On partage la
      promesse — le CDN ne peut pas dédoublonner ce qui part simultanément. */
-  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  const cle = idZoneActive()+"|"+lat.toFixed(2)+","+lng.toFixed(2);
   if(communesEnVol.has(cle)) return communesEnVol.get(cle);
   const promesse = partagerRequete("commune:"+cle, "commune", async()=>{
   try{
@@ -3897,7 +3946,7 @@ async function communeRelayee(lat,lng){
 }
 
 async function reverseCommune(lat,lng){
-  const cle = lat.toFixed(2)+","+lng.toFixed(2);
+  const cle = idZoneActive()+"|"+lat.toFixed(2)+","+lng.toFixed(2);
   const cache = cacheReverseGeocodage.get(cle);
   if(cache && Date.now()-cache.t < CACHE_REVERSE_GEOCODAGE_MS){
     PERF.touche("reverse", true);
@@ -4593,7 +4642,7 @@ async function coordonnerSourcesVersionnees(sources, estCourante){
 /* Cache local des lieux OpenStreetMap : revenir dans un quartier déjà vu
    l'affiche instantanément, sans réinterroger Overpass. */
 const CACHE_HEURES = 24;
-const cleCache = (lat,lng)=>"autour:lieux:v5:"+lat.toFixed(3)+","+lng.toFixed(3);
+const cleCache = (lat,lng)=>"autour:lieux:v6:"+idZoneActive()+":"+lat.toFixed(3)+","+lng.toFixed(3);
 
 function lireCacheLieux(lat,lng){
   try{
@@ -4616,8 +4665,9 @@ function lireCacheProche(lat,lng){
   try{
     for(let i = 0; i < localStorage.length; i += 1){
       const cle = localStorage.key(i);
-      if(!cle || cle.indexOf("autour:lieux:v5:") !== 0) continue;
-      const [cLat,cLng] = cle.slice(16).split(",").map(Number);
+      if(!cle || cle.indexOf("autour:lieux:v6:") !== 0) continue;
+      const coord = cle.slice(cle.lastIndexOf(":") + 1);
+      const [cLat,cLng] = coord.split(",").map(Number);
       if(!Number.isFinite(cLat) || !Number.isFinite(cLng)) continue;
       const d = distanceM(lat,lng,cLat,cLng);
       if(d > CACHE_RAYON_M || d >= meilleureDistance) continue;
@@ -4674,14 +4724,14 @@ function echantillonImmediat(candidats){
    Ce ne sont pas des données inventées : ce sont exactement celles qui
    étaient à l'écran il y a quelques heures, avec leur date. Ce qui a fermé
    depuis sera écarté par le moteur temporel dès le premier vrai classement. */
-const CLE_RAPIDE = "autour:rapide:v1";
+const CLE_RAPIDE = "autour:rapide:v2";
 const RAPIDE_MAX = 50;              // ce qu'on garde en réserve pour la zone
 const RAPIDE_HEURES = 24;
 const RAPIDE_RAYON_M = 2000;
 /* Les champs qui servent à dessiner une carte et à la reclasser. Le reste
    (description, mots-clés, géométrie) pèse sans rien apporter au premier
    affichage : on ne l'écrit pas. */
-const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre","adresse","cp","lat","lng","image","imageSource","imageAttribution",
+const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre","adresse","cp","lat","lng","zone_id","zoneId","image","imageSource","imageAttribution",
   /* La provenance suit la photo jusque dans le cache. Une image sans son
      origine ne peut plus dire de quel droit on l'affiche à la réouverture :
      elle serait alors une image de source inconnue, donc à ne pas montrer. */
@@ -4740,7 +4790,7 @@ function memoriserJeuRapide(choisis, reserve){
         vus.add(l.id); garder.push(sansPhotoGoogle(alleger(l)));
       });
       localStorage.setItem(CLE_RAPIDE, JSON.stringify({
-        t:Date.now(), zone:positionMoi, commune,
+        t:Date.now(), zone:positionMoi, zone_id:idZoneActive(), commune,
         choisis:choisis.filter(l=>!estContenuGoogle(l)).map(l=>l.id), lieux:garder,
       }));
     }catch(e){ /* quota plein : le cache de tuiles reste, on ne casse rien */ }
@@ -4821,6 +4871,14 @@ function lireJeuRapide(lat,lng){
   try{
     const o = JSON.parse(localStorage.getItem(CLE_RAPIDE) || "null");
     if(!o || !o.lieux || !o.lieux.length) return manque("vide");
+    if(ZONES && o.zone_id && o.zone_id !== idZoneActive()) return manque("zone");
+    if(ZONES){
+      o.lieux = o.lieux.filter((l)=>{
+        const zoneId = ZONES.zoneIdForItem(l);
+        return !zoneId || zoneId === idZoneActive();
+      });
+      if(!o.lieux.length) return manque("zone");
+    }
     const lieuxSansGoogle = o.lieux.filter(l=>!estContenuGoogle(l));
     if(lieuxSansGoogle.length !== o.lieux.length){
       o.lieux = lieuxSansGoogle;
@@ -4852,7 +4910,7 @@ function tuilesCache(){
   try{
     for(let i = 0; i < localStorage.length; i += 1){
       const cle = localStorage.key(i);
-      if(!cle || cle.indexOf("autour:lieux:v5:") !== 0) continue;
+      if(!cle || cle.indexOf("autour:lieux:v6:") !== 0) continue;
       let t = 0;
       try{ t = (JSON.parse(localStorage.getItem(cle)) || {}).t || 0; }catch(e){}
       tuiles.push({cle, t});
@@ -5274,7 +5332,9 @@ function positionServeur(){
    Tourcoing, et permet d'afficher une carte utile avant toute géolocalisation. */
 function positionMemorisee(){
   try{
-    const v = JSON.parse(localStorage.getItem("autour:position")||"null");
+    const brut = JSON.parse(localStorage.getItem("autour:position")||"null");
+    const etat = lireEtatLocalisation();
+    const v = pointGeographiqueValide(brut) ? brut : etat.last_known_position;
     if(pointGeographiqueValide(v)) return v;
   }catch(e){}
   return null;
@@ -5301,7 +5361,16 @@ function positionLocaleDeTest(){
    l'erreur deviendrait permanente — c'est précisément ce qu'on corrige. */
 function memoriserPosition(c, source){
   if(source !== "gps") return false;
-  try{ localStorage.setItem("autour:position", JSON.stringify(c)); return true; }
+  try{
+    localStorage.setItem("autour:position", JSON.stringify(c));
+    const etat = lireEtatLocalisation();
+    etat.last_known_position = [Number(c[0]), Number(c[1])];
+    const zoneId = ZONES ? ZONES.zoneIdForPoint(c) : null;
+    etat.last_known_zone = zoneId || null;
+    etat.location_permission_state = "granted";
+    ecrireEtatLocalisation(etat);
+    return true;
+  }
   catch(e){ return false; }
 }
 
@@ -5311,9 +5380,54 @@ function memoriserPosition(c, source){
    encore sans redemander, et on peut la relancer d'office au démarrage.
    Un refus efface la trace — on ne harcèle pas quelqu'un qui a dit non. */
 const CLE_GEO_OK = "autour:geo-autorisee";
+const CLE_ETAT_LOCALISATION = "autour:localisation:v2";
+const CLE_ZONE_ACTIVE = "autour:active_zone_id";
+const ETATS_PERMISSION_POSITION = Object.freeze({GRANTED:"granted", PROMPT:"prompt", DENIED:"denied", ABSENT:"absent"});
+function lireEtatLocalisation(){
+  try{
+    const brut = JSON.parse(localStorage.getItem(CLE_ETAT_LOCALISATION) || "null");
+    return Object.assign({
+      location_visit_count:0,
+      location_permission_state:"prompt",
+      onboarding_completed:false,
+      last_known_zone:null,
+      last_known_position:null,
+      active_zone_id:null,
+    }, brut && typeof brut === "object" ? brut : {});
+  }catch(e){
+    return {location_visit_count:0, location_permission_state:"prompt",
+      onboarding_completed:false, last_known_zone:null, last_known_position:null,
+      active_zone_id:null};
+  }
+}
+function ecrireEtatLocalisation(etat){
+  try{ localStorage.setItem(CLE_ETAT_LOCALISATION, JSON.stringify(etat)); }catch(e){}
+}
+function memoriserZoneActive(zone){
+  const zoneId = ZONES ? ZONES.zoneIdForContext(zone) : null;
+  try{
+    if(zoneId) localStorage.setItem(CLE_ZONE_ACTIVE, zoneId);
+    else localStorage.removeItem(CLE_ZONE_ACTIVE);
+    const etat = lireEtatLocalisation();
+    etat.active_zone_id = zoneId;
+    ecrireEtatLocalisation(etat);
+  }catch(e){}
+}
+function enregistrerVisiteLocalisation(){
+  const etat = lireEtatLocalisation();
+  etat.location_visit_count = Math.max(0, Number(etat.location_visit_count) || 0) + 1;
+  ecrireEtatLocalisation(etat);
+  return etat;
+}
+function marquerPermissionPosition(etatPermission){
+  const etat = lireEtatLocalisation();
+  etat.location_permission_state = etatPermission;
+  ecrireEtatLocalisation(etat);
+}
 function noterAutorisationGeo(ok){
   try{ if(ok) localStorage.setItem(CLE_GEO_OK, "1");
        else localStorage.removeItem(CLE_GEO_OK); }catch(e){}
+  marquerPermissionPosition(ok ? ETATS_PERMISSION_POSITION.GRANTED : ETATS_PERMISSION_POSITION.DENIED);
 }
 function geoDejaAutorisee(){
   try{ return localStorage.getItem(CLE_GEO_OK) === "1"; }catch(e){ return false; }
@@ -5339,8 +5453,8 @@ function memoriserEtapeOnboarding(etape){
 }
 
 const TEXTES_ONBOARDING = Object.freeze({
-  bienvenue: {texte:"👋 Bienvenue sur Autour", action:"Commencer"},
-  localisation: {texte:"📍 Autoriser votre localisation", action:"Autoriser"},
+  bienvenue: {texte:"Autour utilise ta position pour te montrer ce qui se passe vraiment autour de toi.", action:"Utiliser ma position"},
+  localisation: {texte:"Autour utilise ta position pour te montrer ce qui se passe vraiment autour de toi.", action:"Utiliser ma position"},
   preparation: {texte:"Autour prépare déjà autour de toi", action:null},
 });
 let onboardingTimer = null;
@@ -5386,21 +5500,35 @@ function cacherOnboarding(){
   if(panneau) panneau.hidden = true;
 }
 function terminerOnboardingLocalisation(resultat){
-  memoriserEtapeOnboarding(ETAPES_ONBOARDING.TERMINE);
+  if(resultat === "ok"){
+    memoriserEtapeOnboarding(ETAPES_ONBOARDING.TERMINE);
+    const etat = lireEtatLocalisation();
+    etat.onboarding_completed = true;
+    ecrireEtatLocalisation(etat);
+  }else{
+    /* Un refus ne valide pas l'onboarding applicatif : la deuxième visite peut
+       encore proposer une invitation discrète, sans relancer le prompt natif
+       pendant cette session. */
+    memoriserEtapeOnboarding(ETAPES_ONBOARDING.LOCALISATION);
+  }
   cacherOnboarding();
   toast(resultat === "ok" ? "✓ C’est prêt" : "🧭 On continue sans position précise");
 }
 
 /* L'état réel de la permission, avec le repli qu'impose Safari. */
 async function permissionPosition(){
-  if(!navigator.geolocation) return "absent";
+  if(!navigator.geolocation){ marquerPermissionPosition(ETATS_PERMISSION_POSITION.ABSENT); return "absent"; }
   try{
     if(navigator.permissions && navigator.permissions.query){
       const p = await navigator.permissions.query({name:"geolocation"});
-      if(p && p.state) return p.state;          // granted | prompt | denied
+      if(p && p.state){ marquerPermissionPosition(p.state); return p.state; } // granted | prompt | denied
     }
   }catch(e){ /* pas de réponse : on retombe sur ce qu'on a mémorisé */ }
-  return geoDejaAutorisee() ? "granted" : "prompt";
+  const memorise = lireEtatLocalisation().location_permission_state;
+  const etat = geoDejaAutorisee() ? "granted"
+    : memorise === ETATS_PERMISSION_POSITION.DENIED ? "denied" : "prompt";
+  marquerPermissionPosition(etat);
+  return etat;
 }
 
 /* ---- La carte, séparée du reste --------------------------------------------
@@ -8612,7 +8740,7 @@ let candidatsAideMemo = {cle:null, items:null, etrangersEcartes:false};
 
 const CHAMPS_BASSIN_AIDE = [
   "id", "autourId", "kind", "aideStructure", "titre", "name", "officialName", "aliases",
-  "lat", "lng", "cat", "category", "categories", "type", "primaryType", "type_structure",
+  "lat", "lng", "zone_id", "zoneId", "cat", "category", "categories", "type", "primaryType", "type_structure",
   "institutionalType", "service_type", "service_types", "services", "tags", "description",
   "adresse", "address", "cp", "postalCode", "commune", "tel", "phone", "url", "website",
   "horaires", "openingHours", "ouvert", "openNow", "status", "source", "sources", "sourceRefs",
@@ -8695,6 +8823,10 @@ function normaliserCandidatAide(raw) {
   if (!interne.address && interne.adresse) interne.address = interne.adresse;
   interne.aideStructure = true;
   interne.kind = "AideStructure";
+  if(ZONES){
+    const zoneId = ZONES.zoneIdForItem(interne);
+    if(zoneId){ interne.zone_id = zoneId; interne.zoneId = zoneId; }
+  }
   if (!interne.lastSyncedAt) interne.lastSyncedAt = new Date().toISOString();
   return interne;
 }
@@ -10696,7 +10828,7 @@ function recommandationsAccueil(limite, options){
      réutilise. Le cache meurt à la microtâche suivante : au prochain état, tout
      est recalculé. C'est sans risque de péremption — rien ne peut changer entre
      deux instructions synchrones. */
-  const cleBurst = (groupe?"g":"s")+"|"+creneau+"|"+(toutMontrer?"1":"0")+"|"+
+  const cleBurst = idZoneActive()+"|"+(groupe?"g":"s")+"|"+creneau+"|"+(toutMontrer?"1":"0")+"|"+
     (catsActives&&catsActives.size?[...catsActives].sort().join(","):"")+"|"+
     (filtreMaintenant?"1":"0")+"|"+(montrerFermes?"1":"0")+"|"+(modeAide?"1":"0")+"|"+
     centre[0].toFixed(4)+","+centre[1].toFixed(4)+"|r"+revisionLieux;
@@ -11453,7 +11585,7 @@ let contextesEnVol = null;
 let contextesSessionPret = false;
 const bassinsTerritoriauxResolus = new Map();
 
-const CLE_CACHE_CONTEXTES = "autour:contextes-territoriaux:v1";
+const CLE_CACHE_CONTEXTES = "autour:contextes-territoriaux:v2";
 
 /* UN PÉRIMÈTRE NE CHANGE PAS DE LA SEMAINE.
 
@@ -11464,7 +11596,7 @@ const CLE_CACHE_CONTEXTES = "autour:contextes-territoriaux:v1";
 function lireCacheContextes(){
   try{
     const brut = JSON.parse(localStorage.getItem(CLE_CACHE_CONTEXTES) || "null");
-    if(!brut || !Array.isArray(brut.lignes)) return null;
+    if(!brut || brut.zone_id !== idZoneActive() || !Array.isArray(brut.lignes)) return null;
     return brut;
   }catch(e){ return null; }
 }
@@ -11472,7 +11604,7 @@ function lireCacheContextes(){
 function ecrireCacheContextes(lignes){
   try{
     localStorage.setItem(CLE_CACHE_CONTEXTES,
-      JSON.stringify({t:Date.now(), lignes:lignes.slice(0, 200)}));
+      JSON.stringify({t:Date.now(), zone_id:idZoneActive(), lignes:lignes.slice(0, 200)}));
   }catch(e){}
 }
 
@@ -12258,11 +12390,67 @@ async function chargerEvenementsMetropole(bassin){
   }
 }
 
+function lireCacheMajeursCross(zoneId){
+  if(!zoneId) return [];
+  try{
+    const entree = JSON.parse(localStorage.getItem(CLE_CACHE_MAJEURS_CROSS) || "null");
+    if(!entree || entree.zone_id !== zoneId || !Array.isArray(entree.evenements) ||
+       Date.now() - Number(entree.t || 0) > CACHE_MAJEURS_CROSS_MAX_MS) return [];
+    return entree.evenements;
+  }catch(e){ return []; }
+}
+
+function ecrireCacheMajeursCross(zoneId, evenements){
+  if(!zoneId || !Array.isArray(evenements)) return;
+  try{ localStorage.setItem(CLE_CACHE_MAJEURS_CROSS, JSON.stringify({
+    t:Date.now(), zone_id:zoneId, evenements:evenements.slice(0, 24)
+  })); }catch(e){}
+}
+
+async function chargerEvenementsMajeursHorsZone(zoneId, portee = porteeCourante){
+  if(!sbLecture || !zoneId || zoneId === "sans-zone") return [];
+  if(majeursCrossEnCours && majeursCrossEnCours.zoneId === zoneId) return majeursCrossEnCours.promise;
+  const enCache = lireCacheMajeursCross(zoneId);
+  if(enCache.length){
+    evenementsMajeursHorsZone = enCache.filter((event)=>{
+      const id = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
+      return id && id !== zoneId && String(event.importance_level || "") === "major" &&
+        Number(event.importance_score) >= MAJEUR_CROSS_MIN_SCORE;
+    });
+    if(evenementsMajeursHorsZone.length) majPourToi();
+  }
+  const promesse = (async()=>{
+    const fini = PERF.requete("supabase_majeurs_cross");
+    try{
+      const {data, error} = await sbLecture.rpc("evenements_majeurs_hors_zone", {
+        p_active_zone_id:zoneId, p_limite:24
+      });
+      if(error){ journal.warn("Événements majeurs hors zone indisponibles :", error.message); return evenementsMajeursHorsZone; }
+      if(portee !== porteeCourante || idZoneActive() !== zoneId) return [];
+      const liste = (Array.isArray(data) ? data : []).map(versEvenementCanonique).filter((event)=>{
+        const id = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
+        return id && id !== zoneId && String(event.importance_level || "") === "major" &&
+          Number(event.importance_score) >= MAJEUR_CROSS_MIN_SCORE;
+      });
+      evenementsMajeursHorsZone = liste;
+      ecrireCacheMajeursCross(zoneId, liste);
+      if(liste.length) majPourToi();
+      return liste;
+    }catch(e){ return evenementsMajeursHorsZone; }
+    finally{ fini(); }
+  })();
+  majeursCrossEnCours = {zoneId, promise:promesse};
+  return promesse.finally(()=>{
+    if(majeursCrossEnCours && majeursCrossEnCours.promise === promesse) majeursCrossEnCours = null;
+  });
+}
+
 function rafraichirMetropole(){
   /* Le bassin ne dépend pas de l'endroit exact où l'on se tient : se déplacer
      de Tourcoing à Lille ne change pas la métropole. La clé de cache est donc
      le bassin lui-même, et non des coordonnées. */
   const bassin = bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null;
+  void chargerEvenementsMajeursHorsZone(idZoneActive(), porteeCourante);
   if(!bassin || metropoleEnCours === bassin) return;
   porteeMetropole = porteeCourante;
   bassinCourant = bassin;
@@ -12329,10 +12517,37 @@ function bassinPourToi(){
      version du bassin porte les artistes, les tags et la provenance. Le
      dédoublonnage commun fusionne d'abord les preuves et reconstruit le
      `CanonicalEvent`; le classement Pour toi ne voit ensuite qu'une fiche. */
-  const locaux = elementsDuContexte(lieux).filter(estCanonique);
-  const bassin = elementsDuContexte(evenementsMetropole).filter(estCanonique);
+  if(typeof localPoolPourToi === "function") return localPoolPourToi();
+  /* Le corps est aussi exercé isolément par les tests de fusion historiques.
+     Ce repli conserve le même entonnoir local sans dépendre des déclarations
+     qui entourent le bundle complet. */
+  const locaux = typeof elementsDuContexte === "function"
+    ? elementsDuContexte(lieux) : (lieux || []);
+  const bassin = typeof elementsDuContexte === "function"
+    ? elementsDuContexte(evenementsMetropole) : (evenementsMetropole || []);
+  return dedupeItems([...locaux, ...bassin], distanceM).filter(estCanonique);
+}
+
+function localPoolPourToi(){
+  const activeId = idZoneActive();
+  const appartient = (item)=>{
+    if(!ZONES || !activeId || activeId === "sans-zone") return dansZoneActive(item);
+    return ZONES.zoneIdForItem(item) === activeId;
+  };
+  const locaux = elementsDuContexte(lieux).filter(estCanonique).filter(appartient);
+  const bassin = elementsDuContexte(evenementsMetropole).filter(estCanonique).filter(appartient);
   return dedupeItems([...locaux, ...bassin], distanceM)
-    .filter(estCanonique);
+    .filter(estCanonique).filter(appartient);
+}
+
+function majorCrossZonePool(){
+  const activeId = idZoneActive();
+  return (evenementsMajeursHorsZone || []).filter((event)=>{
+    const eventId = ZONES ? ZONES.zoneIdForItem(event) : event.zone_id;
+    return eventId && eventId !== activeId &&
+      String(event.importance_level || event.importanceLevel || "") === "major" &&
+      Number(event.importance_score ?? event.importanceScore) >= MAJEUR_CROSS_MIN_SCORE;
+  });
 }
 
 function lieuParId(id){
@@ -12356,10 +12571,13 @@ function lieuParId(id){
      fiche détaillée relise ensuite la version locale nue. */
   const fusionnes = typeof bassinPourToi === "function" ? bassinPourToi() : [];
   const aides = typeof candidatsAideZone === "function" ? candidatsAideZone() : [];
+  const crossZone = typeof evenementsMajeursHorsZone !== "undefined"
+    ? evenementsMajeursHorsZone : [];
   return fusionnes.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || aides.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || lieux.find((x)=> x && String(x.id) === cle && dansContexte(x))
       || evenementsMetropole.find((x)=> x && String(x.id) === cle && dansContexte(x))
+      || crossZone.find((x)=> x && String(x.id) === cle)
       || null;
 }
 
@@ -12414,17 +12632,25 @@ function propositionsPourToi(limite = POURTOI_MAX){
   const vues = marquesVues();
   /* Le classement vit dans `annonces-classement.js`, pas ici : c'est lui qui
      sait apparier tags et envies, et il travaille sur le bassin entier. */
-  const classes = ANNONCES.classerPourToi(bassinPourToi(), {
+  const optionsCommuns = {
     now: Date.now(),
     interests: envies.choisies(),
     seenIds: [...vues],
     hiddenIds: [...marquesMasquees()],
-    limit: Number.isFinite(Number(limite)) ? Math.max(0, Number(limite)) : POURTOI_MAX,
     distanceFor: (event)=> distanceDepuisZone(event),
     metroArea: bassinTerritorialActif?.group_slug || bassinTerritorialActif?.groupSlug || null,
     territorySlug: bassinTerritorialActif?.slug || null
-  });
-  return classes.map((classe)=>({
+  };
+  const max = Number.isFinite(Number(limite)) ? Math.max(0, Number(limite)) : POURTOI_MAX;
+  const classesLocales = ANNONCES.classerPourToi(localPoolPourToi(), Object.assign({}, optionsCommuns, {
+    pool:"local", activeZoneId:idZoneActive(), limit:max
+  }));
+  const classesMajeures = ANNONCES.classerPourToi(majorCrossZonePool(), Object.assign({}, optionsCommuns, {
+    pool:"major_cross_zone", activeZoneId:idZoneActive(),
+    majorCrossZoneMinScore:MAJEUR_CROSS_MIN_SCORE,
+    crossZoneMaxDistance:350e3, limit:Math.min(2, max)
+  }));
+  return [...classesLocales, ...classesMajeures].map((classe)=>({
     l: classe.event,
     groupe: classe.group,
     groupeLabel: ANNONCES.libelleGroupe(classe.group),
@@ -12435,6 +12661,9 @@ function propositionsPourToi(limite = POURTOI_MAX){
     matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : [],
     temporal: classe.temporal || null,
     temporalStatus: classe.temporal_status || null,
+    pool: classe.pool || "local",
+    crossZone: classe.crossZone === true,
+    zoneLabel: classe.crossZone && ZONES ? ZONES.label(ZONES.zoneIdForItem(classe.event)) : "",
   }));
 }
 
@@ -12519,9 +12748,13 @@ function visuelCarteEvenement(l, c, taille){
 
 function carteProposition(x){
   const l = x.l;
-  const dist = jeSuisDansLaZoneRegardee() ? formatDist(distanceDepuisZone(l)) : "";
+  const dist = !x.crossZone && jeSuisDansLaZoneRegardee() ? formatDist(distanceDepuisZone(l)) : "";
   const ville = (l.cp || l.adresse || "").trim();
-  const lieuLigne = [ville, dist].filter(Boolean).join(" · ");
+  const zoneCrossLabel = x.crossZone
+    ? "À " + (x.zoneLabel || "zone voisine") : "";
+  const lieuLigne = x.crossZone
+    ? [zoneCrossLabel, "événement majeur"].filter(Boolean).join(" · ")
+    : [ville, dist].filter(Boolean).join(" · ");
   const date = dateProposition(l);
   const c = categorieAffichee(l);
   /* L'image est celle de la source, sous licence. Sans image, un pictogramme
@@ -12530,12 +12763,15 @@ function carteProposition(x){
     ? visuelCarteEvenement(l, c, "pt")
     : '<span class="pt-img pt-img-vide pt-image-shell event-fallback-carte" aria-hidden="true">'+
       fallbackVisuelEvenement(l, c, "")+'</span>';
-  const statut = x.groupe === "nouvelles_annonces"
+  const statut = x.crossZone
+    ? '<b class="pt-neuf">ÉVÉNEMENT MAJEUR · '+esc(zoneCrossLabel || "À zone voisine")+'</b>'
+    : x.groupe === "nouvelles_annonces"
     ? (x.nouveau
       ? '<b class="pt-neuf">NOUVELLE ANNONCE</b><span>'+esc(x.nouveau)+'</span>'
       : '<b class="pt-neuf">ANNONCE PUBLIÉE</b>')
     : '<b class="pt-neuf">À NE PAS MANQUER</b>';
   return '<article class="pt-carte'+(x.vu?" pt-vu":"")+'" data-pt="'+esc(l.id)+'"'+
+    ' data-pool="'+esc(x.pool || "local")+'"'+
     ' role="button" tabindex="0" aria-label="Ouvrir '+esc(l.titre)+'">'+
     visuel+
     '<div class="pt-txt">'+
@@ -13449,7 +13685,7 @@ const dispoMemo = new Map();
 const DISPO_MEMO_MAX = 600;      // au-delà, on repart : ce n'est qu'un cache
 
 function itemMemoise(l, t, minute){
-  const cle = l.id + "|" + minute;
+  const cle = idZoneActive() + "|" + l.id + "|" + minute;
   const vu = dispoMemo.get(cle);
   if(vu) return vu;
   const item = versItemMaintenant(l, t);
@@ -15201,6 +15437,7 @@ let localisationEnCours = false;
 function suivreMaPosition(opts){
   const o = opts || {};
   if(!navigator.geolocation){
+    marquerPermissionPosition(ETATS_PERMISSION_POSITION.ABSENT);
     definirEtatRecherche("location",SEARCH_STATES.LOCATION_DENIED);
     if(o.onboarding || o.reproposer) terminerOnboardingLocalisation("refus");
     else etat("Choisis un endroit sur la carte : ce navigateur ne sait pas te localiser.", true);
@@ -15259,15 +15496,24 @@ function proposerPosition(){
    obtenue peut ensuite être rafraîchie silencieusement, mais un premier écran
    ou un refus ne relance jamais la permission tout seul. */
 async function demarrerLocalisation(){
-  etapeOnboarding = lireEtapeOnboarding();
-  if(etapeOnboarding !== ETAPES_ONBOARDING.TERMINE){
-    afficherOnboarding(etapeOnboarding === ETAPES_ONBOARDING.LOCALISATION
-      ? "localisation" : "bienvenue");
-    return;
-  }
+  const visite = enregistrerVisiteLocalisation();
   const etatPerm = await permissionPosition();
   PERF.jalon("permission_" + etatPerm);
   if(etatPerm === "granted") suivreMaPosition({silencieux:true});
+  else if(etatPerm === "prompt"){
+    etapeOnboarding = lireEtapeOnboarding();
+    const onboardingTermine = lireEtatLocalisation().onboarding_completed === true ||
+      etapeOnboarding === ETAPES_ONBOARDING.TERMINE;
+    if(visite.location_visit_count <= 2 && !onboardingTermine)
+      afficherOnboarding(etapeOnboarding === ETAPES_ONBOARDING.LOCALISATION ? "localisation" : "bienvenue");
+    else proposerPosition();
+  }else if(etatPerm === "denied" || etatPerm === "absent" || visite.location_visit_count >= 3){
+    /* Un refus/une absence ne déclenche jamais la permission native. La
+       possibilité reste visible dans le bandeau déjà prévu, avec un geste
+       explicite ; avec `prompt`, cette voie n'arrive qu'à partir de la
+       troisième visite. */
+    proposerPosition();
+  }
 }
 
 function lancerOnboardingLocalisation(){
