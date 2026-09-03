@@ -2390,6 +2390,19 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
      l’onboarding est terminé ou qu’Aide est fermée, rien ne reste masqué. */
   #onboardingLocalisation:not([hidden]) ~ #badgeMaintenant{display:none}
   body.aide #onboardingLocalisation{display:none}
+  /* « Revenir autour de moi » partage EXACTEMENT ce même créneau : les deux
+     sont des pastilles centrées à dix pixels sous l'en-tête. La capsule est
+     posée par-dessus (z-index 670 contre 604) et se trouve être plus haute,
+     si bien qu'après un changement de zone le bouton était intégralement
+     recouvert : visible, mais impossible à toucher — c'est la capsule qui
+     recevait le doigt. Empiler n'était pas une option, la capsule changeant
+     de hauteur selon qu'elle tient sur une ou deux lignes.
+
+     Alors la même règle que ci-dessus, pour la même raison : la capsule est
+     informative et revient d'elle-même, tandis que le retour est le seul
+     geste qui ramène chez soi. Elle s'efface donc le temps du retour, et
+     reparaît dès qu'il disparaît — soit dès qu'on est revenu. */
+  body:has(#btnAutourDeMoi:not([hidden])) #badgeMaintenant{display:none}
 }
 
 /* ---- Contrat géométrique de la maquette ---------------------------------
