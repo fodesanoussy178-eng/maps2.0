@@ -15324,8 +15324,12 @@ function appliquerPosition(p, opts){
   /* La zone active suit la position UNIQUEMENT quand c'est elle qu'on regarde.
      Explorer Lille et recevoir une mesure GPS de Tourcoing ne doit rien
      changer à ce qui s'affiche : c'est le point bleu qui bouge, pas la zone. */
+  const zoneAvantPosition = idZoneActive();
   if(bouge && CTX && (retourDemande || !zoneActive || zoneActive.type === CTX.TYPES.MOI))
     definirZoneActive(CTX.zoneMoi(c, commune));
+  /* La zone vient-elle de changer sous nos pieds ? C'est le cas qui décide du
+     recadrage plus bas : les données ont déjà basculé, l'écran doit suivre. */
+  const zoneChangeeParGps = idZoneActive() !== zoneAvantPosition;
 
   $("#bandeauGeo").hidden = true;
   if(venaitDeLApproximation){
@@ -15342,8 +15346,24 @@ function appliquerPosition(p, opts){
     actualiserAvatarCarte();         // avatar + halo suivent le GPS, sans drag
   }
   /* La carte ne se recentre que si on l'a demandé. Pendant une veille, elle
-     appartient à la personne qui la regarde. */
+     appartient à la personne qui la regarde.
+
+     UNE SEULE EXCEPTION : le relevé qui change de zone. Une position déduite
+     d'une adresse IP peut désigner Paris quand le GPS dira Rennes. Tout bascule
+     alors — `active_zone_id`, les lieux, la feuille — mais la vue restait sur
+     l'ancienne ville : un écran centré sur Paris, rempli de marqueurs rennais
+     hors cadre, donc vide. Discret veut dire « sans secousse ni toast », pas
+     « en montrant la mauvaise ville ». On recadre donc sans animation : sur
+     trois cents kilomètres, un vol Leaflet donnerait précisément les quelques
+     secondes de carte vide qu'on cherche à supprimer.
+
+     Le changement de zone SUFFIT à décider : il n'arrive que lorsque la zone
+     regardée est déjà celle où l'on est (`zoneActive.type === MOI`). Explorer
+     une autre ville n'y entre pas — là, la zone ne bouge pas, donc la vue non
+     plus — et un déplacement dans SA zone ne la change pas davantage : la
+     veille reste chez la personne qui regarde. */
   if(bouge && !o.discret) allerVers(c, 16, {duration:.9});
+  else if(bouge && zoneChangeeParGps) allerVers(c, 16, {animate:false, duration:0});
   planifierRendu({accueil:true, carte:true, feuille:true, filtres:true});
   /* Une nouvelle position peut changer le bassin, la distance ou la ville
      effectivement regardée. Le recalcul reste limité aux déplacements qui
