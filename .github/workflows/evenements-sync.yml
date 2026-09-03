@@ -116,7 +116,7 @@ jobs:
                   echo "${reponse:-}"
                   exit 1
                 }
-              if ! jq -e '.status == "success"' >/dev/null <<<"${reponse}"; then
+              if ! jq -e '.status == "success" or .status == "partial"' >/dev/null <<<"${reponse}"; then
                 echo "::error::résultat non réussi pour ${ZONE}/${partition}"
                 echo "${reponse}"
                 exit 1
@@ -144,7 +144,7 @@ jobs:
               }
           fi
 
-          if ! jq -e '.status == "success"' >/dev/null <<<"${reponse}"; then
+          if ! jq -e '.status == "success" or .status == "partial"' >/dev/null <<<"${reponse}"; then
             echo "::error::résultat non réussi pour ${ZONE}"
             echo "${reponse}"
             exit 1

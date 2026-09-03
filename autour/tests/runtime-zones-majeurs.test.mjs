@@ -43,6 +43,7 @@ test("le synchroniseur peut exécuter une partition sans changer le zone_id util
   assert.match(fonction, /partition: partitionDemandee/);
   assert.match(workflow, /paris_centre paris_nord paris_est paris_sud paris_ouest/);
   assert.match(workflow, /area=\$\{ZONE\}&partition=\$\{partition\}/);
+  assert.match(workflow, /\.status == "success" or \.status == "partial"/);
 });
 
 test("la MEL centrale est découpée sans changer son identité produit", () => {
