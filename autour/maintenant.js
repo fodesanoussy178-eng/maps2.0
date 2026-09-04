@@ -675,6 +675,152 @@
      On ne complète JAMAIS avec quelque chose qui n'est pas disponible. S'il
      n'y a qu'une proposition, le bloc en montre une.
      =================================================================== */
+  /* ===================================================================
+     3 ter. LE FILET NOCTURNE
+
+     LA RÈGLE GÉNÉRALE NE BOUGE PAS. Un commerce ordinaire n'est pas une
+     proposition : `COMMODITES` l'écarte, et c'est ce qui empêche « Maintenant »
+     de devenir l'annuaire des épiceries ouvertes. À quinze heures, une supérette
+     ouverte n'a rien à y faire.
+
+     À deux heures du matin, la même supérette est parfois la seule chose utile
+     à cent mètres. Et « Rien à afficher dans cette zone » est alors faux : il y
+     a quelque chose, on a simplement refusé de le dire.
+
+     CE FILET NE S'OUVRE QUE SUR UN ÉCRAN VIDE. Il est évalué après — jamais
+     avant — le constat que la sélection éditoriale ne rend rien. Un événement,
+     une séance, une activité ou un lieu déjà retenu le rend inutile : la
+     hiérarchie en cours > bientôt > programme > repli est préservée par
+     construction, puisque le repli n'est consulté qu'une fois les trois
+     premières couches vides.
+
+     IL NE RÉÉCRIT AUCUNE RÈGLE D'OUVERTURE. Il rappelle `disponible()` avec les
+     catégories de la nuit déclarées comme demandées — exactement le mécanisme
+     qui existe déjà pour « pharmacie ouverte maintenant ». Tout le reste tient
+     donc sans une ligne de plus : une fermeture vérifiée exclut, un horaire
+     inconnu exclut, un lieu trop loin exclut. L'inconnu ne devient jamais
+     meilleur qu'un ouvert confirmé, parce qu'il n'entre pas du tout.
+
+     CE QU'IL N'ADMET PAS, même la nuit : transports, banques, administrations,
+     santé, infrastructures. Une station de métro ouverte n'est pas une sortie.
+     =================================================================== */
+
+  /* Les heures où l'on cherche autre chose. Bornes locales au territoire :
+     22 h à Rouen n'est pas 22 h ailleurs, et c'est l'heure du lieu qui décide. */
+  const NUIT_DEBUT_H = 22;
+  const NUIT_FIN_H = 5;
+
+  /* Ce qui a un sens la nuit. Les bars, la restauration tardive et les lieux de
+     sortie sont déjà admissibles le jour ; ils figurent ici parce que le filet
+     doit pouvoir les classer, pas parce qu'il les débloque. L'apport réel du
+     filet, c'est `commerce` — l'épicerie ouverte, écartée le reste du temps. */
+  const NUIT_ADMISES = Object.freeze(["bar", "pub", "cafe", "resto", "restaurant",
+    "fastfood", "food", "commerce", "spectacle", "concert", "cinema"]);
+
+  /* Ce qui n'en a aucun, à aucune heure. Une pharmacie de garde reste
+     joignable par la demande explicite, qui n'est pas ce chemin-ci. */
+  const NUIT_REFUSEES = Object.freeze(["metro", "bus", "tram", "train", "velo",
+    "recharge", "toilettes", "banque", "mairie", "administration", "ecole",
+    "emploi", "france_travail", "caf", "sante", "pharmacie", "station_service",
+    "essence", "supermarche"]);
+
+  function heureLocaleDe(ctx) {
+    const o = ctx || {};
+    if (Number.isFinite(Number(o.heureLocale))) return Number(o.heureLocale);
+    const t = Number(o.maintenant) || Date.now();
+    const T = root.AutourTemps;
+    if (T && typeof T.partsLocales === "function")
+      return T.partsLocales(t, o.timeZone || "Europe/Paris").heure;
+    return new Date(t).getHours();
+  }
+
+  function estNuit(ctx) {
+    const h = heureLocaleDe(ctx);
+    return Number.isFinite(h) && (h >= NUIT_DEBUT_H || h < NUIT_FIN_H);
+  }
+
+  const admiseLaNuit = (categorie) =>
+    NUIT_ADMISES.indexOf(categorie) >= 0 && NUIT_REFUSEES.indexOf(categorie) < 0;
+
+  /* Une vraie photo pèse dans le choix, jamais dans l'admission : à défaut, le
+     pictogramme de catégorie reste, et aucune image n'est inventée. */
+  const aPhoto = (item) => {
+    const u = item && (item.image_url || item.imageUrl || item.image);
+    return typeof u === "string" && /^https?:\/\//.test(u);
+  };
+
+  /* La qualité de ce qu'on sait : un nom lisible, une adresse, des horaires.
+     Trois petits points valent mieux qu'un lieu dont on ne peut rien dire. */
+  function qualiteInfos(item) {
+    let n = 0;
+    if (nomExploitable(item && (item.titre || item.title))) n += 1;
+    if (item && (item.adresse || item.address)) n += 1;
+    if (item && (item.openingHours || item.opening_hours || item.horaires)) n += 1;
+    return n;
+  }
+
+  function selectionRepliNocturne(items, contexte) {
+    const ctx = contexte || {};
+    if (!estNuit(ctx)) return [];
+    const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
+
+    /* On déclare les catégories de la nuit comme demandées : `disponible()`
+       lève alors sa seule exclusion de commodité, et garde toutes les autres. */
+    const ctxNuit = Object.assign({}, ctx, {
+      categoriesDemandees: NUIT_ADMISES.slice(),
+    });
+
+    const pool = [];
+    for (const item of (items || [])) {
+      if (!item || evenementDe(item)) continue;
+      const cat = categorieDe(item);
+      if (!admiseLaNuit(cat)) continue;
+      if (!qualiteProposition(item).retenu) continue;
+      const v = disponible(item, ctxNuit);
+      if (!v.retenu) continue;
+      pool.push({ item, nature: v.nature, distance: v.distance, categorie: cat });
+    }
+    if (!pool.length) return [];
+
+    /* Le classement du filet. L'ouverture est déjà acquise — `disponible` n'a
+       laissé passer que du confirmé — donc on départage sur ce qui rend une
+       proposition utile à cette heure : d'abord la proximité, par paliers de
+       cent mètres pour ne pas faire gagner un trottoir contre une photo, puis
+       la richesse de la fiche, puis l'image, puis le type de lieu. */
+    const rangCategorie = (cat) => {
+      if (cat === "bar" || cat === "pub") return 0;
+      if (cat === "fastfood" || cat === "food") return 1;
+      if (cat === "resto" || cat === "restaurant") return 1;
+      if (cat === "cafe") return 2;
+      if (cat === "commerce") return 3;
+      return 4;
+    };
+    pool.sort((a, b) => {
+      const pa = Math.round((a.distance || 0) / 100);
+      const pb = Math.round((b.distance || 0) / 100);
+      return (pa - pb)
+        || (qualiteInfos(b.item) - qualiteInfos(a.item))
+        || ((aPhoto(b.item) ? 1 : 0) - (aPhoto(a.item) ? 1 : 0))
+        || (rangCategorie(a.categorie) - rangCategorie(b.categorie))
+        || ((a.distance || 0) - (b.distance || 0));
+    });
+
+    /* On ne remplit que ce qui existe. Un seul bon bar ouvert donne un seul
+       résultat — ajouter deux commerces médiocres pour faire trois serait
+       exactement le remplissage que ce module refuse partout ailleurs. */
+    const choisis = [];
+    const vus = new Set();
+    for (const c of pool) {
+      if (choisis.length >= combien) break;
+      const cle = String(c.item.id != null ? c.item.id : c.item.titre || "");
+      if (cle && vus.has(cle)) continue;
+      if (cle) vus.add(cle);
+      choisis.push(c);
+    }
+    return choisis.map((c) => Object.assign({}, c.item,
+      { nature: c.nature, repliNocturne: true }));
+  }
+
   function candidats(items, contexte) {
     const ctx = contexte || {};
     const out = [];
@@ -725,6 +871,14 @@
       if (estNourriture(c.item, c.famille)) nourriturePrise = true;
       choisis.push(c);
     }
+    /* LE FILET, ET SEULEMENT ICI.
+
+       La condition est le constat, pas une heuristique : la sélection
+       éditoriale n'a rien rendu. Tant qu'elle rend ne serait-ce qu'un
+       résultat — un événement en cours, une séance, une activité, un lieu —
+       ce chemin n'est jamais emprunté, et la hiérarchie tient d'elle-même. */
+    if (!choisis.length) return selectionRepliNocturne(items, ctx);
+
     /* On rend l'ordre de priorité, pas l'ordre de cueillette. */
     choisis.sort((a, b) => (a.rang - b.rang) || (a.distance - b.distance));
     return choisis.map((c) => Object.assign({}, c.item, { nature: c.nature }));
@@ -822,6 +976,8 @@
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
     SEANCE_MIN_MS, SEANCE_MAX_MS,
     fiable, disponible, candidats, selection, selectionCeSoir, total, etat, textes,
+    selectionRepliNocturne, estNuit, NUIT_ADMISES, NUIT_REFUSEES,
+    NUIT_DEBUT_H, NUIT_FIN_H,
     distanceM, familleDe, estNourriture, nomExploitable, categorieExploitable,
     qualiteProposition,
   });

@@ -13878,11 +13878,27 @@ function rayonRegarde(){
   }catch(e){ return socle; }
 }
 
+/* L'HEURE DU LIEU, PAS CELLE DE L'APPAREIL.
+
+   Les zones portent leur fuseau depuis qu'elles sont formalisées — la table
+   `autour_zones` le déclare non nul, et `zones-autonomes.js` le répète côté
+   client. Ce fuseau n'arrivait pourtant jamais jusqu'à « Maintenant » : le
+   module retombait sur son défaut « Europe/Paris ». Sur les cinq zones
+   actuelles, toutes françaises, cela donnait le bon résultat par coïncidence.
+   Ce qui décide de la nuit est l'heure du territoire regardé, pas celle du
+   téléphone ni un défaut codé en dur ; on la transmet donc explicitement. */
+function fuseauZoneActive(){
+  const def = ZONES && typeof ZONES.definition === "function"
+    ? ZONES.definition(idZoneActive()) : null;
+  return (def && def.timezone) || "Europe/Paris";
+}
+
 function contexteMaintenant(){
   const ref = pointDeReference();
   return {
     rayonMax: rayonRegarde(),
     maintenant: Date.now(),
+    timeZone: fuseauZoneActive(),
     position: Array.isArray(ref) && Number.isFinite(ref[0]) ? ref : null,
     /* Choisir une ville, c'est dire soi-même où l'on regarde : on sait donc
        parfaitement de quoi on parle, même sans la moindre mesure GPS. */
