@@ -16,6 +16,14 @@
     welfare_organization:"asso", school:"ecole", university:"ecole", primary_school:"ecole",
     secondary_school:"ecole", tourist_attraction:"musee", supermarket:"commerce", grocery_store:"commerce",
     convenience_store:"commerce", clothing_store:"friperie", thrift_store:"friperie", store:"commerce",
+    /* LES SERVICES FINANCIERS AVAIENT UNE CATÉGORIE PAR DÉFAUT, PAS UNE
+       CATÉGORIE. Aucun type financier ne figurait ici : une banque, un
+       distributeur ou un cabinet comptable tombaient donc sur
+       `defaultCategory` — « commerce » — et Autour les rangeait, libellé et
+       pictogramme compris, parmi les boutiques. Ce n'est pas ce qu'ils sont,
+       et une classification fausse se propage : c'est elle qui décide ensuite
+       ce qu'on a le droit de proposer. */
+    bank:"banque", atm:"banque", accounting:"banque", insurance_agency:"banque",
   });
   const niveauxPrix = Object.freeze({
     PRICE_LEVEL_FREE:0, PRICE_LEVEL_INEXPENSIVE:1, PRICE_LEVEL_MODERATE:2,

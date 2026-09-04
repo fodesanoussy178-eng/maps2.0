@@ -84,7 +84,8 @@
      et payer une recherche web pour un supermarché n'améliorerait rien de ce
      qu'on montre. La liste est celle de maintenant.js, à dessein. */
   const COMMODITES = ["commerce", "friperie", "sante", "metro", "bus", "tram",
-    "train", "velo", "recharge", "toilettes", "mairie", "ecole", "emploi"];
+    "train", "velo", "recharge", "toilettes", "mairie", "ecole", "emploi",
+    "banque"];
   const MOTS_FERMETURE =
     /\b(fermeture|travaux|renovation|provisoire|reouverture|momentanement)\b/i;
   /* Au-delà, un horaire n'est plus une information : c'est un souvenir. */

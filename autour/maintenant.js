@@ -49,6 +49,11 @@
     READY:   "ready",
     EMPTY:   "empty",
     ERROR:   "error",
+    /* PAS DE ZONE N'EST PAS PAS DE RÉSULTAT. « Rien d'ouvert dans cette zone »
+       parle d'une zone ; hors des territoires couverts, il n'y en a aucune, et
+       l'écrire serait affirmer qu'on a cherché là où on ne couvre rien. Cet
+       état-ci le dit, et ouvre la seule porte utile : chercher une ville. */
+    HORS_ZONE: "horsZone",
   });
 
   /* ===================================================================
@@ -155,10 +160,17 @@
 
      Elles restent admissibles quand on les DEMANDE : « pharmacie ouverte
      maintenant » est une intention explicite, et là c'est exactement ce
-     qu'il faut montrer. C'est le seul cas. */
+     qu'il faut montrer. C'est le seul cas.
+
+     LES SERVICES FINANCIERS EN FONT PARTIE, et ils n'y étaient pas. Non par
+     choix : la catégorie « banque » n'existait nulle part, et une agence
+     arrivait ici étiquetée « commerce ». Elle était donc écartée par accident
+     — pour la mauvaise raison, et seulement tant que cet accident durait.
+     Maintenant qu'elle porte son nom, elle doit être nommée ici aussi :
+     retirer de l'argent est une course, jamais une proposition de sortie. */
   const COMMODITES = Object.freeze(["commerce", "friperie", "marche", "sante",
     "metro", "bus", "tram", "train", "velo", "recharge", "toilettes",
-    "mairie", "ecole", "emploi"]);
+    "mairie", "ecole", "emploi", "banque"]);
 
   const estCommodite = (categorie) => COMMODITES.indexOf(categorie) >= 0;
 
@@ -249,7 +261,17 @@
     /* Les événements sont validés par `fiable` avec leurs deux bornes. Pour
        un lieu permanent, l'application doit transmettre un verdict
        d'ouverture horodaté ; un booléen historique ne suffit plus. */
-    if (!item.estEvenement && item.tempsValide !== true)
+    /* UN « OUVERT » VÉRIFIÉ EST UN VERDICT HORODATÉ, LUI AUSSI.
+
+       `tempsValide` vient de `availability.js`, qui ne sait rien dire d'un
+       lieu sans horaires — et c'est le cas de la plupart des lieux la nuit.
+       Le calque vérifié répond exactement à cette question-là : quand il a
+       écrit « open », exiger en plus un verdict d'horaires revenait à jeter
+       la réponse qu'on était allé chercher. `disponible()` traitait déjà ce
+       statut comme faisant autorité (`ouvertVerifie`) ; ce contrôle-ci ne le
+       savait pas, et refusait le lieu avant qu'il y arrive. */
+    if (!item.estEvenement && item.tempsValide !== true &&
+        item.current_status !== "open")
       return refus(RAISONS.TEMPS_INEXPLOITABLE);
     return { retenu: true, raison: RAISONS.RETENU, distance: null };
   }
@@ -428,9 +450,13 @@
         timezone: item.timezone || item.timeZone || (item.canonical && item.canonical.timezone),
       });
       const ouverture = A.etatOuverture(source, t);
-      if (!ouverture || ouverture.openingStatus === "unknown")
+      /* L'inconnu d'`availability.js` cède devant un « ouvert » vérifié, et
+         devant lui seul : c'est précisément le silence que le calque est allé
+         lever. Un « closed » calculé sur de vrais horaires, lui, garde le
+         dernier mot — on ne montre jamais ouvert ce que les horaires ferment. */
+      if ((!ouverture || ouverture.openingStatus === "unknown") && !ouvertVerifie)
         return refusNature(RAISONS.HORAIRE_INCONNU);
-      if (ouverture.openingStatus === "closed")
+      if (ouverture && ouverture.openingStatus === "closed")
         return refusNature(RAISONS.PAS_OUVERT);
       if (item.ouvertALArrivee === false)
         return refusNature(RAISONS.FERME_TROP_TOT);
@@ -675,6 +701,236 @@
      On ne complète JAMAIS avec quelque chose qui n'est pas disponible. S'il
      n'y a qu'une proposition, le bloc en montre une.
      =================================================================== */
+  /* ===================================================================
+     3 ter. LE FILET NOCTURNE
+
+     LA RÈGLE GÉNÉRALE NE BOUGE PAS. Un commerce ordinaire n'est pas une
+     proposition : `COMMODITES` l'écarte, et c'est ce qui empêche « Maintenant »
+     de devenir l'annuaire des épiceries ouvertes. À quinze heures, une supérette
+     ouverte n'a rien à y faire.
+
+     À deux heures du matin, la même supérette est parfois la seule chose utile
+     à cent mètres. Et « Rien à afficher dans cette zone » est alors faux : il y
+     a quelque chose, on a simplement refusé de le dire.
+
+     CE FILET NE S'OUVRE QUE SUR UN ÉCRAN VIDE. Il est évalué après — jamais
+     avant — le constat que la sélection éditoriale ne rend rien. Un événement,
+     une séance, une activité ou un lieu déjà retenu le rend inutile : la
+     hiérarchie en cours > bientôt > programme > repli est préservée par
+     construction, puisque le repli n'est consulté qu'une fois les trois
+     premières couches vides.
+
+     IL NE RÉÉCRIT AUCUNE RÈGLE D'OUVERTURE. Il rappelle `disponible()` avec les
+     catégories de la nuit déclarées comme demandées — exactement le mécanisme
+     qui existe déjà pour « pharmacie ouverte maintenant ». Tout le reste tient
+     donc sans une ligne de plus : une fermeture vérifiée exclut, un horaire
+     inconnu exclut, un lieu trop loin exclut. L'inconnu ne devient jamais
+     meilleur qu'un ouvert confirmé, parce qu'il n'entre pas du tout.
+
+     CE QU'IL N'ADMET PAS, même la nuit : transports, banques, administrations,
+     santé, infrastructures. Une station de métro ouverte n'est pas une sortie.
+     =================================================================== */
+
+  /* Les heures où l'on cherche autre chose. Bornes locales au territoire :
+     22 h à Rouen n'est pas 22 h ailleurs, et c'est l'heure du lieu qui décide. */
+  const NUIT_DEBUT_H = 22;
+  const NUIT_FIN_H = 5;
+
+  /* Ce qui a un sens la nuit. Les bars, la restauration tardive et les lieux de
+     sortie sont déjà admissibles le jour ; ils figurent ici parce que le filet
+     doit pouvoir les classer, pas parce qu'il les débloque. L'apport réel du
+     filet, c'est `commerce` — l'épicerie ouverte, écartée le reste du temps. */
+  const NUIT_ADMISES = Object.freeze(["bar", "pub", "cafe", "resto", "restaurant",
+    "fastfood", "food", "commerce", "spectacle", "concert", "cinema"]);
+
+  /* Ce qui n'en a aucun, à aucune heure. Une pharmacie de garde reste
+     joignable par la demande explicite, qui n'est pas ce chemin-ci. */
+  const NUIT_REFUSEES = Object.freeze(["metro", "bus", "tram", "train", "velo",
+    "recharge", "toilettes", "banque", "mairie", "administration", "ecole",
+    "emploi", "france_travail", "caf", "sante", "pharmacie", "station_service",
+    "essence", "supermarche"]);
+
+  function heureLocaleDe(ctx) {
+    const o = ctx || {};
+    if (Number.isFinite(Number(o.heureLocale))) return Number(o.heureLocale);
+    const t = Number(o.maintenant) || Date.now();
+    const T = root.AutourTemps;
+    if (T && typeof T.partsLocales === "function")
+      return T.partsLocales(t, o.timeZone || "Europe/Paris").heure;
+    return new Date(t).getHours();
+  }
+
+  function estNuit(ctx) {
+    const h = heureLocaleDe(ctx);
+    return Number.isFinite(h) && (h >= NUIT_DEBUT_H || h < NUIT_FIN_H);
+  }
+
+  const admiseLaNuit = (categorie) =>
+    NUIT_ADMISES.indexOf(categorie) >= 0 && NUIT_REFUSEES.indexOf(categorie) < 0;
+
+  /* Une vraie photo pèse dans le choix, jamais dans l'admission : à défaut, le
+     pictogramme de catégorie reste, et aucune image n'est inventée. */
+  const aPhoto = (item) => {
+    const u = item && (item.image_url || item.imageUrl || item.image);
+    return typeof u === "string" && /^https?:\/\//.test(u);
+  };
+
+  /* La qualité de ce qu'on sait : un nom lisible, une adresse, des horaires.
+     Trois petits points valent mieux qu'un lieu dont on ne peut rien dire. */
+  function qualiteInfos(item) {
+    let n = 0;
+    if (nomExploitable(item && (item.titre || item.title))) n += 1;
+    if (item && (item.adresse || item.address)) n += 1;
+    if (item && (item.openingHours || item.opening_hours || item.horaires)) n += 1;
+    return n;
+  }
+
+  function selectionRepliNocturne(items, contexte) {
+    const ctx = contexte || {};
+    if (!estNuit(ctx)) return [];
+    const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
+
+    /* On déclare les catégories de la nuit comme demandées : `disponible()`
+       lève alors sa seule exclusion de commodité, et garde toutes les autres. */
+    const ctxNuit = Object.assign({}, ctx, {
+      categoriesDemandees: NUIT_ADMISES.slice(),
+    });
+
+    const pool = [];
+    for (const item of (items || [])) {
+      if (!item || evenementDe(item)) continue;
+      const cat = categorieDe(item);
+      if (!admiseLaNuit(cat)) continue;
+      if (!qualiteProposition(item).retenu) continue;
+      const v = disponible(item, ctxNuit);
+      if (!v.retenu) continue;
+      pool.push({ item, nature: v.nature, distance: v.distance, categorie: cat });
+    }
+    if (!pool.length) return [];
+
+    /* Le classement du filet. L'ouverture est déjà acquise — `disponible` n'a
+       laissé passer que du confirmé — donc on départage sur ce qui rend une
+       proposition utile à cette heure : d'abord la proximité, par paliers de
+       cent mètres pour ne pas faire gagner un trottoir contre une photo, puis
+       la richesse de la fiche, puis l'image, puis le type de lieu. */
+    const rangCategorie = (cat) => {
+      if (cat === "bar" || cat === "pub") return 0;
+      if (cat === "fastfood" || cat === "food") return 1;
+      if (cat === "resto" || cat === "restaurant") return 1;
+      if (cat === "cafe") return 2;
+      if (cat === "commerce") return 3;
+      return 4;
+    };
+    pool.sort((a, b) => {
+      const pa = Math.round((a.distance || 0) / 100);
+      const pb = Math.round((b.distance || 0) / 100);
+      return (pa - pb)
+        || (qualiteInfos(b.item) - qualiteInfos(a.item))
+        || ((aPhoto(b.item) ? 1 : 0) - (aPhoto(a.item) ? 1 : 0))
+        || (rangCategorie(a.categorie) - rangCategorie(b.categorie))
+        || ((a.distance || 0) - (b.distance || 0));
+    });
+
+    /* On ne remplit que ce qui existe. Un seul bon bar ouvert donne un seul
+       résultat — ajouter deux commerces médiocres pour faire trois serait
+       exactement le remplissage que ce module refuse partout ailleurs. */
+    const choisis = [];
+    const vus = new Set();
+    for (const c of pool) {
+      if (choisis.length >= combien) break;
+      const cle = String(c.item.id != null ? c.item.id : c.item.titre || "");
+      if (cle && vus.has(cle)) continue;
+      if (cle) vus.add(cle);
+      choisis.push(c);
+    }
+    return choisis.map((c) => Object.assign({}, c.item,
+      { nature: c.nature, repliNocturne: true }));
+  }
+
+  /* ===================================================================
+     3 quater. LA QUESTION QU'ON POSE QUAND LA NUIT NE RÉPOND PAS
+
+     « Horaire inconnu » n'est pas « ouvert », et cette règle ne bouge d'un
+     millimètre nulle part dans ce fichier : un lieu dont l'ouverture n'est
+     pas vérifiée n'est jamais montré comme ouvert. C'est justement pour ça
+     qu'il faut aller CHERCHER la réponse plutôt que la supposer.
+
+     À une heure du matin, la plupart des lieux d'OpenStreetMap n'ont aucun
+     horaire. Le filet nocturne les écarte tous, à juste titre, et l'écran
+     reste vide — non parce que la ville dort, mais parce que nos données se
+     taisent. Autour sait déjà lever ce silence : `place_enrichments` et la
+     fonction `enrichir-lieu` existent, avec leur cache et leur budget.
+
+     CE QUE CETTE FONCTION FAIT, ET RIEN D'AUTRE : elle NOMME les deux ou
+     trois lieux qu'il vaudrait la peine d'interroger. Elle n'interroge pas,
+     elle ne classe pas, elle ne rend rien d'affichable. L'appelant lira le
+     cache d'abord, décidera ensuite, et redessinera si — et seulement si —
+     une réponse « ouvert » revient. Rien de tout cela n'est sur le chemin
+     d'un rendu : l'ouverture d'Autour n'attend jamais cette vérification.
+
+     ELLE NE S'OUVRE QUE SUR UN MANQUE RÉEL. Tant que le filet trouve assez de
+     lieux confirmés ouverts, elle rend une liste vide et aucun appel n'est
+     dépensé.
+     =================================================================== */
+
+  /* Deux ou trois, jamais un balayage. On ne va pas chercher une réponse
+     qu'on n'aurait pas la place d'afficher. */
+  const NUIT_MAX_VERIFICATIONS = 3;
+
+  /* Le statut est-il VRAIMENT sans réponse, ou déjà tranché ? Un lieu qu'on
+     sait fermé — par ses horaires, par une fermeture temporaire, par le
+     calque vérifié — n'a rien à nous apprendre : le redemander serait une
+     dépense pour confirmer un refus. */
+  function statutNocturneSansReponse(item) {
+    if (!item) return false;
+    if (item.ferme === true) return false;
+    if (item.temporary_closed === true) return false;
+    if (item.current_status === "closed" ||
+        item.current_status === "permanently_closed") return false;
+    if (item.current_status === "open") return false;
+    return item.ouvert == null;
+  }
+
+  function candidatsNocturnesAVerifier(items, contexte) {
+    const ctx = contexte || {};
+    if (!estNuit(ctx)) return [];
+    const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
+
+    /* LE CONFIRMÉ D'ABORD, LA QUESTION ENSUITE. Le filet est rejoué ici pour
+       compter ce qui tient DÉJÀ debout ; s'il remplit les places, il n'y a
+       rien à demander et rien à dépenser. */
+    const confirmes = selectionRepliNocturne(items, ctx);
+    if (confirmes.length >= combien) return [];
+    const manque = combien - confirmes.length;
+    const deja = new Set(confirmes.map((x) => String(x.id)));
+
+    const pool = [];
+    for (const item of (items || [])) {
+      if (!item || evenementDe(item)) continue;
+      if (deja.has(String(item.id))) continue;
+      if (!admiseLaNuit(categorieDe(item))) continue;
+      if (!statutNocturneSansReponse(item)) continue;
+      /* L'identité et le nom, oui ; le verdict d'ouverture, non — c'est
+         précisément ce qui manque et ce qu'on part chercher. On emprunte donc
+         les contrôles d'identité de `qualiteProposition` en neutralisant le
+         seul qu'on sait faux ici, plutôt que d'en écrire une seconde version
+         qui finirait par diverger. */
+      if (!qualiteProposition(Object.assign({}, item, { tempsValide: true })).retenu)
+        continue;
+      const d = distanceDe(item, ctx);
+      if (d === null || d > rayonDe(ctx)) continue;
+      pool.push({ item, distance: d });
+    }
+    if (!pool.length) return [];
+
+    /* Les plus proches, puis les mieux renseignés : à budget égal, une
+       réponse sur un lieu à cent mètres vaut mieux qu'à deux kilomètres. */
+    pool.sort((a, b) => (a.distance - b.distance)
+      || (qualiteInfos(b.item) - qualiteInfos(a.item)));
+    return pool.slice(0, Math.min(manque, NUIT_MAX_VERIFICATIONS))
+      .map((x) => x.item);
+  }
+
   function candidats(items, contexte) {
     const ctx = contexte || {};
     const out = [];
@@ -696,6 +952,11 @@
 
   function selection(items, contexte) {
     const ctx = contexte || {};
+    /* HORS ZONE, ON NE COMPOSE PAS. Le bloc ne doit pas fabriquer une
+       sélection « territoriale » là où aucun territoire n'est couvert : ni la
+       hiérarchie éditoriale, ni le filet nocturne qu'elle appelle en dernier
+       recours. L'état `HORS_ZONE` dit alors ce qui est vrai. */
+    if (ctx.zoneTerritoriale === false) return [];
     const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
     const pool = candidats(items, ctx);
 
@@ -725,6 +986,14 @@
       if (estNourriture(c.item, c.famille)) nourriturePrise = true;
       choisis.push(c);
     }
+    /* LE FILET, ET SEULEMENT ICI.
+
+       La condition est le constat, pas une heuristique : la sélection
+       éditoriale n'a rien rendu. Tant qu'elle rend ne serait-ce qu'un
+       résultat — un événement en cours, une séance, une activité, un lieu —
+       ce chemin n'est jamais emprunté, et la hiérarchie tient d'elle-même. */
+    if (!choisis.length) return selectionRepliNocturne(items, ctx);
+
     /* On rend l'ordre de priorité, pas l'ordre de cueillette. */
     choisis.sort((a, b) => (a.rang - b.rang) || (a.distance - b.distance));
     return choisis.map((c) => Object.assign({}, c.item, { nature: c.nature }));
@@ -773,6 +1042,11 @@
     if (ctx.positionEnCours) return ETATS.LOADING;
     if (ctx.positionRefusee || !ctx.positionConnue) return ETATS.ERROR;
 
+    /* Savoir où l'on est ne suffit pas : encore faut-il couvrir cet endroit.
+       Le GPS peut être parfait à Bordeaux — Autour n'y a ni zone, ni données,
+       ni programmation. On ne prétend donc pas avoir regardé. */
+    if (ctx.zoneTerritoriale === false) return ETATS.HORS_ZONE;
+
     if (ctx.panne) return ETATS.ERROR;
     if (ctx.chargement) return ETATS.LOADING;
 
@@ -798,6 +1072,11 @@
       ligne: "Impossible de savoir ce qui se passe autour de toi.",
       sortie: "Réessayer",
     },
+    [ETATS.HORS_ZONE]: {
+      titre: "Maintenant",
+      ligne: "Autour ne couvre pas encore cet endroit.",
+      sortie: "Chercher une ville",
+    },
     positionRefusee: {
       titre: "Maintenant",
       ligne: "Autour ne sait pas où tu es.",
@@ -822,6 +1101,9 @@
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
     SEANCE_MIN_MS, SEANCE_MAX_MS,
     fiable, disponible, candidats, selection, selectionCeSoir, total, etat, textes,
+    selectionRepliNocturne, estNuit, NUIT_ADMISES, NUIT_REFUSEES,
+    NUIT_DEBUT_H, NUIT_FIN_H,
+    candidatsNocturnesAVerifier, statutNocturneSansReponse, NUIT_MAX_VERIFICATIONS,
     distanceM, familleDe, estNourriture, nomExploitable, categorieExploitable,
     qualiteProposition,
   });
