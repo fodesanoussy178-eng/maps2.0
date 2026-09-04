@@ -17,6 +17,13 @@ export const MODULES = [
   "availability.js", "comprendre.js", "donnees.js", "aide-intentions.js", "intentions.js", "comptes.js",
   "maintenant.js", "ordonnanceur.js", "zones-autonomes.js", "contexte.js", "territoire.js", "plafonds.js",
   "annonces-taxonomie.js", "annonces-classement.js", "envies.js",
+  /* IL ÉTAIT CHARGÉ PAR LA PAGE, MAIS PAS PAR CE MANIFESTE — donc servi en
+     cache immuable avec une empreinte figée à `00000000`, qui ne bougeait
+     jamais. Un an de cache sur une version qu'on ne pouvait plus corriger :
+     c'est exactement le problème Safari que ce fichier existe pour empêcher.
+     Trouvé en modifiant `enrichissements.js` et en constatant que le tampon
+     ne le voyait pas. */
+  "enrichissements.js",
   "aide-taxonomie.js", "aide-classement.js", "aide-structures.js", "aide-rayon.js", "aide-contexte-ia.js",
   "aide.js",
   "signaux.js", "temporel.js", "evenements-canoniques.js", "entites-canoniques.js", "explications.js", "events.js", "images.js", "core.js",

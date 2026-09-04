@@ -1509,6 +1509,14 @@ const CATS = {
   terrain:  {label:"Terrains",      emoji:"🏀", eph:false},
   ecole:    {label:"Écoles",        emoji:"🎓", eph:false},
   mairie:   {label:"Services",      emoji:"🏛️", eph:false},
+  /* LA CATÉGORIE QUI MANQUAIT, ET CE QU'ELLE COÛTAIT. Google rend des types
+     `bank`, `atm`, `accounting` ; aucun n'était traduit, et tous tombaient sur
+     la catégorie par défaut du fournisseur — « commerce ». Une agence bancaire
+     s'affichait donc avec le sac de courses et le libellé « Commerces », et
+     surtout elle héritait de tout ce qu'on accorde à un commerce. On la nomme
+     pour ce qu'elle est : elle reste sur la carte et retrouvable par son nom,
+     elle n'est plus prise pour une boutique. */
+  banque:   {label:"Banques",       emoji:"🏦", eph:false},
   velo:     {label:"Stations vélo", emoji:"🚲", eph:false},
   metro:    {label:"Métro",         emoji:"🚇", eph:false},
   // « Bus & tram » mélangeait deux réseaux distincts : chercher un tram
@@ -13637,6 +13645,13 @@ function poserRecommandations(jeton, titre){
   if(ORDO) ORDO.differer(()=>enrichirCandidats(pourToi, intentionCourante,
       ()=>{ if(jeton === generationAccueil) planifierRendu({accueil:true, feuille:true}); }),
     {timeout:1500, valide:()=>jeton === generationAccueil});
+  /* Et, la nuit seulement, quand « Maintenant » n'a rien à montrer : deux ou
+     trois questions d'ouverture, posées après tout le reste. Un délai plus
+     long que celui d'au-dessus, à dessein — cette couche est la moins
+     pressée de toutes, et personne ne l'attend. */
+  if(ORDO) ORDO.differer(()=>verifierNuitSiEcranVide(
+      ()=>{ if(jeton === generationAccueil) planifierRendu({accueil:true, feuille:true}); }),
+    {timeout:3000, valide:()=>jeton === generationAccueil});
   } finally {
     PERF.travail("recommandations", debutCpu);
   }
@@ -14053,6 +14068,86 @@ function selectionMaintenant(){
 
 function totalMaintenant(){
   return selectionMaintenant().length;
+}
+
+/* ---- LA NUIT, ALLER CHERCHER LA RÉPONSE PLUTÔT QUE LA SUPPOSER ----------
+
+   « Horaire inconnu » ne devient jamais « ouvert ». Cette règle ne bouge pas,
+   et c'est elle qui rend cette fonction nécessaire : à une heure du matin, la
+   plupart des bars et des fast-foods d'OpenStreetMap n'ont aucun horaire. Le
+   filet nocturne les écarte tous — correctement — et l'écran reste vide alors
+   que la ville, elle, ne l'est pas.
+
+   On ne suppose donc rien : on DEMANDE, pour deux ou trois lieux nommés, à la
+   couche de vérification qui existe déjà. `place_enrichments` répond d'abord
+   — c'est une lecture, elle ne coûte rien —, et un appel au modèle n'est
+   tenté que si le cache est absent ou périmé, si le budget le permet, et si
+   `territoire.js` l'autorise. Une réponse « open » rend le lieu éligible au
+   redessin suivant ; « closed », « temporary_closed » ou « unknown » le
+   laissent dehors, exactement comme avant la question.
+
+   RIEN DE CECI N'EST ATTENDU. La fonction est appelée après la peinture, par
+   `ORDO.differer` ; l'ouverture d'Autour ne dépend d'aucune de ses réponses,
+   et une panne du modèle laisse l'écran tel qu'il était. */
+const nuitDejaInterrogee = new Set();
+
+function verifierNuitSiEcranVide(redessiner){
+  const M = window.AutourMaintenant;
+  if(!M || !ENR || typeof M.candidatsNocturnesAVerifier !== "function") return;
+  if(creneau !== "maintenant" || modeAide) return;
+
+  const ctx = contexteMaintenant();
+  const items = itemsMaintenant(ctx);
+
+  /* LE CONSTAT AVANT LA DÉPENSE. Une sélection éditoriale — un événement, une
+     séance, une activité — rend cette couche inutile : le filet n'est même pas
+     consulté dans ce cas, et il serait absurde de payer pour l'alimenter. */
+  const liste = M.selection(items, ctx);
+  if(liste.length && !liste.every(x=>x && x.repliNocturne)) return;
+  if(liste.length >= MAINTENANT_APERCU) return;
+
+  const cibles = M.candidatsNocturnesAVerifier(items, ctx);
+  if(!cibles.length) return;
+
+  /* On repasse par les lieux réels : `ENR.cleLieu` a besoin du titre et des
+     coordonnées tels que le serveur les recalcule de son côté. */
+  const parId = new Map(lieux.map(l=>[l.id, l]));
+  const candidats = cibles.map(i=>{
+    const l = parId.get(i.id);
+    const cle = l ? ENR.cleLieu(l.titre, l.lat, l.lng) : null;
+    return cle && !nuitDejaInterrogee.has(cle) ? {l, cle} : null;
+  }).filter(Boolean);
+  if(!candidats.length) return;
+
+  calqueVerifie(candidats.map(x=>x.cle)).then(async connus=>{
+    let change = false;
+    const aDemander = [];
+    candidats.forEach(x=>{
+      const e = connus.get(x.cle);
+      /* LE CACHE AVANT TOUT APPEL, ET SON TTL AVEC LUI. Une entrée fraîche
+         répond sans rien dépenser ; une entrée périmée s'applique quand même
+         — elle reste vraie plus souvent que rien — et rouvre la question. */
+      if(e && ENR.appliquer(x.l, e)) change = true;
+      const frais = e && e.expires_at && Date.parse(e.expires_at) > Date.now();
+      if(!frais) aDemander.push(x);
+    });
+    if(change){ oublierItemsMaintenant(); redessiner(); }
+
+    for(const x of aDemander){
+      /* Le manque est connu d'avance et il est unique : le statut d'ouverture.
+         C'est la seule chose qu'on est venu chercher, et la seule qu'on
+         demande — `territoire.js` garde les quatre portes, comme partout. */
+      const decision = deciderVerification(x.l, ["unknownCurrentStatus"],
+        connus.get(x.cle));
+      if(!decision.autorise) continue;
+      nuitDejaInterrogee.add(x.cle);
+      const e = await demanderVerification(x.l, ["unknownCurrentStatus"]);
+      /* Le verdict est appliqué tel quel. `appliquer` ne pose « ouvert » que
+         si le serveur l'a écrit ; « unknown » n'écrase rien, et une fermeture
+         confirmée referme la porte pour de bon. */
+      if(e && ENR.appliquer(x.l, e)){ oublierItemsMaintenant(); redessiner(); }
+    }
+  }).catch(()=>{});
 }
 
 /* ==================================================================== */
@@ -15142,7 +15237,10 @@ function memoriserSurprise(id){
   try{ localStorage.setItem("autour:surprises", JSON.stringify(surprisesVues)); }catch(e){}
 }
 
-const CATS_SANS_INTERET = ["metro","bus","toilettes","recharge","velo","commerce"];
+/* « banque » figure ici pour que la reclassification ne change rien : ces
+   lieux arrivaient jusqu'ici sous l'étiquette « commerce », déjà écartée. */
+const CATS_SANS_INTERET = ["metro","bus","toilettes","recharge","velo","commerce",
+  "banque"];
 
 function choisirSurprise(liste, ctx, profil){
   const depuis = ctx.moi && ctx.moi[0] ? ctx.moi : ctx.centre;   // géoloc refusée : le centre de la carte suffit
