@@ -49,6 +49,11 @@
     READY:   "ready",
     EMPTY:   "empty",
     ERROR:   "error",
+    /* PAS DE ZONE N'EST PAS PAS DE RÉSULTAT. « Rien d'ouvert dans cette zone »
+       parle d'une zone ; hors des territoires couverts, il n'y en a aucune, et
+       l'écrire serait affirmer qu'on a cherché là où on ne couvre rien. Cet
+       état-ci le dit, et ouvre la seule porte utile : chercher une ville. */
+    HORS_ZONE: "horsZone",
   });
 
   /* ===================================================================
@@ -947,6 +952,11 @@
 
   function selection(items, contexte) {
     const ctx = contexte || {};
+    /* HORS ZONE, ON NE COMPOSE PAS. Le bloc ne doit pas fabriquer une
+       sélection « territoriale » là où aucun territoire n'est couvert : ni la
+       hiérarchie éditoriale, ni le filet nocturne qu'elle appelle en dernier
+       recours. L'état `HORS_ZONE` dit alors ce qui est vrai. */
+    if (ctx.zoneTerritoriale === false) return [];
     const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
     const pool = candidats(items, ctx);
 
@@ -1032,6 +1042,11 @@
     if (ctx.positionEnCours) return ETATS.LOADING;
     if (ctx.positionRefusee || !ctx.positionConnue) return ETATS.ERROR;
 
+    /* Savoir où l'on est ne suffit pas : encore faut-il couvrir cet endroit.
+       Le GPS peut être parfait à Bordeaux — Autour n'y a ni zone, ni données,
+       ni programmation. On ne prétend donc pas avoir regardé. */
+    if (ctx.zoneTerritoriale === false) return ETATS.HORS_ZONE;
+
     if (ctx.panne) return ETATS.ERROR;
     if (ctx.chargement) return ETATS.LOADING;
 
@@ -1056,6 +1071,11 @@
       titre: "Maintenant",
       ligne: "Impossible de savoir ce qui se passe autour de toi.",
       sortie: "Réessayer",
+    },
+    [ETATS.HORS_ZONE]: {
+      titre: "Maintenant",
+      ligne: "Autour ne couvre pas encore cet endroit.",
+      sortie: "Chercher une ville",
     },
     positionRefusee: {
       titre: "Maintenant",

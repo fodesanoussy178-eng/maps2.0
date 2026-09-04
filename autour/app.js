@@ -445,8 +445,21 @@ function centreZoneActive(){
     return [zoneActive.lat, zoneActive.lng];
   return pointGeographiqueValide(positionMoi) ? positionMoi : null;
 }
-const idZoneActive = ()=> (ZONES && ZONES.zoneIdForContext(zoneActive)) ||
-  (CTX ? CTX.idZone(zoneActive) : "sans-zone");
+/* UNE ZONE, OU AUCUNE — JAMAIS UNE ZONE INVENTÉE.
+
+   Le résolveur territorial fait déjà exactement ce qu'il faut : il filtre par
+   rayon et rend `null` hors de toute zone supportée, sans jamais rattacher un
+   point à la zone la plus proche. Cette ligne défaisait ce travail : faute de
+   zone, elle retombait sur `CTX.idZone`, qui FABRIQUE un identifiant à partir
+   des coordonnées — « moi:44.84,-0.58 ». Autour se croyait donc dans une zone
+   nommée à Bordeaux, envoyait cet identifiant au serveur comme un `zone_id`,
+   et laissait passer les portes qui ne refusent que « sans-zone ».
+
+   Hors des zones supportées, la réponse honnête est « aucune ». Les caches
+   qui avaient besoin d'un espace de noms géographique en ont un ailleurs :
+   ils portent tous des coordonnées ou une garde de distance (voir `cleZone`,
+   `cleBassinAide`, `lireJeuRapide`). Le résolveur, lui, n'est pas touché. */
+const idZoneActive = ()=> (ZONES && ZONES.zoneIdForContext(zoneActive)) || "sans-zone";
 
 /* LA DISTANCE AUSSI PART DE LA ZONE.
 
@@ -5545,6 +5558,19 @@ function afficherOnboarding(etape){
       bouton.setAttribute("aria-pressed", String(bouton.dataset.avatar === avatarChoisi()));
     });
   }
+  /* UNE SEULE SOLLICITATION, ET UNE SEULE.
+
+     `demarrerLocalisation()` posait ce panneau pendant que `chargerLeDemarrage()`,
+     voyant `positionMoi` vide, posait de son côté le bandeau `#bandeauGeo`. Les
+     deux vivent au même endroit — même `top`, mêmes marges — et le premier
+     visiteur recevait donc deux invitations empilées, dont l'une n'affleurait
+     que par le coin arrondi de l'autre : un bouton orange qui dépasse, sans
+     rien pour l'expliquer. Les deux chemins sont asynchrones et peuvent
+     s'exécuter dans n'importe quel ordre ; la règle est donc posée des deux
+     côtés — ici on ferme le bandeau, et `proposerPosition()` refuse de
+     s'afficher tant que ce panneau est là. */
+  const bandeau = $("#bandeauGeo");
+  if(bandeau) bandeau.hidden = true;
   panneau.hidden = false;
   if(etape === "preparation"){
     onboardingTimer = setTimeout(()=>{
@@ -5572,6 +5598,12 @@ function terminerOnboardingLocalisation(resultat){
   }
   cacherOnboarding();
   toast(resultat === "ok" ? "✓ C’est prêt" : "🧭 On continue sans position précise");
+  /* Un refus ne doit pas laisser l'écran muet. Le panneau est fermé, donc
+     `proposerPosition()` peut désormais poser le bandeau : il rappelle la voie
+     manuelle — chercher une ville, choisir un point — et reste la porte de
+     retour vers la position si l'on change d'avis. Un toast disparaît ; cette
+     ligne-là reste. */
+  if(resultat !== "ok") proposerPosition();
 }
 
 /* L'état réel de la permission, avec le repli qu'impose Safari. */
@@ -13902,10 +13934,29 @@ function rayonRegarde(){
    actuelles, toutes françaises, cela donnait le bon résultat par coïncidence.
    Ce qui décide de la nuit est l'heure du territoire regardé, pas celle du
    téléphone ni un défaut codé en dur ; on la transmet donc explicitement. */
+/* Le repli, et il porte son nom. Ce n'est PAS le fuseau d'une zone : c'est ce
+   qu'on écrit quand il n'y a pas de zone du tout, pour que « ce soir » et « la
+   nuit » aient un sens plutôt que de suivre l'horloge de l'appareil. Rien de
+   territorial ne doit s'appuyer dessus — d'où `zoneTerritoriale` plus bas. */
+const FUSEAU_SANS_ZONE = "Europe/Paris";
+
 function fuseauZoneActive(){
   const def = ZONES && typeof ZONES.definition === "function"
     ? ZONES.definition(idZoneActive()) : null;
-  return (def && def.timezone) || "Europe/Paris";
+  if(!def) return FUSEAU_SANS_ZONE;          // aucune zone : un repli, et il se dit
+  /* UNE ZONE CONNUE IMPOSE SON FUSEAU. L'ancienne écriture — `(def &&
+     def.timezone) || "Europe/Paris"` — faisait retomber une zone déclarée sans
+     `timezone` sur Paris en silence. Tant que les cinq zones sont françaises
+     cela ne se voyait pas ; le jour d'une zone étrangère mal déclarée, Autour
+     aurait affirmé une heure fausse sans que rien ne le signale. La déclaration
+     est donc la seule source, et son absence est un défaut qu'on dit tout haut.
+     Le contrôle définitif est dans les tests : chaque zone doit porter un
+     fuseau. */
+  if(!def.timezone){
+    journal.warn("zone « "+def.id+" » déclarée sans timezone : repli "+FUSEAU_SANS_ZONE);
+    return FUSEAU_SANS_ZONE;
+  }
+  return def.timezone;
 }
 
 function contexteMaintenant(){
@@ -13914,6 +13965,11 @@ function contexteMaintenant(){
     rayonMax: rayonRegarde(),
     maintenant: Date.now(),
     timeZone: fuseauZoneActive(),
+    /* Y A-T-IL UN TERRITOIRE DONT PARLER ? Hors des zones supportées, il n'y
+       a ni données territoriales, ni programmation, ni fuseau déclaré : parler
+       de « ce qui se passe dans cette zone » serait parler d'une zone qui
+       n'existe pas. Le bloc le dit alors, et propose de chercher une ville. */
+    zoneTerritoriale: idZoneActive() !== "sans-zone",
     position: Array.isArray(ref) && Number.isFinite(ref[0]) ? ref : null,
     /* Choisir une ville, c'est dire soi-même où l'on regarde : on sait donc
        parfaitement de quoi on parle, même sans la moindre mesure GPS. */
@@ -14872,6 +14928,14 @@ function brancherFeuille2(){
     const M = window.AutourMaintenant;
     const ctx = contexteMaintenant();
     if(ctx.positionRefusee || !ctx.positionConnue){ ouvrirRecherche(); return; }
+    /* Hors des territoires couverts, la seule porte utile est de nommer une
+       ville. Le bouton le dit ; il passe par la recherche existante, pas par
+       un chemin de plus. */
+    if(b.dataset.mnSortie === (M && M.ETATS.HORS_ZONE)){
+      ouvrirRecherche();
+      const champ = $("#rech"); if(champ) champ.placeholder = "Dans quelle ville ?";
+      return;
+    }
     if(b.dataset.mnSortie === (M && M.ETATS.ERROR)){
       // le même chemin de relance que partout ailleurs, pas un second
       const centre = pointCarte();
@@ -15890,6 +15954,10 @@ function suivreMaPosition(opts){
    quartier » : c'est une approximation à plusieurs kilomètres, et le dire est
    la seule façon de donner envie de la corriger. */
 function proposerPosition(){
+  /* L'autre moitié de la règle ci-dessus : tant que le panneau d'accueil porte
+     l'invitation, ce bandeau n'en pose pas une seconde. */
+  const panneau = $("#onboardingLocalisation");
+  if(panneau && !panneau.hidden) return;
   etat(positionApprochee()
     ? "Zone approximative · active ta position pour être précis."
     : positionConnue()

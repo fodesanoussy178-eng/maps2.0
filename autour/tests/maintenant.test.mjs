@@ -273,16 +273,22 @@ test("« Ce soir » retombe sur un lieu pertinent, sans transformer l'inconnu en
 });
 
 /* ==========================================================================
-   4. LES QUATRE ÉTATS
+   4. LES ÉTATS
 
    L'ordre des questions est le fond du sujet : une géolocalisation refusée
    s'affichait comme « rien autour de toi », et quelqu'un en concluait que son
    quartier était vide alors qu'Autour ignorait où il était.
+
+   Ils étaient quatre ; ils sont cinq. `horsZone` répond à la question voisine
+   et distincte : on sait parfaitement où est la personne, et Autour ne couvre
+   pas cet endroit. « Rien d'ouvert dans cette zone » aurait parlé d'une zone
+   qui n'existe pas. La liste reste FERMÉE — c'est tout l'objet de ce test :
+   un état de plus doit être un choix, jamais un effet de bord.
    ======================================================================== */
 
-test("les quatre états existent, et seulement eux", () => {
+test("les états existent, et seulement eux", () => {
   assert.deepEqual(Object.values(M.ETATS).sort(),
-    ["empty", "error", "loading", "ready"]);
+    ["empty", "error", "horsZone", "loading", "ready"]);
 });
 
 test("pendant la géolocalisation : loading", () => {
