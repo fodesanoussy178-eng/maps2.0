@@ -1289,6 +1289,25 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
      rangeait descend de sa hauteur, sans qu'aucune de ces règles ne le sache. */
   :root{--sous-entete:calc(var(--header-bas) + 10px + 48px + 8px)}
 
+  /* LES TROIS FENÊTRES DE TEMPS TIENNENT ENSEMBLE, SANS DÉFILEMENT.
+     `Maintenant · À venir · Ce week-end` est une question, pas une liste :
+     poussée hors de l'écran, la troisième réponse n'existe plus pour qui ne
+     pense pas à faire glisser. À 390 px les trois pastilles demandaient
+     386 px pour 348 px disponibles ; on reprend ces 38 px sur le rembourrage,
+     la graisse du texte et la place réservée à la pastille de compte — jamais
+     sur le nombre de choix ni sur leur ordre.
+     `overflow-x:auto` reste en place au-dessus : c'est le filet pour les
+     écrans plus étroits que 360 px et pour un libellé plus long un jour. */
+  .ong-temps{gap:6px}
+  .ong{padding:11px 10px;font-size:13px}
+  /* La place réservée à la pastille se resserre d'autant. Elle reste
+     RÉSERVÉE en permanence : c'est ce qui empêche l'onglet de sauter quand le
+     compte apparaît ou disparaît. */
+  .ong-maintenant,.ong:has(.ong-compte){padding-right:28px}
+  /* La pastille se resserre, mais son texte reste à 11 px : c'est le plancher
+     de lisibilité que tout le reste de l'interface respecte. */
+  .ong-compte{right:8px;min-width:18px;height:18px;padding:0 4px}
+
   /* Les trois entrées qui quittent la barre. Elles restent dans le DOM et
      gardent leurs gestionnaires : le desktop s'en sert toujours, et rien
      n'est à recâbler quand on passe d'une largeur à l'autre. */
@@ -1374,6 +1393,30 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   .xp-theme em{font-style:normal;font-size:17px}
   .xp-theme span{flex:1;min-width:0}
   .xp-theme::after{content:"›";color:var(--ink2);font-size:19px}
+
+  /* LA DERNIÈRE LIGNE D'UNE FEUILLE PASSAIT SOUS LA BARRE BASSE.
+     `#feuille` monte depuis `bottom:0`, la barre flotte au-dessus (z-index
+     910 contre 901) : tout ce qui dépasse dans ses 92 derniers pixels est
+     peint par-dessus, et la feuille ne défile pas plus loin puisqu'elle est
+     déjà au bout. Le menu Profil est le premier contenu assez long pour le
+     montrer — « À propos d'Autour » y était inatteignable à 390 px. On rend
+     donc à la feuille la hauteur que la barre lui prend.
+     L'éditeur de goûts est exclu : il passe DEVANT la barre (`z-index:920`,
+     règle existante), et n'a donc rien à dégager. */
+  #feuille:not(:has(.env-actions)){
+    padding-bottom:calc(var(--safe-b) + 26px +
+      var(--maquette-nav-bas-mobile) + var(--maquette-nav-h-mobile))}
+}
+
+/* Les écrans de 360 px existent encore (iPhone SE, Android d'entrée de gamme)
+   et n'offrent que 318 px utiles : les trois fenêtres de temps y demandaient
+   encore 340 px. On resserre d'un cran de plus, toujours sur les seules
+   dimensions, pour que la troisième reste entière plutôt qu'à moitié dehors. */
+@media (max-width:380px){
+  .ong-temps{gap:5px}
+  .ong{padding:11px 8px;font-size:12.5px}
+  .ong-maintenant,.ong:has(.ong-compte){padding-right:24px}
+  .ong-compte{right:6px}
 }
 
 /* Le second groupe du menu « Plus » — support et pages légales — se lit comme
@@ -2702,6 +2745,15 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
     bottom:calc(var(--maquette-nav-bas-mobile) + var(--maquette-nav-h-mobile) +
       var(--maquette-ecart-mobile) + var(--safe-b));
     width:auto;
+    /* LA MOITIÉ GAUCHE DE LA FEUILLE PARTAIT HORS DE L'ÉCRAN EN 768-1099 px.
+       Le bloc tablette centre la feuille : `left:50%` + `translateX(-50%)`.
+       Ce bloc-ci, écrit plus bas, reprend `left` et `width` pour poser la
+       maquette 390 px sur toute la largeur — mais pas `transform`. Il restait
+       donc un décalage de moins la moitié de la largeur, appliqué à une
+       feuille qui ne commençait plus au milieu : à 834 px elle s'ouvrait à
+       x = -401. Le bloc le faisait déjà pour `#navBas` juste au-dessus ; il
+       manquait ici. Mesuré identique avant le Lot 3 : ce défaut le précède. */
+    transform:none;
   }
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
   #feuilleBesoins.reduite{border-bottom:1px solid var(--bord);border-radius:20px}
@@ -2882,7 +2934,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
      « j'aime » — tout sauf « aide ». Le mot est donc écrit, sans clic. -->
 <button class="capsule-flottante" id="btnAide" aria-pressed="false" aria-label="Trouver de l’aide : manger, logement, santé, papiers">
   <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
-  <b>Aide</b>
+  <b>Solidarité</b>
 </button>
 <button class="rond-flottant" id="btnTransports" aria-pressed="false" aria-label="Afficher les arrêts et stations">
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="13" rx="2.5"/><path d="M5 9h14M8 20l-1.5 2M16 20l1.5 2"/><circle cx="8.5" cy="12.8" r=".9" fill="currentColor"/><circle cx="15.5" cy="12.8" r=".9" fill="currentColor"/></svg>
@@ -3133,6 +3185,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=268eb05a" defer></script>
+<script src="app.js?v=7fa183bc" defer></script>
 </body>
 </html>

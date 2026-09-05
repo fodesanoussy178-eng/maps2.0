@@ -280,3 +280,103 @@ test("le moteur de Maintenant, le scoring et la temporalité sont intacts", () =
   assert.match(app, /const positionConnue = \(\)=>originePosition !== null && originePosition !== "repli";/);
   assert.match(app, /const ZONE_REPLI_PRODUIT = "mel";/);
 });
+
+/* ---- 9. Les corrections de fin de lot ----------------------------------- */
+
+test("les trois fenêtres de temps sont dans l'ordre, et l'ordre vient d'un seul endroit", () => {
+  /* `Maintenant · À venir · Ce week-end` se lit comme une distance dans le
+     temps. L'ordre à l'écran est celui du tableau, et rien d'autre : le
+     moteur n'y cherche que par `id`. */
+  const creneaux = app.slice(app.indexOf("const CRENEAUX = ["),
+    app.indexOf("const CRENEAUX_VISIBLES"));
+  const rangs = ["maintenant", "bientot", "avenir", "weekend"]
+    .map((id) => creneaux.indexOf('id:"' + id + '"'));
+  assert.ok(rangs.every((r) => r >= 0), "les quatre créneaux du moteur restent là");
+  assert.deepEqual(rangs.slice().sort((a, b) => a - b), rangs,
+    "l'ordre du tableau est maintenant, bientôt, à venir, ce week-end");
+  /* `bientot` reste interne : il n'est pas exposé à la navigation. */
+  assert.match(app, /CRENEAUX_VISIBLES = Object\.freeze\(CRENEAUX\.filter\(c=>c\.id !== "bientot"\)\)/);
+  /* Et personne ne lit ce tableau par rang, sauf `[0]` qui doit rester
+     « maintenant » — sinon réordonner changerait le moteur. */
+  const parRang = app.match(/CRENEAUX\[(\d+)\]/g) || [];
+  assert.deepEqual([...new Set(parRang)], ["CRENEAUX[0]"]);
+});
+
+test("les trois fenêtres tiennent dans l'écran sans qu'on ait à faire glisser", () => {
+  /* À 390 px les trois pastilles demandaient 386 px pour 348 px : la
+     troisième était coupée, donc invisible pour qui ne pense pas à glisser.
+     On ne reprend ces pixels que sur des dimensions — jamais sur le nombre
+     de choix, leur ordre ou leur libellé. */
+  assert.match(blocMobile, /\.ong-temps\{gap:6px\}/);
+  assert.match(blocMobile, /\.ong\{padding:11px 10px;font-size:13px\}/);
+  assert.match(blocMobile, /\.ong-maintenant,\.ong:has\(\.ong-compte\)\{padding-right:28px\}/);
+  /* La place de la pastille reste RÉSERVÉE en permanence : c'est ce qui
+     empêche l'onglet de sauter quand le compte apparaît ou disparaît. */
+  assert.match(html, /\.ong-maintenant\{position:relative;padding-right:38px\}/);
+  /* Un cran de plus sous 380 px, où il ne reste que 318 px utiles. */
+  assert.match(html, /@media \(max-width:380px\)\{[\s\S]*?\.ong\{padding:11px 8px;font-size:12\.5px\}/);
+  /* Le filet reste en place pour un libellé plus long un jour. */
+  assert.match(html, /\.ong-temps\{display:flex;gap:6px;overflow-x:auto/);
+  /* Et rien ne descend sous le plancher de lisibilité. */
+  assert.doesNotMatch(html, /\.ong[^{]*\{[^}]*font-size:(?:[0-9]|10)(?:\.\d+)?px/);
+});
+
+test("la destination s'appelle Solidarité partout où elle se nomme", () => {
+  /* Un onglet « Solidarité » qui ouvre un panneau titré « Aide », c'est un
+     renommage fait à moitié : la personne ne sait plus si elle est au bon
+     endroit. Le renommage est d'interface — aucune route, aucun `id`,
+     aucune donnée ne change. */
+  assert.match(app, /\$\("#fbTitre"\)\.textContent = "❤️ Solidarité";/);
+  assert.match(app, /\{id:"aide", emoji:"❤️", label:"Solidarité"\}/);
+  assert.match(html, /<b>Solidarité<\/b>/);
+  /* L'identifiant, lui, ne bouge pas : c'est ce qui garantit que le backend,
+     les routes et le moteur de Solidarité ne sont pas touchés. */
+  assert.match(html, /data-nb="aide"/);
+  assert.match(app, /feuilleNiveau === "aide"/);
+  /* Et plus aucun titre d'écran ne dit « Aide ». */
+  assert.doesNotMatch(app, /textContent = "❤️ Aide"/);
+  assert.doesNotMatch(app, /if\(titre\) titre\.textContent = "Aide";/);
+});
+
+test("le bouton flottant ne recouvre jamais une action en cours", () => {
+  /* Il vit AU-DESSUS de la barre basse, jamais dessus. */
+  assert.match(blocMobile, /#fabCreer\{[\s\S]*?bottom:calc\(var\(--nav-height\) \+ 16px\)/);
+  /* Et il s'efface sous chacune des surfaces qui portent une action :
+     la feuille (fiche, publication, menu Profil, « Modifier mes goûts »),
+     le panneau Pour toi et ses boutons Annuler / Valider, et Explorer. */
+  for (const regle of ["body.sheet-open #fabCreer",
+                       "body.pourtoi-ouvert #fabCreer",
+                       "body.explorer-ouvert #fabCreer",
+                       "body:has(#feuille:not([hidden])) #fabCreer"])
+    assert.ok(blocMobile.includes(regle), regle);
+});
+
+test("la feuille ne part pas hors de l'écran entre 768 et 1099 px", () => {
+  /* Le bloc tablette centre la feuille (`left:50%` + `translateX(-50%)`).
+     Le bloc « maquette mobile », écrit plus bas et actif jusqu'à 1099 px,
+     reprend `left` et `width` mais oubliait `transform` : le décalage de
+     moins la moitié de la largeur restait appliqué à une feuille qui ne
+     commençait plus au milieu, et sa moitié gauche sortait de l'écran.
+     Il le faisait déjà pour `#navBas` ; il le fait maintenant aussi ici. */
+  const maquette = html.slice(html.indexOf("--maquette-bord-mobile:8px;"));
+  const regle = maquette.slice(maquette.indexOf(
+    "#feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,\n  #feuilleBesoins.reduite,#pourToi{"));
+  assert.match(regle.slice(0, regle.indexOf("}")), /transform:none;/);
+  /* Et le bloc tablette garde son intention : il n'est pas supprimé. */
+  assert.match(html, /@media \(min-width:768px\) and \(max-width:1099px\)\{[\s\S]*?transform:translateX\(-50%\)/);
+});
+
+test("la dernière ligne d'une feuille ne passe pas sous la barre basse", () => {
+  /* `#feuille` monte depuis `bottom:0` et la barre flotte au-dessus d'elle
+     (z-index 910 contre 901) : sans dégagement, ses derniers pixels sont
+     peints par la barre et rien ne peut plus les atteindre — la feuille est
+     déjà au bout de son défilement. « À propos d'Autour », dernière entrée du
+     menu Profil, en faisait les frais à 390 px. */
+  assert.match(html, /#navBas\{position:absolute;left:0;right:0;bottom:0;z-index:910/);
+  assert.match(html, /#feuille\{position:absolute;left:0;right:0;bottom:0;z-index:901/);
+  assert.match(blocMobile,
+    /#feuille:not\(:has\(\.env-actions\)\)\{\s*padding-bottom:calc\(var\(--safe-b\) \+ 26px \+\s*var\(--maquette-nav-bas-mobile\) \+ var\(--maquette-nav-h-mobile\)\)\}/);
+  /* L'éditeur de goûts est exclu parce qu'il passe DEVANT la barre : cette
+     règle-là existait déjà et reste la raison de l'exclusion. */
+  assert.match(html, /#feuille:has\(\.env-actions\)\{z-index:920\}/);
+});

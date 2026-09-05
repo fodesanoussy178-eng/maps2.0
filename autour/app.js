@@ -6503,11 +6503,16 @@ const SUGGESTIONS_INTENTION = [
 /* Le moteur garde ses quatre états internes pour les recherches explicites,
    mais la navigation principale expose trois fenêtres : Maintenant, À venir,
    puis Ce week-end. Le créneau interne « Bientôt » n'est pas exposé ici. */
+/* L'ORDRE DE CE TABLEAU EST L'ORDRE À L'ÉCRAN.
+   Il se lit comme une distance dans le temps : ce qui se passe là, puis ce
+   qui vient, puis le week-end — et non l'inverse. Rien d'autre n'en dépend :
+   le moteur ne cherche ici que par `id`, jamais par rang, sauf `CRENEAUX[0]`
+   qui doit rester « maintenant ». */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant"  },
   { id:"bientot",    label:"Bientôt"     },
-  { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
   { id:"avenir",     label:"À venir"      },
+  { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
 ];
 const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX.filter(c=>c.id !== "bientot"));
 /* Le créneau choisi ↔ la section rendue par le moteur temporel. */
@@ -10714,7 +10719,7 @@ function majFeuille2(){
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
     ).join("");
   }else if(feuilleNiveau === "aide"){
-    $("#fbTitre").textContent = "❤️ Aide";
+    $("#fbTitre").textContent = "❤️ Solidarité";
     retour.hidden = !(sousAide || phraseAideCourante || redirectionExplorer || aideUrgencesOuvert || aideAfficherToutes);
     /* L'accueil Aide est directement utile : les trois structures classées
        viennent avant toute recherche. Une phrase ouvre le résultat interprété;
@@ -11438,7 +11443,7 @@ function ecranRedirectionExplorer(){
     return '<section class="ab-ailleurs" data-testid="aide-hors-perimetre">'+
       '<p class="aba-titre">Je ne suis pas sûr d’avoir compris.</p>'+
       (props.length ? '<p class="aba-sous">C’était plutôt&nbsp;:</p>'+choix : "")+
-      '<p class="aba-sous">Aide oriente vers&nbsp;: '+
+      '<p class="aba-sous">Solidarité oriente vers&nbsp;: '+
         esc(domaines.join(", "))+'.</p>'+
       '<button class="aba-cta" data-aide-reformuler="1">Reformuler ma demande</button>'+
       '<button class="aba-rester" data-aide-general="1">Voir les structures qui orientent</button>'+
@@ -11447,7 +11452,7 @@ function ecranRedirectionExplorer(){
 
   return '<section class="ab-ailleurs" data-testid="aide-redirection">'+
     '<p class="aba-titre">Ça ressemble plutôt à '+esc(r.libelle || "une recherche de commerce")+'.</p>'+
-    '<p class="aba-sous">Ce n’est pas ce qu’Aide sait faire, mais Explorer, oui.</p>'+
+    '<p class="aba-sous">Ce n’est pas ce que Solidarité sait faire, mais Explorer, oui.</p>'+
     '<button class="aba-cta" data-vers-explorer="1">'+
       'Chercher '+esc(r.requete || "")+' autour de moi →</button>'+
     '<button class="aba-rester" data-aide-rester="1">Non, j’ai besoin d’aide</button>'+
@@ -11461,7 +11466,7 @@ function ecranSolutionsAide(){
   if(sousAide === "urgence") return ecranUrgenceAide();
   const besoin = sousAideChoisi();
   const liste = solutionsAide();
-  const titre = besoin ? besoin.emoji+" "+besoin.label : "Aide";
+  const titre = besoin ? besoin.emoji+" "+besoin.label : "Solidarité";
   if(!liste.length) return enteteBesoinAide(titre)+aucuneSolutionHTML();
   return enteteBesoinAide(titre)+
     annonceRayonAideHTML(liste)+
@@ -12344,7 +12349,7 @@ const BESOINS_RAPIDES = [
   {id:"manger", emoji:"🍜", label:"Manger"},
   {id:"sortir", emoji:"🎉", label:"Sortir"},
   {id:"maintenant", emoji:"⚡", label:"Maintenant"},
-  {id:"aide", emoji:"❤️", label:"Aide"},
+  {id:"aide", emoji:"❤️", label:"Solidarité"},
 ];
 
 /* Une seule porte pour les trois accès à Maintenant : bouton du haut,
@@ -12471,7 +12476,7 @@ function majBadgeMaintenant(){
   const titre = badge.querySelector(".bm-haut b");
   if(modeAide){
     if(haut) haut.textContent = "❤️";
-    if(titre) titre.textContent = "Aide";
+    if(titre) titre.textContent = "Solidarité";
   }else{
     if(haut) haut.textContent = "⚡";
     if(titre) titre.textContent = "Maintenant";
@@ -14588,7 +14593,7 @@ function statutGroupeHTML(){
 function blocOuRegarder(){
   if(positionConnue()) return "";
   const intentions = [...BESOINS_PRINCIPAUX.slice(0,4).map(b=>({id:b.id, emoji:b.emoji, label:b.label})),
-    {id:"aide", emoji:"❤️", label:"Aide"}];
+    {id:"aide", emoji:"❤️", label:"Solidarité"}];
   return '<section class="pdep" data-testid="ou-regarder">'+
     '<p class="pdep-titre">Où veux-tu regarder ?</p>'+
     '<div class="pdep-actions">'+

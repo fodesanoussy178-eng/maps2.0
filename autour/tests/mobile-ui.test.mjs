@@ -1499,7 +1499,7 @@ test("un état utile s'affiche immédiatement, même sans permission",()=>{
   assert.match(html,/\.pdep\{display:block;/);
   // les intentions principales, plus l'aide
   assert.match(html,/BESOINS_PRINCIPAUX\.slice\(0,4\)\.map/);
-  assert.match(html,/\{id:"aide", emoji:"❤️", label:"Aide"\}/);
+  assert.match(html,/\{id:"aide", emoji:"❤️", label:"Solidarité"\}/);
   // le cache local reste utilisé tel quel : rien n'attend la permission
   assert.match(html,/const enCache = lireCacheProche\(lat,lng\);/);
 });
@@ -1798,9 +1798,9 @@ test("Aide explique la recherche avant de poser ses cases",()=>{
   assert.match(html,/const SOUS_AIDE = .*filter\(b=>b\.id !== "autre"\)/);
 });
 
-test("le bouton flottant dit « Aide » sans qu'on ait à cliquer",()=>{
+test("le bouton flottant dit « Solidarité » sans qu'on ait à cliquer",()=>{
   assert.match(html,/<button class="capsule-flottante" id="btnAide"/);
-  assert.match(html,/<b>Aide<\/b>\s*\n<\/button>/);
+  assert.match(html,/<b>Solidarité<\/b>\s*\n<\/button>/);
   // un cœur seul se lit « favoris » — et Favoris en porte un dans la barre
   assert.match(html,/Une capsule, pas un rond/);
   assert.doesNotMatch(html,/<button class="rond-flottant" id="btnAide"/);
@@ -1833,7 +1833,7 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
 
 test("l'accueil propose quatre besoins rapides",()=>{
   assert.match(html,/const BESOINS_RAPIDES = \[/);
-  for(const l of ["Manger","Sortir","Maintenant","Aide"])
+  for(const l of ["Manger","Sortir","Maintenant","Solidarité"])
     assert.match(html,new RegExp('label:"'+l+'"'), l);
   assert.match(html,/data-testid="besoins-rapides"/);
   assert.match(html,/besoinsRapidesHTML\(\)\+\s*\n\s*ongletsTemps\(\)/);
