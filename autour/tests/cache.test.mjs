@@ -160,5 +160,24 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
   const cibles = (vercel.rewrites || []).map((r) => r.source);
   assert.ok(cibles.includes("/l/:id"), "/l/:id doit être servi par l’application");
   assert.ok(cibles.includes("/e/:id"), "/e/:id doit être servi par l’application");
-  (vercel.rewrites || []).forEach((r) => assert.equal(r.destination, "/index.html"));
+  /* LES DEUX FAMILLES DE RÉÉCRITURE, ET RIEN D'AUTRE.
+
+     Un lien profond vers un lieu ou un événement est servi par l'application,
+     qui le résout au rendu. Les pages de texte, elles, sont de vraies pages
+     statiques : elles n'ont ni carte ni état, et les faire passer par
+     `index.html` leur ferait charger tout le bundle pour afficher du texte. */
+  const versApplication = ["/l/:id", "/e/:id"];
+  const pagesStatiques = {
+    "/mentions-legales": "/mentions-legales.html",
+    "/confidentialite": "/confidentialite.html",
+  };
+  (vercel.rewrites || []).forEach((r) => {
+    if (versApplication.includes(r.source))
+      return assert.equal(r.destination, "/index.html");
+    assert.ok(Object.prototype.hasOwnProperty.call(pagesStatiques, r.source),
+      "réécriture inattendue : " + r.source);
+    assert.equal(r.destination, pagesStatiques[r.source]);
+  });
+  Object.keys(pagesStatiques).forEach((source) =>
+    assert.ok(cibles.includes(source), source + " doit être routé"));
 });

@@ -28,6 +28,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/mentions-legales", "destination": "/mentions-legales.html" },
+    { "source": "/confidentialite", "destination": "/confidentialite.html" },
     { "source": "/l/:id", "destination": "/index.html" },
     { "source": "/e/:id", "destination": "/index.html" }
   ]

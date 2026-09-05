@@ -1,0 +1,107 @@
+/* La feuille des pages de texte — mentions légales, confidentialité.
+
+   POURQUOI ELLE EST À PART
+
+   Ces pages ne sont pas l'application : elles n'ont ni carte, ni recherche, ni
+   état. Leur faire charger `app.js` et ses trois cent soixante kilo-octets
+   pour afficher deux écrans de texte serait absurde, et les rendrait
+   dépendantes d'un bundle qui n'a rien à voir avec elles.
+
+   Elles reprennent en revanche les MÊMES jetons de couleur et la même
+   typographie que `index.html` : ce sont des pages d'Autour, pas des annexes
+   d'un autre site. Les valeurs sont recopiées parce qu'aucune feuille commune
+   n'existe aujourd'hui — en créer une reviendrait à toucher au design de
+   l'application, ce que ce lot s'interdit. Un test du lot vérifie qu'elles
+   n'ont pas divergé. */
+
+:root{
+  --paper:#F7F8F5; --ink:#1F2A25; --ink2:#5D6B63; --signal:#FF4A17;
+  --trait:#141E19; --bord:#DCE0D8; --violet:#7C3AED;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Inter Tight",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px; line-height:1.6;
+  padding:calc(var(--safe-t) + 14px) 18px calc(var(--safe-b) + 56px);
+}
+
+/* La largeur de lecture, pas la largeur de l'écran. Au-delà d'une
+   soixantaine de caractères l'œil perd sa ligne en revenant à la marge. */
+.page{max-width:44rem;margin:0 auto}
+
+.retour{
+  display:inline-flex;align-items:center;gap:8px;
+  min-height:44px;                      /* la cible tactile minimale */
+  padding:0 14px 0 10px;margin-bottom:20px;
+  border:1px solid var(--bord);border-radius:999px;
+  background:#fff;color:var(--ink);text-decoration:none;
+  font-size:15px;font-weight:600;
+}
+.retour:hover{border-color:var(--trait)}
+
+h1{font-size:30px;line-height:1.15;letter-spacing:-.03em;font-weight:800;margin:0 0 6px}
+.chapeau{margin:0 0 8px;color:var(--ink2);font-size:15.5px}
+.maj{margin:0 0 30px;color:var(--ink2);font-size:13.5px}
+
+h2{
+  font-size:20px;line-height:1.25;letter-spacing:-.02em;font-weight:700;
+  margin:34px 0 10px;padding-top:18px;border-top:1px solid var(--bord);
+}
+h3{font-size:16.5px;font-weight:700;margin:22px 0 6px}
+p{margin:0 0 12px}
+ul{margin:0 0 12px;padding-left:20px}
+li{margin:0 0 7px}
+a{color:var(--violet)}
+strong{font-weight:700}
+
+dl{margin:0 0 12px}
+dt{font-weight:700;margin-top:12px}
+dd{margin:2px 0 0;color:var(--ink2)}
+
+code{
+  font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:13.5px;background:#fff;border:1px solid var(--bord);
+  border-radius:6px;padding:1px 5px;
+}
+
+/* Un tableau ne doit jamais forcer la page à défiler latéralement : il défile
+   dans sa propre boîte. */
+.tableau{overflow-x:auto;margin:0 0 14px;border:1px solid var(--bord);border-radius:10px;background:#fff}
+table{border-collapse:collapse;width:100%;min-width:32rem;font-size:14.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--bord);vertical-align:top}
+th{font-weight:700;background:#FBFCFA}
+tr:last-child td{border-bottom:0}
+
+.encadre{
+  border:1px solid var(--bord);border-left:3px solid var(--signal);
+  border-radius:10px;background:#fff;padding:14px 16px;margin:0 0 16px;
+}
+.encadre p:last-child{margin-bottom:0}
+
+/* CE QUI N'EST PAS ENCORE RENSEIGNÉ SE VOIT.
+
+   Une mention légale incomplète qui ressemble à une mention légale complète
+   est pire qu'une absence : personne ne la corrige. Ces marques sont donc
+   voyantes à l'écran, et un test du lot les compte pour qu'aucune ne parte
+   en production par distraction. */
+.a-renseigner{
+  display:inline-block;background:#FFF1CC;border:1px dashed #C99A00;
+  border-radius:6px;padding:0 7px;color:#7A5C00;font-weight:600;
+  font-size:.94em;
+}
+
+footer{
+  margin-top:40px;padding-top:18px;border-top:1px solid var(--bord);
+  color:var(--ink2);font-size:14px;
+}
+footer a{margin-right:14px}
+
+@media (min-width:760px){
+  body{padding-top:34px;padding-bottom:64px}
+  h1{font-size:38px}
+  h2{font-size:22px}
+}
