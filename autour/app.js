@@ -194,9 +194,10 @@ const ECRANS_DIFFERES = [
   "ouvrirEcranCompte", "rendreEcranCompte", "ouvrirProfil",
   "ouvrirMesPublications", "ouvrirCanaux", "envoyerLienCompte",
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
+  "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=f3fed753"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=6bc8206e"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -6502,11 +6503,16 @@ const SUGGESTIONS_INTENTION = [
 /* Le moteur garde ses quatre états internes pour les recherches explicites,
    mais la navigation principale expose trois fenêtres : Maintenant, À venir,
    puis Ce week-end. Le créneau interne « Bientôt » n'est pas exposé ici. */
+/* L'ORDRE DE CE TABLEAU EST L'ORDRE À L'ÉCRAN.
+   Il se lit comme une distance dans le temps : ce qui se passe là, puis ce
+   qui vient, puis le week-end — et non l'inverse. Rien d'autre n'en dépend :
+   le moteur ne cherche ici que par `id`, jamais par rang, sauf `CRENEAUX[0]`
+   qui doit rester « maintenant ». */
 const CRENEAUX = [
   { id:"maintenant", label:"Maintenant"  },
   { id:"bientot",    label:"Bientôt"     },
-  { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
   { id:"avenir",     label:"À venir"      },
+  { id:"weekend",    label:"Ce week-end", heure:16, weekend:true },
 ];
 const CRENEAUX_VISIBLES = Object.freeze(CRENEAUX.filter(c=>c.id !== "bientot"));
 /* Le créneau choisi ↔ la section rendue par le moteur temporel. */
@@ -7622,6 +7628,16 @@ function fermerFeuille(options){
     else if(positionMoi) allerVers(positionMoi, 16, {duration:.6});
   }
   vueAvantTrajet = null;
+  /* LES TROIS SORTIES DOIVENT DONNER LA MÊME RÉPONSE.
+     `Annuler` passe par `annulerEditionEnvies`, qui a déjà remis la surface et
+     vidé `editionEnvies`. La croix, le voile et Échap arrivent ici sans être
+     passés par lui : sans cette ligne, sortir par la croix rendait la carte là
+     où `Annuler` rendait « Pour toi ». On ne rattrape donc que ce cas — quand
+     une édition est encore en cours au moment où la feuille se ferme. */
+  if(editionEnvies && editionEnvies.cible === "feuille"){
+    editionEnvies = null;
+    rendreLaSurfacePourToi();
+  }
   const cible = dernierFocusFeuille;
   dernierFocusFeuille = null;
   requestAnimationFrame(()=>{
@@ -10713,7 +10729,7 @@ function majFeuille2(){
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
     ).join("");
   }else if(feuilleNiveau === "aide"){
-    $("#fbTitre").textContent = "❤️ Aide";
+    $("#fbTitre").textContent = "❤️ Solidarité";
     retour.hidden = !(sousAide || phraseAideCourante || redirectionExplorer || aideUrgencesOuvert || aideAfficherToutes);
     /* L'accueil Aide est directement utile : les trois structures classées
        viennent avant toute recherche. Une phrase ouvre le résultat interprété;
@@ -11437,7 +11453,7 @@ function ecranRedirectionExplorer(){
     return '<section class="ab-ailleurs" data-testid="aide-hors-perimetre">'+
       '<p class="aba-titre">Je ne suis pas sûr d’avoir compris.</p>'+
       (props.length ? '<p class="aba-sous">C’était plutôt&nbsp;:</p>'+choix : "")+
-      '<p class="aba-sous">Aide oriente vers&nbsp;: '+
+      '<p class="aba-sous">Solidarité oriente vers&nbsp;: '+
         esc(domaines.join(", "))+'.</p>'+
       '<button class="aba-cta" data-aide-reformuler="1">Reformuler ma demande</button>'+
       '<button class="aba-rester" data-aide-general="1">Voir les structures qui orientent</button>'+
@@ -11446,7 +11462,7 @@ function ecranRedirectionExplorer(){
 
   return '<section class="ab-ailleurs" data-testid="aide-redirection">'+
     '<p class="aba-titre">Ça ressemble plutôt à '+esc(r.libelle || "une recherche de commerce")+'.</p>'+
-    '<p class="aba-sous">Ce n’est pas ce qu’Aide sait faire, mais Explorer, oui.</p>'+
+    '<p class="aba-sous">Ce n’est pas ce que Solidarité sait faire, mais Explorer, oui.</p>'+
     '<button class="aba-cta" data-vers-explorer="1">'+
       'Chercher '+esc(r.requete || "")+' autour de moi →</button>'+
     '<button class="aba-rester" data-aide-rester="1">Non, j’ai besoin d’aide</button>'+
@@ -11460,7 +11476,7 @@ function ecranSolutionsAide(){
   if(sousAide === "urgence") return ecranUrgenceAide();
   const besoin = sousAideChoisi();
   const liste = solutionsAide();
-  const titre = besoin ? besoin.emoji+" "+besoin.label : "Aide";
+  const titre = besoin ? besoin.emoji+" "+besoin.label : "Solidarité";
   if(!liste.length) return enteteBesoinAide(titre)+aucuneSolutionHTML();
   return enteteBesoinAide(titre)+
     annonceRayonAideHTML(liste)+
@@ -12343,7 +12359,7 @@ const BESOINS_RAPIDES = [
   {id:"manger", emoji:"🍜", label:"Manger"},
   {id:"sortir", emoji:"🎉", label:"Sortir"},
   {id:"maintenant", emoji:"⚡", label:"Maintenant"},
-  {id:"aide", emoji:"❤️", label:"Aide"},
+  {id:"aide", emoji:"❤️", label:"Solidarité"},
 ];
 
 /* Une seule porte pour les trois accès à Maintenant : bouton du haut,
@@ -12365,6 +12381,10 @@ function ouvrirSurfaceMaintenant(){
   creneau = "maintenant";
   filtreMaintenant = true;
   ongletCourant = "maintenant";
+  /* Le sélecteur du haut suit la surface ouverte, quel que soit le chemin
+     emprunté — barre basse, besoin rapide ou badge. Le poser ici plutôt qu'à
+     chaque appel est ce qui garde les trois accès identiques. */
+  if(typeof marquerSurface === "function") marquerSurface("maintenant");
   marquerNavigation("maintenant");
   contexteExplorer = null;
   fermerPourToi();
@@ -12466,7 +12486,7 @@ function majBadgeMaintenant(){
   const titre = badge.querySelector(".bm-haut b");
   if(modeAide){
     if(haut) haut.textContent = "❤️";
-    if(titre) titre.textContent = "Aide";
+    if(titre) titre.textContent = "Solidarité";
   }else{
     if(haut) haut.textContent = "⚡";
     if(titre) titre.textContent = "Maintenant";
@@ -13292,11 +13312,36 @@ function selectionEnviesHTML(){
     '</div></section>';
 }
 
+/* ON REVIENT D'OÙ L'ON VENAIT.
+   Sur mobile, ouvrir l'éditeur de goûts ferme le tiroir « Pour toi » : un
+   tiroir et une feuille ne se superposent pas sur un téléphone. Mais fermer
+   l'éditeur rendait alors la carte, pas la surface qu'on éditait — on validait
+   ses goûts et on se retrouvait ailleurs, sans ses recommandations. Ce drapeau
+   est la seule chose ajoutée : il ne dit rien de plus que « le tiroir était
+   ouvert avant, il doit l'être après ». Ni le moteur, ni le stockage, ni le
+   catalogue ne le regardent. */
+let pourToiAvantEditionEnvies = false;
+
+function rendreLaSurfacePourToi(){
+  if(!pourToiAvantEditionEnvies) return false;
+  pourToiAvantEditionEnvies = false;
+  if(pourToiOuvert()) return false;
+  ouvrirPourToi();
+  return true;
+}
+
 function annulerEditionEnvies(){
   const cible = editionEnvies && editionEnvies.cible;
   editionEnvies = null;
-  if(cible === "feuille") fermerFeuille();
-  else fermerPourToi();
+  if(cible === "feuille"){
+    fermerFeuille();
+    /* Annuler ne change rien aux goûts, mais ne doit pas non plus changer
+       d'endroit : on rend la surface telle qu'on l'avait prise. */
+    rendreLaSurfacePourToi();
+  }else{
+    pourToiAvantEditionEnvies = false;
+    fermerPourToi();
+  }
 }
 
 function validerEditionEnvies(){
@@ -13310,7 +13355,13 @@ function validerEditionEnvies(){
      n'est pas sur le chemin critique : le localStorage est déjà à jour. */
   void enregistrerInteretsCompte(ids);
   rebaserPourToiApresChangementGouts();
-  if(cible === "feuille") fermerFeuille();
+  if(cible === "feuille"){
+    fermerFeuille();
+    /* Valider, c'est demander à voir le résultat. Rouvrir le tiroir le peint
+       déjà — `ouvrirPourToi` appelle `majPourToi` — d'où le retour anticipé :
+       repeindre deux fois de suite ne servirait qu'à clignoter. */
+    if(rendreLaSurfacePourToi()) return;
+  }
   majPourToi();
 }
 
@@ -13519,8 +13570,16 @@ function majPourToi(){
      explicitement de suivre, ça passe avant ce qu'Autour propose. */
   panneau.dataset.etat = etat;
   corps.dataset.etat = etat;
-  if(hydratationEnCours) corps.innerHTML = contenu;
-  else corps.innerHTML = blocSurveillances() + contenu;
+  /* LE SECOND NIVEAU VAUT POUR LES DEUX SURFACES.
+
+     « Maintenant / À venir / Ce week-end » ne décrit pas une surface : il
+     décrit QUAND on regarde. La question se pose donc aussi bien dans
+     « Pour toi » — « ce qui me correspond, ce week-end » est exactement une
+     requête que le produit doit savoir formuler. C'est le même composant,
+     le même `creneau`, le même moteur temporel : rien n'est dupliqué. */
+  const tempsPourToi = ongletsTemps();
+  if(hydratationEnCours) corps.innerHTML = tempsPourToi + contenu;
+  else corps.innerHTML = tempsPourToi + blocSurveillances() + contenu;
 
   const nonVues = nouveautesPourToi(propositions).length;
   const toutVu = $("#ptToutVu");
@@ -13539,6 +13598,23 @@ function majPourToi(){
 function brancherPourToi(propositions){
   const corps = $("#ptCorps");
   if(!corps) return;
+
+  /* Le créneau change, la surface non. C'est toute la différence avec la
+     porte de la feuille : là-bas, choisir « À venir » fait basculer vers
+     Explorer, parce qu'on a quitté l'instant présent. Ici on reste dans
+     « Pour toi » — on a seulement changé de fenêtre de temps. */
+  corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
+    if(creneau === b.dataset.creneau) return;
+    creneau = b.dataset.creneau;
+    filtreMaintenant = creneau === "maintenant";
+    const barre = b.closest("[role=tablist]");
+    if(barre) barre.querySelectorAll("[data-creneau]").forEach(onglet=>{
+      const actif = onglet === b;
+      onglet.classList.toggle("actif", actif);
+      onglet.setAttribute("aria-selected", String(actif));
+    });
+    apresPeinture(()=>{ majPourToi(); planifierRendu({carte:true}); });
+  });
   const ouvrirDetailPourToi = (id)=>{
     marquerVu([id]);
     if(!NAV_FLOTTANTE.matches) fermerPourToi();
@@ -13628,6 +13704,7 @@ function marquerVu(ids){
    l'écran sans écrire ; « Valider » est le seul geste qui persiste. */
 function ouvrirEnvies(){
   if(!synchroniserEnvies()) return;
+  pourToiAvantEditionEnvies = pourToiOuvert();
   if(!NAV_FLOTTANTE.matches) fermerPourToi();
   commencerEditionEnvies("feuille");
   pileEcrans = [];
@@ -13664,6 +13741,7 @@ function peindreEnvies(){
 
 /* ---- Ouvrir et fermer le panneau ---------------------------------------- */
 function ouvrirPourToi(){
+  if(typeof marquerSurface === "function") marquerSurface("pourtoi");
   const p = $("#pourToi");
   if(!p) return;
   synchroniserEnvies();
@@ -14557,7 +14635,7 @@ function statutGroupeHTML(){
 function blocOuRegarder(){
   if(positionConnue()) return "";
   const intentions = [...BESOINS_PRINCIPAUX.slice(0,4).map(b=>({id:b.id, emoji:b.emoji, label:b.label})),
-    {id:"aide", emoji:"❤️", label:"Aide"}];
+    {id:"aide", emoji:"❤️", label:"Solidarité"}];
   return '<section class="pdep" data-testid="ou-regarder">'+
     '<p class="pdep-titre">Où veux-tu regarder ?</p>'+
     '<div class="pdep-actions">'+
@@ -16998,6 +17076,18 @@ $("#navBas").querySelectorAll("[data-nb]").forEach(b=>b.onclick=()=>{
   }
   // photographier Explorer AVANT que quoi que ce soit ne le remette à plat
   if(ongletCourant === "explorer" && id !== "explorer") capturerContexteExplorer();
+  /* Explorer n'est plus une seconde lecture de Maintenant : il ouvre sa
+     propre surface de découverte. Un second appui la referme, pour rendre la
+     carte sans avoir à chercher où appuyer. */
+  if(id === "explorer" && !document.body.classList.contains("explorer-ouvert")
+     && $("#explorerDecouverte")){
+    ongletCourant = "explorer";
+    marquerNavigation("explorer");
+    fermerPourToi();
+    ouvrirExplorerDecouverte();
+    return;
+  }
+  fermerExplorerDecouverte();
   if(id === "maintenant"){
     ouvrirSurfaceMaintenant();
     return;
@@ -17053,8 +17143,240 @@ if($("#btnProfilEntete")) $("#btnProfilEntete").onclick=()=>{
   ongletCourant = "profil";
   marquerNavigation("profil");
   fermerPourToi();
-  ouvrirProfil();
+  fermerExplorerDecouverte();
+  /* Le menu secondaire, et non plus le profil directement : le compte n'est
+     qu'une de ses entrées, à côté des favoris, des publications, du support
+     et des pages légales. `ouvrirProfil` reste la destination de « Mon
+     compte », inchangée. */
+  ouvrirMenuPlus();
 };
+
+/* ===========================================================================
+   LOT 3 · LE SHELL MOBILE
+
+   Trois destinations dans la barre basse, et rien d'autre. Ce qui en sort ne
+   disparaît pas : Créer devient un geste flottant, Profil un menu du haut,
+   Pour toi une lecture du même endroit — pas une destination de plus.
+
+   RIEN ICI NE DÉCIDE DE CE QUI EST MONTRÉ. Chaque entrée compose une requête
+   que l'application sait déjà exécuter. Le classement, les règles de
+   « Maintenant », la temporalité et la taxonomie ne sont pas touchés.
+   =========================================================================== */
+
+/* ---- Créer, en bouton flottant ------------------------------------------
+   La même porte que l'onglet historique : mêmes permissions, même brouillon,
+   même formulaire. Le bouton n'est qu'un autre endroit où appuyer. */
+if($("#fabCreer")) $("#fabCreer").onclick = ()=>{
+  retourFormulaire = false;
+  ouvrirCreation();
+};
+
+/* ---- Le sélecteur de surface : Maintenant | Pour toi ---------------------
+   Deux questions, deux surfaces, un seul geste pour passer de l'une à
+   l'autre. Le second niveau — Maintenant / À venir / Ce week-end — vit dans
+   la feuille et vaut pour les deux : il n'est ni dupliqué, ni réinitialisé
+   en changeant de surface. */
+function marquerSurface(id){
+  const barre = $("#selecteurSurface");
+  if(!barre) return;
+  barre.querySelectorAll("[data-surface]").forEach(b=>{
+    const actif = b.dataset.surface === id;
+    b.classList.toggle("actif", actif);
+    b.setAttribute("aria-selected", String(actif));
+  });
+}
+
+if($("#selecteurSurface")) $("#selecteurSurface").querySelectorAll("[data-surface]")
+  .forEach(b=>b.onclick = ()=>{
+    const quoi = b.dataset.surface;
+    fermerExplorerDecouverte();
+    if(quoi === "pourtoi"){
+      if(modeAide) basculerAide();
+      ongletCourant = "pourtoi";
+      marquerNavigation("pourtoi");
+      ouvrirPourToi();
+      return;
+    }
+    fermerPourToi();
+    ouvrirSurfaceMaintenant();
+  });
+
+/* ---- Explorer, surface de découverte -------------------------------------
+   Explorer montrait à peu près ce que Maintenant montre déjà. Il répond
+   maintenant à une autre question — découvrir, chercher, s'inspirer — et doit
+   donc pouvoir proposer ce que Maintenant écarte par construction : plus
+   loin, demain, dans une intention précise.
+
+   CE QUI SUIT N'EST PAS UN MOTEUR. Chaque entrée pose une requête existante :
+   une phrase que `appliquerPhrase` sait déjà lire, éventuellement avec un
+   créneau que le moteur temporel connaît déjà. Aucun résultat n'est fabriqué
+   ici, et rien n'est promis : si une requête ne rend rien, c'est l'état de
+   vide habituel qui le dit. */
+const XP_INTENTIONS = Object.freeze([
+  {emoji:"🎭", label:"Culture",            phrase:"culture"},
+  {emoji:"🎟️", label:"Gratuit",            phrase:"gratuit"},
+  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier"},
+  {emoji:"🏃", label:"Sport",              phrase:"sport"},
+  {emoji:"✨", label:"Insolite",           phrase:"insolite"},
+  {emoji:"👨‍👩‍👧", label:"Famille",           phrase:"famille"},
+]);
+
+/* Une sélection est une requête nommée. Le `creneau` est celui du moteur
+   temporel existant — jamais une fenêtre inventée pour l'occasion. */
+const XP_SELECTIONS = Object.freeze([
+  {emoji:"🖼️", titre:"Expos à voir cette semaine", sous:"Les prochains jours",
+   phrase:"exposition", creneau:"avenir"},
+  {emoji:"🎟️", titre:"Sorties gratuites",          sous:"Sans dépenser",
+   phrase:"gratuit",    creneau:"avenir", visuel:"gratuit"},
+  {emoji:"📚", titre:"Où étudier au calme",         sous:"Lieux permanents",
+   phrase:"bibliothèque"},
+  {emoji:"🌧️", titre:"Que faire quand il pleut",    sous:"À l'abri",
+   phrase:"musée"},
+  {emoji:"🎧", titre:"Musique et concerts",         sous:"Les prochains jours",
+   phrase:"concert",    creneau:"avenir"},
+  {emoji:"🌳", titre:"Nature et balades",           sous:"Prendre l'air",
+   phrase:"parc"},
+]);
+
+/* ---- LA PHOTO D'UNE SÉLECTION VIENT DE CE QU'ELLE OUVRE -------------------
+
+   Une sélection doit montrer une photo, sinon elle ne se distingue pas d'une
+   ligne de menu. Mais une photo « d'ambiance » choisie ailleurs mentirait :
+   elle promettrait un lieu qui n'est pas dans le résultat.
+
+   La règle est donc la plus stricte possible : la vignette est l'image D'UNE
+   ENTITÉ QUE CETTE SÉLECTION RENVERRAIT. On repasse par la catégorie que sa
+   propre phrase désigne — `categorieRecherchee`, la fonction que la recherche
+   utilise déjà, sans effet de bord — puis par `correspondCategorie` et
+   `imageDe`, c'est-à-dire la résolution d'images existante et rien d'autre.
+   Aucune URL n'est fabriquée, aucun catalogue d'illustrations n'est ajouté.
+
+   « Sorties gratuites » ne désigne pas une catégorie mais un prix : elle passe
+   par `gratuitDe`, la même lecture que le reste de l'application.
+
+   Quand rien ne correspond — pas de position, pas encore de données, ou aucune
+   entité de cette catégorie n'a d'image — la fonction rend `null` et la carte
+   garde sa tuile teintée. C'est voulu : mieux vaut une tuile honnête qu'une
+   photo qui parle d'autre chose. */
+function photoSelectionExplorer(entree){
+  if(!entree || !Array.isArray(lieux) || !lieux.length) return null;
+  const correspond = entree.visuel === "gratuit"
+    ? (l)=>gratuitDe(l)
+    : (()=>{
+        const cat = categorieRecherchee(entree.phrase);
+        return cat ? (l)=>correspondCategorie(l, cat) : null;
+      })();
+  if(!correspond) return null;
+  const trouve = lieux.find(l=>correspond(l) && imageDe(l));
+  if(!trouve) return null;
+  return {url:imageDe(trouve), teinte:COULEURS_CAT[trouve.cat] || "#5D6B63"};
+}
+
+const XP_THEMES = Object.freeze([
+  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier"},
+  {emoji:"🎟️", label:"Bons plans étudiants", phrase:"gratuit"},
+  {emoji:"🌳", label:"Nature et balades",     phrase:"parc"},
+  {emoji:"🎧", label:"Musique et concerts",   phrase:"concert", creneau:"avenir"},
+  {emoji:"🎭", label:"Culture",               phrase:"culture"},
+]);
+
+/* Poser une requête d'Explorer. Le créneau passe par la MÊME porte que les
+   onglets de temps de la feuille : `creneau` est la variable du moteur, et
+   `majAccueil` la relit. Aucune règle temporelle n'est réécrite ici. */
+function lancerDepuisExplorer(entree){
+  if(!entree) return;
+  fermerExplorerDecouverte();
+  if(entree.creneau && CRENEAUX.some(c=>c.id === entree.creneau)) creneau = entree.creneau;
+  appliquerPhrase(entree.phrase);
+}
+
+let explorerDecouverteRemplie = false;
+
+function remplirExplorerDecouverte(){
+  if(explorerDecouverteRemplie) return;
+  const intentions = $("#xpIntentions");
+  const selections = $("#xpSelections");
+  const themes = $("#xpThemes");
+  if(!intentions || !selections || !themes) return;
+
+  intentions.innerHTML = XP_INTENTIONS.map((x,i)=>
+    '<button class="xp-int" type="button" data-xp-int="'+i+'">'+
+      esc(x.emoji)+' '+esc(x.label)+'</button>').join("");
+  /* La tuile teintée est posée TOUT DE SUITE, à sa taille définitive : la
+     photo viendra se poser dessus quand on en aura une, sans rien déplacer.
+     C'est le gabarit des cartes de résultats (`rc-photo`), repris tel quel. */
+  selections.innerHTML = XP_SELECTIONS.map((x,i)=>
+    '<button class="xp-carte" type="button" data-xp-sel="'+i+'">'+
+      '<span class="xp-photo xp-photo-vide" data-xp-photo="'+i+'" aria-hidden="true">'+
+        '<i>'+esc(x.emoji)+'</i></span>'+
+      '<span class="xp-carte-txt">'+
+        '<b>'+esc(x.titre)+'</b><i>'+esc(x.sous)+'</i></span></button>').join("");
+  themes.innerHTML = XP_THEMES.map((x,i)=>
+    '<button class="xp-theme" type="button" data-xp-theme="'+i+'">'+
+      '<em aria-hidden="true">'+esc(x.emoji)+'</em>'+
+      '<span>'+esc(x.label)+'</span></button>').join("");
+
+  intentions.querySelectorAll("[data-xp-int]").forEach(b=>
+    b.onclick = ()=>lancerDepuisExplorer(XP_INTENTIONS[Number(b.dataset.xpInt)]));
+  selections.querySelectorAll("[data-xp-sel]").forEach(b=>
+    b.onclick = ()=>lancerDepuisExplorer(XP_SELECTIONS[Number(b.dataset.xpSel)]));
+  themes.querySelectorAll("[data-xp-theme]").forEach(b=>
+    b.onclick = ()=>lancerDepuisExplorer(XP_THEMES[Number(b.dataset.xpTheme)]));
+
+  const rech = $("#xpRecherche");
+  if(rech) rech.onclick = ()=>{ fermerExplorerDecouverte(); ouvrirRecherche(); };
+
+  explorerDecouverteRemplie = true;
+}
+
+/* Les vignettes se rejouent à CHAQUE ouverture, pas une seule fois avec le
+   reste du panneau : la première fois, Autour ne sait souvent pas encore où
+   l'on est et `lieux` est vide. Un panneau construit une fois pour toutes
+   resterait donc sans photos pour le reste de la session.
+   Seule l'image bouge — les boutons, leurs libellés et leurs gestionnaires ne
+   sont pas reconstruits, et la tuile garde sa place quoi qu'il arrive. */
+function rafraichirPhotosExplorer(){
+  const selections = $("#xpSelections");
+  if(!selections) return;
+  selections.querySelectorAll("[data-xp-photo]").forEach(shell=>{
+    const entree = XP_SELECTIONS[Number(shell.dataset.xpPhoto)];
+    const photo = photoSelectionExplorer(entree);
+    const posee = shell.querySelector("img");
+    if(!photo){
+      /* On ne retire pas une photo déjà chargée pour la remplacer par du
+         vide : ce serait un clignotement sans information. */
+      return;
+    }
+    if(posee && posee.getAttribute("src") === photo.url) return;
+    shell.style.setProperty("--teinte", photo.teinte);
+    if(posee) posee.remove();
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.alt = "";
+    /* Une image qui ne charge pas s'efface et rend la tuile teintée : jamais
+       un cadre vide, jamais une icône de fichier cassé. */
+    img.onload = ()=>img.classList.add("vue");
+    img.onerror = ()=>img.remove();
+    img.src = photo.url;
+    shell.appendChild(img);
+  });
+}
+
+function ouvrirExplorerDecouverte(){
+  const panneau = $("#explorerDecouverte");
+  if(!panneau) return;
+  remplirExplorerDecouverte();
+  rafraichirPhotosExplorer();
+  panneau.hidden = false;
+  document.body.classList.add("explorer-ouvert");
+}
+
+function fermerExplorerDecouverte(){
+  const panneau = $("#explorerDecouverte");
+  if(panneau) panneau.hidden = true;
+  document.body.classList.remove("explorer-ouvert");
+}
 
 /* Ce qui reprend après une connexion. Chaque entrée est le geste exact qui a
    déclenché la demande de compte, rejoué à l'identique : on ne dépose personne
