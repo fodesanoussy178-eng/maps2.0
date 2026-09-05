@@ -1072,8 +1072,10 @@ test("le cadrage suit l'emprise réelle de la zone, bornée des deux côtés",()
     "ZOOM_MIN_CHARGEMENT doit précéder ZOOM_ZONE_MIN");
   assert.match(html,/cadrerSur\(zone\.emprise, \{maxZoom:ZOOM_ZONE_MAX/);
   assert.match(html,/if\(m\.getZoom\(\) < ZOOM_ZONE_MIN\) m\.setZoom\(ZOOM_ZONE_MIN\);/);
-  // repli si le géocodeur ne fournit pas d'emprise
-  assert.match(html,/allerVers\(\[zone\.lat, zone\.lng\], ZOOM_ZONE_MAX/);
+  // repli si le géocodeur ne fournit pas d'emprise. Le niveau reste
+  // ZOOM_ZONE_MAX par défaut ; seul un appelant qui SAIT ce qu'il vise — une
+  // commune plutôt qu'un numéro de rue — peut en demander un autre.
+  assert.match(html,/allerVers\(\[zone\.lat, zone\.lng\],\s*\n?\s*Number\.isFinite\(Number\(reglagesCadrage\.zoom\)\) \? Number\(reglagesCadrage\.zoom\) : ZOOM_ZONE_MAX,/);
 });
 
 test("le géocodeur départage les homonymes sans privilégier un pays",()=>{
@@ -1453,11 +1455,17 @@ test("sans position GPS, l'application garde un repli de ville honnête",()=>{
   // le refus de la permission garde une ville utilisable sans prétendre à un
   // point précis ni bloquer la possibilité d'en choisir une autre
   assert.match(html,/let originePosition = null;/);
-  assert.match(html,/const positionConnue = \(\)=>originePosition !== null;/);
-  // deux provenances de démarrage : la dernière mesure du navigateur ou la
-  // zone déduite de l'adresse IP. Sans les deux, aucune ville n'est inventée.
+  // « repli » n'est pas une provenance de position : c'est la zone ouverte par
+  // défaut, et elle ne doit jamais faire dire « autour de toi ».
+  assert.match(html,/const positionConnue = \(\)=>originePosition !== null && originePosition !== "repli";/);
+  // trois provenances de démarrage : la dernière mesure du navigateur, la zone
+  // déduite de l'adresse IP quand elle tombe dans une zone ouverte, ou le
+  // repli produit. Aucune ville n'est inventée, et aucune zone n'est ouverte.
   assert.match(html,/originePosition = "gps"; precisionPosition = "point"; positionMoi = coords;/);
   assert.match(html,/originePosition = "server"; precisionPosition = "ville";/);
+  assert.match(html,/originePosition = "repli"; precisionPosition = "zone";/);
+  // et l'adresse IP ne sert que si elle relève d'une zone DÉJÀ ouverte
+  assert.match(html,/else if\(duServeur && zoneDuServeur\)\{/);
   assert.match(html,/originePosition = null; precisionPosition = null;\s+positionMoi = null; commune = COMMUNE_INCONNUE;/);
   assert.match(html,/const CENTRE_CARTE_FRANCE = \[46\.603354, 1\.888334\];/);
   // le nom de la ville n'est pas deviné depuis un point que personne n'a choisi
@@ -2118,8 +2126,8 @@ test("la ville est connue avant que la page ne s'exécute",()=>{
 
 test("une position de ville ne se fait pas passer pour un point GPS",()=>{
   // deux axes séparés : d'où elle vient, et ce qu'elle vaut
-  assert.match(html,/let originePosition = null;\s+\/\/ "gps" \| "server" \| "manual" \| null/);
-  assert.match(html,/let precisionPosition = null;\s+\/\/ "point" \| "ville" \| null/);
+  assert.match(html,/let originePosition = null;\s+\/\/ "gps" \| "server" \| "manual" \| "repli" \| null/);
+  assert.match(html,/let precisionPosition = null;\s+\/\/ "point" \| "ville" \| "zone" \| null/);
   assert.match(html,/const positionPrecise = \(\)=>precisionPosition === "point";/);
   assert.match(html,/const positionApprochee = \(\)=>positionConnue\(\) && !positionPrecise\(\);/);
   // aucun temps de recommandation tant qu'on n'a que la zone

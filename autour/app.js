@@ -130,9 +130,13 @@ let canauxAMoi = [];
 
    Déclaré ici parce que le démarrage et les premiers rendus le lisent
    immédiatement. */
-let originePosition = null;          // "gps" | "server" | "manual" | null
-let precisionPosition = null;        // "point" | "ville" | null
-const positionConnue = ()=>originePosition !== null;
+let originePosition = null;          // "gps" | "server" | "manual" | "repli" | null
+let precisionPosition = null;        // "point" | "ville" | "zone" | null
+/* « repli » n'est pas une position : c'est la zone qu'Autour ouvre quand il ne
+   sait pas où est la personne. Il ne doit donc jamais faire dire « autour de
+   toi » ni autoriser une distance — d'où son exclusion ici, à la source,
+   plutôt que dans chacun des écrans qui lisent ce drapeau. */
+const positionConnue = ()=>originePosition !== null && originePosition !== "repli";
 const positionPrecise = ()=>precisionPosition === "point";
 const positionApprochee = ()=>positionConnue() && !positionPrecise();
 
@@ -176,6 +180,7 @@ function pointGeographiqueValide(point){
    est jetée, quelle que soit la source qui l'a produite. */
 const CTX = window.AutourContexte || null;
 const ZONES = window.AutourZones || null;
+const ADRESSE = window.AutourAdresse || null;
 const ECRANS_DIFFERES = [
   /* la fiche d'un lieu */
   "ouvrirFicheCompacte", "ouvrirDetail", "faitsAide",
@@ -607,7 +612,22 @@ async function rechercheGeographique(q, generationOuSignal){
     ? generationOuSignal : null;
   const signal = generationRecherche ? generationRecherche.signal : generationOuSignal;
   const zone = await geocoderVille(q, null, signal);
+  return poserZoneGeographique(q, zone, generationRecherche);
+}
+
+/* LE BASCULEMENT DE ZONE, UNE SEULE FOIS ÉCRIT.
+
+   `rechercheGeographique` faisait deux choses : trouver un point, puis
+   poser la zone autour de lui. Seule la première dépend du géocodeur. En les
+   séparant, la recherche d'adresse de la Base Adresse Nationale — qui rend
+   DÉJÀ des coordonnées et n'a donc rien à géocoder — emprunte exactement le
+   même basculement : même invalidation de portée, même annulation des
+   requêtes en vol, même garantie qu'aucun résultat de l'ancienne ville ne
+   survit dans la nouvelle. Un second chemin aurait été un second endroit où
+   oublier l'une de ces trois choses. */
+async function poserZoneGeographique(q, zone, generationRecherche, options){
   if(!zone || !map) return false;
+  const reglagesCadrage = options || {};
   /* Le nom de la zone ne doit pas rester un filtre plein texte sur les lieux :
      une fois la carte à Lille, garder « lille » comme requête faisait remonter
      « Gare Lille Flandres » au titre de correspondance explicite — donc des
@@ -620,7 +640,12 @@ async function rechercheGeographique(q, generationOuSignal){
     cadrerSur(zone.emprise, {maxZoom:ZOOM_ZONE_MAX, padding:[24,24], animate:true});
     surLaCarte((m)=>{ if(m.getZoom() < ZOOM_ZONE_MIN) m.setZoom(ZOOM_ZONE_MIN); }, "zoom-mini");
   }else{
-    allerVers([zone.lat, zone.lng], ZOOM_ZONE_MAX, {duration:.8});
+    /* Sans emprise, le zoom dépend de ce qu'on vise : une commune se regarde
+       de plus loin qu'un numéro de rue. La Base Adresse Nationale ne rend pas
+       de boîte englobante, c'est donc l'appelant qui sait. */
+    allerVers([zone.lat, zone.lng],
+      Number.isFinite(Number(reglagesCadrage.zoom)) ? Number(reglagesCadrage.zoom) : ZOOM_ZONE_MAX,
+      {duration:.8});
   }
 
   /* Un seul point de référence : celui que la carte montre effectivement.
@@ -5417,6 +5442,94 @@ function positionMemorisee(){
    à la carte et à la recherche de rester utilisables sans favoriser une ville. */
 const CENTRE_CARTE_FRANCE = [46.603354, 1.888334];
 
+/* ---- Le repli de zone -----------------------------------------------------
+   Quand rien ne situe la personne — ni GPS mémorisé, ni ville choisie, ni
+   adresse IP exploitable — ou quand l'adresse IP tombe HORS de toutes les
+   zones ouvertes, Autour ouvre une zone existante plutôt qu'un écran vide.
+
+   CE QU'IL N'EST PAS : une position. Il ne dit pas « tu es là », et
+   `positionConnue()` l'exclut explicitement pour cette raison.
+
+   CE QU'IL NE FAIT SURTOUT PAS : ouvrir une zone. Une adresse IP à Toulouse
+   n'ouvre pas Toulouse — elle ouvre le repli, et Toulouse reste fermée tant
+   que personne ne l'a ouverte dans `autour_zones`. Sans cette règle, le point
+   IP devenait une zone « autour de moi » à Toulouse, `actualiserBassinTerritorial`
+   appelait `resoudre_territoire` avec ces coordonnées, et la base gagnait un
+   territoire « découvert » par visiteur de passage. */
+const ZONE_REPLI_PRODUIT = "mel";
+
+function positionDeRepli(){
+  const def = ZONES ? ZONES.definition(ZONE_REPLI_PRODUIT) : null;
+  if(!def) return null;
+  return {position:[def.lat, def.lng], zoneId:def.id, ville:def.city};
+}
+
+/* La zone ouverte dont relève un point, ou rien. C'est `AutourZones` qui
+   tranche — il n'y a pas de second moteur géographique ici. */
+function zoneOuvertePour(point){
+  if(!ZONES || !pointGeographiqueValide(point)) return null;
+  return ZONES.zoneIdForPoint(point);
+}
+
+/* ---- Le second chemin vers la ville approximative -------------------------
+   `middleware.js` dépose `autour_geo` sur la réponse qui porte `index.html` :
+   c'est le chemin principal, et il ne coûte aucun aller-retour.
+
+   Mais ce cookie peut manquer — document servi depuis un cache, navigation
+   arrière, cookies refusés, Safari qui raccourcit la vie de ce qu'un script a
+   posé. `positionServeur()` rendait alors `null` et le visiteur restait sur le
+   repli alors que le serveur, lui, savait toujours de quelle ville il vient.
+
+   On demande donc la même information à `/api/position`, et seulement quand le
+   cookie a manqué. Cet appel part APRÈS la première peinture : l'écran est
+   déjà rempli par le repli, personne n'attend devant un chargement. */
+let positionServeurDemandee = false;
+
+async function completerParPositionServeur(){
+  if(positionServeurDemandee) return false;
+  positionServeurDemandee = true;
+  /* Une position réelle — mesurée, ou choisie à la main — rend la question
+     sans objet. On ne redescend jamais d'une vérité vers une approximation. */
+  if(originePosition === "gps" || originePosition === "server" || originePosition === "manual")
+    return false;
+  if(typeof fetch !== "function") return false;
+
+  let point = null;
+  try{
+    const r = await fetch("/api/position", {headers:{accept:"application/json"}});
+    if(!r.ok) return false;
+    const j = await r.json();
+    /* `disponible: false` est une réponse NORMALE : en développement local ou
+       derrière un intermédiaire qui filtre les en-têtes, le serveur ne sait
+       rien non plus. Le repli reste, et c'est tout. */
+    if(!j || j.disponible !== true || !coordonneesValides(j.lat, j.lng)) return false;
+    point = j;
+  }catch(e){ return false; }
+
+  /* Le GPS ou un choix de ville ont pu répondre pendant l'aller-retour : ils
+     font autorité, et cette réponse-ci arrive trop tard. */
+  if(originePosition === "gps" || originePosition === "manual") return false;
+
+  /* LA MÊME RÈGLE QU'AU DÉMARRAGE : une adresse IP hors des zones ouvertes ne
+     déplace rien et n'ouvre rien. Toulouse reste fermée. */
+  if(!zoneOuvertePour([point.lat, point.lng])) return false;
+
+  originePosition = "server"; precisionPosition = "ville";
+  positionMoi = [point.lat, point.lng];
+  if(point.ville) commune = point.ville;
+  /* LA MÊME GARDE QUE LE SUIVI GPS. Pendant l'aller-retour, la personne a pu
+     chercher une ville : cette zone-là est un choix, et une réponse réseau
+     n'a pas à la lui reprendre. On ne repose la zone que si aucune n'existe
+     ou si elle est encore celle du démarrage. */
+  const zoneRemplacable = !zoneActive || (CTX && zoneActive.type === CTX.TYPES.MOI);
+  if(CTX && zoneRemplacable) definirZoneActive(CTX.zoneMoi(positionMoi, commune));
+  if(!zoneRemplacable) return false;
+  majEnteteLieu();
+  allerVers(positionMoi, ZOOM_ZONE_MIN, {duration:.6});
+  chargerLeDemarrage(null);
+  return true;
+}
+
 /* Point reproductible pour les contrôles locaux. Ignoré sur le site public,
    il permet de tester Tourcoing sans détourner la vraie géolocalisation. */
 function positionLocaleDeTest(){
@@ -5980,24 +6093,46 @@ async function demarrer(coords){
      1. La dernière position GPS mémorisée. C'est une mesure réelle du
         navigateur, éventuellement d'il y a quelques heures : on la préfère
         toujours à l'IP, et on la rafraîchit tout de suite.
-     2. La ville déduite de l'adresse IP. Elle sert UNIQUEMENT à choisir la
-        bonne zone de données pour que l'écran se remplisse vite. Elle ne dit
-        pas où est la personne, et l'interface ne le prétendra pas.
-     3. Rien. Et on le dit, plutôt que d'afficher une ville au hasard.
+     2. La ville déduite de l'adresse IP, ET SEULEMENT SI elle tombe dans une
+        zone ouverte. Elle sert UNIQUEMENT à choisir la bonne zone de données
+        pour que l'écran se remplisse vite. Elle ne dit pas où est la personne,
+        et l'interface ne le prétendra pas.
+     3. La zone de repli. Elle donne une carte pleine et un contenu réel là où
+        il n'y avait qu'un centre de la France vide, sans jamais prétendre
+        situer qui que ce soit.
+     4. Rien, si même le repli est indisponible.
 
-     Aucune de ces trois n'attend le réseau ni une permission. */
+     Aucune de ces quatre n'attend le réseau ni une permission. */
   const duServeur = coords ? null : positionServeur();
+  /* L'ADRESSE IP EST PESÉE AVANT D'ÊTRE CRUE. Elle situe à quelques
+     kilomètres, ce qui suffit à choisir une zone déjà ouverte — et ne suffit
+     à rien d'autre. Si elle tombe hors de toutes les zones ouvertes (une IP à
+     Toulouse, à Lyon, chez un opérateur qui sort à Francfort), on ne la garde
+     pas : la retenir ferait naître une zone « autour de moi » là-bas, et avec
+     elle un territoire « découvert » en base à chaque visiteur de passage. */
+  const zoneDuServeur = duServeur
+    ? zoneOuvertePour([duServeur.lat, duServeur.lng]) : null;
+  const repli = positionDeRepli();
   if(coords){
     originePosition = "gps"; precisionPosition = "point"; positionMoi = coords;
     PERF.jalon("position_gps_memorisee");
   }
-  else if(duServeur){
+  else if(duServeur && zoneDuServeur){
     originePosition = "server"; precisionPosition = "ville";
     positionMoi = [duServeur.lat, duServeur.lng];
     // le nom sert à chercher les agendas et à étiqueter des adresses ; il n'est
     // jamais affiché comme « tu es ici » tant que la précision est « ville »
     if(duServeur.ville) commune = duServeur.ville;
     PERF.jalon("position_server");
+  }
+  else if(repli){
+    /* Ni position ni zone ouverte sous l'adresse IP : on ouvre la zone de
+       repli. La carte et le contenu existent tout de suite, et l'interface
+       continue de dire qu'elle ne sait pas où est la personne — `repli` est
+       exclu de `positionConnue()`. */
+    originePosition = "repli"; precisionPosition = "zone";
+    positionMoi = repli.position; commune = COMMUNE_INCONNUE;
+    PERF.jalon("position_repli");
   }
   else {
     originePosition = null; precisionPosition = null;
@@ -6076,6 +6211,10 @@ async function demarrer(coords){
      garder l'écran blanc pendant qu'on préparait ce qu'il devait montrer. */
   apresPeinture(()=>programmerPrechargementAide());
   apresPeinture(()=>chargerLeDemarrage(rapide));
+  /* Le cookie a manqué : on va chercher la même information par la route, une
+     fois l'écran peint. Rien ne l'attend. */
+  if(originePosition !== "gps" && originePosition !== "server")
+    apresPeinture(()=>completerParPositionServeur());
 
   /* ÉTAPE 3 — les écrans qu'on n'a pas encore ouverts. Le démarrage a rendu
      la main ; la tranche d'inactivité, elle, attend que le fil principal soit
@@ -16231,9 +16370,47 @@ if(window.ResizeObserver){
   if($("#appHeader")) observateur.observe($("#appHeader"));
   if($("#navBas")) observateur.observe($("#navBas"));
 }
+/* ---- Chercher une ville ou une adresse ------------------------------------
+   Les suggestions locales ne connaissent que ce qui est DÉJÀ chargé : elles ne
+   pouvaient donc jamais proposer une ville où l'on n'est pas encore. Taper
+   « Tourcoing » ne montrait rien tant que la ligne « destination » — une
+   simple hypothèse de forme — n'était pas validée à l'aveugle.
+
+   La Base Adresse Nationale répond exactement à ce manque, et `adresse.js`
+   porte tout ce qui la rend utilisable à la frappe : délai, annulation de la
+   requête précédente, réponses hors délai jetées, mémoire des saisies déjà
+   posées. Ici on ne fait que brancher ses résultats sur la liste existante. */
+let adressesSuggerees = [];
+let adressesPourRequete = "";
+
+/* Créé à la première frappe, pas à l'évaluation du script. `suggerer` est une
+   déclaration de fonction, donc hissée : une constante initialisée plus bas
+   la mettrait à la merci d'une zone morte temporelle si l'ordre du fichier
+   changeait un jour. Ici il n'y a plus d'ordre à respecter. */
+let chercheurAdresse = null;
+function chercheurAdresses(){
+  if(chercheurAdresse || !ADRESSE) return chercheurAdresse;
+  chercheurAdresse = ADRESSE.creerChercheur({
+  /* La BAN pondère autour d'un point quand on lui en donne un. On lui passe le
+     centre de la zone regardée, pas la position de la personne : c'est ce que
+     l'écran montre, et c'est donc ce à quoi « la République » se rapporte. */
+  get lat(){ const c = centreZoneActive(); return c ? c[0] : undefined; },
+  get lng(){ const c = centreZoneActive(); return c ? c[1] : undefined; },
+  surResultats:(resultats, requete)=>{
+    adressesSuggerees = resultats;
+    adressesPourRequete = requete;
+    /* La réponse peut arriver après que la personne a continué à taper : on ne
+       redessine que si elle porte encore sur ce qui est à l'écran. */
+    if(rechercheTexte() === requete) suggerer(requete, {depuisAdresse:true});
+    },
+  });
+  return chercheurAdresse;
+}
+
 /* Suggestions puisées dans l'index déjà construit et dans les lieux déjà
-   chargés : aucune requête, donc aucun effet sur le temps de chargement. */
-function suggerer(q){
+   chargés — plus, quand la saisie est assez longue, les villes et adresses
+   rendues par la Base Adresse Nationale. */
+function suggerer(q, options){
   const z = $("#suggestions");
   if(!z) return;
   if(modeAide){
@@ -16241,6 +16418,13 @@ function suggerer(q){
     return;
   }
   const t = sansAccents(q).trim();
+  /* `surResultats` rappelle `suggerer` : sans ce drapeau, la mémoire du
+     chercheur rendrait la main immédiatement et les deux s'appelleraient sans
+     fin. La liste se redessine, mais aucune nouvelle recherche ne part. */
+  if(!(options && options.depuisAdresse)){
+    const chercheur = chercheurAdresses();
+    if(chercheur) chercheur.saisir(q);
+  }
 
   // rien de tapé : on propose ce qui correspond à l'heure qu'il est
   if(!t){
@@ -16259,6 +16443,22 @@ function suggerer(q){
      commune on ne voyait aucune façon d'y aller.
      On ne DÉCIDE pas ici que « Lille » est une ville — on le propose, et c'est
      le géocodeur qui tranchera au moment de valider. */
+  /* LES VILLES ET ADRESSES RÉELLES D'ABORD. Elles viennent d'un service qui a
+     tranché, là où la ligne « destination » juste en dessous n'est qu'une
+     hypothèse sur la forme du mot. Quand les deux disent la même chose, la
+     réponse vérifiée doit être celle qu'on touche. */
+  if(adressesPourRequete === String(q||"").trim()){
+    adressesSuggerees.slice(0, 5).forEach((a)=>{
+      if(vus.has(a.libelle)) return;
+      vus.add(a.libelle);
+      /* Le libellé de la BAN porte déjà la commune et le code postal pour une
+         voie ; pour une commune il ne porte que son nom, et le département
+         vient du contexte. On n'invente rien : on montre ce qu'elle donne. */
+      sug.push({emo:a.estCommune ? "🏙️" : "📍", lab:a.libelle,
+        sous:a.estCommune ? "ville" : "adresse", adresse:a});
+    });
+  }
+
   const decoupe = parseSearchQuery(q, DECOUPAGE);
   const dest = decoupe.destination;
   if(dest && ressembleAUneZone(dest)){
@@ -16304,6 +16504,18 @@ function suggerer(q){
     const x = sug[Number(b.dataset.sg)];
     z.hidden = true; layerManager.deactivate(NOMS_COUCHES.searchOverlay); $("#rech").blur();
     if(x.id){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(x.id)); return; }
+    /* Une ville ou une adresse vérifiée n'a plus rien à géocoder : elle porte
+       déjà son point. Elle emprunte donc le basculement de zone directement —
+       le même que la recherche Nominatim, donc la même invalidation de portée
+       et la même garantie qu'aucun résultat de l'ancienne ville ne subsiste. */
+    if(x.adresse){
+      $("#rech").value = "";
+      recherche = "";
+      poserZoneGeographique(x.adresse.ville || x.adresse.libelle,
+        {lat:x.adresse.lat, lng:x.adresse.lng, nom:x.adresse.libelle, emprise:null},
+        null, {zoom:x.adresse.estCommune ? 13 : 16});
+      return;
+    }
     // une suggestion de destination emprunte exactement le même chemin que la
     // touche Retour : un seul comportement à comprendre, un seul à maintenir
     if(x.texte){ $("#rech").value = x.texte; lancerRecherche(); return; }

@@ -15,7 +15,7 @@
    de son contenu dans son URL. */
 export const MODULES = [
   "availability.js", "comprendre.js", "donnees.js", "aide-intentions.js", "intentions.js", "comptes.js",
-  "maintenant.js", "ordonnanceur.js", "zones-autonomes.js", "contexte.js", "territoire.js", "plafonds.js",
+  "maintenant.js", "ordonnanceur.js", "zones-autonomes.js", "adresse.js", "contexte.js", "territoire.js", "plafonds.js",
   "annonces-taxonomie.js", "annonces-classement.js", "envies.js",
   /* IL ÉTAIT CHARGÉ PAR LA PAGE, MAIS PAS PAR CE MANIFESTE — donc servi en
      cache immuable avec une empreinte figée à `00000000`, qui ne bougeait
