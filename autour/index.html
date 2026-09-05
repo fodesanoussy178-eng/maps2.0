@@ -14,6 +14,20 @@ window.AutourBootTiming={html_disponible:performance.now()};
 </script>
 <meta name="description" content="Ce qui se passe autour de toi, maintenant : événements, aide alimentaire, associations, commerces ouverts et itinéraires. Sans compte, sans installation." />
 
+<!-- L'ADRESSE CANONIQUE, ET ELLE SEULE.
+
+     Autour est déployé sur Vercel, qui donne à chaque build une URL de
+     prévisualisation (`autour-xxxxx.vercel.app`). Sans cette ligne, ces
+     adresses sont indexables et se retrouvent en concurrence avec le vrai
+     site, avec le même contenu — c'est la façon la plus banale de diviser
+     son propre référencement. Elle est ABSOLUE : une canonique relative
+     serait résolue sur le domaine de prévisualisation, donc inutile.
+
+     `/l/:id` et `/e/:id` sont réécrits vers cette même page et n'ont pas
+     encore de contenu propre au rendu : ils pointent donc ici. Les
+     métadonnées par lieu et par événement appartiennent à un lot ultérieur. -->
+<link rel="canonical" href="https://autour.eu/" />
+
 <!-- aperçu quand le lien est collé dans un message : sans ça, le partage
      n'affiche qu'une URL nue et personne ne clique -->
 <meta property="og:type" content="website" />
@@ -21,7 +35,20 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <meta property="og:title" content="Autour · ce qui se passe dans ton quartier" />
 <meta property="og:description" content="Événements, aide, commerces ouverts et itinéraires autour de toi. Sans compte, sans installation." />
 <meta property="og:locale" content="fr_FR" />
-<meta name="twitter:card" content="summary" />
+<meta property="og:url" content="https://autour.eu/" />
+<!-- 1200×630 : en dessous, l'aperçu est rogné ou retombe en vignette carrée.
+     L'URL est absolue parce que les robots d'aperçu ne résolvent pas les
+     chemins relatifs. -->
+<meta property="og:image" content="https://autour.eu/og.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Autour · ce qui se passe maintenant dans ton quartier" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Autour · ce qui se passe dans ton quartier" />
+<meta name="twitter:description" content="Événements, aide, commerces ouverts et itinéraires autour de toi. Sans compte, sans installation." />
+<meta name="twitter:image" content="https://autour.eu/og.png" />
+<meta name="twitter:image:alt" content="Autour · ce qui se passe maintenant dans ton quartier" />
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📍%3C/text%3E%3C/svg%3E" />
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23F7F8F5'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle'%3E📍%3C/text%3E%3C/svg%3E" />
@@ -2724,6 +2751,12 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <div id="credits" hidden>
   © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
   © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>
+  <!-- Une page légale que personne ne peut atteindre ne remplit pas son
+       office. Elles sont posées ici, dans le panneau de crédits déjà prévu
+       pour ce genre de mention, plutôt que dans la navigation principale —
+       que ce lot s'interdit de toucher. -->
+  <br /><a href="/mentions-legales">Mentions légales</a> ·
+  <a href="/confidentialite">Confidentialité</a>
 </div>
 
 
@@ -2862,6 +2895,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="maintenant.js?v=e18714a6" defer></script>
 <script src="ordonnanceur.js?v=ac58eaf0" defer></script>
 <script src="zones-autonomes.js?v=ef64fe67" defer></script>
+<script src="adresse.js?v=3e38153c" defer></script>
 <script src="plafonds.js?v=a922a210" defer></script>
 <script src="annonces-taxonomie.js?v=3a17b2a2" defer></script>
 <script src="annonces-classement.js?v=9d607f4b" defer></script>
@@ -2893,6 +2927,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=e556efd5" defer></script>
+<script src="app.js?v=a4c6c48b" defer></script>
 </body>
 </html>

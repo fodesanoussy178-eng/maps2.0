@@ -1,0 +1,24 @@
+# Autour — https://autour.eu
+#
+# Les pages publiques sont ouvertes à l'indexation : l'accueil et les deux
+# pages de texte. Rien d'autre n'est une page.
+
+User-agent: *
+Allow: /
+
+# LES ROUTES DE DONNÉES NE SONT PAS DES PAGES.
+#
+# `/api/*` rend du JSON : rien d'indexable, et surtout rien de gratuit. Chaque
+# appel non servi par le cache déclenche une requête vers Overpass, Google
+# Places, DATAtourisme ou un service public. Un robot qui les parcourt paie ce
+# coût sans produire une seule ligne de résultat de recherche.
+Disallow: /api/
+
+# Pas de directive `Sitemap:` ici : aucun sitemap n'existe encore. En annoncer
+# un qui répond 404 est un signal d'erreur envoyé volontairement. La ligne sera
+# ajoutée le jour où le fichier existera réellement.
+#
+# Note pour les déploiements de prévisualisation Vercel : ce fichier est servi
+# à l'identique sur `*.vercel.app`, qui autoriserait donc l'indexation d'un
+# double du site. C'est la balise `<link rel="canonical">` de chaque page,
+# absolue et pointant vers autour.eu, qui empêche cette duplication.

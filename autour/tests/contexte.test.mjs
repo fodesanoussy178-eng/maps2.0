@@ -245,10 +245,14 @@ test("« Revenir autour de moi » est le seul chemin de retour", () => {
                             html.indexOf("$(\"#btnAutourDeMoi\").onclick"));
   assert.match(retour, /definirZoneActive\(CTX \? CTX\.zoneMoi\(positionMoi, commune\) : null\);/);
   assert.match(retour, /annulerChargementsZone\(\);/);
-  /* Et personne d'autre ne repose la zone sur la position : la seule autre
-     occurrence est l'ouverture, et le suivi GPS quand on N'A PAS cherché de
-     ville. Trois, pas quatre. */
-  assert.equal((html.match(/definirZoneActive\(CTX\.zoneMoi\(/g) || []).length, 2);
+  /* Et personne d'autre ne repose la zone sur la position : les autres
+     occurrences sont l'ouverture, le suivi GPS quand on N'A PAS cherché de
+     ville, et la ville approximative qui arrive de `/api/position` après la
+     première peinture. Ces deux dernières portent la MÊME garde — une zone
+     cherchée à la main ne se fait jamais reprendre par une réponse réseau. */
+  assert.equal((html.match(/definirZoneActive\(CTX\.zoneMoi\(/g) || []).length, 3);
+  assert.match(html,
+    /const zoneRemplacable = !zoneActive \|\| \(CTX && zoneActive\.type === CTX\.TYPES\.MOI\);/);
 });
 
 test("une mesure GPS ne ramène pas la carte à soi quand on regarde ailleurs", () => {

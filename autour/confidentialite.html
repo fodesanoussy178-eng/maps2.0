@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#141E19" />
+<title>Confidentialité · Autour</title>
+<meta name="description" content="Ce qu'Autour fait de ta localisation, ce qui est stocké dans ton navigateur, les services externes utilisés et comment exercer tes droits." />
+<link rel="canonical" href="https://autour.eu/confidentialite" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Autour" />
+<meta property="og:title" content="Confidentialité · Autour" />
+<meta property="og:description" content="Ce qu'Autour fait de ta localisation, ce qui est stocké dans ton navigateur, les services externes utilisés et comment exercer tes droits." />
+<meta property="og:locale" content="fr_FR" />
+<meta property="og:url" content="https://autour.eu/confidentialite" />
+<meta property="og:image" content="https://autour.eu/og.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Autour · ce qui se passe maintenant dans ton quartier" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Confidentialité · Autour" />
+<meta name="twitter:description" content="Ce qu'Autour fait de ta localisation, ce qui est stocké dans ton navigateur, les services externes utilisés et comment exercer tes droits." />
+<meta name="twitter:image" content="https://autour.eu/og.png" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📍%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="legal.css" />
+</head>
+<body>
+<main class="page">
+
+<a class="retour" href="/">← Retour à Autour</a>
+
+<h1>Confidentialité</h1>
+<p class="chapeau">Ce que devient ta position, ce qui reste dans ton navigateur, et ce qui part ailleurs.</p>
+<p class="maj">Dernière mise à jour : 5 septembre 2026</p>
+
+<div class="encadre">
+  <p><strong>L'essentiel.</strong> Autour s'utilise sans compte. Il n'y a ni
+  mesure d'audience, ni traceur publicitaire, ni revente de données. La
+  géolocalisation précise n'est jamais demandée d'elle-même : il faut un geste.
+  Et le seul endroit où ta position précise est conservée, c'est ton propre
+  navigateur.</p>
+</div>
+
+<h2>1. La localisation, et ses trois niveaux</h2>
+
+<p>Autour a besoin de savoir « autour de quoi » chercher. Trois réponses sont
+possibles, et elles n'ont pas du tout la même précision. L'application affiche
+laquelle est en cours et ne prétend jamais en savoir plus qu'elle n'en sait.</p>
+
+<h3>Position précise (GPS)</h3>
+<p>Elle vient de ton appareil, via la géolocalisation du navigateur, à quelques
+mètres près. C'est la seule qui permet d'annoncer une distance ou un temps de
+marche.</p>
+<p><strong>Elle n'est demandée qu'après une action explicite de ta part</strong> —
+appuyer sur « Utiliser ma position », sur le bouton de recentrage, ou sur le
+bouton du panneau d'accueil. Au premier chargement, si tu n'as jamais répondu à
+cette demande, <strong>aucune fenêtre de permission ne s'ouvre</strong> : Autour
+explique d'abord à quoi elle sert, et attend.</p>
+<p>Si tu as déjà accordé la permission sur cet appareil, elle est réutilisée
+automatiquement au chargement suivant, sans nouvelle question. Tant que
+l'onglet est visible et la permission accordée, la position est suivie pour que
+l'application reste juste quand tu te déplaces ; ce suivi s'arrête dès que
+l'onglet passe en arrière-plan.</p>
+<p>Si tu refuses, Autour reste entièrement utilisable : la carte, la recherche
+de ville et d'adresse, et le contenu de la zone fonctionnent sans position
+précise.</p>
+
+<h3>Position approximative (adresse IP)</h3>
+<p>Pour que l'écran ne soit pas vide avant que tu aies choisi quoi que ce soit,
+notre serveur lit la ville approximative associée à ton adresse IP, telle que
+notre hébergeur la calcule. C'est une estimation <strong>à l'échelle d'une
+ville</strong>, de quelques kilomètres.</p>
+<p>Elle sert uniquement à choisir la zone de données à afficher. Elle n'est
+jamais présentée comme « tu es ici », et aucune distance n'est calculée à
+partir d'elle.</p>
+<p>Cette estimation est transmise à ton navigateur de deux façons : dans un
+cookie technique déposé avec la page (voir §3), ou par la route
+<code>/api/position</code> lorsque ce cookie est absent. Dans les deux cas,
+<strong>ton adresse IP n'est ni stockée, ni journalisée, ni renvoyée</strong> :
+seules deux coordonnées arrondies, un nom de ville et un code pays circulent.
+La réponse de <code>/api/position</code> est marquée
+<code>private, no-store</code> pour qu'aucun intermédiaire ne la conserve.</p>
+
+<h3>Zone par défaut</h3>
+<p>Si rien de ce qui précède n'aboutit — ou si l'estimation IP tombe en dehors
+des villes qu'Autour dessert — l'application ouvre simplement sa zone par
+défaut. Ce n'est pas une position : c'est un point de départ, et rien n'est
+déduit de toi à ce moment-là.</p>
+
+<h2>2. Ce qui est réellement conservé</h2>
+
+<div class="encadre">
+  <p><strong>Ta position précise ne quitte pas ton appareil pour être stockée.</strong>
+  Elle est enregistrée dans le stockage local de ton navigateur, et seulement
+  lorsqu'elle provient d'une vraie mesure GPS — une ville déduite d'une adresse
+  IP n'y entre jamais. Elle n'est enregistrée sur aucun serveur d'Autour, et
+  n'est associée à aucun identifiant de personne.</p>
+</div>
+
+<p>Le stockage local de ton navigateur conserve, sur ton appareil uniquement :</p>
+<ul>
+  <li>la <strong>dernière position GPS</strong> mesurée, et la dernière zone
+      associée, pour ne pas repartir de zéro à la visite suivante ;</li>
+  <li>l'<strong>état de la localisation</strong> : si tu as déjà vu l'explication,
+      le nombre de visites, et l'état de la permission tel que le navigateur l'a
+      rapporté ;</li>
+  <li>la <strong>zone active</strong> et un <strong>cache des résultats</strong>
+      déjà affichés, pour que la deuxième ouverture soit immédiate ;</li>
+  <li>tes <strong>préférences</strong> : envies suivies, catégories masquées,
+      pseudo et avatar si tu en as choisi un, éléments déjà vus.</li>
+</ul>
+<p>Tout cela vit dans ton navigateur. Vider les données du site depuis les
+réglages de ton navigateur les efface définitivement, sans passer par nous.</p>
+
+<h2>3. Cookies</h2>
+<p>Autour ne dépose <strong>aucun cookie publicitaire, de mesure d'audience ou
+de suivi entre sites</strong>. Il n'y a donc pas de bandeau de consentement à
+afficher.</p>
+<p>Un seul cookie est déposé, et il est strictement technique :</p>
+<div class="tableau">
+<table>
+  <thead><tr><th>Nom</th><th>Contenu</th><th>Rôle</th><th>Durée</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>autour_geo</code></td>
+      <td>Deux coordonnées arrondies, un nom de ville, un code pays</td>
+      <td>Afficher un contenu utile dès la première image, sans attendre une permission</td>
+      <td>1 heure</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p>Il ne contient aucun identifiant et ne permet pas de te reconnaître d'une
+session à l'autre. Il est lisible par le script de la page — c'est tout son
+intérêt — et limité à ce site (<code>SameSite=Lax</code>, <code>Secure</code>).</p>
+
+<h2>4. Le compte, quand tu en crées un</h2>
+<p>Autour s'utilise sans compte. Une identité anonyme peut être créée
+automatiquement lorsque tu utilises une fonction qui doit se souvenir de toi
+d'un appareil à l'autre — mettre un favori, par exemple. Elle ne contient aucune
+donnée personnelle.</p>
+<p>Une <strong>adresse e-mail</strong> n'est demandée que si tu choisis de
+rattacher un compte, pour recevoir un code de connexion à usage unique. Il n'y
+a pas de mot de passe.</p>
+<p>Ce qui est alors enregistré dans notre base :</p>
+<ul>
+  <li>ton <strong>adresse e-mail</strong>, dans le service d'authentification.
+      Elle ne figure dans aucune table publique de la base ;</li>
+  <li>un <strong>pseudo et un avatar</strong>, seulement si tu en choisis ;</li>
+  <li>tes <strong>publications d'événements</strong>, si tu en crées, avec leur
+      lieu et leurs dates — elles sont publiques par nature ;</li>
+  <li>tes <strong>favoris</strong>, tes <strong>participations</strong> et les
+      <strong>messages</strong> que tu écris dans le canal d'un événement.</li>
+</ul>
+<p>Autour comptabilise par ailleurs des <strong>compteurs d'usage anonymes</strong>
+par zone : un nom de mesure, un identifiant de zone et un nombre. Aucune donnée
+personnelle, aucun identifiant d'appareil, aucune position n'y figure.</p>
+
+<h2>5. Où vont tes coordonnées</h2>
+<p>Chercher « ce qui est ouvert autour d'ici » suppose de dire « ici » à qui
+doit répondre. Tes coordonnées — précises ou approximatives selon ce que tu as
+accordé — sont donc transmises aux services qui produisent la réponse, et à eux
+seuls. Elles ne sont jamais transmises à des fins publicitaires.</p>
+
+<div class="tableau">
+<table>
+  <thead><tr><th>Service</th><th>À quoi il sert</th><th>Ce qu'il reçoit</th></tr></thead>
+  <tbody>
+    <tr><td>Supabase (UE, Paris)</td><td>Événements, publications, compte</td><td>Une emprise rectangulaire autour de la zone regardée</td></tr>
+    <tr><td>OpenStreetMap / Overpass</td><td>Lieux et commerces</td><td>Une zone arrondie, mutualisée entre visiteurs du même quartier</td></tr>
+    <tr><td>CARTO, OpenStreetMap</td><td>Fonds de carte</td><td>Les tuiles de carte demandées, donc la zone regardée</td></tr>
+    <tr><td>Google Maps &amp; Places</td><td>Fiches de lieux, photos, décor de carte</td><td>La zone regardée et les termes recherchés</td></tr>
+    <tr><td>Base Adresse Nationale</td><td>Recherche de ville et d'adresse</td><td>Ce que tu tapes, et le centre de la zone regardée</td></tr>
+    <tr><td>Nominatim (OpenStreetMap)</td><td>Nom d'une commune, recherche de ville</td><td>Des coordonnées arrondies</td></tr>
+    <tr><td>OSRM</td><td>Itinéraires à pied et à vélo</td><td>Le départ et l'arrivée demandés</td></tr>
+    <tr><td>Wikimedia Commons, Wikidata</td><td>Illustrations de lieux</td><td>Le nom du lieu illustré</td></tr>
+    <tr><td>cdnjs, Google Fonts</td><td>Bibliothèque de carte, polices</td><td>Le chargement du fichier, donc ton adresse IP</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Certains liens ouvrent des services tiers <strong>uniquement si tu cliques
+dessus</strong> : Google Maps, Apple Plans, Waze, WhatsApp, Telegram, Facebook.
+Rien n'est envoyé tant que tu ne les utilises pas.</p>
+
+<p>Les autres sources de données — DATAtourisme, OpenAgenda, DORA, FINESS,
+service-public.fr — sont interrogées par nos serveurs, pas par ton navigateur :
+elles ne reçoivent ni ton adresse IP, ni ta position.</p>
+
+<h2>6. Durées de conservation</h2>
+<ul>
+  <li><strong>Cookie de localisation approximative</strong> : 1 heure.</li>
+  <li><strong>Données du navigateur</strong> : jusqu'à ce que tu vides les
+      données du site.</li>
+  <li><strong>Compte et contenus associés</strong> : conservés tant que le
+      compte existe, puis supprimés sur demande.</li>
+  <li><strong>Compteurs d'usage anonymes</strong> : agrégés par jour et par
+      zone, sans lien avec une personne.</li>
+</ul>
+
+<h2>7. Tes droits</h2>
+<p>Conformément au règlement (UE) 2016/679 et à la loi « Informatique et
+Libertés », tu disposes d'un droit d'accès, de rectification, d'effacement, de
+limitation, d'opposition et de portabilité sur les données qui te concernent.</p>
+<p>Ces droits s'exercent auprès de
+<a href="mailto:contact@autour.eu">contact@autour.eu</a>.</p>
+<p>Une réponse est apportée dans un délai d'un mois. Si elle ne te convient pas,
+tu peux saisir la <a href="https://www.cnil.fr/fr/plaintes" rel="noopener">CNIL</a>.</p>
+<p>Le responsable de traitement est l'éditeur du site, identifié dans les
+<a href="/mentions-legales">mentions légales</a>.</p>
+
+<h2>8. Bases légales</h2>
+<ul>
+  <li><strong>Géolocalisation précise</strong> : ton consentement, donné à la
+      demande du navigateur et révocable à tout moment dans ses réglages.</li>
+  <li><strong>Localisation approximative et cookie technique</strong> : intérêt
+      légitime à fournir un service utilisable dès la première seconde, sans
+      profilage.</li>
+  <li><strong>Compte, publications, favoris</strong> : exécution du service que
+      tu demandes.</li>
+</ul>
+
+<h2>9. Modifications</h2>
+<p>Cette page peut évoluer avec le service. La date de dernière mise à jour, en
+haut, fait foi.</p>
+
+<footer>
+  <a href="/">Autour</a>
+  <a href="/mentions-legales">Mentions légales</a>
+</footer>
+
+</main>
+</body>
+</html>
