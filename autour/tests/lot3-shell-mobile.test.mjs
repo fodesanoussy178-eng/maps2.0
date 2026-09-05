@@ -380,3 +380,96 @@ test("la dernière ligne d'une feuille ne passe pas sous la barre basse", () => 
      règle-là existait déjà et reste la raison de l'exclusion. */
   assert.match(html, /#feuille:has\(\.env-actions\)\{z-index:920\}/);
 });
+
+/* ---- 10. Valider ses goûts ne fait pas quitter « Pour toi » ------------- */
+
+test("valider ses goûts rend la surface qu'on éditait, par les trois sorties", () => {
+  /* Sur mobile, ouvrir l'éditeur ferme le tiroir : un tiroir et une feuille
+     ne se superposent pas. Le drapeau est la seule mémoire ajoutée — il ne
+     dit que « le tiroir était ouvert avant ». */
+  assert.match(app, /let pourToiAvantEditionEnvies = false;/);
+  const ouvre = app.slice(app.indexOf("function ouvrirEnvies()"),
+    app.indexOf("function peindreEnvies()"));
+  assert.match(ouvre, /pourToiAvantEditionEnvies = pourToiOuvert\(\);/);
+  assert.ok(ouvre.indexOf("pourToiAvantEditionEnvies = pourToiOuvert();") <
+    ouvre.indexOf("fermerPourToi();"), "on note l'état AVANT de fermer");
+
+  const valider = app.slice(app.indexOf("function validerEditionEnvies()"),
+    app.indexOf("function brancherSelectionEnvies("));
+  assert.match(valider, /if\(rendreLaSurfacePourToi\(\)\) return;/);
+  /* Et le moteur est intouché : c'est toujours `remplacer` qui persiste, et
+     `rebaser…` qui relance le classement. */
+  assert.match(valider, /envies\.remplacer\(ids\);/);
+  assert.match(valider, /rebaserPourToiApresChangementGouts\(\);/);
+
+  const annuler = app.slice(app.indexOf("function annulerEditionEnvies()"),
+    app.indexOf("function validerEditionEnvies()"));
+  assert.match(annuler, /rendreLaSurfacePourToi\(\);/);
+
+  /* La croix, le voile et Échap ne passent pas par `annuler` : la feuille les
+     rattrape elle-même, sinon les trois sorties divergeraient. */
+  const fermer = app.slice(app.indexOf("function fermerFeuille(options)"),
+    app.indexOf("function afficherConfirmationAbandon("));
+  assert.match(fermer, /if\(editionEnvies && editionEnvies\.cible === "feuille"\)\{/);
+  assert.match(fermer, /rendreLaSurfacePourToi\(\);/);
+});
+
+/* ---- 11. Les photos ----------------------------------------------------- */
+
+test("la vignette d'une sélection vient d'une entité que cette sélection renverrait", () => {
+  const bloc = app.slice(app.indexOf("function photoSelectionExplorer(entree)"),
+    app.indexOf("let explorerDecouverteRemplie"));
+  /* La catégorie vient de la phrase de la sélection, par la fonction que la
+     recherche utilise déjà — pas d'une liste d'illustrations. */
+  assert.match(bloc, /categorieRecherchee\(entree\.phrase\)/);
+  assert.match(bloc, /correspondCategorie\(l, cat\)/);
+  /* « Sorties gratuites » n'est pas une catégorie mais un prix. */
+  assert.match(bloc, /entree\.visuel === "gratuit"[\s\S]*?gratuitDe\(l\)/);
+  /* L'image passe par la résolution existante, et par elle seule. */
+  assert.match(bloc, /imageDe\(trouve\)/);
+  assert.match(bloc, /correspond\(l\) && imageDe\(l\)/);
+  /* Rien n'est fabriqué : sans catégorie ou sans entité illustrée, on rend
+     `null` et la carte garde sa tuile. */
+  assert.match(bloc, /if\(!correspond\) return null;/);
+  assert.match(bloc, /if\(!trouve\) return null;/);
+  assert.doesNotMatch(bloc, /https?:\/\//);
+});
+
+test("les vignettes d'Explorer se rejouent à chaque ouverture, sans rien déplacer", () => {
+  /* La tuile est posée à sa taille définitive avec le panneau ; la photo
+     vient se poser dessus. Aucune hauteur ne dépend de l'image. */
+  assert.match(app, /<span class="xp-photo xp-photo-vide" data-xp-photo="/);
+  assert.match(blocMobile, /\.xp-photo\{position:relative;display:grid;place-items:center;\s*height:84px/);
+  assert.match(blocMobile, /\.xp-photo img\{position:absolute;inset:0;z-index:2;width:100%;height:100%;\s*object-fit:cover;opacity:0/);
+  assert.match(blocMobile, /\.xp-photo img\.vue\{opacity:1\}/);
+  /* Le panneau se construit une fois, les photos se rejouent : à la première
+     ouverture, Autour ne sait souvent pas encore où l'on est. */
+  const ouvre = app.slice(app.indexOf("function ouvrirExplorerDecouverte()"),
+    app.indexOf("function fermerExplorerDecouverte()"));
+  assert.match(ouvre, /remplirExplorerDecouverte\(\);\s*rafraichirPhotosExplorer\(\);/);
+  const rafraichir = app.slice(app.indexOf("function rafraichirPhotosExplorer()"),
+    app.indexOf("function ouvrirExplorerDecouverte()"));
+  assert.match(rafraichir, /img\.loading = "lazy";/);
+  assert.match(rafraichir, /img\.onerror = \(\)=>img\.remove\(\);/);
+  /* Et on ne retire jamais une photo déjà là pour la remplacer par du vide. */
+  assert.match(rafraichir, /if\(!photo\)\{[\s\S]*?return;/);
+});
+
+test("les quatre surfaces gardent le système d'images existant", () => {
+  /* Aucune de ces lignes n'appartient au Lot 3 : elles sont ici pour qu'on
+     s'aperçoive si un lot suivant les enlève. La règle est toujours la même —
+     l'image résolue si elle existe, la tuile teintée de la catégorie sinon,
+     jamais une photo prise ailleurs. */
+  assert.match(app, /function imageDe\(l\)\{/);
+  /* Maintenant et « Nouveau pour toi ». */
+  assert.match(app, /const visuel = imageDe\(l\)\s*\?\s*visuelCarteEvenement\(l, c, "npt"\)/);
+  /* Pour toi. */
+  assert.match(app, /const visuel = imageDe\(l\)\s*\?\s*visuelCarteEvenement\(l, c, "pt"\)/);
+  /* Solidarité. */
+  assert.match(app, /aide-priorite-photo[\s\S]{0,320}?photo \? '<img loading="lazy"/);
+  /* Les cartes de résultats, avec leur tuile teintée par la catégorie. */
+  assert.match(app, /const teinte = COULEURS_CAT\[l\.cat\] \|\| "#5D6B63";/);
+  assert.match(app, /rc-photo rc-photo-vide/);
+  /* Partout : chargement paresseux et recadrage constant. */
+  assert.match(html, /\.rc-photo img\{position:absolute;inset:0;z-index:2;width:100%;height:100%;\s*object-fit:cover/);
+});

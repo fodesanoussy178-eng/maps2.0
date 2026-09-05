@@ -7628,6 +7628,16 @@ function fermerFeuille(options){
     else if(positionMoi) allerVers(positionMoi, 16, {duration:.6});
   }
   vueAvantTrajet = null;
+  /* LES TROIS SORTIES DOIVENT DONNER LA MÊME RÉPONSE.
+     `Annuler` passe par `annulerEditionEnvies`, qui a déjà remis la surface et
+     vidé `editionEnvies`. La croix, le voile et Échap arrivent ici sans être
+     passés par lui : sans cette ligne, sortir par la croix rendait la carte là
+     où `Annuler` rendait « Pour toi ». On ne rattrape donc que ce cas — quand
+     une édition est encore en cours au moment où la feuille se ferme. */
+  if(editionEnvies && editionEnvies.cible === "feuille"){
+    editionEnvies = null;
+    rendreLaSurfacePourToi();
+  }
   const cible = dernierFocusFeuille;
   dernierFocusFeuille = null;
   requestAnimationFrame(()=>{
@@ -13302,11 +13312,36 @@ function selectionEnviesHTML(){
     '</div></section>';
 }
 
+/* ON REVIENT D'OÙ L'ON VENAIT.
+   Sur mobile, ouvrir l'éditeur de goûts ferme le tiroir « Pour toi » : un
+   tiroir et une feuille ne se superposent pas sur un téléphone. Mais fermer
+   l'éditeur rendait alors la carte, pas la surface qu'on éditait — on validait
+   ses goûts et on se retrouvait ailleurs, sans ses recommandations. Ce drapeau
+   est la seule chose ajoutée : il ne dit rien de plus que « le tiroir était
+   ouvert avant, il doit l'être après ». Ni le moteur, ni le stockage, ni le
+   catalogue ne le regardent. */
+let pourToiAvantEditionEnvies = false;
+
+function rendreLaSurfacePourToi(){
+  if(!pourToiAvantEditionEnvies) return false;
+  pourToiAvantEditionEnvies = false;
+  if(pourToiOuvert()) return false;
+  ouvrirPourToi();
+  return true;
+}
+
 function annulerEditionEnvies(){
   const cible = editionEnvies && editionEnvies.cible;
   editionEnvies = null;
-  if(cible === "feuille") fermerFeuille();
-  else fermerPourToi();
+  if(cible === "feuille"){
+    fermerFeuille();
+    /* Annuler ne change rien aux goûts, mais ne doit pas non plus changer
+       d'endroit : on rend la surface telle qu'on l'avait prise. */
+    rendreLaSurfacePourToi();
+  }else{
+    pourToiAvantEditionEnvies = false;
+    fermerPourToi();
+  }
 }
 
 function validerEditionEnvies(){
@@ -13320,7 +13355,13 @@ function validerEditionEnvies(){
      n'est pas sur le chemin critique : le localStorage est déjà à jour. */
   void enregistrerInteretsCompte(ids);
   rebaserPourToiApresChangementGouts();
-  if(cible === "feuille") fermerFeuille();
+  if(cible === "feuille"){
+    fermerFeuille();
+    /* Valider, c'est demander à voir le résultat. Rouvrir le tiroir le peint
+       déjà — `ouvrirPourToi` appelle `majPourToi` — d'où le retour anticipé :
+       repeindre deux fois de suite ne servirait qu'à clignoter. */
+    if(rendreLaSurfacePourToi()) return;
+  }
   majPourToi();
 }
 
@@ -13663,6 +13704,7 @@ function marquerVu(ids){
    l'écran sans écrire ; « Valider » est le seul geste qui persiste. */
 function ouvrirEnvies(){
   if(!synchroniserEnvies()) return;
+  pourToiAvantEditionEnvies = pourToiOuvert();
   if(!NAV_FLOTTANTE.matches) fermerPourToi();
   commencerEditionEnvies("feuille");
   pileEcrans = [];
@@ -17185,7 +17227,7 @@ const XP_SELECTIONS = Object.freeze([
   {emoji:"🖼️", titre:"Expos à voir cette semaine", sous:"Les prochains jours",
    phrase:"exposition", creneau:"avenir"},
   {emoji:"🎟️", titre:"Sorties gratuites",          sous:"Sans dépenser",
-   phrase:"gratuit",    creneau:"avenir"},
+   phrase:"gratuit",    creneau:"avenir", visuel:"gratuit"},
   {emoji:"📚", titre:"Où étudier au calme",         sous:"Lieux permanents",
    phrase:"bibliothèque"},
   {emoji:"🌧️", titre:"Que faire quand il pleut",    sous:"À l'abri",
@@ -17195,6 +17237,40 @@ const XP_SELECTIONS = Object.freeze([
   {emoji:"🌳", titre:"Nature et balades",           sous:"Prendre l'air",
    phrase:"parc"},
 ]);
+
+/* ---- LA PHOTO D'UNE SÉLECTION VIENT DE CE QU'ELLE OUVRE -------------------
+
+   Une sélection doit montrer une photo, sinon elle ne se distingue pas d'une
+   ligne de menu. Mais une photo « d'ambiance » choisie ailleurs mentirait :
+   elle promettrait un lieu qui n'est pas dans le résultat.
+
+   La règle est donc la plus stricte possible : la vignette est l'image D'UNE
+   ENTITÉ QUE CETTE SÉLECTION RENVERRAIT. On repasse par la catégorie que sa
+   propre phrase désigne — `categorieRecherchee`, la fonction que la recherche
+   utilise déjà, sans effet de bord — puis par `correspondCategorie` et
+   `imageDe`, c'est-à-dire la résolution d'images existante et rien d'autre.
+   Aucune URL n'est fabriquée, aucun catalogue d'illustrations n'est ajouté.
+
+   « Sorties gratuites » ne désigne pas une catégorie mais un prix : elle passe
+   par `gratuitDe`, la même lecture que le reste de l'application.
+
+   Quand rien ne correspond — pas de position, pas encore de données, ou aucune
+   entité de cette catégorie n'a d'image — la fonction rend `null` et la carte
+   garde sa tuile teintée. C'est voulu : mieux vaut une tuile honnête qu'une
+   photo qui parle d'autre chose. */
+function photoSelectionExplorer(entree){
+  if(!entree || !Array.isArray(lieux) || !lieux.length) return null;
+  const correspond = entree.visuel === "gratuit"
+    ? (l)=>gratuitDe(l)
+    : (()=>{
+        const cat = categorieRecherchee(entree.phrase);
+        return cat ? (l)=>correspondCategorie(l, cat) : null;
+      })();
+  if(!correspond) return null;
+  const trouve = lieux.find(l=>correspond(l) && imageDe(l));
+  if(!trouve) return null;
+  return {url:imageDe(trouve), teinte:COULEURS_CAT[trouve.cat] || "#5D6B63"};
+}
 
 const XP_THEMES = Object.freeze([
   {emoji:"📚", label:"Étudier / travailler", phrase:"étudier"},
@@ -17226,10 +17302,15 @@ function remplirExplorerDecouverte(){
   intentions.innerHTML = XP_INTENTIONS.map((x,i)=>
     '<button class="xp-int" type="button" data-xp-int="'+i+'">'+
       esc(x.emoji)+' '+esc(x.label)+'</button>').join("");
+  /* La tuile teintée est posée TOUT DE SUITE, à sa taille définitive : la
+     photo viendra se poser dessus quand on en aura une, sans rien déplacer.
+     C'est le gabarit des cartes de résultats (`rc-photo`), repris tel quel. */
   selections.innerHTML = XP_SELECTIONS.map((x,i)=>
     '<button class="xp-carte" type="button" data-xp-sel="'+i+'">'+
-      '<em aria-hidden="true">'+esc(x.emoji)+'</em>'+
-      '<b>'+esc(x.titre)+'</b><i>'+esc(x.sous)+'</i></button>').join("");
+      '<span class="xp-photo xp-photo-vide" data-xp-photo="'+i+'" aria-hidden="true">'+
+        '<i>'+esc(x.emoji)+'</i></span>'+
+      '<span class="xp-carte-txt">'+
+        '<b>'+esc(x.titre)+'</b><i>'+esc(x.sous)+'</i></span></button>').join("");
   themes.innerHTML = XP_THEMES.map((x,i)=>
     '<button class="xp-theme" type="button" data-xp-theme="'+i+'">'+
       '<em aria-hidden="true">'+esc(x.emoji)+'</em>'+
@@ -17248,10 +17329,45 @@ function remplirExplorerDecouverte(){
   explorerDecouverteRemplie = true;
 }
 
+/* Les vignettes se rejouent à CHAQUE ouverture, pas une seule fois avec le
+   reste du panneau : la première fois, Autour ne sait souvent pas encore où
+   l'on est et `lieux` est vide. Un panneau construit une fois pour toutes
+   resterait donc sans photos pour le reste de la session.
+   Seule l'image bouge — les boutons, leurs libellés et leurs gestionnaires ne
+   sont pas reconstruits, et la tuile garde sa place quoi qu'il arrive. */
+function rafraichirPhotosExplorer(){
+  const selections = $("#xpSelections");
+  if(!selections) return;
+  selections.querySelectorAll("[data-xp-photo]").forEach(shell=>{
+    const entree = XP_SELECTIONS[Number(shell.dataset.xpPhoto)];
+    const photo = photoSelectionExplorer(entree);
+    const posee = shell.querySelector("img");
+    if(!photo){
+      /* On ne retire pas une photo déjà chargée pour la remplacer par du
+         vide : ce serait un clignotement sans information. */
+      return;
+    }
+    if(posee && posee.getAttribute("src") === photo.url) return;
+    shell.style.setProperty("--teinte", photo.teinte);
+    if(posee) posee.remove();
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.alt = "";
+    /* Une image qui ne charge pas s'efface et rend la tuile teintée : jamais
+       un cadre vide, jamais une icône de fichier cassé. */
+    img.onload = ()=>img.classList.add("vue");
+    img.onerror = ()=>img.remove();
+    img.src = photo.url;
+    shell.appendChild(img);
+  });
+}
+
 function ouvrirExplorerDecouverte(){
   const panneau = $("#explorerDecouverte");
   if(!panneau) return;
   remplirExplorerDecouverte();
+  rafraichirPhotosExplorer();
   panneau.hidden = false;
   document.body.classList.add("explorer-ouvert");
 }

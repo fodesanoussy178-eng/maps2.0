@@ -1379,10 +1379,22 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   .xp-selections{display:flex;gap:10px;margin-inline:-16px;padding-inline:16px;
     overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .xp-selections::-webkit-scrollbar{display:none}
-  .xp-carte{flex:0 0 auto;width:172px;min-height:96px;padding:12px;
+  .xp-carte{flex:0 0 auto;width:172px;padding:0;overflow:hidden;
     border:1px solid var(--bord);border-radius:16px;background:#fff;
-    display:flex;flex-direction:column;gap:6px;text-align:left}
-  .xp-carte em{font-style:normal;font-size:20px;line-height:1}
+    display:flex;flex-direction:column;text-align:left}
+  /* Même gabarit que la photo des cartes de résultats : hauteur fixe, `cover`,
+     tuile teintée dessous. La hauteur est posée avant que l'image existe, donc
+     rien ne saute quand elle arrive — et rien ne saute non plus quand elle
+     n'arrive jamais. */
+  .xp-photo{position:relative;display:grid;place-items:center;
+    height:84px;background:var(--teinte,#5D6B63)}
+  .xp-photo::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
+  .xp-photo i{position:relative;z-index:1;font-style:normal;font-size:22px;opacity:.9}
+  .xp-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
+    object-fit:cover;opacity:0;transition:opacity .18s ease}
+  .xp-photo img.vue{opacity:1}
+  .xp-carte-txt{display:flex;flex-direction:column;gap:3px;padding:10px 12px 12px}
   .xp-carte b{font-size:14px;font-weight:750;line-height:1.25;letter-spacing:-.01em}
   .xp-carte i{font-style:normal;font-size:12px;color:var(--ink2)}
   .xp-themes{display:flex;flex-direction:column;gap:1px}
@@ -3185,6 +3197,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=7fa183bc" defer></script>
+<script src="app.js?v=738d7cf7" defer></script>
 </body>
 </html>
