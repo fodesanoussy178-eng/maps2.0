@@ -188,18 +188,49 @@ test("les pages de texte reprennent les couleurs de l'application", () => {
 
 /* ---- 3. Ce qui reste à renseigner se voit ------------------------------ */
 
-test("les informations légales manquantes sont marquées, pas inventées", () => {
-  const marques = (legales.match(/class="a-renseigner"/g) || []).length +
-                  (confid.match(/class="a-renseigner"/g) || []).length;
-  assert.ok(marques > 0,
-    "tant que l'éditeur n'est pas renseigné, les marques doivent rester visibles");
-  /* Elles sont voyantes à l'écran : une mention légale incomplète qui
-     ressemble à une mention complète ne se fait jamais corriger. */
+test("aucune page légale ne part en production avec une marque « à renseigner »", () => {
+  /* L'INVARIANT S'EST RETOURNÉ, ET C'EST VOULU.
+
+     Tant que l'éditeur n'était pas renseigné, la règle était « ce qui manque
+     doit se voir ». Maintenant que les pages sont complètes, la règle devient
+     l'inverse et c'est la seule qui protège la production : une marque jaune
+     livrée sur autour.eu serait un aveu d'inachèvement sur la page même qui
+     doit inspirer confiance.
+
+     Le style reste défini : il servira à la prochaine information à recueillir,
+     et il doit rester voyant ce jour-là. */
+  assert.equal((legales.match(/class="a-renseigner"/g) || []).length, 0);
+  assert.equal((confid.match(/class="a-renseigner"/g) || []).length, 0);
+  assert.doesNotMatch(legales + confid, /À renseigner/i);
   assert.match(legalCss, /\.a-renseigner\{[^}]*background:#FFF1CC/);
-  /* Et aucune identité n'a été inventée pour combler les trous. */
-  assert.doesNotMatch(legales, /\b\d{3} ?\d{3} ?\d{3}\b/, "aucun SIREN inventé");
-  assert.doesNotMatch(legales, /[\w.-]+@[\w.-]+\.\w+/, "aucune adresse e-mail inventée");
-  assert.doesNotMatch(confid, /[\w.-]+@[\w.-]+\.\w+/, "aucune adresse e-mail inventée");
+});
+
+test("une seule adresse de contact est publiée, et c'est la bonne", () => {
+  /* Trois usages — contact, signalement, exercice des droits — une seule
+     adresse. Une adresse de plus serait une de plus à relever. */
+  const adresses = new Set([...(legales + confid).matchAll(/[\w.+-]+@[\w.-]+\.\w+/g)]
+    .map((m) => m[0]));
+  assert.deepEqual([...adresses], ["contact@autour.eu"]);
+  /* Et elle est cliquable partout où elle apparaît : sur un téléphone, une
+     adresse en texte brut oblige à la recopier à la main. */
+  for (const page of [legales, confid])
+    assert.doesNotMatch(page.replace(/<a href="mailto:contact@autour\.eu">contact@autour\.eu<\/a>/g, ""),
+      /contact@autour\.eu/, "toute occurrence doit être un lien mailto");
+});
+
+test("l'éditeur n'a pas d'identité inventée, l'hébergeur en a une complète", () => {
+  /* Régime de l'article 6 III 2 : l'éditeur non professionnel ne publie que
+     l'identité de son hébergeur. Rien n'a été fabriqué pour combler le reste. */
+  assert.doesNotMatch(legales, /\b\d{3} ?\d{3} ?\d{3}\b/, "aucun SIREN");
+  assert.doesNotMatch(legales, /capital social/i, "aucun capital social");
+  assert.doesNotMatch(legales, /RCS/, "aucune immatriculation");
+  assert.match(legales, /article 6 III 2/, "le régime appliqué est nommé");
+  /* L'hébergeur, lui, est identifié complètement — c'est ce que ce régime
+     exige en contrepartie. */
+  assert.match(legales, /Vercel Inc\./);
+  assert.match(plat(legales), /440 N Barranca Avenue #4133/);
+  assert.match(plat(legales), /Covina, CA 91723/);
+  assert.match(plat(legales), /United States/);
 });
 
 /* ---- 4. robots.txt ------------------------------------------------------ */
