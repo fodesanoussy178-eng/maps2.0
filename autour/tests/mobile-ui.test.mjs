@@ -396,9 +396,16 @@ test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa haut
   // selon le breakpoint. S'accrocher à --header-height le recouvrait.
   assert.match(html,/--header-bas:calc\(var\(--safe-t\) \+ 54px\)/);
   assert.match(html,/setProperty\("--header-bas",\s*\n?\s*Math\.round\(h\.getBoundingClientRect\(\)\.bottom\)\+"px"\)/);
+  /* LOT 3 : l'expression est factorisée dans `--sous-entete`, parce que le
+     sélecteur de surface occupe désormais ce créneau sur mobile et que tout
+     ce qui s'y rangeait doit descendre d'un seul coup. La variable vaut le
+     bord bas de l'en-tête par défaut — donc la règle est intacte — et le
+     mobile lui ajoute la hauteur du sélecteur. */
+  assert.match(html,/--sous-entete:calc\(var\(--header-bas\) \+ 10px\);/);
+  assert.match(html,/:root\{--sous-entete:calc\(var\(--header-bas\) \+ 10px \+ 48px \+ 8px\)\}/);
   for(const sel of ["#bandeauGeo,#bandeauVide,#onboardingLocalisation","#charge"])
-    assert.ok(html.includes(sel+"{position:absolute;top:calc(var(--header-bas) + 10px)") ||
-              html.includes(sel+"{position:absolute;left:16px;right:16px;\n  top:calc(var(--header-bas) + 10px)"),
+    assert.ok(html.includes(sel+"{position:absolute;top:var(--sous-entete)") ||
+              html.includes(sel+"{position:absolute;left:16px;right:16px;\n  top:var(--sous-entete)"),
               sel+" doit s'accrocher au bord bas de l'en-tête");
 });
 
@@ -1644,11 +1651,14 @@ test("un signal ne s'invente jamais",()=>{
 
 test("Aide est une entrée principale, nommée et distincte du cœur",()=>{
   assert.match(html,/<button class="nb nb-aide" data-nb="aide">/);
-  // le mot est écrit : une icône seule ne dit pas ce que c'est
-  assert.match(html,/<button class="nb nb-aide" data-nb="aide">[\s\S]*?<span>Aide<\/span>\s*<\/button>/);
-  // Pour toi et Aide ont chacun leur entrée : aucun Favoris fantôme ne
-  // reprend la place réservée à Aide.
-  assert.match(html,/<button class="nb nb-pourtoi" data-nb="pourtoi"[^>]*>/);
+  /* LOT 3 : le mot est toujours écrit — une icône seule ne dit pas ce que
+     c'est — mais c'est « Solidarité ». « Aide » se lisait comme un support
+     technique, ce que ce produit n'est pas. */
+  assert.match(html,/<button class="nb nb-aide" data-nb="aide">[\s\S]*?<span>Solidarité<\/span>\s*<\/button>/);
+  /* Pour toi garde son entrée dans le DOM — le desktop s'en sert — mais elle
+     porte `nb-desktop` : sur mobile elle quitte la barre pour le sélecteur de
+     surface, et la barre tombe à trois destinations. */
+  assert.match(html,/<button class="nb nb-pourtoi nb-desktop" data-nb="pourtoi"[^>]*>/);
   assert.doesNotMatch(html,/data-nb="favoris"/);
   for(const t of ["maintenant","explorer","aide","creer","pourtoi","profil"])
     assert.match(html,new RegExp('data-nb="'+t+'"'), t);

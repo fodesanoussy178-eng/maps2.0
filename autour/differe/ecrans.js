@@ -1215,6 +1215,78 @@ function rendreEcranCompte(erreur){
 /* Sans compte, cet écran ne dit pas « connectez-vous » : il montre ce qu'un
    compte apporterait. C'est la même règle que partout ailleurs — la valeur
    d'abord, la demande ensuite. */
+/* ===========================================================================
+   LE MENU SECONDAIRE — « Profil / Plus »
+
+   Ce qui ne mérite pas une destination de la barre basse, mais doit rester
+   trouvable : le compte, ce qui t'appartient, et les pages qu'un site doit
+   tenir à disposition.
+
+   DEUX RÈGLES, ET ELLES SE VOIENT DANS LE CODE.
+
+   1. AUCUNE ENTRÉE FICTIVE. Chaque ligne pointe vers une fonction qui existe
+      réellement — `ouvrirProfil`, `ouvrirFavoris`, `ouvrirMesPublications` —
+      ou vers une page qui répond. Une entrée grisée « bientôt » serait pire
+      que son absence.
+   2. LES PAGES LÉGALES NE SONT PAS RECOPIÉES ICI. Ce sont de vraies pages,
+      servies en statique, avec leurs propres métadonnées et leur propre
+      canonique. Le menu y mène par un lien ; il n'en duplique pas une ligne.
+   =========================================================================== */
+const MENU_PLUS_LIENS = Object.freeze([
+  {emoji:"✉️", nom:"Support",            href:"mailto:contact@autour.eu"},
+  {emoji:"📄", nom:"Mentions légales",   href:"/mentions-legales"},
+  {emoji:"🔒", nom:"Confidentialité",    href:"/confidentialite"},
+]);
+
+function ouvrirMenuPlus(){
+  const ligne = (attr, emoji, nom) =>
+    '<button class="ac-item" '+attr+'>'+
+      '<span class="ac-emoji">'+emoji+'</span><span class="ac-txt">'+
+      '<span class="ac-nom">'+esc(nom)+'</span></span></button>';
+
+  const liens = MENU_PLUS_LIENS.map(l=>
+    '<a class="ac-item" href="'+esc(l.href)+'"'+
+      (l.href.indexOf("mailto:") === 0 ? '' : ' rel="noopener"')+'>'+
+      '<span class="ac-emoji">'+l.emoji+'</span><span class="ac-txt">'+
+      '<span class="ac-nom">'+esc(l.nom)+'</span></span></a>').join("");
+
+  ouvrirFeuille(
+    '<section class="cpt" data-testid="menu-plus">'+
+      '<h2 class="cpt-titre">Profil</h2>'+
+      '<div class="cpt-actions">'+
+        ligne('data-menu="compte"',       "👤", "Mon compte")+
+        ligne('data-menu="favoris"',      "♡",  "Mes favoris")+
+        ligne('data-menu="publications"', "📍", "Mes publications")+
+      '</div>'+
+      '<div class="cpt-actions cpt-actions-secondaire">'+
+        liens+
+        ligne('data-menu="apropos"', "ⓘ", "À propos d’Autour")+
+      '</div>'+
+    '</section>', {ariaLabel:"Profil et réglages"});
+
+  $("#feuille").querySelectorAll("[data-menu]").forEach(b=>b.onclick=()=>{
+    const quoi = b.dataset.menu;
+    if(quoi === "favoris") return ouvrirFavoris();
+    if(quoi === "publications") return ouvrirMesPublications();
+    if(quoi === "apropos") return ouvrirAPropos();
+    return ouvrirProfil();
+  });
+}
+
+/* À propos : ce qu'est Autour, en trois lignes. Pas une page de présentation
+   — celle-ci a sa place ailleurs le jour où elle existera. */
+function ouvrirAPropos(){
+  ouvrirFeuille(
+    '<section class="cpt" data-testid="a-propos">'+
+      '<h2 class="cpt-titre">À propos d’Autour</h2>'+
+      '<p class="cpt-sous">Autour montre ce qui se passe et ce qui est ouvert '+
+        'près de toi, maintenant : événements, lieux, entraide et itinéraires. '+
+        'Sans compte et sans installation.</p>'+
+      '<p class="cpt-lab">Adresse</p>'+
+      '<p class="cpt-valeur"><a href="https://autour.eu" rel="noopener">autour.eu</a></p>'+
+    '</section>', {ariaLabel:"À propos d’Autour"});
+}
+
 async function ouvrirProfil(){
   if(!estConnecte()){
     ouvrirFeuille(

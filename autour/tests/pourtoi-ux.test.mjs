@@ -53,7 +53,12 @@ test("les actions internes restent séparées de l'ouverture de carte", () => {
 });
 
 test("les surveillances sont rendues avant les recommandations", () => {
-  assert.match(source, /corps\.innerHTML = blocSurveillances\(\) \+ contenu;/);
+  /* LOT 3 : le sélecteur de temps ouvre le panneau — « ce qui me correspond,
+     ce week-end » est une requête légitime de cette surface. L'ordre que ce
+     test défend est inchangé : les surveillances restent AVANT les
+     recommandations. */
+  assert.match(source, /corps\.innerHTML = tempsPourToi \+ blocSurveillances\(\) \+ contenu;/);
+  assert.match(source, /const tempsPourToi = ongletsTemps\(\);/);
   const bloc = source.slice(
     source.indexOf("function blocSurveillances"),
     source.indexOf("function rendreGroupePourToi"),

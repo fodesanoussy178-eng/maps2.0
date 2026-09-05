@@ -90,6 +90,12 @@ window.AutourBootTiming={html_disponible:performance.now()};
   /* bord bas réel de l'en-tête flottant : ce qui se range juste dessous doit
      s'y accrocher, pas à sa hauteur seule — l'en-tête ne commence pas à 0 */
   --header-bas:calc(var(--safe-t) + 54px);
+  /* CE QUI SE RANGE JUSTE SOUS L'EN-TÊTE. Trois éléments partageaient la même
+     expression littérale — le bandeau de localisation, la pastille de
+     chargement et « Revenir autour de moi ». Sur mobile, le sélecteur de
+     surface occupe désormais ce créneau : ils descendent d'autant, et une
+     seule variable suffit à le dire. */
+  --sous-entete:calc(var(--header-bas) + 10px);
   --map-control-bottom:max(calc(var(--nav-height) + 14px),calc(var(--sheet-visible-height) + 12px));
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -357,7 +363,7 @@ input{font-family:inherit;font-size:16px}
 /* Les bandeaux se posent SOUS l'en-tête : sa hauteur est mesurée, donc ils
    ne recouvrent plus la recherche quel que soit l'appareil. */
 #bandeauGeo,#bandeauVide,#onboardingLocalisation{position:absolute;left:16px;right:16px;
-  top:calc(var(--header-bas) + 10px);z-index:650;
+  top:var(--sous-entete);z-index:650;
   display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--bord);
   border-radius:99px;background:#fff;font-size:13px;line-height:1.3;
   box-shadow:0 3px 14px rgba(20,30,25,.18);animation:monteT .26s}
@@ -377,7 +383,7 @@ input{font-family:inherit;font-size:16px}
   text-transform:none;cursor:pointer}
 #onboardingAvatars button[aria-pressed="true"]{border-color:var(--signal);box-shadow:0 0 0 2px rgba(255,74,23,.16)}
 #hdAvatar{display:inline-block;flex:0 0 auto;font-size:20px;line-height:1}
-#charge{position:absolute;top:calc(var(--header-bas) + 10px);left:50%;transform:translateX(-50%);
+#charge{position:absolute;top:var(--sous-entete);left:50%;transform:translateX(-50%);
   z-index:700;padding:9px 14px;border:1px solid var(--bord);border-radius:99px;
   background:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:.09em;text-transform:uppercase;box-shadow:0 2px 10px rgba(20,30,25,.14)}
@@ -1269,6 +1275,113 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 .nb.actif svg{opacity:1}
 .nb[aria-disabled="true"]{opacity:.38}
 
+/* ---- LOT 3 · LE SHELL MOBILE --------------------------------------------
+   Trois destinations, et rien d'autre, dans la barre basse. Créer devient un
+   bouton flottant, Profil un menu du haut, Pour toi une lecture du même
+   endroit. Tout ce qui suit est BORNÉ AU MOBILE : le desktop garde sa pastille
+   de six entrées, inchangée. */
+
+/* Par défaut — donc sur desktop — rien de tout cela n'existe. */
+#selecteurSurface,#fabCreer,#explorerDecouverte{display:none}
+
+@media (max-width:768px){
+  /* Le sélecteur de surface prend le créneau sous l'en-tête ; tout ce qui s'y
+     rangeait descend de sa hauteur, sans qu'aucune de ces règles ne le sache. */
+  :root{--sous-entete:calc(var(--header-bas) + 10px + 48px + 8px)}
+
+  /* Les trois entrées qui quittent la barre. Elles restent dans le DOM et
+     gardent leurs gestionnaires : le desktop s'en sert toujours, et rien
+     n'est à recâbler quand on passe d'une largeur à l'autre. */
+  #navBas .nb-desktop{display:none}
+
+  /* ---- Le sélecteur de surface ---- */
+  #selecteurSurface{display:flex;gap:6px;position:absolute;z-index:606;
+    left:12px;right:12px;top:calc(var(--header-bas) + 10px);
+    padding:4px;border-radius:99px;background:#fff;
+    border:1px solid var(--bord);box-shadow:0 3px 14px rgba(20,30,25,.10)}
+  .sfc{flex:1 1 0;min-height:40px;border:0;border-radius:99px;background:none;
+    color:var(--ink2);font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .sfc.actif{background:var(--ardoise);color:#fff}
+  .sfc:active{transform:scale(.98)}
+
+  /* ---- Le bouton flottant « Créer » ----
+     Au-dessus de la barre basse et de la safe-area, jamais dedans. Il recule
+     dès qu'un panneau important occupe l'écran : la règle est portée par
+     `body`, posée par le même code qui ouvre ces panneaux. */
+  #fabCreer{display:flex;align-items:center;justify-content:center;
+    position:absolute;z-index:905;right:16px;
+    bottom:calc(var(--nav-height) + 16px);
+    width:56px;height:56px;border:0;border-radius:50%;
+    background:var(--violet);color:#fff;
+    box-shadow:0 6px 20px rgba(124,58,237,.34);
+    transition:opacity .18s ease, transform .18s ease}
+  #fabCreer:active{transform:scale(.94)}
+  /* Une feuille dépliée, un formulaire ou un écran plein le recouvriraient :
+     il s'efface au lieu de flotter par-dessus une action en cours.
+     Les trois classes sont réelles et posées par le code qui ouvre chaque
+     panneau ; le panneau modal `#feuille` (profil, fiche, publication) ne
+     pose rien, lui, alors on lit directement son état — il est placé APRÈS
+     le bouton dans le document, donc aucun combinateur de frère ne peut
+     l'atteindre, et `:has()` est le seul chemin en CSS. */
+  body.sheet-open #fabCreer,
+  body.pourtoi-ouvert #fabCreer,
+  body.explorer-ouvert #fabCreer,
+  body:has(#feuille:not([hidden])) #fabCreer{opacity:0;transform:scale(.8);pointer-events:none}
+
+  /* ---- Explorer, surface de découverte ----
+     Il monte du bas comme les autres panneaux, et laisse voir la carte
+     derrière : découvrir sans perdre où l'on est. */
+  #explorerDecouverte{display:flex;flex-direction:column;
+    position:absolute;z-index:900;left:0;right:0;bottom:0;
+    max-height:78%;
+    background:var(--paper);border-radius:20px 20px 0 0;
+    border-top:1px solid var(--bord);
+    box-shadow:0 -8px 30px rgba(20,30,25,.18)}
+  #explorerDecouverte[hidden]{display:none}
+  .xp-poignee{width:38px;height:4px;margin:8px auto 2px;border-radius:99px;
+    background:var(--bord)}
+  .xp-corps{overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding:6px 16px calc(16px + var(--nav-height))}
+  .xp-titre{margin:4px 0 12px;font-size:21px;font-weight:800;letter-spacing:-.03em}
+  .xp-section{margin:20px 0 9px;font-size:11.5px;font-weight:750;
+    letter-spacing:.07em;text-transform:uppercase;color:var(--ink2)}
+  .xp-recherche{display:flex;align-items:center;gap:9px;width:100%;min-height:46px;
+    padding:0 14px;border:1px solid var(--bord);border-radius:14px;background:#fff;
+    color:var(--ink2);font-size:14.5px;text-align:left}
+  .xp-recherche span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .xp-intentions{display:flex;flex-wrap:wrap;gap:8px}
+  .xp-int{min-height:40px;padding:0 14px;border:1px solid var(--bord);
+    border-radius:99px;background:#fff;color:var(--ink);
+    font-size:14px;font-weight:650}
+  .xp-int:active{transform:scale(.97)}
+  /* Les sélections défilent horizontalement : elles ne doivent jamais forcer
+     la page à défiler de côté. */
+  .xp-selections{display:flex;gap:10px;margin-inline:-16px;padding-inline:16px;
+    overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .xp-selections::-webkit-scrollbar{display:none}
+  .xp-carte{flex:0 0 auto;width:172px;min-height:96px;padding:12px;
+    border:1px solid var(--bord);border-radius:16px;background:#fff;
+    display:flex;flex-direction:column;gap:6px;text-align:left}
+  .xp-carte em{font-style:normal;font-size:20px;line-height:1}
+  .xp-carte b{font-size:14px;font-weight:750;line-height:1.25;letter-spacing:-.01em}
+  .xp-carte i{font-style:normal;font-size:12px;color:var(--ink2)}
+  .xp-themes{display:flex;flex-direction:column;gap:1px}
+  .xp-theme{display:flex;align-items:center;gap:11px;width:100%;min-height:48px;
+    padding:0 4px;border:0;border-bottom:1px solid var(--bord);background:none;
+    color:var(--ink);font-size:15px;font-weight:600;text-align:left}
+  .xp-theme:last-child{border-bottom:0}
+  .xp-theme em{font-style:normal;font-size:17px}
+  .xp-theme span{flex:1;min-width:0}
+  .xp-theme::after{content:"›";color:var(--ink2);font-size:19px}
+}
+
+/* Le second groupe du menu « Plus » — support et pages légales — se lit comme
+   un pied de page : même gabarit que le premier, une séparation avant. */
+.cpt-actions-secondaire{margin-top:18px;padding-top:16px;
+  border-top:1px solid var(--bord)}
+a.ac-item{text-decoration:none;color:inherit}
+
 /* Les filtres ne flottent plus au milieu de la carte : ils forment une ligne
    compacte sous les catégories, et seulement quand on les a demandés. */
 #filtresHumains{display:flex;gap:6px;margin:8px -16px 0;
@@ -1319,7 +1432,7 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 /* Compact et sur une seule ligne : sur 390 px, « ⌖ Revenir autour de moi » en
    14 px passait à la ligne et faisait un pavé de deux étages sous l'en-tête. */
 #btnAutourDeMoi{position:absolute;left:50%;transform:translateX(-50%);
-  top:calc(var(--header-bas) + 10px);z-index:604;
+  top:var(--sous-entete);z-index:604;
   height:34px;padding:0 13px;border:0;border-radius:99px;
   background:var(--trait);color:#fff;font-size:12.5px;font-weight:700;
   white-space:nowrap;max-width:calc(100vw - 32px);
@@ -2471,6 +2584,21 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 #navBas .nb[data-nb="pourtoi"]{grid-column:4}
 #navBas .nb[data-nb="aide"]{grid-column:5}
 #navBas .nb[data-nb="profil"]{display:none}
+
+/* LOT 3 · SUR MOBILE, TROIS COLONNES ET TROIS DESTINATIONS.
+
+   La grille de référence en compte cinq, avec Créer en colonne centrale
+   indépendante. Sur mobile, Créer est devenu un bouton flottant et Pour toi
+   une lecture du même endroit : il ne reste que trois destinations, et elles
+   se partagent la largeur à parts égales. Les placements explicites de la
+   grille à cinq colonnes seraient sinon conservés — Solidarité resterait
+   collée au bord droit, dans une cinquième colonne qui n'existe plus. */
+@media (max-width:768px){
+  #navBas{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #navBas .nb[data-nb="maintenant"]{grid-column:1}
+  #navBas .nb[data-nb="explorer"]{grid-column:2}
+  #navBas .nb[data-nb="aide"]{grid-column:3}
+}
 #navBas .nb-creer{
   position:absolute;
   left:50%;
@@ -2672,6 +2800,26 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   </button>
 </header>
 
+<!-- ---- LE SÉLECTEUR DE SURFACE --------------------------------------------
+     Deux questions différentes, et elles ne se répondent pas au même endroit :
+
+       ⚡ Maintenant  « qu'est-ce que je peux faire là, tout de suite ? »
+       ♡ Pour toi     « qu'est-ce qui correspond à mes goûts ? »
+
+     « Pour toi » était un onglet de la barre basse, au même rang que « où je
+     regarde » — ce qui en faisait une destination alors que c'est une lecture
+     du même endroit. Il remonte ici, à côté de Maintenant, et les deux
+     restent atteignables d'un seul geste.
+
+     Le second niveau — Maintenant / À venir / Ce week-end — vit dans la
+     feuille et vaut pour les DEUX surfaces : il n'est pas dupliqué ici. -->
+<div id="selecteurSurface" role="tablist" aria-label="Ce que tu cherches">
+  <button class="sfc actif" type="button" data-surface="maintenant"
+          role="tab" aria-selected="true">⚡ Maintenant</button>
+  <button class="sfc" type="button" data-surface="pourtoi"
+          role="tab" aria-selected="false">♡ Pour toi</button>
+</div>
+
 <div id="locationPopover" hidden role="dialog" aria-labelledby="locationPopoverTitle">
   <div class="location-popover-head">
     <span aria-hidden="true">⌖</span>
@@ -2806,23 +2954,81 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
     <span>Explorer</span>
   </button>
-  <button class="nb nb-creer" data-nb="creer" aria-label="Créer un événement ou une activité">
+  <button class="nb nb-creer nb-desktop" data-nb="creer" aria-label="Créer un événement ou une activité">
     <i class="nb-plus"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>
     <span>Créer</span>
   </button>
-  <button class="nb nb-pourtoi" data-nb="pourtoi" aria-label="Pour toi">
+  <button class="nb nb-pourtoi nb-desktop" data-nb="pourtoi" aria-label="Pour toi">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.2c0 5.2-8 9.3-8 9.3s-8-4.1-8-9.3a4.1 4.1 0 0 1 7.1-2.8L12 9.2l.9-.8A4.1 4.1 0 0 1 20 11.2z"/></svg>
     <span>Pour toi</span><i class="nav-badge" id="navPourToiBadge" hidden></i>
   </button>
+  <!-- SOLIDARITÉ, ET NON « AIDE ».
+
+       « Aide » se lit comme un support technique — la personne qui a un
+       problème avec l'application. Ce produit-là parle d'entraide, de
+       structures locales et de coups de main. Le mot affiché change, et lui
+       seul : l'identifiant interne de l'onglet reste le même, donc le
+       backend, le classement et la taxonomie ne bougent pas d'une ligne. -->
   <button class="nb nb-aide" data-nb="aide">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 21s-7.4-4.7-9.6-9.2A5.6 5.6 0 0 1 12 5.6a5.6 5.6 0 0 1 9.6 6.2C19.4 16.3 12 21 12 21z"/></svg>
-    <span>Aide</span>
+    <span>Solidarité</span>
   </button>
   <button class="nb" data-nb="profil">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
     <span>Profil</span>
   </button>
 </nav>
+
+<!-- ---- EXPLORER, SURFACE DE DÉCOUVERTE ------------------------------------
+     Explorer montrait à peu près ce que Maintenant montre déjà : les mêmes
+     lieux, au même moment, autour du même point. Deux onglets pour une seule
+     réponse — donc un des deux ne servait à rien.
+
+     Explorer répond à une autre question : « je veux découvrir, chercher, ou
+     m'inspirer ». Il doit donc pouvoir montrer ce que Maintenant écarte par
+     construction — plus loin, demain, dans quelques jours, dans une intention
+     précise, dans une sélection thématique.
+
+     CE PANNEAU EST UNE STRUCTURE, PAS UN MOTEUR. Aucune recommandation n'est
+     inventée ici : chaque entrée compose une requête que l'application sait
+     déjà exécuter — une recherche, une intention, un créneau. Le classement,
+     la taxonomie et les règles temporelles restent exactement où ils sont. -->
+<div id="explorerDecouverte" hidden role="region" aria-label="Explorer">
+  <div class="xp-poignee" aria-hidden="true"></div>
+  <div class="xp-corps">
+    <h2 class="xp-titre">🔎 Explorer</h2>
+
+    <button class="xp-recherche" id="xpRecherche" type="button">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+           stroke-width="2.3" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <span>Rechercher une activité, un lieu, une envie…</span>
+    </button>
+
+    <p class="xp-section">Envies</p>
+    <div class="xp-intentions" id="xpIntentions"></div>
+
+    <p class="xp-section">Sélections à la une</p>
+    <div class="xp-selections" id="xpSelections"></div>
+
+    <p class="xp-section">Par thématique</p>
+    <div class="xp-themes" id="xpThemes"></div>
+  </div>
+</div>
+
+<!-- ---- LE BOUTON FLOTTANT « CRÉER » --------------------------------------
+     Publier n'est pas une destination : c'est une action. Elle occupait un
+     sixième de la barre basse au même rang que « où je regarde », alors
+     qu'une écrasante majorité des visites ne publie rien. Elle devient un
+     bouton flottant, à portée de pouce et hors du chemin.
+
+     Il emprunte EXACTEMENT la porte de l'onglet historique — `ouvrirCreation`,
+     les mêmes permissions, le même brouillon. Rien du backend de publication
+     n'est touché. Il s'efface quand un panneau important le recouvrirait :
+     une feuille dépliée, un formulaire, un écran de compte. -->
+<button id="fabCreer" type="button" aria-label="Créer un événement ou une activité">
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+       stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
 
 <!-- Fiche compacte : premier niveau d'un lieu, au-dessus de la carte. -->
 <div id="ficheCompacte" hidden role="dialog" aria-label="Aperçu du lieu"></div>
@@ -2927,6 +3133,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=a4c6c48b" defer></script>
+<script src="app.js?v=268eb05a" defer></script>
 </body>
 </html>

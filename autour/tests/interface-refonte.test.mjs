@@ -13,7 +13,10 @@ test("la navigation basse respecte le contrat Autour", () => {
   assert.doesNotMatch(nav, /data-nb="favoris"/);
   assert.match(nav, /<span>Maintenant<\/span>/);
   assert.match(nav, /<span>Pour toi<\/span>/);
-  assert.match(nav, /<span>Aide<\/span>/);
+  /* LOT 3 : le produit s'appelle Solidarité dans l'interface. L'identifiant
+     interne de l'onglet ne change pas — le backend n'est pas touché. */
+  assert.match(nav, /<span>Solidarité<\/span>/);
+  assert.doesNotMatch(nav, /<span>Aide<\/span>/);
 });
 
 test("le contexte de localisation est séparé de l'avatar", () => {
