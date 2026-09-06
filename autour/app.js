@@ -774,6 +774,11 @@ async function basculerFavori(l){
   const etait = favorisIds.has(cle);
   if(etait) favorisIds.delete(cle); else favorisIds.add(cle);
   majCoeurs();
+  /* Enregistrer quelque chose est le geste le plus net qui soit : il pèse
+     davantage qu'une ouverture. Seul le SUJET est noté — jamais le lieu, jamais
+     la position. Et rien n'est noté quand on retire un favori. */
+  if(!etait && l && l.family && typeof noterSignalInteret === "function")
+    noterSignalInteret(l.family, "favori");
 
   /* Le compte est demandé ICI, au moment où il apporte quelque chose : garder
      ce favori ailleurs que sur cet appareil. On rend d'abord le cœur à son
@@ -10706,8 +10711,13 @@ function majFeuille2(){
        ne vient diluer la réponse immédiate. */
     if(creneau === "maintenant"){
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
+      /* L'ORDRE EST LA RÈGLE. `blocMaintenantAccueil` rend les trois
+         propositions ; la capsule vient APRÈS, jamais dedans, jamais avant.
+         Elle ne peut donc pas prendre la place d'un résultat. */
       corps.innerHTML = besoinsRapidesPanneauHTML()+
-        ongletsTemps()+blocMaintenantAccueil()+blocAideAccueil();
+        ongletsTemps()+blocMaintenantAccueil()+
+        blocCaPourraitTePlaire()+blocAideAccueil();
+      brancherCapsulePlaire(corps);
     }else{
       const jeton = ++generationAccueil;
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
@@ -17213,10 +17223,10 @@ if($("#selecteurSurface")) $("#selecteurSurface").querySelectorAll("[data-surfac
    ici, et rien n'est promis : si une requête ne rend rien, c'est l'état de
    vide habituel qui le dit. */
 const XP_INTENTIONS = Object.freeze([
-  {emoji:"🎭", label:"Culture",            phrase:"culture"},
+  {emoji:"🎭", label:"Culture",            phrase:"culture", famille:"culture"},
   {emoji:"🎟️", label:"Gratuit",            phrase:"gratuit"},
-  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier"},
-  {emoji:"🏃", label:"Sport",              phrase:"sport"},
+  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier", famille:"bibliotheque"},
+  {emoji:"🏃", label:"Sport",              phrase:"sport",   famille:"sport"},
   {emoji:"✨", label:"Insolite",           phrase:"insolite"},
   {emoji:"👨‍👩‍👧", label:"Famille",           phrase:"famille"},
 ]);
@@ -17272,12 +17282,16 @@ function photoSelectionExplorer(entree){
   return {url:imageDe(trouve), teinte:COULEURS_CAT[trouve.cat] || "#5D6B63"};
 }
 
+/* `famille` dit quelle famille canonique de `places` l'entrée ouvre, et c'est
+   aussi la clé du signal d'intérêt. `offres` détourne l'entrée vers le moteur
+   d'offres : « Bons plans étudiants » n'est pas une catégorie de lieux, c'est
+   une requête sur des opportunités datées. */
 const XP_THEMES = Object.freeze([
-  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier"},
-  {emoji:"🎟️", label:"Bons plans étudiants", phrase:"gratuit"},
-  {emoji:"🌳", label:"Nature et balades",     phrase:"parc"},
-  {emoji:"🎧", label:"Musique et concerts",   phrase:"concert", creneau:"avenir"},
-  {emoji:"🎭", label:"Culture",               phrase:"culture"},
+  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier", famille:"bibliotheque"},
+  {emoji:"🎟️", label:"Bons plans étudiants", phrase:"gratuit", offres:"student"},
+  {emoji:"🌳", label:"Nature et balades",     phrase:"parc",    famille:"nature"},
+  {emoji:"🎧", label:"Musique et concerts",   phrase:"concert", creneau:"avenir", famille:"musique"},
+  {emoji:"🎭", label:"Culture",               phrase:"culture", famille:"culture"},
 ]);
 
 /* Poser une requête d'Explorer. Le créneau passe par la MÊME porte que les
@@ -17285,6 +17299,11 @@ const XP_THEMES = Object.freeze([
    `majAccueil` la relit. Aucune règle temporelle n'est réécrite ici. */
 function lancerDepuisExplorer(entree){
   if(!entree) return;
+  /* Une opportunité datée n'est pas une catégorie de lieux : elle a sa propre
+     porte, et la requête textuelle ne la trouverait jamais. */
+  if(entree.offres) return ouvrirBonsPlansEtudiants();
+  /* Ce qu'on ouvre est ce qu'on observe. Rien d'autre n'est déduit. */
+  if(entree.famille) noterSignalInteret(entree.famille, "categorie");
   fermerExplorerDecouverte();
   if(entree.creneau && CRENEAUX.some(c=>c.id === entree.creneau)) creneau = entree.creneau;
   appliquerPhrase(entree.phrase);
@@ -17370,6 +17389,9 @@ function ouvrirExplorerDecouverte(){
   rafraichirPhotosExplorer();
   panneau.hidden = false;
   document.body.classList.add("explorer-ouvert");
+  /* L'inventaire arrive APRÈS l'ouverture : le panneau ne doit jamais
+     attendre le réseau pour apparaître. */
+  void remplirLieuxExplorer(null);
 }
 
 function fermerExplorerDecouverte(){
@@ -17377,6 +17399,407 @@ function fermerExplorerDecouverte(){
   if(panneau) panneau.hidden = true;
   document.body.classList.remove("explorer-ouvert");
 }
+
+/* ===========================================================================
+   LOT 5 — L'INVENTAIRE BRANCHÉ, LES OFFRES, ET CE QUI POURRAIT PLAIRE
+   ===========================================================================
+
+   TROIS CHOSES QUI NE SE MÉLANGENT PAS.
+
+   1. `places` alimente Explorer. Pas Maintenant : tant qu'aucun horaire n'est
+      fiable, un lieu persisté ne peut pas être déclaré ouvert, et Maintenant
+      ne parle que de ce qui est ouvert ou en cours. Explorer, lui, répond à
+      « qu'est-ce qu'il y a par ici », question qui n'exige aucun horaire.
+
+   2. Une OFFRE n'est pas un lieu. Un tarif étudiant a une fin, une condition
+      et un organisme qui le publie ; il vit dans sa propre table et renvoie
+      toujours vers sa source.
+
+   3. Ce qu'on observe dans Explorer ne remonte JAMAIS dans les trois
+      résultats de Maintenant. Il alimente une capsule posée dessous, qui dit
+      d'où elle vient et qu'on peut faire taire.
+   ======================================================================== */
+
+/* ---- Les signaux d'intérêt ----------------------------------------------
+
+   CE QUI EST STOCKÉ, ET CE QUI NE L'EST JAMAIS.
+
+   On garde un score par SUJET — « bons plans étudiants », « nature » — et le
+   nombre de sessions distinctes où il a été ouvert. On ne garde aucune
+   conclusion sur la personne : il n'existe nulle part de `is_student`, et il
+   n'en existera pas, parce qu'un score d'intérêt se révise et qu'une étiquette
+   identitaire, non.
+
+   Aucune position n'entre ici. Le profil comportemental ne sait pas où l'on
+   est, et n'a pas à le savoir.
+
+   ET IL S'OUBLIE. Un intérêt de mars ne doit pas décider d'un écran de
+   novembre : le score est divisé par deux tous les 21 jours, à la lecture. Un
+   sujet qu'on n'ouvre plus s'efface tout seul. */
+const CLE_SIGNAUX = "autour:interestSignals:v1";
+const SIGNAL_DEMIVIE_MS = 21 * 24 * 3600 * 1000;
+/* Trois ouvertures, sur au moins deux sessions. Une seule séance de curiosité
+   ne dit rien : on regarde dix choses en s'installant quelque part. Revenir,
+   c'est autre chose. */
+const SIGNAL_OUVERTURES_MIN = 3;
+const SIGNAL_SESSIONS_MIN = 2;
+const SIGNAL_POIDS = Object.freeze({
+  categorie:1,   // ouvrir une catégorie dans Explorer
+  fiche:2,       // ouvrir la fiche d'un de ses lieux
+  favori:4,      // l'enregistrer
+  retour:2,      // y revenir un autre jour
+});
+
+let sessionInteret = null;
+function idSessionInteret(){
+  if(sessionInteret) return sessionInteret;
+  try{
+    sessionInteret = sessionStorage.getItem("autour:sessionSignaux");
+    if(!sessionInteret){
+      sessionInteret = String(Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+      sessionStorage.setItem("autour:sessionSignaux", sessionInteret);
+    }
+  }catch(e){ sessionInteret = "volatile"; }
+  return sessionInteret;
+}
+
+function lireSignaux(){
+  try{
+    const brut = JSON.parse(localStorage.getItem(CLE_SIGNAUX) || "null");
+    if(!brut || brut.v !== 1 || !brut.signaux) return {v:1, signaux:{}};
+    return brut;
+  }catch(e){ return {v:1, signaux:{}}; }
+}
+function ecrireSignaux(etat){
+  try{ localStorage.setItem(CLE_SIGNAUX, JSON.stringify(etat)); }catch(e){}
+}
+
+/* Le score tel qu'il vaut AUJOURD'HUI, décroissance appliquée. */
+function scoreSignal(entree){
+  if(!entree || !Number.isFinite(Number(entree.score))) return 0;
+  const age = Date.now() - Number(entree.maj || 0);
+  if(!(age > 0)) return Number(entree.score);
+  return Number(entree.score) * Math.pow(0.5, age / SIGNAL_DEMIVIE_MS);
+}
+
+function noterSignalInteret(cle, motif){
+  if(!cle || !SIGNAL_POIDS[motif]) return;
+  const etat = lireSignaux();
+  const e = etat.signaux[cle] || {score:0, ouvertures:0, sessions:[], maj:Date.now(), refuse:false};
+  /* Un refus explicite ne se remonte pas tout seul. « Moins de suggestions
+     comme ça » veut dire ça, pas « pendant une semaine ». */
+  if(e.refuse) return;
+  e.score = scoreSignal(e) + SIGNAL_POIDS[motif];
+  e.maj = Date.now();
+  if(motif === "categorie") e.ouvertures = Number(e.ouvertures || 0) + 1;
+  const s = idSessionInteret();
+  if(!Array.isArray(e.sessions)) e.sessions = [];
+  if(e.sessions.indexOf(s) < 0) e.sessions = [...e.sessions.slice(-9), s];
+  etat.signaux[cle] = e;
+  ecrireSignaux(etat);
+}
+
+function oublierSignalInteret(cle){
+  const etat = lireSignaux();
+  /* On garde la ligne avec `refuse`, plutôt que de la supprimer : sans elle,
+     le prochain clic reconstruirait exactement ce qu'on vient de refuser. */
+  etat.signaux[cle] = {score:0, ouvertures:0, sessions:[], maj:Date.now(), refuse:true};
+  ecrireSignaux(etat);
+}
+
+/* Ce qui a le droit d'être suggéré. Deux conditions, pas une : le nombre
+   d'ouvertures ET le nombre de sessions distinctes. */
+function sujetRecommandable(){
+  const etat = lireSignaux();
+  let meilleur = null;
+  Object.keys(etat.signaux).forEach((cle)=>{
+    const e = etat.signaux[cle];
+    if(!e || e.refuse) return;
+    if(Number(e.ouvertures || 0) < SIGNAL_OUVERTURES_MIN) return;
+    if(!Array.isArray(e.sessions) || e.sessions.length < SIGNAL_SESSIONS_MIN) return;
+    const score = scoreSignal(e);
+    if(score < SIGNAL_OUVERTURES_MIN) return;   // la décroissance a tout mangé
+    if(!meilleur || score > meilleur.score) meilleur = {cle, score};
+  });
+  return meilleur;
+}
+
+/* Ce qu'on écrit dans la capsule pour chaque sujet. Aucune phrase ne dit à la
+   personne ce qu'elle est ; elles disent seulement ce qu'il y a. */
+const SUJETS_CAPSULE = Object.freeze({
+  bons_plans_etudiants:{emoji:"🎓", titre:"Bons plans étudiants près de toi",
+    texte:"Des tarifs et avantages publiés par des organismes, autour d'ici.",
+    action:"Voir les bons plans"},
+  nature:{emoji:"🌿", titre:"Quelques endroits nature autour de toi",
+    texte:"Parcs, jardins et coins de verdure recensés par ici.", action:"Explorer"},
+  culture:{emoji:"🎭", titre:"De la culture autour de toi",
+    texte:"Musées, expositions et lieux culturels recensés par ici.", action:"Explorer"},
+  bibliotheque:{emoji:"📚", titre:"Où lire et travailler autour de toi",
+    texte:"Bibliothèques et médiathèques recensées par ici.", action:"Explorer"},
+  patrimoine:{emoji:"🏛️", titre:"Du patrimoine autour de toi",
+    texte:"Édifices et sites remarquables recensés par ici.", action:"Explorer"},
+  sport:{emoji:"🏃", titre:"Où bouger autour de toi",
+    texte:"Équipements sportifs recensés par ici.", action:"Explorer"},
+  cinema:{emoji:"🎬", titre:"Des cinémas autour de toi",
+    texte:"Salles recensées par ici.", action:"Explorer"},
+  musique:{emoji:"🎧", titre:"De la musique autour de toi",
+    texte:"Salles et conservatoires recensés par ici.", action:"Explorer"},
+  restauration:{emoji:"🍽️", titre:"Où manger autour de toi",
+    texte:"Restaurants et cafés recensés par ici.", action:"Explorer"},
+});
+
+/* ---- La capsule, SOUS les trois résultats -------------------------------
+
+   Elle ne compte pas parmi eux, elle ne les réordonne pas, et elle n'existe
+   que si un sujet a franchi les deux seuils. Elle dit d'où elle vient et
+   offre de se taire. */
+function blocCaPourraitTePlaire(){
+  if(creneau !== "maintenant" || modeAide) return "";
+  const sujet = sujetRecommandable();
+  if(!sujet) return "";
+  const d = SUJETS_CAPSULE[sujet.cle];
+  if(!d) return "";
+  return '<section class="cap-plaire" data-testid="capsule-plaire" data-sujet="'+esc(sujet.cle)+'">'+
+    '<p class="cap-plaire-tete"><em aria-hidden="true">'+d.emoji+'</em>'+
+      '<b>'+esc(d.titre)+'</b></p>'+
+    '<p>'+esc(d.texte)+'</p>'+
+    '<div class="cap-plaire-actions">'+
+      '<button class="cap-plaire-voir" data-cap="voir">'+esc(d.action)+' →</button>'+
+      '<button class="cap-plaire-pourquoi" data-cap="pourquoi">Pourquoi ça ?</button>'+
+      '<button class="cap-plaire-moins" data-cap="moins">Moins de suggestions comme ça</button>'+
+    '</div>'+
+    '<p class="cap-plaire-note" data-cap-note hidden>Basé sur ce que tu explores dans Autour.</p>'+
+  '</section>';
+}
+
+function brancherCapsulePlaire(racine){
+  const bloc = (racine || document).querySelector("[data-testid='capsule-plaire']");
+  if(!bloc) return;
+  const cle = bloc.dataset.sujet;
+  bloc.querySelectorAll("[data-cap]").forEach((b)=>{
+    b.onclick = (event)=>{
+      event.stopPropagation();
+      const quoi = b.dataset.cap;
+      if(quoi === "pourquoi"){
+        const note = bloc.querySelector("[data-cap-note]");
+        if(note) note.hidden = !note.hidden;
+        return;
+      }
+      if(quoi === "moins"){
+        oublierSignalInteret(cle);
+        bloc.remove();
+        toast("D'accord, moins de suggestions comme celle-ci.");
+        return;
+      }
+      if(cle === "bons_plans_etudiants") return ouvrirBonsPlansEtudiants();
+      ouvrirFamilleExplorer(cle);
+    };
+  });
+}
+
+/* ---- L'inventaire persistant, lu par Explorer ---------------------------
+
+   LA BASE D'ABORD, LE RUNTIME ENSUITE. La règle du lot est une PRIORITÉ, pas
+   un remplacement : aucune source n'est retirée. Quand la base rend trop peu
+   de choses pour remplir un écran, le bloc reste caché et les sources live
+   continuent de servir seules, exactement comme avant. */
+const LIEUX_EXPLORER_MIN = 3;      // en dessous, la base n'a rien à dire
+const LIEUX_EXPLORER_MAX = 12;
+let dernierRecoursExplorer = null;  // "places" | "runtime" — pour la mesure
+
+async function chargerLieuxExplorer(famille){
+  if(!sbLecture) { dernierRecoursExplorer = "runtime"; return []; }
+  const ref = pointDeReference();
+  const fini = PERF.requete("supabase_lieux_explorer");
+  try{
+    const { data, error } = await sbLecture.rpc("lieux_explorer", {
+      p_zone_id:idZoneActive(),
+      p_famille:famille || null,
+      p_lat:Array.isArray(ref) ? Number(ref[0]) : null,
+      p_lng:Array.isArray(ref) ? Number(ref[1]) : null,
+      p_rayon_m:null,
+      p_limite:LIEUX_EXPLORER_MAX,
+      p_visuel_exige:true,
+    });
+    if(error){
+      /* Une couche indisponible ne vide pas Explorer : le runtime reste. */
+      console.error("Lecture des lieux :", error.message);
+      dernierRecoursExplorer = "runtime";
+      return [];
+    }
+    const lus = data || [];
+    dernierRecoursExplorer = lus.length >= LIEUX_EXPLORER_MIN ? "places" : "runtime";
+    return lus;
+  } catch(e){ dernierRecoursExplorer = "runtime"; return []; }
+  finally { fini(); }
+}
+
+/* LA RÈGLE D'IMAGE, APPLIQUÉE ICI ET NULLE PART AILLEURS.
+
+   L'ordre est celui du lot : une photo du lieu d'abord, Wikimedia ensuite, une
+   image officielle après, puis — seulement si sa nature est clairement connue
+   et DITE — une autre image liée au lieu, et enfin la tuile de la famille.
+
+   Une affiche d'événement est acceptée au quatrième rang, jamais au premier,
+   et jamais muette : la vignette porte alors la mention « Affiche d'un
+   événement ici ». Faire passer une affiche pour une photo du parc serait
+   exactement le genre de petit mensonge qui coûte la confiance. */
+const RANG_IMAGE_LIEU = Object.freeze(
+  {place_photo:1, wikimedia:2, institutional:3, event_poster:4});
+function visuelLieuExplorer(l){
+  const emoji = (FAMILLES_EXPLORER[l.family] || {}).emoji || "📍";
+  const teinte = (FAMILLES_EXPLORER[l.family] || {}).teinte || "#5D6B63";
+  const rang = RANG_IMAGE_LIEU[l.image_type] || 0;
+  const utilisable = !!l.image_url && rang > 0 && !!l.image_license;
+  return '<span class="xp-lieu-photo" style="--teinte:'+teinte+'" aria-hidden="true">'+
+    '<i>'+emoji+'</i>'+
+    (utilisable
+      /* La mention part AVEC l'image. Une image qui ne charge pas laisse la
+         tuile de famille ; y laisser « Affiche d'un événement ici » ferait
+         légender un pictogramme, ce qui ne veut plus rien dire. */
+      ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image_url)+'" '+
+        'onload="this.classList.add(\'vue\')" '+
+        'onerror="var m=this.parentNode.querySelector(\'b\');if(m)m.remove();this.remove()">'+
+        (l.image_type === "event_poster"
+          ? '<b>Affiche d’un événement ici</b>' : '')
+      : '')+
+  '</span>';
+}
+
+const FAMILLES_EXPLORER = Object.freeze({
+  culture:{emoji:"🎭", teinte:"#7C3AED"},
+  bibliotheque:{emoji:"📚", teinte:"#0EA5E9"},
+  cinema:{emoji:"🎬", teinte:"#1F2A25"},
+  musique:{emoji:"🎧", teinte:"#DB2777"},
+  patrimoine:{emoji:"🏛️", teinte:"#B45309"},
+  nature:{emoji:"🌳", teinte:"#16A34A"},
+  sport:{emoji:"🏃", teinte:"#0891B2"},
+  marche:{emoji:"🧺", teinte:"#CA8A04"},
+  restauration:{emoji:"🍽️", teinte:"#EA580C"},
+  commerce:{emoji:"🛍️", teinte:"#9333EA"},
+  association:{emoji:"🤝", teinte:"#4F46E5"},
+  solidarite:{emoji:"❤️", teinte:"#DC2626"},
+  hebergement:{emoji:"🏨", teinte:"#64748B"},
+});
+
+function carteLieuExplorer(l){
+  const meta = [l.famille_label, l.commune,
+    Number.isFinite(Number(l.distance_m)) ? formatDist(Number(l.distance_m)) : ""]
+    .filter(Boolean).join(" · ");
+  return '<button class="xp-lieu" type="button" data-xp-lieu="'+esc(l.id)+'">'+
+    visuelLieuExplorer(l)+
+    '<span class="xp-lieu-txt">'+
+      '<span class="xp-lieu-nom">'+esc(l.name)+'</span>'+
+      '<span class="xp-lieu-meta">'+esc(meta)+'</span>'+
+      (l.description
+        ? '<span class="xp-lieu-desc">'+esc(l.description)+'</span>' : '')+
+    '</span></button>';
+}
+
+async function remplirLieuxExplorer(famille){
+  const zone = $("#xpLieux"), titre = $("#xpLieuxTitre");
+  if(!zone || !titre) return;
+  const lieux2 = await chargerLieuxExplorer(famille);
+  if(lieux2.length < LIEUX_EXPLORER_MIN){
+    /* Pas assez pour tenir un écran : on ne montre rien plutôt qu'un moignon,
+       et les sources live gardent la main. */
+    zone.hidden = true; titre.hidden = true; zone.innerHTML = "";
+    return;
+  }
+  titre.hidden = false; zone.hidden = false;
+  zone.innerHTML = lieux2.map(carteLieuExplorer).join("");
+  zone.querySelectorAll("[data-xp-lieu]").forEach((b)=>{
+    b.onclick = ()=>{
+      const l = lieux2.find((x)=>String(x.id) === b.dataset.xpLieu);
+      if(!l) return;
+      if(l.family) noterSignalInteret(l.family, "fiche");
+      fermerExplorerDecouverte();
+      /* On recentre sur le lieu et on laisse la carte faire son travail : ce
+         lot n'invente pas une fiche de plus. */
+      allerVers([Number(l.lat), Number(l.lng)], 17, {duration:.6});
+    };
+  });
+}
+
+/* Ouvrir une famille depuis la capsule : Explorer s'ouvre et se limite à
+   cette famille. Aucun nouveau moteur — la même lecture, un filtre en plus. */
+function ouvrirFamilleExplorer(famille){
+  noterSignalInteret(famille, "categorie");
+  ouvrirExplorerDecouverte();
+  void remplirLieuxExplorer(famille);
+}
+
+/* ---- Les offres ----------------------------------------------------------
+
+   Une offre renvoie TOUJOURS vers sa source. C'est la contrainte du schéma, et
+   c'est aussi ce que la carte montre : sans lien vérifiable, une réduction
+   n'est qu'une rumeur. */
+async function chargerOffres(audience){
+  if(!sbLecture) return null;
+  const ref = pointDeReference();
+  const fini = PERF.requete("supabase_offres");
+  try{
+    const { data, error } = await sbLecture.rpc("offres_publiques", {
+      p_audience:audience || "student",
+      p_zone_id:idZoneActive(),
+      p_lat:Array.isArray(ref) ? Number(ref[0]) : null,
+      p_lng:Array.isArray(ref) ? Number(ref[1]) : null,
+      p_rayon_m:null, p_limite:30,
+    });
+    if(error){ console.error("Lecture des offres :", error.message); return null; }
+    return data || [];
+  } catch(e){ return null; }
+  finally { fini(); }
+}
+
+const NATURE_OFFRE = Object.freeze({
+  gratuite:"Gratuit", reduction:"Réduction", tarif_reduit:"Tarif réduit",
+  avantage:"Avantage", operation:"Opération", pass:"Pass",
+});
+
+function carteOffre(o){
+  const lieu = [o.place_name, o.commune,
+    Number.isFinite(Number(o.distance_m)) ? formatDist(Number(o.distance_m)) : ""]
+    .filter(Boolean).join(" · ");
+  const fin = o.ends_at ? new Date(o.ends_at) : null;
+  return '<a class="of-carte" href="'+esc(o.source_url)+'" target="_blank" rel="noopener"'+
+    ' data-offre="'+esc(o.id)+'">'+
+    '<span class="of-tete"><span class="of-titre">'+esc(o.title)+'</span>'+
+      '<span class="of-nature">'+esc(NATURE_OFFRE[o.offer_type] || "Avantage")+'</span></span>'+
+    (lieu ? '<span class="of-lieu">'+esc(lieu)+'</span>' : '')+
+    (o.eligibility ? '<span class="of-condition">'+esc(o.eligibility)+'</span>' : '')+
+    (fin ? '<span class="of-fin">Jusqu’au '+esc(fin.toLocaleDateString("fr-FR"))+'</span>' : '')+
+    '<span class="of-source">↗ '+esc(o.source_name)+'</span>'+
+  '</a>';
+}
+
+async function ouvrirBonsPlansEtudiants(){
+  noterSignalInteret("bons_plans_etudiants", "categorie");
+  fermerExplorerDecouverte();
+  ouvrirFeuille('<section class="cpt" data-testid="offres-etudiantes">'+
+    '<h2 class="cpt-titre">🎓 Bons plans étudiants</h2>'+
+    '<p class="of-vide" data-of-attente>Recherche des offres publiées autour d’ici…</p>'+
+    '</section>', {ariaLabel:"Bons plans étudiants"});
+
+  const offres = await chargerOffres("student");
+  const hote = $("#feuille [data-testid='offres-etudiantes']");
+  if(!hote) return;                     // la feuille a été refermée entre-temps
+  const attente = hote.querySelector("[data-of-attente]");
+  if(attente) attente.remove();
+
+  if(!offres || !offres.length){
+    /* RIEN N'EST INVENTÉ. Pas d'offre veut dire pas d'offre, et l'écran le
+       dit franchement plutôt que de remplir avec des à-peu-près. */
+    hote.insertAdjacentHTML("beforeend",
+      '<p class="of-vide" data-testid="offres-vide">Aucune offre étudiante publiée '+
+      'n’est connue autour d’ici pour le moment.<br>Autour n’en invente pas : '+
+      'ce qui s’affiche ici vient toujours d’un organisme identifié.</p>');
+    return;
+  }
+  hote.insertAdjacentHTML("beforeend",
+    '<div class="of-liste">'+offres.map(carteOffre).join("")+'</div>');
+}
+
 
 /* Ce qui reprend après une connexion. Chaque entrée est le geste exact qui a
    déclenché la demande de compte, rejoué à l'identique : on ne dépose personne

@@ -1275,6 +1275,46 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 .nb.actif svg{opacity:1}
 .nb[aria-disabled="true"]{opacity:.38}
 
+/* ---- LOT 5 · « ÇA POURRAIT TE PLAIRE » ET LES OFFRES ---------------------
+
+   LA CAPSULE N'EST PAS UN QUATRIÈME RÉSULTAT. Elle est posée APRÈS le bloc
+   Maintenant, séparée par un trait, dans un ton volontairement plus discret :
+   les trois propositions du haut sont universelles et temporelles, celle-ci
+   vient de ce que la personne explore. Les confondre reviendrait à laisser un
+   comportement passé décider de ce qui se passe maintenant. */
+.cap-plaire{margin:18px 0 4px;padding:14px;border:1px dashed var(--bord);
+  border-radius:16px;background:rgba(124,58,237,.045)}
+.cap-plaire-tete{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.cap-plaire-tete b{font-size:14.5px;font-weight:750}
+.cap-plaire-tete em{font-style:normal;font-size:17px}
+.cap-plaire p{margin:0 0 10px;font-size:13px;color:var(--ink2);line-height:1.35}
+.cap-plaire-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.cap-plaire-voir{min-height:40px;padding:0 15px;border:0;border-radius:99px;
+  background:var(--violet);color:#fff;font-size:13.5px;font-weight:700}
+.cap-plaire-moins,.cap-plaire-pourquoi{min-height:40px;padding:0 4px;border:0;
+  background:none;color:var(--ink2);font-size:12.5px;text-decoration:underline;
+  text-underline-offset:3px}
+.cap-plaire-note{margin:8px 0 0;font-size:12px;color:var(--ink2)}
+
+/* ---- La liste des offres, dans une feuille ordinaire -------------------- */
+.of-liste{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.of-carte{display:block;width:100%;padding:13px 14px;border:1px solid var(--bord);
+  border-radius:15px;background:#fff;text-align:left;text-decoration:none;color:inherit}
+.of-tete{display:flex;align-items:baseline;gap:8px}
+.of-titre{flex:1;min-width:0;font-size:15px;font-weight:750;line-height:1.25}
+.of-nature{flex:0 0 auto;padding:3px 9px;border-radius:99px;
+  background:rgba(124,58,237,.12);color:var(--violet);font-size:11.5px;font-weight:750}
+/* Chaque ligne d'une offre est une information distincte : la commune, la
+   condition, la date de fin. En `inline`, `margin-top` ne fait rien et les
+   trois se collent en un seul paragraphe — « Lille · 820 mTarif CROUS ». */
+.of-lieu{display:block;margin-top:4px;font-size:12.5px;color:var(--ink2)}
+.of-condition{display:block;margin-top:7px;font-size:12.5px;line-height:1.35;color:var(--ink)}
+.of-fin{display:block;margin-top:6px;font-size:12px;font-weight:700;color:var(--signal)}
+.of-source{display:inline-flex;align-items:center;gap:5px;margin-top:9px;
+  font-size:12px;color:var(--violet);font-weight:650}
+.of-vide{margin:14px 0;padding:16px;border:1px dashed var(--bord);border-radius:15px;
+  color:var(--ink2);font-size:13.5px;line-height:1.45}
+
 /* ---- LOT 3 · LE SHELL MOBILE --------------------------------------------
    Trois destinations, et rien d'autre, dans la barre basse. Créer devient un
    bouton flottant, Profil un menu du haut, Pour toi une lecture du même
@@ -1405,6 +1445,34 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   .xp-theme em{font-style:normal;font-size:17px}
   .xp-theme span{flex:1;min-width:0}
   .xp-theme::after{content:"›";color:var(--ink2);font-size:19px}
+
+  /* LOT 5 · LES LIEUX DE L'INVENTAIRE
+     Même gabarit que les sélections : une tuile teintée posée à sa taille
+     définitive, la photo par-dessus si elle existe. */
+  .xp-lieux{display:flex;flex-direction:column;gap:10px}
+  .xp-lieu{display:flex;gap:12px;width:100%;padding:0;overflow:hidden;
+    border:1px solid var(--bord);border-radius:14px;background:#fff;text-align:left}
+  .xp-lieu-photo{position:relative;flex:0 0 92px;height:92px;display:grid;
+    place-items:center;background:var(--teinte,#5D6B63)}
+  .xp-lieu-photo::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
+  .xp-lieu-photo i{position:relative;z-index:1;font-style:normal;font-size:24px;opacity:.9}
+  .xp-lieu-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
+    object-fit:cover;opacity:0;transition:opacity .18s ease}
+  .xp-lieu-photo img.vue{opacity:1}
+  /* CE QUE MONTRE L'IMAGE, ÉCRIT DESSUS. Une affiche d'événement n'est pas une
+     photo du lieu : quand c'en est une, la vignette le dit, en toutes lettres
+     et par-dessus l'image. */
+  .xp-lieu-photo b{position:absolute;left:0;right:0;bottom:0;z-index:3;
+    padding:3px 5px;background:rgba(20,30,25,.72);color:#fff;
+    font-size:11px;font-weight:600;line-height:1.15;text-align:center}
+  .xp-lieu-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
+    padding:11px 12px 11px 0}
+  .xp-lieu-nom{font-size:14.5px;font-weight:750;line-height:1.25;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .xp-lieu-meta{font-size:12px;color:var(--ink2)}
+  .xp-lieu-desc{font-size:12.5px;color:var(--ink2);line-height:1.35;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
   /* LA DERNIÈRE LIGNE D'UNE FEUILLE PASSAIT SOUS LA BARRE BASSE.
      `#feuille` monte depuis `bottom:0`, la barre flotte au-dessus (z-index
@@ -3076,6 +3144,12 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 
     <p class="xp-section">Par thématique</p>
     <div class="xp-themes" id="xpThemes"></div>
+
+    <!-- LOT 5 · Les lieux de l'inventaire persistant. Ce bloc n'existe que
+         lorsque la base a de quoi le remplir : sans réponse suffisante, il
+         reste caché et les sources live continuent de servir seules. -->
+    <p class="xp-section" id="xpLieuxTitre" hidden>Des endroits autour de toi</p>
+    <div class="xp-lieux" id="xpLieux" hidden></div>
   </div>
 </div>
 
@@ -3197,6 +3271,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=738d7cf7" defer></script>
+<script src="app.js?v=82ef9338" defer></script>
 </body>
 </html>

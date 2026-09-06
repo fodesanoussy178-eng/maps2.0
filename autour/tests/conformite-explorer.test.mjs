@@ -53,7 +53,12 @@ test("le bloc disparaît complètement quand il n'y a rien", () => {
 });
 
 test("Maintenant se limite à ses résultats puis à l'aide", () => {
-  assert.match(html, /ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+blocAideAccueil\(\)/);
+  /* LA CAPSULE VIENT APRÈS, JAMAIS DEDANS. `blocMaintenantAccueil` rend les
+     trois propositions ; `blocCaPourraitTePlaire` est un bloc distinct, posé
+     entre elles et l'aide. L'ordre littéral EST la garantie : une capsule
+     insérée avant, ou à l'intérieur, prendrait la place d'un résultat. */
+  assert.match(html,
+    /ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+\s*\n\s*blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\)/);
   const debut = html.indexOf('if(feuilleNiveau === "racine"){');
   const fin = html.indexOf('}else if(feuilleNiveau === "plus"){', debut);
   const racine = html.slice(debut, fin);
