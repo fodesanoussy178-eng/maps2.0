@@ -23,7 +23,12 @@ import { readFile, readdir } from "node:fs/promises";
 import { sourceApplication } from "./source.mjs";
 
 const dossier = new URL("../supabase/migrations/", import.meta.url);
-const fichiers = (await readdir(dossier)).filter((f) => f.includes("lot4"));
+/* `lot4bis` contient aussi « lot4 » : sans cette exclusion, ce fichier lirait
+   les migrations du lot suivant et prendrait ses garde-fous — « aucune image
+   dont la source est google_places » — pour des violations de ses propres
+   règles. Chaque lot vérifie ses migrations, pas celles des autres. */
+const fichiers = (await readdir(dossier))
+  .filter((f) => f.includes("lot4") && !f.includes("lot4bis"));
 const migrations = Object.fromEntries(await Promise.all(
   fichiers.map(async (f) => [f, await readFile(new URL(f, dossier), "utf8")])));
 const sql = Object.values(migrations).join("\n");
