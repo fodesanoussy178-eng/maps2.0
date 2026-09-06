@@ -355,7 +355,8 @@ function texteLicence(value, depth = 0) {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map((item) => texteLicence(item, depth + 1)).join(" ");
   if (typeof value !== "object") return "";
-  return ["license", "licence", "rights", "dc:rights", "schema:license", "schema:copyrightNotice"]
+  return ["license", "licence", "rights", "dc:rights", "schema:license",
+          "schema:copyrightNotice", "hasCredits", "credits", "rdfs:label"]
     .map((cle) => texteLicence(value[cle], depth + 1)).join(" ");
 }
 
@@ -490,7 +491,29 @@ export default async function handler(requete) {
     geo_distance:rLat + "," + rLng + "," + RAYON,
     page_size:String(LIMITE), lang:"fr",
     // Chaque champ est demandé explicitement : pas de réponse brute inutile.
-    fields:"uuid,label,type,isLocatedAt.geo,isLocatedAt.address,isLocatedAt.openingHoursSpecification,hasDescription,hasMainRepresentation,hasMainRepresentation.url,hasMainRepresentation.uri,hasMainRepresentation.contentUrl,hasMainRepresentation.resourceLocator,hasMainRepresentation.license,hasMainRepresentation.licence,hasMainRepresentation.rights,hasMainRepresentation.dc:rights,takesPlaceAt",
+    /* Demander `openingHoursSpecification` sans demander SES CHAMPS ne rend
+       qu'une référence vide : mesuré, 0 horaire sur 49 POI réels autour de
+       Lille alors que le convertisseur `horairesOsm` savait déjà les lire.
+       Même chose pour les droits d'image, que DATAtourisme range sous
+       `hasCredits` et non sous `license`. On demande donc les sous-champs. */
+    fields:[
+      "uuid","label","type","hasDescription","takesPlaceAt",
+      "isLocatedAt.geo","isLocatedAt.address",
+      "isLocatedAt.openingHoursSpecification",
+      "isLocatedAt.openingHoursSpecification.opens",
+      "isLocatedAt.openingHoursSpecification.closes",
+      "isLocatedAt.openingHoursSpecification.dayOfWeek",
+      "isLocatedAt.openingHoursSpecification.validFrom",
+      "isLocatedAt.openingHoursSpecification.validThrough",
+      "hasMainRepresentation",
+      "hasMainRepresentation.url","hasMainRepresentation.uri",
+      "hasMainRepresentation.contentUrl","hasMainRepresentation.resourceLocator",
+      "hasMainRepresentation.license","hasMainRepresentation.licence",
+      "hasMainRepresentation.rights","hasMainRepresentation.dc:rights",
+      "hasMainRepresentation.hasCredits","hasMainRepresentation.rdfs:label",
+      "hasMainRepresentation.ebucore:hasRelatedResource",
+      "hasMainRepresentation.ebucore:hasRelatedResource.ebucore:locator",
+    ].join(","),
   });
   let resultat;
   try {

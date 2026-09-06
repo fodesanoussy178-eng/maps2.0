@@ -17223,10 +17223,13 @@ if($("#selecteurSurface")) $("#selecteurSurface").querySelectorAll("[data-surfac
    ici, et rien n'est promis : si une requête ne rend rien, c'est l'état de
    vide habituel qui le dit. */
 const XP_INTENTIONS = Object.freeze([
-  {emoji:"🎭", label:"Culture",            phrase:"culture", famille:"culture"},
+  {emoji:"🎭", label:"Culture",            phrase:"culture", famille:"culture",
+   familles:["culture","patrimoine"], titre:"De la culture, par ici"},
   {emoji:"🎟️", label:"Gratuit",            phrase:"gratuit"},
-  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier", famille:"bibliotheque"},
-  {emoji:"🏃", label:"Sport",              phrase:"sport",   famille:"sport"},
+  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier", famille:"bibliotheque",
+   familles:["bibliotheque"], titre:"Où lire et travailler"},
+  {emoji:"🏃", label:"Sport",              phrase:"sport",   famille:"sport",
+   familles:["sport"], titre:"Où bouger, par ici"},
   {emoji:"✨", label:"Insolite",           phrase:"insolite"},
   {emoji:"👨‍👩‍👧", label:"Famille",           phrase:"famille"},
 ]);
@@ -17235,17 +17238,22 @@ const XP_INTENTIONS = Object.freeze([
    temporel existant — jamais une fenêtre inventée pour l'occasion. */
 const XP_SELECTIONS = Object.freeze([
   {emoji:"🖼️", titre:"Expos à voir cette semaine", sous:"Les prochains jours",
-   phrase:"exposition", creneau:"avenir"},
+   phrase:"exposition", creneau:"avenir", familles:["culture"],
+   titreLieux:"De la culture, par ici"},
   {emoji:"🎟️", titre:"Sorties gratuites",          sous:"Sans dépenser",
    phrase:"gratuit",    creneau:"avenir", visuel:"gratuit"},
   {emoji:"📚", titre:"Où étudier au calme",         sous:"Lieux permanents",
-   phrase:"bibliothèque"},
+   phrase:"bibliothèque", famille:"bibliotheque", familles:["bibliotheque"],
+   titreLieux:"Où lire et travailler"},
   {emoji:"🌧️", titre:"Que faire quand il pleut",    sous:"À l'abri",
-   phrase:"musée"},
+   phrase:"musée", familles:["culture","bibliotheque","cinema"],
+   titreLieux:"À l’abri, par ici"},
   {emoji:"🎧", titre:"Musique et concerts",         sous:"Les prochains jours",
-   phrase:"concert",    creneau:"avenir"},
+   phrase:"concert",    creneau:"avenir", famille:"musique",
+   familles:["musique"], titreLieux:"De la musique, par ici"},
   {emoji:"🌳", titre:"Nature et balades",           sous:"Prendre l'air",
-   phrase:"parc"},
+   phrase:"parc", famille:"nature", familles:["nature"],
+   titreLieux:"Nature et balades, par ici"},
 ]);
 
 /* ---- LA PHOTO D'UNE SÉLECTION VIENT DE CE QU'ELLE OUVRE -------------------
@@ -17287,11 +17295,15 @@ function photoSelectionExplorer(entree){
    d'offres : « Bons plans étudiants » n'est pas une catégorie de lieux, c'est
    une requête sur des opportunités datées. */
 const XP_THEMES = Object.freeze([
-  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier", famille:"bibliotheque"},
+  {emoji:"📚", label:"Étudier / travailler", phrase:"étudier", famille:"bibliotheque",
+   familles:["bibliotheque"], titreLieux:"Où lire et travailler"},
   {emoji:"🎟️", label:"Bons plans étudiants", phrase:"gratuit", offres:"student"},
-  {emoji:"🌳", label:"Nature et balades",     phrase:"parc",    famille:"nature"},
-  {emoji:"🎧", label:"Musique et concerts",   phrase:"concert", creneau:"avenir", famille:"musique"},
-  {emoji:"🎭", label:"Culture",               phrase:"culture", famille:"culture"},
+  {emoji:"🌳", label:"Nature et balades",     phrase:"parc",    famille:"nature",
+   familles:["nature"], titreLieux:"Nature et balades, par ici"},
+  {emoji:"🎧", label:"Musique et concerts",   phrase:"concert", creneau:"avenir", famille:"musique",
+   familles:["musique"], titreLieux:"De la musique, par ici"},
+  {emoji:"🎭", label:"Culture",               phrase:"culture", famille:"culture",
+   familles:["culture","patrimoine"], titreLieux:"De la culture, par ici"},
 ]);
 
 /* Poser une requête d'Explorer. Le créneau passe par la MÊME porte que les
@@ -17304,6 +17316,12 @@ function lancerDepuisExplorer(entree){
   if(entree.offres) return ouvrirBonsPlansEtudiants();
   /* Ce qu'on ouvre est ce qu'on observe. Rien d'autre n'est déduit. */
   if(entree.famille) noterSignalInteret(entree.famille, "categorie");
+  /* L'intention survit à la fermeture : rouvrir Explorer après « Nature »
+     ramène des lieux nature, pas un catalogue général. */
+  if(Array.isArray(entree.familles) && entree.familles.length){
+    intentionExplorer = {familles:entree.familles,
+      titre:entree.titreLieux || entree.titre || "Des lieux, par ici"};
+  }
   fermerExplorerDecouverte();
   if(entree.creneau && CRENEAUX.some(c=>c.id === entree.creneau)) creneau = entree.creneau;
   appliquerPhrase(entree.phrase);
@@ -17391,7 +17409,7 @@ function ouvrirExplorerDecouverte(){
   document.body.classList.add("explorer-ouvert");
   /* L'inventaire arrive APRÈS l'ouverture : le panneau ne doit jamais
      attendre le réseau pour apparaître. */
-  void remplirLieuxExplorer(null);
+  void remplirLieuxExplorer(intentionExplorer);
 }
 
 function fermerExplorerDecouverte(){
@@ -17607,19 +17625,42 @@ const LIEUX_EXPLORER_MIN = 3;      // en dessous, la base n'a rien à dire
 const LIEUX_EXPLORER_MAX = 12;
 let dernierRecoursExplorer = null;  // "places" | "runtime" — pour la mesure
 
-async function chargerLieuxExplorer(famille){
+/* LES FAMILLES DE LA DÉCOUVERTE.
+
+   Explorer répond à « qu'est-ce qu'il y a par ici », pas à « où manger » —
+   cette question-là a sa propre surface. Sans cette liste, le tri par distance
+   remontait au centre de Lille six restaurants et deux hôtels : un annuaire de
+   la restauration, exactement ce que le lot interdit. */
+const FAMILLES_DECOUVERTE = Object.freeze(
+  ["culture","bibliotheque","nature","patrimoine","musique","cinema","sport","marche"]);
+/* Deux par famille : de quoi montrer une intention sans dérouler un catalogue. */
+const LIEUX_PAR_FAMILLE = 2;
+/* Un lieu « autour de toi » reste atteignable. Au-delà, la base range ce qui
+   est loin après ce qui est proche, même mieux illustré. */
+const LIEUX_EXPLORER_RAYON_M = 12000;
+
+async function chargerLieuxExplorer(intention){
   if(!sbLecture) { dernierRecoursExplorer = "runtime"; return []; }
+  const i = (typeof intention === "string") ? {famille:intention} : (intention || {});
+  const familles = Array.isArray(i.familles) && i.familles.length ? i.familles : null;
   const ref = pointDeReference();
   const fini = PERF.requete("supabase_lieux_explorer");
   try{
     const { data, error } = await sbLecture.rpc("lieux_explorer", {
       p_zone_id:idZoneActive(),
-      p_famille:famille || null,
+      p_famille:i.famille || null,
       p_lat:Array.isArray(ref) ? Number(ref[0]) : null,
       p_lng:Array.isArray(ref) ? Number(ref[1]) : null,
-      p_rayon_m:null,
+      p_rayon_m:LIEUX_EXPLORER_RAYON_M,
       p_limite:LIEUX_EXPLORER_MAX,
       p_visuel_exige:true,
+      p_familles:familles,
+      /* Le plafond par famille n'a de sens QUE dans un mélange. Appliqué à une
+         intention d'une seule famille, il ramenait deux lieux — donc moins que
+         `LIEUX_EXPLORER_MIN` — et la bande se cachait : « Nature » ne montrait
+         jamais rien. Le plafond sert à équilibrer, pas à rationner. */
+      p_par_famille:(familles && familles.length > 1)
+        ? (i.parFamille || LIEUX_PAR_FAMILLE) : null,
     });
     if(error){
       /* Une couche indisponible ne vide pas Explorer : le runtime reste. */
@@ -17660,26 +17701,31 @@ function visuelLieuExplorer(l){
       ? '<img loading="lazy" decoding="async" alt="" src="'+esc(l.image_url)+'" '+
         'onload="this.classList.add(\'vue\')" '+
         'onerror="var m=this.parentNode.querySelector(\'b\');if(m)m.remove();this.remove()">'+
+        /* La légende dit ce que l'image EST. Une affiche l'annonce ; une vraie
+           photo cite son auteur, parce que sa licence l'exige et qu'une photo
+           reprise sans crédit est une photo volée. */
         (l.image_type === "event_poster"
-          ? '<b>Affiche d’un événement ici</b>' : '')
+          ? '<b>Affiche d’un événement ici</b>'
+          : (l.image_type === "place_photo" && l.image_author
+             ? '<b>© '+esc(l.image_author)+'</b>' : ''))
       : '')+
   '</span>';
 }
 
 const FAMILLES_EXPLORER = Object.freeze({
-  culture:{emoji:"🎭", teinte:"#7C3AED"},
-  bibliotheque:{emoji:"📚", teinte:"#0EA5E9"},
-  cinema:{emoji:"🎬", teinte:"#1F2A25"},
-  musique:{emoji:"🎧", teinte:"#DB2777"},
-  patrimoine:{emoji:"🏛️", teinte:"#B45309"},
-  nature:{emoji:"🌳", teinte:"#16A34A"},
-  sport:{emoji:"🏃", teinte:"#0891B2"},
-  marche:{emoji:"🧺", teinte:"#CA8A04"},
-  restauration:{emoji:"🍽️", teinte:"#EA580C"},
-  commerce:{emoji:"🛍️", teinte:"#9333EA"},
-  association:{emoji:"🤝", teinte:"#4F46E5"},
-  solidarite:{emoji:"❤️", teinte:"#DC2626"},
-  hebergement:{emoji:"🏨", teinte:"#64748B"},
+  culture:{emoji:"🎭", teinte:"#7C3AED", titre:"De la culture, par ici"},
+  bibliotheque:{emoji:"📚", teinte:"#0EA5E9", titre:"Où lire et travailler"},
+  cinema:{emoji:"🎬", teinte:"#1F2A25", titre:"Des cinémas, par ici"},
+  musique:{emoji:"🎧", teinte:"#DB2777", titre:"De la musique, par ici"},
+  patrimoine:{emoji:"🏛️", teinte:"#B45309", titre:"Du patrimoine, par ici"},
+  nature:{emoji:"🌳", teinte:"#16A34A", titre:"Nature et balades, par ici"},
+  sport:{emoji:"🏃", teinte:"#0891B2", titre:"Où bouger, par ici"},
+  marche:{emoji:"🧺", teinte:"#CA8A04", titre:"Marchés, par ici"},
+  restauration:{emoji:"🍽️", teinte:"#EA580C", titre:"Où manger, par ici"},
+  commerce:{emoji:"🛍️", teinte:"#9333EA", titre:"Commerces, par ici"},
+  association:{emoji:"🤝", teinte:"#4F46E5", titre:"Associations, par ici"},
+  solidarite:{emoji:"❤️", teinte:"#DC2626", titre:"Solidarité, par ici"},
+  hebergement:{emoji:"🏨", teinte:"#64748B", titre:"Se loger, par ici"},
 });
 
 function carteLieuExplorer(l){
@@ -17696,10 +17742,20 @@ function carteLieuExplorer(l){
     '</span></button>';
 }
 
-async function remplirLieuxExplorer(famille){
+/* Ce que la bande montre en ce moment. Une intention choisie survit à la
+   fermeture du panneau : rouvrir Explorer après avoir demandé « Nature » ne
+   doit pas ramener un catalogue général. */
+let intentionExplorer = null;
+
+async function remplirLieuxExplorer(intention){
   const zone = $("#xpLieux"), titre = $("#xpLieuxTitre");
   if(!zone || !titre) return;
-  const lieux2 = await chargerLieuxExplorer(famille);
+  const i = (typeof intention === "string") ? {famille:intention} : intention;
+  /* Sans intention explicite : la découverte, deux lieux par famille. Ce n'est
+     pas « tous les lieux » — c'est un échantillon qui garde la forme des
+     thématiques du panneau. */
+  const demande = i || {familles:FAMILLES_DECOUVERTE, parFamille:LIEUX_PAR_FAMILLE};
+  const lieux2 = await chargerLieuxExplorer(demande);
   if(lieux2.length < LIEUX_EXPLORER_MIN){
     /* Pas assez pour tenir un écran : on ne montre rien plutôt qu'un moignon,
        et les sources live gardent la main. */
@@ -17707,6 +17763,7 @@ async function remplirLieuxExplorer(famille){
     return;
   }
   titre.hidden = false; zone.hidden = false;
+  titre.textContent = i && i.titre ? i.titre : "Des lieux, par ici";
   zone.innerHTML = lieux2.map(carteLieuExplorer).join("");
   zone.querySelectorAll("[data-xp-lieu]").forEach((b)=>{
     b.onclick = ()=>{
@@ -17725,8 +17782,9 @@ async function remplirLieuxExplorer(famille){
    cette famille. Aucun nouveau moteur — la même lecture, un filtre en plus. */
 function ouvrirFamilleExplorer(famille){
   noterSignalInteret(famille, "categorie");
+  intentionExplorer = {famille:famille,
+    titre:(FAMILLES_EXPLORER[famille] || {}).titre || "Des lieux, par ici"};
   ouvrirExplorerDecouverte();
-  void remplirLieuxExplorer(famille);
 }
 
 /* ---- Les offres ----------------------------------------------------------
@@ -17757,20 +17815,52 @@ const NATURE_OFFRE = Object.freeze({
   avantage:"Avantage", operation:"Opération", pass:"Pass",
 });
 
+/* Pour QUI. L'étiquette décrit l'offre, jamais la personne qui la lit : on
+   dit « offre étudiante », pas « tu es étudiant ». */
+const PUBLIC_OFFRE = Object.freeze({
+  student:"Étudiants", young:"Jeunes", family:"Familles",
+  senior:"Seniors", jobseeker:"Demandeurs d’emploi",
+});
+
+/* Une carte d'offre doit répondre à sept questions : quoi, où, à quelle
+   distance, pour qui, à quelles conditions, jusqu'à quand, et par qui c'est
+   publié. Ce qu'on ignore ne s'affiche pas — mieux vaut une carte plus courte
+   qu'une carte qui invente. */
 function carteOffre(o){
-  const lieu = [o.place_name, o.commune,
+  const ou = [o.place_name || o.address, o.commune,
     Number.isFinite(Number(o.distance_m)) ? formatDist(Number(o.distance_m)) : ""]
     .filter(Boolean).join(" · ");
   const fin = o.ends_at ? new Date(o.ends_at) : null;
+  const pour = (o.audience_tags || []).map(t=>PUBLIC_OFFRE[t]).filter(Boolean).join(", ");
+  /* `inconnu` ne s'écrit pas : une ligne « horaires inconnus » n'apprend rien
+     et occupe la place d'une information vraie. */
+  const horaire = o.etat_horaire === "ouvert"
+      ? '<span class="of-ouvert">Ouvert'+
+        (o.ferme_a ? ' · ferme à '+esc(heureCourte(o.ferme_a)) : '')+'</span>'
+    : o.etat_horaire === "ferme"
+      ? '<span class="of-ferme">Fermé'+
+        (o.ouvre_a ? ' · ouvre '+esc(heureCourte(o.ouvre_a)) : '')+'</span>'
+    : '';
   return '<a class="of-carte" href="'+esc(o.source_url)+'" target="_blank" rel="noopener"'+
     ' data-offre="'+esc(o.id)+'">'+
     '<span class="of-tete"><span class="of-titre">'+esc(o.title)+'</span>'+
       '<span class="of-nature">'+esc(NATURE_OFFRE[o.offer_type] || "Avantage")+'</span></span>'+
-    (lieu ? '<span class="of-lieu">'+esc(lieu)+'</span>' : '')+
+    (ou ? '<span class="of-lieu">'+esc(ou)+'</span>' : '')+
+    (horaire || '')+
+    (pour ? '<span class="of-public">'+esc(pour)+'</span>' : '')+
     (o.eligibility ? '<span class="of-condition">'+esc(o.eligibility)+'</span>' : '')+
     (fin ? '<span class="of-fin">Jusqu’au '+esc(fin.toLocaleDateString("fr-FR"))+'</span>' : '')+
     '<span class="of-source">↗ '+esc(o.source_name)+'</span>'+
   '</a>';
+}
+
+/* « ferme à 18:00 » aujourd'hui, « ouvre lundi 09:00 » un autre jour. */
+function heureCourte(iso){
+  const d = new Date(iso);
+  if(!(d instanceof Date) || isNaN(d)) return "";
+  const memeJour = d.toDateString() === new Date().toDateString();
+  const h = d.toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+  return memeJour ? h : d.toLocaleDateString("fr-FR", {weekday:"long"}) + " " + h;
 }
 
 async function ouvrirBonsPlansEtudiants(){
