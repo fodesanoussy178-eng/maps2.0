@@ -260,6 +260,33 @@ test("une carte d'offre dit ce qu'elle sait, et tait ce qu'elle ignore", () => {
   assert.doesNotMatch(appCode, /is_student|est_etudiant/i);
 });
 
+test("une offre dont la date de fin est passée n'est pas affichée du tout", () => {
+  /* Ceinture, en plus des bretelles : `offres_publiques` ne rend jamais une
+     offre expirée — c'est prouvé en base. Mais une réponse mise en cache, ou
+     une source qui publierait un jour une date déjà passée, ne doit pas
+     produire une carte d'apparence vivante. */
+  assert.match(app, /function offreEncoreValable\(o\)\{/);
+  const g = appCode.slice(appCode.indexOf("function offreEncoreValable"),
+    appCode.indexOf("function carteOffre"));
+  assert.match(g, /return !\(fin instanceof Date\) \|\| isNaN\(fin\) \|\| fin\.getTime\(\) >= Date\.now\(\);/);
+  const o = appCode.slice(appCode.indexOf("async function ouvrirBonsPlansEtudiants"),
+    appCode.indexOf("/* Ce qui reprend après une connexion"));
+  /* Le filtre s'applique AVANT l'état vide : tout périmé veut dire rien à
+     montrer, et l'écran le dit franchement. */
+  assert.match(o, /const vivantes = \(offres \|\| \[\]\)\.filter\(offreEncoreValable\);/);
+  assert.match(o, /if\(!vivantes\.length\)\{/);
+  assert.match(o, /vivantes\.map\(carteOffre\)/);
+});
+
+test("le panneau Explorer reste une surface mobile", () => {
+  /* Décision du Lot 3, inchangée : au-delà de 768 px le panneau n'existe pas —
+     le desktop a sa propre navigation haute. Ce test empêche qu'on le
+     « réactive » par inadvertance en desktop, ce qui ferait de l'interface
+     mobile une simple version rétrécie. */
+  assert.match(html, /#selecteurSurface,#fabCreer,#explorerDecouverte\{display:none\}/);
+  assert.match(html, /@media \(max-width:768px\)[\s\S]{0,4000}#explorerDecouverte\{display:flex/);
+});
+
 /* ---- Ce que le lot ne devait pas toucher -------------------------------- */
 
 test("Maintenant, Pour toi, Solidarité, les zones et la carte sont intacts", () => {

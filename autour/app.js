@@ -17826,6 +17826,17 @@ const PUBLIC_OFFRE = Object.freeze({
    distance, pour qui, à quelles conditions, jusqu'à quand, et par qui c'est
    publié. Ce qu'on ignore ne s'affiche pas — mieux vaut une carte plus courte
    qu'une carte qui invente. */
+/* Une ceinture, en plus des bretelles. `offres_publiques` ne rend jamais une
+   offre expirée ou périmée — c'est prouvé en base. Mais si une réponse ancienne
+   traînait dans un cache, ou si une source venait un jour à publier une date
+   déjà passée, la carte ne doit pas la présenter comme vivante. On ne l'affiche
+   pas du tout : une offre finie n'est pas une offre. */
+function offreEncoreValable(o){
+  if(!o || !o.ends_at) return true;
+  const fin = new Date(o.ends_at);
+  return !(fin instanceof Date) || isNaN(fin) || fin.getTime() >= Date.now();
+}
+
 function carteOffre(o){
   const ou = [o.place_name || o.address, o.commune,
     Number.isFinite(Number(o.distance_m)) ? formatDist(Number(o.distance_m)) : ""]
@@ -17877,7 +17888,8 @@ async function ouvrirBonsPlansEtudiants(){
   const attente = hote.querySelector("[data-of-attente]");
   if(attente) attente.remove();
 
-  if(!offres || !offres.length){
+  const vivantes = (offres || []).filter(offreEncoreValable);
+  if(!vivantes.length){
     /* RIEN N'EST INVENTÉ. Pas d'offre veut dire pas d'offre, et l'écran le
        dit franchement plutôt que de remplir avec des à-peu-près. */
     hote.insertAdjacentHTML("beforeend",
@@ -17887,7 +17899,8 @@ async function ouvrirBonsPlansEtudiants(){
     return;
   }
   hote.insertAdjacentHTML("beforeend",
-    '<div class="of-liste">'+offres.map(carteOffre).join("")+'</div>');
+    '<div class="of-liste">'+
+      vivantes.map(carteOffre).join("")+'</div>');
 }
 
 
