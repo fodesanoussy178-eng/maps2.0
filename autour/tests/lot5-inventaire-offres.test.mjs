@@ -178,7 +178,11 @@ test("les offres expirées ne sont pas montrées, et ne sont pas effacées", () 
 
 test("sans offre réelle, rien n'est inventé", () => {
   const o = app.slice(app.indexOf("async function ouvrirBonsPlansEtudiants"));
-  assert.match(o, /if\(!offres \|\| !offres\.length\)\{/);
+  /* Le Lot 6 a resserré la condition : une offre dont la date de fin est
+     passée ne compte plus comme une offre. « Pas d'offre » veut donc dire
+     « aucune offre VIVANTE », ce qui est plus strict, pas moins. */
+  assert.match(o, /const vivantes = \(offres \|\| \[\]\)\.filter\(offreEncoreValable\);/);
+  assert.match(o, /if\(!vivantes\.length\)\{/);
   assert.match(o, /data-testid="offres-vide"/);
   assert.match(o, /Autour n’en invente pas/);
 });
