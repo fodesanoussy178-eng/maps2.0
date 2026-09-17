@@ -57,6 +57,10 @@ qu'il ralentit, et la simulation s'interrompt d'elle-même sur les événements
 qui le concernent (voir C6). Ce n'est pas une concession : c'est ce qui rend
 crédible le fait de vivre trente ans sans regarder chaque minute.
 
+**Tranché le 17/09/2026 : mode intention confirmé, seuil à ×10.** Le seuil
+n'est qu'un paramètre (`modeControle` dans `noyau/temps.ts`) ; il se règle à
+l'essai en phase 2, quand le déplacement au clic existera pour de bon.
+
 ### C2 — « Pas de quêtes » et « le joueur doit avoir quelque chose à faire »
 
 **Le conflit.** Le §9 et le §34 interdisent les quêtes imposées. Sans aucune
@@ -93,9 +97,10 @@ pour les joueurs qui préfèrent explorer. Le déterminisme, lui, sert au
 débogage via un journal d'entrées rejouable (voir §2 de l'architecture), pas
 au retour en arrière.
 
-**Décision qui vous appartient** : si vous préférez la sauvegarde libre, il
-faut alors accepter que le §36 devienne une règle morale et non une règle
-technique. Les deux se défendent, mais il faut choisir.
+**Tranché le 17/09/2026 : sauvegarde unique continue.** Le §36 devient donc
+une propriété technique et non une règle morale. Aucun mode « bac à sable »
+n'est prévu pour l'instant ; si le besoin apparaît à l'essai, il s'ajoutera
+comme mode explicitement distinct, jamais comme réglage par défaut.
 
 ### C4 — 100 habitants et plusieurs générations
 

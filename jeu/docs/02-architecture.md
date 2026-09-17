@@ -340,13 +340,13 @@ la carte active. Partout ailleurs, un déplacement est un fait logique avec
 une heure d'arrivée — un personnage `macro` n'a pas de coordonnées à mettre à
 jour, il a un lieu et une heure.
 
-> **Note de direction artistique.** Le §41 cite Pocket City 2, qui est
-> isométrique. Je recommande la **vue de dessus 3/4 orthogonale** plutôt que
-> l'isométrie : pour un développeur seul, l'isométrie double le coût des
-> décors, complique les intérieurs, l'occlusion et le ciblage à la souris,
-> pour un gain de lisibilité nul sur un jeu où l'essentiel est social. Le
-> rendu reste derrière une interface, donc un passage à l'isométrie plus tard
-> ne toucherait qu'un module. **C'est un arbitrage à confirmer de votre part.**
+> **Direction artistique — tranché le 17/09/2026 : vue de dessus 3/4
+> orthogonale.** Le §41 cite Pocket City 2, qui est isométrique ; l'isométrie
+> est écartée parce qu'elle double le coût des décors, complique les
+> intérieurs, l'occlusion et le ciblage à la souris, pour un gain de
+> lisibilité nul sur un jeu dont l'essentiel est social. Le jeu doit de toute
+> façon avoir son identité propre (§41). Le rendu restant derrière une
+> interface, un passage à l'isométrie plus tard ne toucherait qu'un module.
 
 ### Moteur Économie
 

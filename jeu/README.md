@@ -71,25 +71,39 @@ parties déjà commencées.
 | `empreinte.ts` | hachage d'état : le filet qui fait tomber le déterminisme le jour où il casse |
 
 ```bash
-npm run jeu:test          # 49 tests
-npm run jeu:test:watch
+npx vitest run   --config jeu/vitest.config.ts   # 49 tests
+npx vitest watch --config jeu/vitest.config.ts
+npx tsc --noEmit -p jeu/tsconfig.json
 ```
+
+Le jeu est **entièrement isolé** du reste du dépôt : il a son propre
+`tsconfig.json` et sa propre configuration de test, et ne modifie aucun
+fichier d'Urosi-t (`src/`) ni d'Autour (`autour/`). Aucun code des deux
+projets ne se croise. Seule conséquence connue : le `npm test` du dépôt, qui
+balaie tous les fichiers `*.test.ts`, ramasse aussi ceux du jeu — ils
+passent, et corriger ce balayage demanderait de toucher la configuration
+d'Urosi-t, ce qui n'est pas fait ici.
 
 ---
 
-## Les trois arbitrages qui attendent une décision
+## Les trois arbitrages, tranchés
 
-Ils sont argumentés dans [`docs/01-analyse.md`](docs/01-analyse.md) et
-récapitulés dans le journal.
+Argumentés dans [`docs/01-analyse.md`](docs/01-analyse.md), décidés le
+17/09/2026.
 
-1. **Direction artistique** — vue de dessus 3/4 orthogonale (recommandée) ou
-   isométrie à la Pocket City 2 (plus fidèle à la référence, nettement plus
-   coûteuse).
-2. **Politique de sauvegarde** — sauvegarde unique continue, qui rend la mort
-   réellement irréversible, ou sauvegardes libres, qui l'annulent en pratique.
-3. **Mode intention au-delà de ×10** — perdre le contrôle direct à haute
-   vitesse est le seul moyen de concilier « marcher dans le monde » et
-   « accélérer à ×500 ».
+1. **Vue de dessus 3/4 orthogonale.** Pas d'isométrie : pour un développeur
+   seul, elle doublerait le coût des décors, des intérieurs et du ciblage
+   pour un gain nul sur un jeu dont l'essentiel est social. Le rendu reste
+   derrière une interface, un passage à l'isométrie plus tard ne toucherait
+   qu'un module.
+2. **Sauvegarde unique continue.** Une seule partie vivante, écrasée en
+   continu, les événements irréversibles validés avant d'être affichés. La
+   mort et les ruptures comptent réellement : le §36 devient une propriété
+   technique et non une règle morale.
+3. **Mode intention au-delà de ×10.** ×1 à ×10, le joueur déplace son
+   personnage au clic. ×50 et plus, il pose une intention et son personnage
+   l'exécute selon sa personnalité, comme les autres habitants. Le seuil
+   reste un paramètre, à régler à l'essai en phase 2.
 
 ---
 
