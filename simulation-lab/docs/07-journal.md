@@ -217,3 +217,92 @@ Après correction : jusqu'à 32 personnes dehors à 8 h, 6,7 en moyenne contre
   qualification dérivée. Rien ne l'utilise encore : aucun moteur ne le lit,
   aucun test ne le couvre. C'est un plan, pas un système.
 - Tout le reste du doc 5 : économie, vie, événements, voyages, générations.
+
+---
+
+## 2026-09-17 (suite) — Les fondations de l'état
+
+Phase bornée à la STRUCTURE de l'état du monde. Ni relations, ni mémoire, ni
+bus d'événements, ni échelles, ni caméra, ni joueur : rien de tout cela n'a
+été branché, et c'est délibéré.
+
+### Ce que `Monde` porte maintenant
+
+| Collection | Justification |
+|---|---|
+| `personnages` | déjà là |
+| `lieux` | déjà là |
+| `foyers` | remplace un parcours de toute la population à chaque dépense partagée |
+| `postes` | le travail devient une ressource FINIE, avec au plus un titulaire |
+| `relations` | **vide**, et la seule exception assumée : l'ajouter après coup obligerait à recâbler tout ce qui sera écrit d'ici là |
+
+Plus `version`, le numéro de schéma de sauvegarde.
+
+### Ce que `Monde` ne porte toujours pas, et pourquoi
+
+- `defunts` — personne ne meurt, la filiation n'existe pas : une collection
+  vide sans producteur ni consommateur ;
+- `organisations` — un poste se rattache à son lieu, ce qui suffit ; ajouter
+  l'employeur plus tard est additif ;
+- `faits`, `chronique` — le bus d'événements n'est branché à rien, la
+  chronique n'aurait rien à enregistrer ;
+- `logements` — un logement est un lieu, le foyer porte son adresse ;
+- `economie` — ni loyer ni charges n'existent.
+
+### Trois champs nouveaux sur le personnage
+
+- **`position: { lieu, piece, x, y }`** — `piece` vaut toujours `null` (les
+  intérieurs ne sont pas construits), `x` et `y` sont en millièmes de
+  l'emprise du lieu : entiers, donc sans arrondi au rejeu, et indépendants de
+  l'échelle du rendu. L'emplacement est dérivé par hachage de (personne, lieu),
+  donc stable sans rien stocker.
+- **`apparence: { genes, garderobe, accessoires }`** — la coupure entre ce qui
+  se transmet et ce qui s'acquiert est dans la FORME, pas dans un commentaire :
+  le jour de l'hérédité, on passera `genes` d'un parent à l'enfant sans trier.
+  Tout est entier et borné, pour que le rendu puisse un jour pré-calculer un
+  atlas de silhouettes.
+- **`poste: PosteId | null`** — remplace l'ancien `occupation`, qui était un
+  enregistrement inventé pour chaque habitant. Les horaires et le salaire
+  appartiennent désormais au poste.
+
+`lieu`, `domicile` et `occupation` ont disparu du personnage : chacun avait une
+source de vérité en double.
+
+### Ce que les tests ont attrapé
+
+1. **Le générateur dépassait la capacité des logements** — sept habitants pour
+   six places. L'ancien code avait la même faille ; il passait par chance,
+   parce que l'ordre de tirage était différent. Le logement se choisit
+   maintenant parmi ceux qui ont de la place.
+2. **La mesure de l'effet de la sociabilité ne tenait pas debout.** Elle
+   comparait les moyennes de deux quintiles de douze personnes : un seul
+   solitaire vivant dans un foyer de cinq la faisait passer de ×2,6 à ×1,0
+   d'une graine à l'autre. Remplacée par une corrélation sur toute la
+   population, vérifiée sur quatre graines. **L'effet est réel mais faible**
+   (ρ entre 0,14 et 0,35) : à traiter à la phase des relations, où un sociable
+   devrait choisir d'aller là où sont les gens qu'il connaît — aujourd'hui
+   personne ne connaît personne.
+
+### Ce que les postes finis rendent visible
+
+| Population | Salariés | Élèves | Sans occupation |
+|---:|---:|---:|---:|
+| 60 | 31 | 14 | 15 |
+| 480 | 60 | 60 | **360** |
+
+Cent vingt postes quelle que soit la taille de la ville. La pénurie n'est plus
+masquée : elle se lit. Faire croître le monde avec la population reste un
+chantier à part entière, et il n'appartient pas à cette phase.
+
+### Performance
+
+L'index des foyers supprime un parcours en `O(N)` par décision. Le gain
+mesuré est sous le bruit (2 550 ms → 2 477 ms pour dix jours à 480 habitants),
+et la comparaison est de toute façon faussée : à 480 habitants, la population
+n'a plus la même structure d'occupation qu'avant. L'index se justifie par la
+complexité, pas par un gain constaté aujourd'hui.
+
+### Volontairement non branché
+
+Relations · mémoire · bus d'événements · vitesses temporelles · budget de
+calcul · niveaux d'échelle · caméra · joueur. Dans des phases séparées.

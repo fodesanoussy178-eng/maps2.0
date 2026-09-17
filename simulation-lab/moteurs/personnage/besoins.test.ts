@@ -1,25 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DERIVE_BASE, deriver } from './besoins.ts';
-import { BESOINS, TRAITS, besoin } from '../../etat/personnage.ts';
-import type { Personnage } from '../../etat/personnage.ts';
-import type { LieuId, PersoId } from '../../noyau/index.ts';
+import { BESOINS, besoin } from '../../etat/personnage.ts';
+import { habitantTemoin } from '../../test/fabrique.ts';
 
-const habitant = (traits: Partial<Record<(typeof TRAITS)[number], number>> = {}): Personnage => ({
-  id: 1 as PersoId,
-  prenom: 'Test',
-  nom: 'Témoin',
-  naissance: 0,
-  sexe: 'f',
-  traits: TRAITS.map((t) => traits[t] ?? 0),
-  besoins: BESOINS.map(() => 0),
-  lieu: 1 as LieuId,
-  domicile: 1 as LieuId,
-  occupation: { type: 'aucune' },
-  argent: 100,
-  activite: null,
-  echelle: 'micro',
-  derniereMaj: 0,
-});
+const habitant = habitantTemoin;
 
 describe('dérive des besoins', () => {
   it('replie le temps sans rien changer au résultat', () => {

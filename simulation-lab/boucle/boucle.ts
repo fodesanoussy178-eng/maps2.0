@@ -18,7 +18,7 @@
 import type { LieuId, PersoId } from '../noyau/index.ts';
 import { creerFlux, doitMettreAJour, hacher, heureDecimale } from '../noyau/index.ts';
 import type { Monde } from '../etat/monde.ts';
-import { autresPresents } from '../etat/monde.ts';
+import { autresPresents, domicile, posteDe } from '../etat/monde.ts';
 import type { Besoin, Personnage } from '../etat/personnage.ts';
 import { ajouterBesoin } from '../etat/personnage.ts';
 import type { Action, Contexte } from '../moteurs/personnage/actions.ts';
@@ -27,6 +27,7 @@ import { deriver } from '../moteurs/personnage/besoins.ts';
 import { decider } from '../moteurs/personnage/utilite.ts';
 import { DUREE_TRAJET, estOuvert, estPlein } from '../etat/lieu.ts';
 import { crediter, depenserFoyer, deplacer } from '../etat/transactions.ts';
+import type { Poste } from '../etat/poste.ts';
 
 /**
  * Le banc d'essai observe la simulation de l'extérieur : aucune métrique
@@ -61,17 +62,18 @@ export interface OptionsBoucle {
  * crédibilité.
  */
 export function lieuCible(monde: Monde, p: Personnage, a: Action): LieuId | null {
-  if (a.lieux.length === 0) return p.lieu;
+  if (a.lieux.length === 0) return p.position.lieu;
 
   const heure = heureDecimale(monde.tick);
-  const courant = monde.lieux.get(p.lieu);
+  const courant = monde.lieux.get(p.position.lieu);
 
-  if (a.lieux.includes('logement')) return p.domicile;
+  if (a.lieux.includes('logement')) return domicile(monde, p);
 
   // Le travail et les études ont un lieu attitré : on ne va pas travailler
   // dans le bureau d'à côté parce qu'il est plus proche.
-  if (p.occupation.type !== 'aucune') {
-    const attitre = monde.lieux.get(p.occupation.lieu);
+  const poste = posteDe(monde, p);
+  if (poste !== undefined) {
+    const attitre = monde.lieux.get(poste.lieu);
     if (attitre !== undefined && a.lieux.includes(attitre.type)) return attitre.id;
   }
 
@@ -95,18 +97,24 @@ export function lieuCible(monde: Monde, p: Personnage, a: Action): LieuId | null
   for (const l of monde.lieux.values()) {
     if (!a.lieux.includes(l.type)) continue;
     if (!estOuvert(l, heure)) continue;
-    if (estPlein(l) && l.id !== p.lieu) continue;
+    if (estPlein(l) && l.id !== p.position.lieu) continue;
     const score = hacher('lieu-prefere', p.id as number, l.id as number) % 1000;
     if (score > meilleur) { meilleur = score; choix = l.id; }
   }
   return choix;
 }
 
-/** Argent mobilisable par le foyer, calculé une fois par décision. */
+/**
+ * Argent mobilisable par le foyer, calculé une fois par décision.
+ *
+ * Passé d'un parcours de toute la population à un parcours des seuls membres
+ * du foyer : c'est l'intérêt direct de l'entité `Foyer`, et le premier goulet
+ * d'étranglement de l'audit qui disparaît.
+ */
 function argentDuFoyer(monde: Monde, p: Personnage): number {
   let total = 0;
-  for (const autre of monde.personnages.values()) {
-    if (autre.domicile === p.domicile) total += Math.max(0, autre.argent);
+  for (const id of monde.foyers.get(p.foyer)?.membres ?? []) {
+    total += Math.max(0, monde.personnages.get(id)?.argent ?? 0);
   }
   return total;
 }
@@ -125,7 +133,7 @@ function contextePour(
       perso: p,
       heure,
       presents,
-      surPlace: cible !== null && cible === p.lieu,
+      surPlace: cible !== null && cible === p.position.lieu,
       accessible: cible !== null,
       argentFoyer,
     };
@@ -133,13 +141,13 @@ function contextePour(
 }
 
 /** Applique les effets d'une action sur `ticks` ticks. Linéaire, donc repliable. */
-function appliquerEffets(p: Personnage, a: Action, ticks: number): void {
+function appliquerEffets(p: Personnage, a: Action, ticks: number, poste: Poste | undefined): void {
   if (ticks <= 0) return;
   for (const [nom, valeur] of Object.entries(a.effets)) {
     ajouterBesoin(p, nom as Besoin, valeur * ticks);
   }
-  if (a.id === 'travailler' && p.occupation.type === 'emploi') {
-    crediter(p, Math.round((p.occupation.salaireHoraire * ticks) / 12));
+  if (a.id === 'travailler' && poste !== undefined && poste.genre === 'emploi') {
+    crediter(p, Math.round((poste.salaireHoraire * ticks) / 12));
   }
 }
 
@@ -168,7 +176,7 @@ function mettreAJour(monde: Monde, p: Personnage, options: OptionsBoucle): void 
       if (activite.type === 'action') {
         const a = actionParId(activite.action);
         if (a !== undefined) {
-          appliquerEffets(p, a, duree);
+          appliquerEffets(p, a, duree, posteDe(monde, p));
           options.observateur?.surActivite?.(monde, p, a.id, duree);
         }
       } else if (duree > 0) {
@@ -219,7 +227,7 @@ function engager(
   const cible = lieuCible(monde, p, decision.action);
   if (cible === null) return false;
 
-  if (cible !== p.lieu) {
+  if (cible !== p.position.lieu) {
     p.activite = { type: 'deplacement', vers: cible, jusqua: t + DUREE_TRAJET };
     return true;
   }

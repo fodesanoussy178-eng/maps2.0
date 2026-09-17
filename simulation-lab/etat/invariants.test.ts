@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { genererMonde } from '../monde/generation.ts';
 import { verifierInvariants } from './invariants.ts';
 import { deplacer } from './transactions.ts';
-import type { LieuId } from '../noyau/index.ts';
+import type { FoyerId } from '../noyau/index.ts';
 
 const monde = () => genererMonde({ graine: 7, population: 24 }).monde;
 
@@ -20,10 +20,10 @@ describe('invariants', () => {
     const p = [...m.personnages.values()][0];
     if (p === undefined) throw new Error('population vide');
 
-    const ailleurs = [...m.lieux.values()].find((l) => l.id !== p.lieu);
+    const ailleurs = [...m.lieux.values()].find((l) => l.id !== p.position.lieu);
     if (ailleurs === undefined) throw new Error('un seul lieu');
 
-    p.lieu = ailleurs.id;
+    p.position.lieu = ailleurs.id;
     const violations = verifierInvariants(m);
     expect(violations.length).toBeGreaterThan(0);
     expect(violations.some((v) => v.regle === 'presence-reciproque')).toBe(true);
@@ -33,7 +33,7 @@ describe('invariants', () => {
     const m = monde();
     const p = [...m.personnages.values()][0];
     if (p === undefined) throw new Error('population vide');
-    const ailleurs = [...m.lieux.values()].find((l) => l.id !== p.lieu);
+    const ailleurs = [...m.lieux.values()].find((l) => l.id !== p.position.lieu);
     if (ailleurs === undefined) throw new Error('un seul lieu');
 
     expect(deplacer(m, p, ailleurs.id)).toEqual({ ok: true });
@@ -46,7 +46,7 @@ describe('invariants', () => {
     const p = habitants[0];
     if (p === undefined) throw new Error('population vide');
 
-    const petit = [...m.lieux.values()].find((l) => l.id !== p.lieu);
+    const petit = [...m.lieux.values()].find((l) => l.id !== p.position.lieu);
     if (petit === undefined) throw new Error('un seul lieu');
     petit.capacite = petit.occupants.length;
 
@@ -60,17 +60,17 @@ describe('invariants', () => {
     if (p === undefined) throw new Error('population vide');
 
     p.besoins[0] = 5000;
-    p.domicile = 99999 as LieuId;
+    p.foyer = 99999 as FoyerId;
     const regles = verifierInvariants(m).map((v) => v.regle);
     expect(regles).toContain('besoin-borne');
-    expect(regles).toContain('domicile-existe');
+    expect(regles).toContain('foyer-existe');
   });
 
   it('attrape quelqu\'un compté deux fois', () => {
     const m = monde();
     const p = [...m.personnages.values()][0];
     if (p === undefined) throw new Error('population vide');
-    const l = m.lieux.get(p.lieu);
+    const l = m.lieux.get(p.position.lieu);
     if (l === undefined) throw new Error('lieu manquant');
 
     l.occupants.push(p.id);

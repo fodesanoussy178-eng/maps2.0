@@ -1,28 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { creerAlea } from '../../noyau/index.ts';
-import { BESOINS, TRAITS } from '../../etat/personnage.ts';
-import type { Personnage } from '../../etat/personnage.ts';
-import type { LieuId, PersoId } from '../../noyau/index.ts';
+import { habitantTemoin } from '../../test/fabrique.ts';
 import type { Action, Contexte } from './actions.ts';
 import { CATALOGUE } from './actions.ts';
 import { decider, evaluer, exposant, tauxOptimalite } from './utilite.ts';
 
-const habitant = (traits: Partial<Record<(typeof TRAITS)[number], number>> = {}): Personnage => ({
-  id: 1 as PersoId,
-  prenom: 'Test',
-  nom: 'Témoin',
-  naissance: 0,
-  sexe: 'f',
-  traits: TRAITS.map((t) => traits[t] ?? 0),
-  besoins: BESOINS.map(() => 0),
-  lieu: 1 as LieuId,
-  domicile: 1 as LieuId,
-  occupation: { type: 'aucune' },
-  argent: 500,
-  activite: null,
-  echelle: 'micro',
-  derniereMaj: 0,
-});
+const habitant = habitantTemoin;
 
 const acte = (id: string, considerations: readonly ((c: Contexte) => number)[]): Action => ({
   id,

@@ -16,6 +16,7 @@
  */
 
 import type { Monde } from '../../etat/monde.ts';
+import { posteDe } from '../../etat/monde.ts';
 import type { Besoin, Personnage } from '../../etat/personnage.ts';
 import { besoin, traitNormalise } from '../../etat/personnage.ts';
 import type { TypeLieu } from '../../etat/lieu.ts';
@@ -102,10 +103,10 @@ const argentDisponible = (montant: number): Consideration =>
  * agrégé ne l'aurait vu, parce que la moyenne des heures travaillées restait
  * parfaitement plausible.
  */
-const aSonPoste = (type: 'emploi' | 'etudes'): Consideration => (ctx) => {
-  const o = ctx.perso.occupation;
-  if (o.type !== type) return 0;
-  return ctx.heure >= o.debutH && ctx.heure < o.finH ? 1 : 0.02;
+const aSonPoste = (genre: 'emploi' | 'etudes'): Consideration => (ctx) => {
+  const poste = posteDe(ctx.monde, ctx.perso);
+  if (poste === undefined || poste.genre !== genre) return 0;
+  return ctx.heure >= poste.debutH && ctx.heure < poste.finH ? 1 : 0.02;
 };
 
 const traitDe = (

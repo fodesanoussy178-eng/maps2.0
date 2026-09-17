@@ -8,8 +8,10 @@
  * dépendance dans un pointeur.
  */
 
-import type { LieuId, PersoId } from '../noyau/index.ts';
+import type { FoyerId, LieuId, PersoId, PosteId } from '../noyau/index.ts';
 import type { Echelle } from '../noyau/index.ts';
+import type { Position } from './position.ts';
+import type { Apparence } from './apparence.ts';
 
 // ---------------------------------------------------------------------------
 // Besoins
@@ -71,15 +73,6 @@ export const TRAITS = [
 export type Trait = (typeof TRAITS)[number];
 
 // ---------------------------------------------------------------------------
-// Occupation
-// ---------------------------------------------------------------------------
-
-export type Occupation =
-  | { type: 'emploi'; lieu: LieuId; debutH: number; finH: number; salaireHoraire: number }
-  | { type: 'etudes'; lieu: LieuId; debutH: number; finH: number }
-  | { type: 'aucune' };
-
-// ---------------------------------------------------------------------------
 // Activité en cours
 // ---------------------------------------------------------------------------
 
@@ -109,10 +102,15 @@ export interface Personnage {
   traits: number[];
   /** Indexés par BESOINS, 0..1000. */
   besoins: number[];
+  /** Persistante et transmissible : voir `etat/apparence.ts`. */
+  apparence: Apparence;
 
-  lieu: LieuId;
-  domicile: LieuId;
-  occupation: Occupation;
+  /** Où il se trouve, jusqu'à la pièce et au point : voir `etat/position.ts`. */
+  position: Position;
+  /** Le foyer auquel il appartient. Son logement en découle, jamais l'inverse. */
+  foyer: FoyerId;
+  /** Emploi ou place d'élève. `null` = sans occupation. */
+  poste: PosteId | null;
   argent: number;
 
   activite: Activite | null;
@@ -169,4 +167,9 @@ export function ajouterBesoin(p: Personnage, nom: Besoin, delta: number): void {
 
 export function nomComplet(p: Personnage): string {
   return `${p.prenom} ${p.nom}`;
+}
+
+/** Raccourci de lecture. Le lieu est dans la position, jamais dupliqué ailleurs. */
+export function lieuDe(p: Personnage): Position['lieu'] {
+  return p.position.lieu;
 }

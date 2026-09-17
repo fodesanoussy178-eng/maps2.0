@@ -8,6 +8,8 @@
 
 import { TICKS_PAR_JOUR, formaterDate } from '../noyau/index.ts';
 import { BESOINS, nomComplet, trait } from '../etat/personnage.ts';
+import type { Monde } from '../etat/monde.ts';
+import { posteDe } from '../etat/monde.ts';
 import type { Personnage } from '../etat/personnage.ts';
 import { decrireViolations } from '../etat/invariants.ts';
 import type { Resultat } from './experience.ts';
@@ -130,7 +132,7 @@ export function rapport(r: Resultat): string {
   // --- Économie -------------------------------------------------------------
   l.push('── ARGENT ' + '─'.repeat(56));
   const argents = habitants.map((p) => p.argent);
-  const salaries = habitants.filter((p) => p.occupation.type === 'emploi');
+  const salaries = habitants.filter((p) => posteDe(monde, p)?.genre === 'emploi');
   const gainMoyen = salaries.length === 0
     ? 0
     : salaries.reduce((s, p) => s + p.argent, 0) / salaries.length / Math.max(1, r.jours);
@@ -169,7 +171,7 @@ export function journee(r: Resultat, p: Personnage): string {
   const parHeure = r.metriques.creneaux.get(p.id);
   const l: string[] = [];
   l.push('─'.repeat(66));
-  l.push(`  ${nomComplet(p)} (#${p.id})  ·  ${decrireOccupation(p)}`);
+  l.push(`  ${nomComplet(p)} (#${p.id})  ·  ${decrireOccupation(r.monde, p)}`);
   l.push(`  ${decrireTraitsSaillants(p)}`);
   l.push(`  stabilité de routine : ${stabiliteRoutine(r.metriques, p.id).toFixed(3)}`);
   l.push('─'.repeat(66));
@@ -196,15 +198,13 @@ export function journee(r: Resultat, p: Personnage): string {
   return l.join('\n');
 }
 
-function decrireOccupation(p: Personnage): string {
-  switch (p.occupation.type) {
-    case 'emploi':
-      return `emploi ${p.occupation.debutH}h–${p.occupation.finH}h, ${p.occupation.salaireHoraire} €/h`;
-    case 'etudes':
-      return `études ${p.occupation.debutH}h–${p.occupation.finH}h`;
-    default:
-      return 'sans occupation';
+function decrireOccupation(monde: Monde, p: Personnage): string {
+  const poste = posteDe(monde, p);
+  if (poste === undefined) return 'sans occupation';
+  if (poste.genre === 'emploi') {
+    return `${poste.intitule}, ${poste.debutH}h–${poste.finH}h, ${poste.salaireHoraire} €/h`;
   }
+  return `${poste.intitule}, ${poste.debutH}h–${poste.finH}h`;
 }
 
 function decrireTraitsSaillants(p: Personnage): string {

@@ -14,8 +14,11 @@ import { TICKS_PAR_JOUR, age, calendrier } from '../noyau/index.ts';
 import { genererMonde } from '../monde/generation.ts';
 import { avancer } from '../boucle/boucle.ts';
 import { verifierInvariants } from '../etat/invariants.ts';
+import type { Monde } from '../etat/monde.ts';
+import type { Personnage } from '../etat/personnage.ts';
 import { DUREE_TRAJET } from '../etat/lieu.ts';
 import { trait } from '../etat/personnage.ts';
+import { domicile, posteDe } from '../etat/monde.ts';
 import { batirVille, type Ville } from './ville.ts';
 
 export interface TraceHabitant {
@@ -80,13 +83,8 @@ export function enregistrer(options: OptionsTrace): Trace {
     habitants.push({
       nom: `${p.prenom} ${p.nom}`,
       age: age(p.naissance, monde.tick),
-      occupation:
-        p.occupation.type === 'emploi'
-          ? `travaille ${p.occupation.debutH} h – ${p.occupation.finH} h`
-          : p.occupation.type === 'etudes'
-            ? `élève, ${p.occupation.debutH} h – ${p.occupation.finH} h`
-            : 'sans occupation',
-      domicile: indexLieu.get(p.domicile as number) ?? -1,
+      occupation: decrireOccupation(monde, p),
+      domicile: indexLieu.get((domicile(monde, p) ?? -1) as number) ?? -1,
       sociabilite: trait(p, 'sociabilite'),
       discipline: trait(p, 'discipline'),
       impulsivite: trait(p, 'impulsivite'),
@@ -127,7 +125,7 @@ export function enregistrer(options: OptionsTrace): Trace {
     const avance: number[] = [];
     for (const id of ordre) {
       const p = monde.personnages.get(id as never);
-      lieux.push(p === undefined ? -1 : (indexLieu.get(p.lieu as number) ?? -1));
+      lieux.push(p === undefined ? -1 : (indexLieu.get(p.position.lieu as number) ?? -1));
       actes.push(acteCourant.get(id) ?? 0);
 
       const activite = p?.activite ?? null;
@@ -161,6 +159,13 @@ export function enregistrer(options: OptionsTrace): Trace {
     activites,
     images,
   };
+}
+
+function decrireOccupation(monde: Monde, p: Personnage): string {
+  const poste = posteDe(monde, p);
+  if (poste === undefined) return 'sans occupation';
+  const heures = `${poste.debutH} h – ${poste.finH} h`;
+  return poste.genre === 'emploi' ? `${poste.intitule}, ${heures}` : `${poste.intitule}, ${heures}`;
 }
 
 /** Heure lisible d'une image, pour l'horloge de la vue. */

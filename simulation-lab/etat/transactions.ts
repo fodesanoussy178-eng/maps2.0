@@ -5,7 +5,7 @@
  * modifié directement. Il passe par ces fonctions, qui tiennent les deux
  * côtés à jour.
  *
- * Écrire `perso.lieu = x` quelque part est un bug, même si le code semble
+ * Écrire `perso.position.lieu = x` quelque part est un bug, même si le code semble
  * marcher : la liste d'occupants de l'ancien lieu garde le personnage, celle
  * du nouveau ne l'a pas, et la contradiction n'apparaîtra qu'à la centième
  * heure de jeu, dans une partie qu'on ne saura plus rejouer.
@@ -15,6 +15,7 @@ import type { LieuId } from '../noyau/index.ts';
 import type { Monde } from './monde.ts';
 import type { Personnage } from './personnage.ts';
 import { estPlein } from './lieu.ts';
+import { emplacementDans } from './position.ts';
 
 export type Echec = 'lieu-inconnu' | 'lieu-plein' | 'fonds-insuffisants';
 
@@ -34,16 +35,16 @@ const SUCCES: Resultat = { ok: true };
 export function deplacer(monde: Monde, p: Personnage, vers: LieuId): Resultat {
   const destination = monde.lieux.get(vers);
   if (destination === undefined) return { ok: false, raison: 'lieu-inconnu' };
-  if (p.lieu === vers) return SUCCES;
+  if (p.position.lieu === vers) return SUCCES;
   if (estPlein(destination)) return { ok: false, raison: 'lieu-plein' };
 
-  const origine = monde.lieux.get(p.lieu);
+  const origine = monde.lieux.get(p.position.lieu);
   if (origine !== undefined) {
     const i = origine.occupants.indexOf(p.id);
     if (i >= 0) origine.occupants.splice(i, 1);
   }
   destination.occupants.push(p.id);
-  p.lieu = vers;
+  poser(p, vers);
   return SUCCES;
 }
 
@@ -52,7 +53,26 @@ export function installer(monde: Monde, p: Personnage, dans: LieuId): void {
   const destination = monde.lieux.get(dans);
   if (destination === undefined) return;
   destination.occupants.push(p.id);
-  p.lieu = dans;
+  poser(p, dans);
+}
+
+/**
+ * Pose un personnage dans un lieu : le lieu ET son emplacement à l'intérieur.
+ *
+ * L'emplacement est dérivé par hachage de (personne, lieu), donc stable — la
+ * même personne retrouve toujours la même place dans le même lieu — et
+ * n'entame aucun état d'aléa, ce qui permet aux transactions de rester des
+ * fonctions simples sans accès au générateur du monde.
+ *
+ * La pièce repasse à `null` : les intérieurs n'existent pas encore, et ce
+ * jour-là c'est ici qu'ils s'accrocheront.
+ */
+function poser(p: Personnage, lieu: LieuId): void {
+  const e = emplacementDans(p.id as number, lieu);
+  p.position.lieu = lieu;
+  p.position.piece = null;
+  p.position.x = e.x;
+  p.position.y = e.y;
 }
 
 /**
@@ -95,10 +115,15 @@ export function depenserFoyer(monde: Monde, p: Personnage, montant: number): Res
     return SUCCES;
   }
 
+  // L'index du foyer remplace le parcours de toute la population. Même
+  // ensemble, même ordre, donc exactement le même résultat qu'avant — mais en
+  // O(membres) au lieu de O(population), ce qui était le premier goulet
+  // d'étranglement relevé par l'audit.
   const foyer: Personnage[] = [];
   let disponible = 0;
-  for (const autre of monde.personnages.values()) {
-    if (autre.domicile !== p.domicile) continue;
+  for (const id of monde.foyers.get(p.foyer)?.membres ?? []) {
+    const autre = monde.personnages.get(id);
+    if (autre === undefined) continue;
     foyer.push(autre);
     disponible += Math.max(0, autre.argent);
   }

@@ -16,6 +16,7 @@ type Marque<T, N extends string> = T & { readonly [marque]: N };
 export type PersoId = Marque<number, 'perso'>;
 export type LieuId = Marque<number, 'lieu'>;
 export type CarteId = Marque<number, 'carte'>;
+export type PieceId = Marque<number, 'piece'>;
 export type FaitId = Marque<number, 'fait'>;
 export type EpisodeId = Marque<number, 'episode'>;
 export type OrgId = Marque<number, 'org'>;

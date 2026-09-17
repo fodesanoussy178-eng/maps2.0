@@ -13,8 +13,11 @@
 
 import { TICKS_PAR_AN } from '../noyau/index.ts';
 import type { Monde } from './monde.ts';
+import { VERSION_ETAT } from './monde.ts';
 import { BESOINS, BESOIN_MAX, besoin } from './personnage.ts';
 import { TRAITS, trait } from './personnage.ts';
+import { apparenceValide } from './apparence.ts';
+import { positionValide } from './position.ts';
 
 export interface Violation {
   regle: string;
@@ -27,13 +30,17 @@ export function verifierInvariants(monde: Monde): Violation[] {
     violations.push({ regle, detail });
   };
 
+  if (monde.version !== VERSION_ETAT) {
+    signaler('version-etat', `le monde porte le schéma ${monde.version}, le code attend ${VERSION_ETAT}`);
+  }
+
   // --- Les personnages ------------------------------------------------------
   for (const p of monde.personnages.values()) {
     const ou = `${p.prenom} ${p.nom} (#${p.id})`;
 
-    const lieu = monde.lieux.get(p.lieu);
+    const lieu = monde.lieux.get(p.position.lieu);
     if (lieu === undefined) {
-      signaler('lieu-existe', `${ou} se trouve dans le lieu inconnu #${p.lieu}`);
+      signaler('lieu-existe', `${ou} se trouve dans le lieu inconnu #${p.position.lieu}`);
     } else if (!lieu.occupants.includes(p.id)) {
       // L'invariant le plus important : le lien position ↔ occupants est
       // bidirectionnel. C'est celui que casse une écriture directe.
@@ -86,11 +93,44 @@ export function verifierInvariants(monde: Monde): Violation[] {
       signaler('destination-existe', `${ou} se déplace vers le lieu inconnu #${p.activite.vers}`);
     }
 
-    if (!monde.lieux.has(p.domicile)) {
-      signaler('domicile-existe', `${ou} a un domicile inconnu #${p.domicile}`);
+    // --- position -----------------------------------------------------------
+    for (const faute of positionValide(p.position)) {
+      signaler('position-bornee', `${ou} a une position hors bornes : ${faute}`);
     }
-    if (p.occupation.type !== 'aucune' && !monde.lieux.has(p.occupation.lieu)) {
-      signaler('occupation-existe', `${ou} travaille ou étudie dans un lieu inconnu`);
+    if (p.position.piece !== null) {
+      // Aucun lieu n'a encore d'intérieur : une pièce renseignée signifierait
+      // qu'on a posé quelqu'un dans une pièce qui n'existe nulle part.
+      signaler('piece-inexistante', `${ou} est dans la pièce #${p.position.piece}, sans intérieur simulé`);
+    }
+
+    // --- apparence ----------------------------------------------------------
+    for (const faute of apparenceValide(p.apparence)) {
+      signaler('apparence-valide', `${ou} a une apparence invalide : ${faute}`);
+    }
+
+    // --- foyer --------------------------------------------------------------
+    const foyer = monde.foyers.get(p.foyer);
+    if (foyer === undefined) {
+      signaler('foyer-existe', `${ou} appartient au foyer inconnu #${p.foyer}`);
+    } else if (!foyer.membres.includes(p.id)) {
+      signaler('foyer-reciproque', `${ou} pointe un foyer qui ne le compte pas`);
+    } else if (!monde.lieux.has(foyer.logement)) {
+      signaler('logement-existe', `${ou} a un foyer logé dans un lieu inconnu`);
+    }
+
+    // --- poste --------------------------------------------------------------
+    if (p.poste !== null) {
+      const poste = monde.postes.get(p.poste);
+      if (poste === undefined) {
+        signaler('poste-existe', `${ou} occupe le poste inconnu #${p.poste}`);
+      } else {
+        if (poste.titulaire !== p.id) {
+          signaler('poste-reciproque', `${ou} occupe « ${poste.intitule} », dont il n'est pas titulaire`);
+        }
+        if (!monde.lieux.has(poste.lieu)) {
+          signaler('poste-lieu', `${ou} occupe un poste situé dans un lieu inconnu`);
+        }
+      }
     }
 
     if (p.derniereMaj > monde.tick) {
@@ -110,7 +150,7 @@ export function verifierInvariants(monde: Monde): Violation[] {
       const p = monde.personnages.get(id);
       if (p === undefined) {
         signaler('occupant-existe', `« ${l.nom} » contient l'inconnu #${id}`);
-      } else if (p.lieu !== l.id) {
+      } else if (p.position.lieu !== l.id) {
         signaler('presence-reciproque', `« ${l.nom} » retient #${id}, qui est ailleurs`);
       }
     }
@@ -120,6 +160,68 @@ export function verifierInvariants(monde: Monde): Violation[] {
         'capacite',
         `« ${l.nom} » accueille ${l.occupants.length} personnes pour ${l.capacite} places`,
       );
+    }
+  }
+
+  // --- Les foyers -----------------------------------------------------------
+  for (const f of monde.foyers.values()) {
+    if (!monde.lieux.has(f.logement)) {
+      signaler('logement-existe', `le foyer #${f.id} est logé dans un lieu inconnu`);
+    }
+    const vus = new Set<number>();
+    for (const id of f.membres) {
+      if (vus.has(id)) signaler('membre-unique', `le foyer #${f.id} compte #${id} deux fois`);
+      vus.add(id);
+      const membre = monde.personnages.get(id);
+      if (membre === undefined) {
+        signaler('membre-existe', `le foyer #${f.id} compte l'inconnu #${id}`);
+      } else if (membre.foyer !== f.id) {
+        signaler('foyer-reciproque', `le foyer #${f.id} retient #${id}, qui appartient à un autre`);
+      }
+    }
+    if (f.membres.length === 0) {
+      signaler('foyer-habite', `le foyer #${f.id} n'a aucun membre`);
+    }
+  }
+
+  // --- Les postes -----------------------------------------------------------
+  for (const poste of monde.postes.values()) {
+    if (!monde.lieux.has(poste.lieu)) {
+      signaler('poste-lieu', `le poste « ${poste.intitule} » est dans un lieu inconnu`);
+    }
+    if (poste.debutH >= poste.finH) {
+      signaler('poste-horaires', `le poste « ${poste.intitule} » finit avant de commencer`);
+    }
+    if (poste.salaireHoraire < 0) {
+      signaler('poste-salaire', `le poste « ${poste.intitule} » a un salaire négatif`);
+    }
+    if (poste.titulaire !== null) {
+      const titulaire = monde.personnages.get(poste.titulaire);
+      if (titulaire === undefined) {
+        signaler('titulaire-existe', `le poste « ${poste.intitule} » est tenu par un inconnu`);
+      } else if (titulaire.poste !== poste.id) {
+        signaler('poste-reciproque', `le poste « ${poste.intitule} » retient quelqu'un qui occupe autre chose`);
+      }
+    }
+  }
+
+  // --- Les relations --------------------------------------------------------
+  // La collection est encore vide, et ces contrôles sont donc muets. Ils sont
+  // armés dès maintenant pour tomber le jour où le moteur social l'écrira.
+  for (const [cle, r] of monde.relations) {
+    if (cle !== `${r.de}>${r.vers}`) {
+      signaler('relation-clef', `la relation ${cle} ne correspond pas à son contenu`);
+    }
+    if (r.de === r.vers) {
+      signaler('relation-reflexive', `#${r.de} a une relation avec lui-même`);
+    }
+    if (!monde.personnages.has(r.de) || !monde.personnages.has(r.vers)) {
+      signaler('relation-orpheline', `la relation ${cle} vise quelqu'un qui n'existe pas`);
+    }
+    if (!monde.relations.has(`${r.vers}>${r.de}`)) {
+      // Une relation dirigée n'est pas symétrique dans ses VALEURS, mais elle
+      // existe des deux côtés : se connaître est réciproque, s'apprécier non.
+      signaler('relation-reciproque', `la relation ${cle} n'a pas de contrepartie`);
     }
   }
 

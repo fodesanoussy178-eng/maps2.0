@@ -3,6 +3,7 @@ import { TICKS_PAR_JOUR } from '../noyau/index.ts';
 import { genererMonde } from '../monde/generation.ts';
 import { avancer } from './boucle.ts';
 import { decrireViolations, verifierInvariants } from '../etat/invariants.ts';
+import { posteDe } from '../etat/monde.ts';
 import type { Observateur } from './boucle.ts';
 
 describe('boucle de simulation', () => {
@@ -17,12 +18,12 @@ describe('boucle de simulation', () => {
 
   it('fait vraiment vivre les habitants plutôt que de les laisser sur place', () => {
     const { monde } = genererMonde({ graine: 4, population: 30 });
-    const depart = new Map([...monde.personnages].map(([id, p]) => [id, p.lieu]));
+    const depart = new Map([...monde.personnages].map(([id, p]) => [id, p.position.lieu]));
 
     avancer(monde, TICKS_PAR_JOUR);
 
     let bouges = 0;
-    for (const [id, p] of monde.personnages) if (depart.get(id) !== p.lieu) bouges += 1;
+    for (const [id, p] of monde.personnages) if (depart.get(id) !== p.position.lieu) bouges += 1;
     // Tout le monde ne finit pas la journée ailleurs — beaucoup rentrent
     // dormir chez eux — mais une ville où personne n'a bougé est une ville
     // morte.
@@ -42,10 +43,10 @@ describe('boucle de simulation', () => {
     const fautes: string[] = [];
     const observateur: Observateur = {
       surActivite: (_m, p, activite) => {
-        if (activite === 'travailler' && p.occupation.type !== 'emploi') {
+        if (activite === 'travailler' && posteDe(monde, p)?.genre !== 'emploi') {
           fautes.push(`${p.prenom} travaille sans emploi`);
         }
-        if (activite === 'etudier' && p.occupation.type !== 'etudes') {
+        if (activite === 'etudier' && posteDe(monde, p)?.genre !== 'etudes') {
           fautes.push(`${p.prenom} étudie sans être scolarisé`);
         }
       },
