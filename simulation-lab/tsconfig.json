@@ -1,8 +1,7 @@
 {
-  "//": "Configuration autonome du jeu. Le jeu ne partage RIEN avec l'application Urosi-t ni avec Autour : ni tsconfig, ni configuration de test, ni dépendances de code. Les deux projets cohabitent dans le dépôt sans se connaître.",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -10,16 +9,17 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
     "noEmit": true,
-    "jsx": "react-jsx",
 
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true,
 
-    "types": ["vite/client"]
+    "types": ["node"]
   },
-  "include": ["."]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
 }

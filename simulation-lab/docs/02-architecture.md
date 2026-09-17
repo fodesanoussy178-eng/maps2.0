@@ -91,9 +91,10 @@ interface Personnage {
   corps: { taille: number; poids: number; forme: number; fatigue: number;
            sante: number; blessures: Blessure[]; apparence: Apparence };
   // Personnalité (§4) — 14 traits, -100..100, quasi stables
-  traits: Int8Array;
-  // Besoins (§13) — 0..1000, dérivent dans le temps
-  besoins: Int16Array;
+  traits: number[];
+  // Besoins (§13) — 0..1000, dérivent dans le temps. Flottants, et jamais
+  // arrondis en cours de simulation : voir §2.6, règle 3.
+  besoins: number[];
   // Humeur — moyenne pondérée mobile des émotions récentes
   humeur: { valence: number; energie: number };
   // Situation — invariants stricts (§29)
@@ -434,8 +435,12 @@ règles, toutes vérifiables mécaniquement :
 1. aucun `Math.random`, aucun `Date.now` sous `jeu/noyau` et `jeu/moteurs` ;
 2. aucune itération sur un `Set` ou sur les clés d'un objet dans un chemin
    décisionnel — uniquement des tableaux et des `Map` ;
-3. les nombres de la simulation sont entiers ; les flottants ne servent qu'à
-   l'affichage ;
+3. ce qui se COMPTE est entier — l'argent, les identifiants, le temps ; ce qui
+   est une PRESSION CONTINUE est flottant, et ne doit jamais être arrondi en
+   cours de route (le banc d'essai a montré qu'arrondir un besoin à chaque
+   tick fait dériver de 4 % un habitant simulé finement par rapport au même
+   habitant simulé par journées repliées : sa vie dépendrait de la distance au
+   joueur) ;
 4. l'ordre des abonnés au bus est fixé au démarrage ;
 5. un test rejoue 30 jours et compare une **empreinte** de l'état final.
 
