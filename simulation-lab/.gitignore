@@ -1,0 +1,4 @@
+node_modules
+*.tsbuildinfo
+# sorties d'expériences : reproductibles à partir de la graine, donc jamais versionnées
+resultats/
