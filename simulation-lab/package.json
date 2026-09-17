@@ -6,6 +6,7 @@
   "description": "Banc d'essai d'une simulation sociale et générationnelle. Sans écran : on prouve les systèmes avant de dessiner le premier pixel.",
   "scripts": {
     "labo": "tsx labo/cli.ts",
+    "vue": "tsx vue/construire.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

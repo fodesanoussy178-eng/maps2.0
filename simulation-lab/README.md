@@ -30,9 +30,26 @@ découle, y compris le fait qu'il n'y ait pas de rendu.
 
 ```bash
 npm install
+npm run vue             # ← POUR VOIR : produit vue/quartier.html, à ouvrir dans un navigateur
 npm run labo            # une expérience de 30 jours, 60 habitants
-npm test                # 84 tests
+npm test                # 89 tests
 npm run verifier        # types + tests
+```
+
+### Voir le quartier vivre
+
+`npm run vue` simule trois jours et écrit **`vue/quartier.html`**, un fichier
+autonome : ni serveur, ni outil de construction, ni bibliothèque. On l'ouvre
+dans un navigateur et le quartier se met à vivre — chaque point est une
+personne, sa couleur dit ce qu'elle fait, et on peut cliquer un habitant ou un
+bâtiment pour l'inspecter.
+
+La page ne simule rien : elle **rejoue** un enregistrement produit par le
+moteur. C'est ce qui lui permet de tenir dans un seul fichier sans une ligne de
+code de simulation.
+
+```bash
+npm run vue -- --graine 3 --jours 2 --population 40
 ```
 
 ```bash

@@ -1,0 +1,661 @@
+<title>Quartier Témoin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --fond: #E7ECEF;
+    --surface: #FBFDFE;
+    --surface-2: #F1F5F7;
+    --encre: #16222C;
+    --encre-douce: #5D6E7B;
+    --encre-faible: #8A99A5;
+    --trait: #C4CFD7;
+    --trait-fort: #9FAEB9;
+    --route: #D6DEE3;
+    --parc: #DDE7D8;
+    --accent: #1F6FA8;
+    --alerte: #B23C12;
+
+    --a-dormir: #4F5E8C;
+    --a-travail: #1F6FA8;
+    --a-etude: #2B8482;
+    --a-manger: #BC7F1A;
+    --a-social: #A9476A;
+    --a-corps: #4A8340;
+    --a-soi: #78858F;
+    --a-route: #A6B3BD;
+
+    --r: 5px;
+    --ombre: 0 1px 2px rgba(22, 34, 44, .07);
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --fond: #0E141A;
+      --surface: #19222B;
+      --surface-2: #131B22;
+      --encre: #E2E9EE;
+      --encre-douce: #93A3AF;
+      --encre-faible: #66757F;
+      --trait: #2B3944;
+      --trait-fort: #3D4E5A;
+      --route: #1B242C;
+      --parc: #1B2A20;
+      --accent: #56A8DD;
+      --alerte: #E0703F;
+
+      --a-dormir: #7385BC;
+      --a-travail: #56A8DD;
+      --a-etude: #45B0AD;
+      --a-manger: #DCA23C;
+      --a-social: #D2708F;
+      --a-corps: #6FB063;
+      --a-soi: #93A2AD;
+      --a-route: #566571;
+      --ombre: 0 1px 2px rgba(0, 0, 0, .35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --fond: #0E141A;
+    --surface: #19222B;
+    --surface-2: #131B22;
+    --encre: #E2E9EE;
+    --encre-douce: #93A3AF;
+    --encre-faible: #66757F;
+    --trait: #2B3944;
+    --trait-fort: #3D4E5A;
+    --route: #1B242C;
+    --parc: #1B2A20;
+    --accent: #56A8DD;
+    --alerte: #E0703F;
+    --a-dormir: #7385BC;
+    --a-travail: #56A8DD;
+    --a-etude: #45B0AD;
+    --a-manger: #DCA23C;
+    --a-social: #D2708F;
+    --a-corps: #6FB063;
+    --a-soi: #93A2AD;
+    --a-route: #566571;
+    --ombre: 0 1px 2px rgba(0, 0, 0, .35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--fond);
+    color: var(--encre);
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 1340px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 18px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* ---------- en-tête ---------- */
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 24px; }
+  h1 {
+    font-size: clamp(22px, 3.4vw, 30px);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .sous { color: var(--encre-douce); margin: 2px 0 0; max-width: 62ch; }
+  .horloge {
+    margin-left: auto;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    line-height: 1.15;
+  }
+  .horloge b { font-size: clamp(26px, 5vw, 38px); font-weight: 600; display: block; }
+  .horloge span { color: var(--encre-douce); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* ---------- bandeau de mesures ---------- */
+  .mesures { display: flex; flex-wrap: wrap; gap: 8px; }
+  .mesure {
+    background: var(--surface);
+    border: 1px solid var(--trait);
+    border-radius: var(--r);
+    padding: 7px 11px;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+  }
+  .mesure i {
+    width: 9px; height: 9px; border-radius: 2px; flex: none;
+    align-self: center;
+  }
+  .mesure b {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .mesure span { color: var(--encre-douce); font-size: 12.5px; white-space: nowrap; }
+
+  /* ---------- plan ---------- */
+  .plan {
+    position: relative;
+    background: var(--surface-2);
+    border: 1px solid var(--trait);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  canvas { display: block; width: 100%; height: auto; max-width: 100%; cursor: crosshair; }
+
+  /* ---------- commandes ---------- */
+  .commandes {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--trait);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  button {
+    font: inherit;
+    font-weight: 500;
+    color: var(--encre);
+    background: var(--surface-2);
+    border: 1px solid var(--trait-fort);
+    border-radius: var(--r);
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .vitesses { display: flex; gap: 4px; }
+  .vitesses button { font-family: "IBM Plex Mono", ui-monospace, monospace; padding: 6px 9px; }
+  input[type="range"] { flex: 1 1 240px; min-width: 160px; accent-color: var(--accent); }
+
+  /* ---------- bas de page ---------- */
+  .bas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 14px; align-items: start; }
+  @media (max-width: 760px) { .bas { grid-template-columns: minmax(0, 1fr); } }
+
+  .bloc {
+    background: var(--surface);
+    border: 1px solid var(--trait);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .bloc h2 {
+    font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--encre-douce); margin: 0 0 10px; font-weight: 600;
+  }
+  .legende { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .legende div { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .legende i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+  .fiche-vide { color: var(--encre-faible); }
+  .fiche-nom { font-size: 17px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+  .fiche-meta { color: var(--encre-douce); margin: 2px 0 10px; font-size: 13px; }
+  .lignes { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+  .lignes dt { color: var(--encre-douce); }
+  .lignes dd { margin: 0; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .journee { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px; margin-top: 12px; }
+  .journee i { height: 22px; border-radius: 1px; }
+  .journee-legende {
+    display: flex; justify-content: space-between;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px; color: var(--encre-faible); margin-top: 3px;
+  }
+  .occupants { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+  .occupants li { display: flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+  .occupants li:hover { background: var(--surface-2); }
+  .occupants i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .occupants span { color: var(--encre-douce); margin-left: auto; font-size: 12px; }
+
+  .note { color: var(--encre-douce); font-size: 13px; max-width: 72ch; }
+  .note code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--surface-2); border: 1px solid var(--trait);
+    border-radius: 3px; padding: 1px 5px; font-size: 12.5px;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <header>
+    <div>
+      <h1>Quartier Témoin</h1>
+      <p class="sous">Soixante habitants décident seuls de leur journée. Aucune routine n'est écrite : ce que vous voyez sort de leurs besoins, de leur caractère et de l'heure qu'il est.</p>
+    </div>
+    <div class="horloge">
+      <b id="heure">00:00</b>
+      <span id="jour">jour 1</span>
+    </div>
+  </header>
+
+  <div class="mesures" id="mesures"></div>
+
+  <div class="plan">
+    <canvas id="toile" width="1280" height="860" aria-label="Plan du quartier avec ses habitants"></canvas>
+  </div>
+
+  <div class="commandes">
+    <button id="lecture" aria-pressed="true">Pause</button>
+    <div class="vitesses" id="vitesses"></div>
+    <input type="range" id="curseur" min="0" max="1" value="0" step="1" aria-label="Position dans la semaine">
+    <button id="deselect">Tout désélectionner</button>
+  </div>
+
+  <div class="bas">
+    <div class="bloc">
+      <h2>Ce que fait le quartier</h2>
+      <div class="legende" id="legende"></div>
+      <p class="note" id="pied"></p>
+    </div>
+    <div class="bloc" id="fiche">
+      <h2>Inspection</h2>
+      <p class="fiche-vide">Cliquez un habitant ou un bâtiment.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var T = /*__TRACE__*/ null;
+  if (!T) return;
+
+  /* --- familles d'activité : la couleur dit ce qui se passe, pas qui c'est --- */
+  var FAMILLES = [
+    { cle: "dormir",  nom: "Sommeil",     jeton: "--a-dormir",  actes: ["dormir", "sieste"] },
+    { cle: "travail", nom: "Travail",     jeton: "--a-travail", actes: ["travailler"] },
+    { cle: "etude",   nom: "École",       jeton: "--a-etude",   actes: ["etudier"] },
+    { cle: "manger",  nom: "Repas",       jeton: "--a-manger",  actes: ["manger_chez_soi", "manger_dehors", "manger_sur_le_pouce", "faire_courses"] },
+    { cle: "social",  nom: "Vie sociale", jeton: "--a-social",  actes: ["discuter", "sortir_boire"] },
+    { cle: "corps",   nom: "Sport, air",  jeton: "--a-corps",   actes: ["faire_du_sport", "se_promener"] },
+    { cle: "soi",     nom: "Chez soi",    jeton: "--a-soi",     actes: ["se_detendre", "se_laver", "flaner"] },
+    { cle: "route",   nom: "En chemin",   jeton: "--a-route",   actes: ["se_deplacer"] }
+  ];
+
+  var familleParActe = {};
+  FAMILLES.forEach(function (f, i) { f.rang = i; f.actes.forEach(function (a) { familleParActe[a] = f; }); });
+  var familleDIndice = T.activites.map(function (nom) { return familleParActe[nom] || FAMILLES[6]; });
+
+  function jeton(nom) {
+    return getComputedStyle(document.documentElement).getPropertyValue(nom).trim() || "#888";
+  }
+  var couleurs = {};
+  function rafraichirCouleurs() {
+    FAMILLES.forEach(function (f) { couleurs[f.cle] = jeton(f.jeton); });
+    couleurs.fond = jeton("--surface-2");
+    couleurs.surface = jeton("--surface");
+    couleurs.trait = jeton("--trait");
+    couleurs.traitFort = jeton("--trait-fort");
+    couleurs.encre = jeton("--encre");
+    couleurs.douce = jeton("--encre-douce");
+    couleurs.faible = jeton("--encre-faible");
+    couleurs.route = jeton("--route");
+    couleurs.parc = jeton("--parc");
+    couleurs.accent = jeton("--accent");
+  }
+  rafraichirCouleurs();
+
+  /* --- position stable de chaque habitant dans son lieu ---------------------
+     Un emplacement tiré une fois pour toutes plutôt qu'une case attribuée à
+     l'arrivée : sinon les points sautent dès que quelqu'un entre ou sort. */
+  var places = T.habitants.map(function (_, i) {
+    var a = Math.sin(i * 12.9898) * 43758.5453;
+    var b = Math.sin(i * 78.233) * 12345.6789;
+    return { u: 0.12 + 0.76 * (a - Math.floor(a)), v: 0.16 + 0.68 * (b - Math.floor(b)) };
+  });
+
+  var boites = T.plan.boites;
+  function positionDe(iHab, iBoite) {
+    var b = boites[iBoite];
+    if (!b) return { x: T.plan.largeur / 2, y: T.plan.hauteur / 2 };
+    var p = places[iHab];
+    if (b.type === "rue") return { x: b.x + p.u * b.l, y: b.y + 14 + p.v * 34 };
+    return { x: b.x + p.u * b.l, y: b.y + p.v * b.h };
+  }
+
+  /* --- état de lecture ---------------------------------------------------- */
+  var toile = document.getElementById("toile");
+  var ctx = toile.getContext("2d");
+  var image = 0, joue = true, vitesse = 4, choisi = -1, batiment = -1, survol = -1;
+  var derniereMs = 0, fraction = 0;
+
+  function dpr() { return Math.min(window.devicePixelRatio || 1, 2); }
+  function redimensionner() {
+    var r = dpr();
+    toile.width = T.plan.largeur * r;
+    toile.height = T.plan.hauteur * r;
+    toile.style.aspectRatio = T.plan.largeur + " / " + T.plan.hauteur;
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+  }
+  redimensionner();
+  window.addEventListener("resize", function () { redimensionner(); dessiner(); });
+
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", function () { rafraichirCouleurs(); dessiner(); });
+
+  function coin(x, y, l, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + l, y, x + l, y + h, r);
+    ctx.arcTo(x + l, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + l, y, r);
+    ctx.closePath();
+  }
+
+  function dessiner() {
+    var img = T.images[image];
+    if (!img) return;
+    var suivante = T.images[Math.min(image + 1, T.images.length - 1)];
+    var t = joue ? fraction : 0;
+
+    ctx.fillStyle = couleurs.fond;
+    ctx.fillRect(0, 0, T.plan.largeur, T.plan.hauteur);
+
+    /* voirie */
+    ctx.fillStyle = couleurs.route;
+    T.plan.routes.forEach(function (r) { ctx.fillRect(r.x, r.y, r.l, r.h); });
+
+    /* occupation courante, pour épaissir les lieux qui vivent */
+    var parLieu = {};
+    for (var i = 0; i < img.lieux.length; i++) {
+      parLieu[img.lieux[i]] = (parLieu[img.lieux[i]] || 0) + 1;
+    }
+
+    ctx.textBaseline = "top";
+    boites.forEach(function (b, i) {
+      if (b.type === "parc") {
+        ctx.fillStyle = couleurs.parc;
+        coin(b.x, b.y, b.l, b.h, 8); ctx.fill();
+        ctx.strokeStyle = i === batiment ? couleurs.accent : couleurs.trait;
+        ctx.lineWidth = i === batiment ? 1.6 : 1;
+        ctx.stroke();
+        ctx.fillStyle = couleurs.faible;
+        ctx.font = "500 11px 'IBM Plex Mono', monospace";
+        ctx.fillText(b.nom.toUpperCase(), b.x + 12, b.y + 10);
+        return;
+      }
+      if (b.type === "rue") return;
+
+      var actif = (parLieu[i] || 0) > 0;
+      ctx.fillStyle = couleurs.surface;
+      coin(b.x, b.y, b.l, b.h, 5); ctx.fill();
+      ctx.lineWidth = actif ? 1.6 : 1;
+      ctx.strokeStyle = i === batiment ? couleurs.accent : (actif ? couleurs.traitFort : couleurs.trait);
+      ctx.stroke();
+
+      ctx.fillStyle = couleurs.douce;
+      ctx.font = "600 10.5px Archivo, sans-serif";
+      var nom = b.nom.length > 16 ? b.nom.slice(0, 15) + "…" : b.nom;
+      ctx.fillText(nom, b.x + 7, b.y + 6);
+
+      if (actif) {
+        ctx.fillStyle = couleurs.faible;
+        ctx.font = "500 10px 'IBM Plex Mono', monospace";
+        ctx.fillText(String(parLieu[i]), b.x + 7, b.y + b.h - 15);
+      }
+    });
+
+    /* les habitants */
+    for (var k = 0; k < img.lieux.length; k++) {
+      var a = positionDe(k, img.lieux[k]);
+      var z = positionDe(k, suivante.lieux[k]);
+      var x = a.x + (z.x - a.x) * t;
+      var y = a.y + (z.y - a.y) * t;
+      var fam = familleDIndice[img.actes[k]] || FAMILLES[6];
+      var enChemin = img.lieux[k] !== suivante.lieux[k];
+
+      ctx.beginPath();
+      ctx.arc(x, y, k === choisi ? 6 : 4.2, 0, 6.2832);
+      ctx.fillStyle = enChemin ? couleurs.route : couleurs[fam.cle];
+      ctx.fill();
+
+      if (k === choisi || k === survol) {
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, 6.2832);
+        ctx.strokeStyle = couleurs.accent;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if (k === choisi) {
+          ctx.fillStyle = couleurs.encre;
+          ctx.font = "600 11px Archivo, sans-serif";
+          ctx.fillText(T.habitants[k].nom, x + 13, y - 6);
+        }
+      }
+    }
+  }
+
+  /* --- mesures vivantes ---------------------------------------------------- */
+  var boiteMesures = document.getElementById("mesures");
+  function majMesures() {
+    var img = T.images[image];
+    var compte = {};
+    img.actes.forEach(function (ia) {
+      var f = familleDIndice[ia] || FAMILLES[6];
+      compte[f.cle] = (compte[f.cle] || 0) + 1;
+    });
+    boiteMesures.innerHTML = FAMILLES
+      .filter(function (f) { return compte[f.cle]; })
+      .map(function (f) {
+        return '<div class="mesure"><i style="background:var(' + f.jeton + ')"></i>' +
+          '<b>' + compte[f.cle] + '</b><span>' + f.nom.toLowerCase() + '</span></div>';
+      }).join("");
+  }
+
+  /* --- horloge ------------------------------------------------------------- */
+  var elHeure = document.getElementById("heure");
+  var elJour = document.getElementById("jour");
+  var JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  function majHorloge() {
+    var tick = T.images[image].t;
+    var dansJour = ((tick % 288) + 288) % 288;
+    var h = Math.floor(dansJour / 12);
+    var m = (dansJour - h * 12) * 5;
+    elHeure.textContent = (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+    var jour = Math.floor(tick / 288);
+    elJour.textContent = JOURS[jour % 7] + " · jour " + (jour + 1);
+  }
+
+  /* --- fiche d'inspection -------------------------------------------------- */
+  var elFiche = document.getElementById("fiche");
+
+  function journeeType(iHab) {
+    var parHeure = [];
+    for (var h = 0; h < 24; h++) parHeure.push({});
+    T.images.forEach(function (img) {
+      var h = Math.floor((((img.t % 288) + 288) % 288) / 12);
+      var f = (familleDIndice[img.actes[iHab]] || FAMILLES[6]).cle;
+      parHeure[h][f] = (parHeure[h][f] || 0) + 1;
+    });
+    return parHeure.map(function (compte) {
+      var meilleur = null, max = 0;
+      for (var cle in compte) if (compte[cle] > max) { max = compte[cle]; meilleur = cle; }
+      return meilleur;
+    });
+  }
+
+  function nomActe(i) { return (T.activites[i] || "").replace(/_/g, " "); }
+
+  function majFiche() {
+    if (choisi >= 0) {
+      var p = T.habitants[choisi];
+      var img = T.images[image];
+      var fam = familleDIndice[img.actes[choisi]] || FAMILLES[6];
+      var lieu = boites[img.lieux[choisi]];
+      var bande = journeeType(choisi).map(function (cle) {
+        var f = FAMILLES.filter(function (x) { return x.cle === cle; })[0];
+        return '<i style="background:var(' + (f ? f.jeton : "--a-soi") + ')"></i>';
+      }).join("");
+      elFiche.innerHTML =
+        '<h2>Inspection</h2>' +
+        '<p class="fiche-nom">' + p.nom + '</p>' +
+        '<p class="fiche-meta">' + p.age + ' ans · ' + p.occupation + '</p>' +
+        '<dl class="lignes">' +
+          '<dt>en ce moment</dt><dd>' + nomActe(img.actes[choisi]) + '</dd>' +
+          '<dt>se trouve</dt><dd>' + (lieu ? lieu.nom : "—") + '</dd>' +
+          '<dt>sociabilité</dt><dd>' + (p.sociabilite > 0 ? "+" : "") + p.sociabilite + '</dd>' +
+          '<dt>discipline</dt><dd>' + (p.discipline > 0 ? "+" : "") + p.discipline + '</dd>' +
+          '<dt>impulsivité</dt><dd>' + (p.impulsivite > 0 ? "+" : "") + p.impulsivite + '</dd>' +
+        '</dl>' +
+        '<h2 style="margin-top:14px">Sa journée type</h2>' +
+        '<div class="journee">' + bande + '</div>' +
+        '<div class="journee-legende"><span>0 h</span><span>12 h</span><span>24 h</span></div>';
+      void fam;
+      return;
+    }
+
+    if (batiment >= 0) {
+      var b = boites[batiment];
+      var img2 = T.images[image];
+      var dedans = [];
+      for (var i = 0; i < img2.lieux.length; i++) {
+        if (img2.lieux[i] === batiment) dedans.push(i);
+      }
+      elFiche.innerHTML =
+        '<h2>Inspection</h2>' +
+        '<p class="fiche-nom">' + b.nom + '</p>' +
+        '<p class="fiche-meta">' + dedans.length + ' personne' + (dedans.length > 1 ? "s" : "") +
+          ' · ' + (b.capacite > 100 ? "sans limite" : b.capacite + " places") + '</p>' +
+        (dedans.length === 0
+          ? '<p class="fiche-vide">Personne pour l\'instant.</p>'
+          : '<ul class="occupants">' + dedans.map(function (i) {
+              var f = familleDIndice[img2.actes[i]] || FAMILLES[6];
+              return '<li data-hab="' + i + '"><i style="background:var(' + f.jeton + ')"></i>' +
+                T.habitants[i].nom + '<span>' + nomActe(img2.actes[i]) + '</span></li>';
+            }).join("") + '</ul>');
+      return;
+    }
+
+    elFiche.innerHTML = '<h2>Inspection</h2><p class="fiche-vide">Cliquez un habitant ou un bâtiment.</p>';
+  }
+
+  elFiche.addEventListener("click", function (e) {
+    var li = e.target.closest("li[data-hab]");
+    if (!li) return;
+    choisi = Number(li.getAttribute("data-hab"));
+    majFiche();
+    dessiner();
+  });
+
+  /* --- désignation à la souris --------------------------------------------- */
+  function versPlan(e) {
+    var r = toile.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) * (T.plan.largeur / r.width),
+      y: (e.clientY - r.top) * (T.plan.hauteur / r.height)
+    };
+  }
+  function habitantSous(pt) {
+    var img = T.images[image];
+    var meilleur = -1, distance = 13 * 13;
+    for (var i = 0; i < img.lieux.length; i++) {
+      var p = positionDe(i, img.lieux[i]);
+      var d = (p.x - pt.x) * (p.x - pt.x) + (p.y - pt.y) * (p.y - pt.y);
+      if (d < distance) { distance = d; meilleur = i; }
+    }
+    return meilleur;
+  }
+  function batimentSous(pt) {
+    for (var i = 0; i < boites.length; i++) {
+      var b = boites[i];
+      if (pt.x >= b.x && pt.x <= b.x + b.l && pt.y >= b.y && pt.y <= b.y + b.h) return i;
+    }
+    return -1;
+  }
+  toile.addEventListener("mousemove", function (e) {
+    var pt = versPlan(e);
+    var h = habitantSous(pt);
+    if (h !== survol) { survol = h; dessiner(); }
+    toile.style.cursor = h >= 0 ? "pointer" : "crosshair";
+  });
+  toile.addEventListener("click", function (e) {
+    var pt = versPlan(e);
+    var h = habitantSous(pt);
+    if (h >= 0) { choisi = h; batiment = -1; }
+    else { choisi = -1; batiment = batimentSous(pt); }
+    majFiche();
+    dessiner();
+  });
+
+  /* --- commandes ----------------------------------------------------------- */
+  var curseur = document.getElementById("curseur");
+  curseur.max = String(T.images.length - 1);
+  curseur.addEventListener("input", function () {
+    image = Number(curseur.value);
+    fraction = 0;
+    majTout();
+  });
+
+  var bouton = document.getElementById("lecture");
+  bouton.addEventListener("click", function () {
+    joue = !joue;
+    bouton.textContent = joue ? "Pause" : "Lecture";
+    bouton.setAttribute("aria-pressed", String(joue));
+  });
+
+  var VITESSES = [1, 4, 12, 40];
+  var boiteVitesses = document.getElementById("vitesses");
+  boiteVitesses.innerHTML = VITESSES.map(function (v) {
+    return '<button data-v="' + v + '" aria-pressed="' + (v === vitesse) + '">×' + v + '</button>';
+  }).join("");
+  boiteVitesses.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-v]");
+    if (!b) return;
+    vitesse = Number(b.getAttribute("data-v"));
+    boiteVitesses.querySelectorAll("button").forEach(function (x) {
+      x.setAttribute("aria-pressed", String(Number(x.getAttribute("data-v")) === vitesse));
+    });
+  });
+
+  document.getElementById("deselect").addEventListener("click", function () {
+    choisi = -1; batiment = -1; majFiche(); dessiner();
+  });
+
+  /* --- légende et note ------------------------------------------------------ */
+  document.getElementById("legende").innerHTML = FAMILLES.map(function (f) {
+    return '<div><i style="background:var(' + f.jeton + ')"></i>' + f.nom + '</div>';
+  }).join("");
+
+  document.getElementById("pied").innerHTML =
+    'Enregistrement de <b>' + T.meta.jours + ' jours</b> de la vie de <b>' + T.meta.population +
+    ' habitants</b>, graine <code>' + T.meta.graine + '</code>, calculé en <b>' + T.meta.dureeMs +
+    ' ms</b> — ' + (T.meta.violations === 0 ? 'zéro incohérence' : T.meta.violations + ' incohérences') +
+    '. La page ne simule rien : elle rejoue. Chaque point est une personne, sa couleur dit ce ' +
+    "qu'elle fait, et personne ne lui a dit de le faire.";
+
+  /* --- boucle --------------------------------------------------------------- */
+  function majTout() { dessiner(); majHorloge(); majMesures(); majFiche(); }
+
+  function boucle(ms) {
+    if (!derniereMs) derniereMs = ms;
+    var delta = Math.min(ms - derniereMs, 250);
+    derniereMs = ms;
+
+    if (joue) {
+      fraction += (delta / 1000) * vitesse;
+      while (fraction >= 1) {
+        fraction -= 1;
+        image = (image + 1) % T.images.length;
+        curseur.value = String(image);
+        majHorloge(); majMesures(); majFiche();
+      }
+      dessiner();
+    }
+    requestAnimationFrame(boucle);
+  }
+
+  // Ouvrir sur une heure où le quartier est visiblement en mouvement plutôt
+  // que sur une rue vide à 7 h du matin.
+  image = Math.min(T.images.length - 1, Math.floor(288 / T.meta.pas));
+  curseur.value = String(image);
+  majTout();
+  requestAnimationFrame(boucle);
+})();
+</script>
