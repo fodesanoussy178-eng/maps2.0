@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "jeu:test": "vitest run jeu/",
+    "jeu:test:watch": "vitest jeu/",
     "banc:appareils": "node autour/outils/banc-appareils.mjs",
     "banc:reactivite": "node autour/outils/reactivite.mjs",
     "preview": "vite preview",

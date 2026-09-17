@@ -26,6 +26,6 @@
 
     "types": ["vite/client"]
   },
-  "include": ["src"],
+  "include": ["src", "jeu"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
