@@ -38,11 +38,19 @@ npm run verifier        # types + tests
 
 ### Voir le quartier vivre
 
-`npm run vue` simule trois jours et écrit **`vue/quartier.html`**, un fichier
+`npm run vue` simule deux jours et écrit **`vue/quartier.html`**, un fichier
 autonome : ni serveur, ni outil de construction, ni bibliothèque. On l'ouvre
-dans un navigateur et le quartier se met à vivre — chaque point est une
-personne, sa couleur dit ce qu'elle fait, et on peut cliquer un habitant ou un
-bâtiment pour l'inspecter.
+dans un navigateur et le quartier se met à vivre.
+
+C'est une **vue isométrique** : des rues avec leur marquage, des trottoirs,
+des immeubles en volume dont les fenêtres s'allument à la nuit tombée, des
+cours plantées, des arbres, des lampadaires. Les gens qu'on voit dans la rue
+sont ceux qui s'y trouvent vraiment — en chemin, en promenade ou au parc ; les
+autres sont chez eux, au travail ou à l'école, et le chiffre posé sur les
+toits les compte. On clique un passant ou un bâtiment pour l'inspecter.
+
+Tout est dessiné par le code : pas un seul élément graphique emprunté à qui
+que ce soit.
 
 La page ne simule rien : elle **rejoue** un enregistrement produit par le
 moteur. C'est ce qui lui permet de tenir dans un seul fichier sans une ligne de

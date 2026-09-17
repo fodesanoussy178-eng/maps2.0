@@ -22,8 +22,8 @@ const { values } = parseArgs({
   options: {
     graine: { type: 'string', default: '1' },
     population: { type: 'string', default: '60' },
-    jours: { type: 'string', default: '3' },
-    pas: { type: 'string', default: '3' },
+    jours: { type: 'string', default: '2' },
+    pas: { type: 'string', default: '1' },
     sortie: { type: 'string', default: 'quartier.html' },
   },
 });

@@ -149,3 +149,71 @@ En résumé :
 - le budget de calcul annoncé au doc 2 reste **calculé et non mesuré** en
   conditions réelles : 1,3 s pour trente jours sans carte, sans relations et
   sans mémoire ne présage pas du coût final.
+
+---
+
+## 2026-09-17 (suite) — La ville, pour de vrai
+
+La première vue alignait des rectangles étiquetés sur un plan. C'était lisible
+et ça ne ressemblait à rien : un diagramme, pas un endroit où l'on habite. Une
+simulation de vie a besoin qu'on reconnaisse la ville pour avoir envie d'y
+regarder quelqu'un vivre.
+
+### Fait
+
+`vue/ville.ts` bâtit une vraie ville isométrique depuis les lieux du moteur :
+trame de rues avec marquage, trottoirs, îlots, immeubles en volume à deux
+faces éclairées différemment, fenêtres qui s'allument à la nuit tombée, cours
+plantées, arbres, bancs, lampadaires qui éclairent. Les habitants marchent
+dans les rues en suivant la voirie, jamais à travers les murs.
+
+Tout est dessiné par le code. Pas un élément graphique emprunté, conformément
+au §41.
+
+La géométrie reste de la présentation : le moteur ne connaît toujours qu'un
+graphe de lieux, et rien de ce qui est dans `vue/` n'entre dans l'état du
+monde.
+
+### Ce que la ville a fait apparaître
+
+Quatre défauts que les chiffres ne montraient pas.
+
+1. **Tous les habitants allaient au même café.** `lieuCible` renvoyait le
+   premier lieu trouvé, c'est-à-dire le premier inséré dans la `Map` : le
+   second café ne servait jamais, et « faire du sport » envoyait tout le monde
+   au gymnase parce qu'il précédait le parc. La moitié des lieux du monde
+   étaient décoratifs. Chacun a maintenant ses habitudes, dérivées par
+   hachage — donc sans rien stocker et sans casser le rejeu. Le parc est passé
+   de zéro à la fréquentation la plus forte du quartier.
+
+2. **La pression de plaisir restait à 129 sur 1000.** Personne ne cherchait
+   jamais à se faire plaisir, donc personne ne sortait ni ne se promenait. Une
+   société où le divertissement n'a aucune valeur n'est pas plus sobre, elle
+   est fausse.
+
+3. **Un trajet de quinze minutes se terminait dans la même image que son
+   départ**, donc aucun passant n'était jamais visible : la trace
+   n'enregistrait que le lieu, pas la destination ni l'avancement. La rue
+   paraissait vide alors que vingt personnes y marchaient.
+
+4. **Un mélange de couleurs qui renvoyait `rgb()` au lieu de `#rrggbb`**
+   produisait `rgb(NaN,NaN,NaN)` au mélange suivant. Le canvas ignore une
+   couleur invalide sans rien dire : la ville se dessinait entièrement en noir,
+   à toute heure.
+
+Les deux premiers sont des défauts de SIMULATION, pas d'affichage. Ils
+auraient survécu indéfiniment à des tests agrégés, parce que les moyennes
+restaient parfaitement plausibles. C'est l'argument central en faveur d'une
+sortie visuelle, même pour un banc d'essai qui n'en a pas besoin pour
+fonctionner.
+
+Après correction : jusqu'à 32 personnes dehors à 8 h, 6,7 en moyenne contre
+2,6 — pour soixante habitants, une rue n'est pas censée être bondée.
+
+### Non fait
+
+- **Phase 3 amorcée, pas branchée.** `etat/relation.ts` pose le modèle —
+  relations dirigées, cinq axes, épisodes, décroissance paresseuse,
+  qualification dérivée. Rien ne l'utilise encore : aucun moteur ne le lit,
+  aucun test ne le couvre. C'est un plan, pas un système.
+- Tout le reste du doc 5 : économie, vie, événements, voyages, générations.

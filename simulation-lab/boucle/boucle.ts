@@ -16,7 +16,7 @@
  */
 
 import type { LieuId, PersoId } from '../noyau/index.ts';
-import { creerFlux, doitMettreAJour, heureDecimale } from '../noyau/index.ts';
+import { creerFlux, doitMettreAJour, hacher, heureDecimale } from '../noyau/index.ts';
 import type { Monde } from '../etat/monde.ts';
 import { autresPresents } from '../etat/monde.ts';
 import type { Besoin, Personnage } from '../etat/personnage.ts';
@@ -79,13 +79,27 @@ export function lieuCible(monde: Monde, p: Personnage, a: Action): LieuId | null
     return courant.id;
   }
 
+  // Parmi les lieux possibles, une PRÉFÉRENCE stable par personne.
+  //
+  // La première version renvoyait le premier lieu trouvé, c'est-à-dire le
+  // premier inséré dans la Map. Conséquence, invisible dans les moyennes et
+  // flagrante dès qu'on regarde la ville : tout le monde allait au même café,
+  // personne n'entrait jamais dans le second, et « faire du sport » envoyait
+  // les soixante habitants au gymnase parce qu'il précédait le parc. La
+  // moitié des lieux du monde ne servaient à rien.
+  //
+  // Le hachage donne à chacun ses habitudes — son café, son parc — sans rien
+  // stocker et sans casser le rejeu déterministe.
+  let choix: LieuId | null = null;
+  let meilleur = -1;
   for (const l of monde.lieux.values()) {
     if (!a.lieux.includes(l.type)) continue;
     if (!estOuvert(l, heure)) continue;
     if (estPlein(l) && l.id !== p.lieu) continue;
-    return l.id;
+    const score = hacher('lieu-prefere', p.id as number, l.id as number) % 1000;
+    if (score > meilleur) { meilleur = score; choix = l.id; }
   }
-  return null;
+  return choix;
 }
 
 /** Argent mobilisable par le foyer, calculé une fois par décision. */

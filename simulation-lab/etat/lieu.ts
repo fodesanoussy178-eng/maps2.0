@@ -37,14 +37,14 @@ export interface Lieu {
 }
 
 /**
- * Durée forfaitaire d'un déplacement entre deux lieux, en ticks (15 minutes).
+ * Durée forfaitaire d'un déplacement entre deux lieux, en ticks (20 minutes).
  *
  * Un seul nombre pour tout le monde : c'est faux, et c'est volontaire. Le
  * jour où la carte existera, cette constante deviendra une fonction du
  * chemin — et le reste du code n'aura pas à changer, puisque personne ne la
  * lit en dehors de la boucle.
  */
-export const DUREE_TRAJET = 3;
+export const DUREE_TRAJET = 4;
 
 export function estOuvert(lieu: Lieu, heure: number): boolean {
   if (lieu.ouvertureH === 0 && lieu.fermetureH >= 24) return true;

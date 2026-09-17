@@ -14,8 +14,9 @@ import { TICKS_PAR_JOUR, age, calendrier } from '../noyau/index.ts';
 import { genererMonde } from '../monde/generation.ts';
 import { avancer } from '../boucle/boucle.ts';
 import { verifierInvariants } from '../etat/invariants.ts';
+import { DUREE_TRAJET } from '../etat/lieu.ts';
 import { trait } from '../etat/personnage.ts';
-import { disposer, type Plan } from './disposition.ts';
+import { batirVille, type Ville } from './ville.ts';
 
 export interface TraceHabitant {
   nom: string;
@@ -37,12 +38,20 @@ export interface Trace {
     dureeMs: number;
     violations: number;
   };
-  plan: Plan;
+  ville: Ville;
   habitants: TraceHabitant[];
   /** Table des noms d'activité ; les images n'en stockent que l'indice. */
   activites: string[];
-  /** Une image par `pas` ticks : indice de lieu et indice d'activité, par habitant. */
-  images: { t: number; lieux: number[]; actes: number[] }[];
+  /**
+   * Une image par `pas` ticks.
+   *
+   * `dest` et `avance` sont ce qui permet de voir les gens DANS LA RUE. Sans
+   * eux, on ne savait qu'une chose : où chacun se trouve. Or un habitant en
+   * déplacement reste rattaché à son lieu de départ jusqu'à son arrivée —
+   * donc il n'apparaissait nulle part pendant tout son trajet, et la ville
+   * semblait vide à toute heure alors que vingt personnes marchaient.
+   */
+  images: { t: number; lieux: number[]; actes: number[]; dest: number[]; avance: number[] }[];
 }
 
 export interface OptionsTrace {
@@ -55,10 +64,14 @@ export interface OptionsTrace {
 
 export function enregistrer(options: OptionsTrace): Trace {
   const { monde } = genererMonde({ graine: options.graine, population: options.population });
-  const plan = disposer(monde.lieux.values());
+  const ville = batirVille(monde.lieux.values(), options.graine);
 
+  // Les habitants sont enregistrés par indice de BÂTIMENT et non par
+  // identifiant de lieu : la vue n'a alors rien à résoudre à l'affichage.
   const indexLieu = new Map<number, number>();
-  plan.boites.forEach((b, i) => indexLieu.set(b.id, i));
+  for (const [idLieu, iBat] of Object.entries(ville.parLieu)) {
+    indexLieu.set(Number(idLieu), iBat);
+  }
 
   const habitants: TraceHabitant[] = [];
   const ordre: number[] = [];
@@ -73,7 +86,7 @@ export function enregistrer(options: OptionsTrace): Trace {
           : p.occupation.type === 'etudes'
             ? `élève, ${p.occupation.debutH} h – ${p.occupation.finH} h`
             : 'sans occupation',
-      domicile: indexLieu.get(p.domicile as number) ?? 0,
+      domicile: indexLieu.get(p.domicile as number) ?? -1,
       sociabilite: trait(p, 'sociabilite'),
       discipline: trait(p, 'discipline'),
       impulsivite: trait(p, 'impulsivite'),
@@ -110,12 +123,24 @@ export function enregistrer(options: OptionsTrace): Trace {
 
     const lieux: number[] = [];
     const actes: number[] = [];
+    const dest: number[] = [];
+    const avance: number[] = [];
     for (const id of ordre) {
       const p = monde.personnages.get(id as never);
-      lieux.push(p === undefined ? 0 : (indexLieu.get(p.lieu as number) ?? 0));
+      lieux.push(p === undefined ? -1 : (indexLieu.get(p.lieu as number) ?? -1));
       actes.push(acteCourant.get(id) ?? 0);
+
+      const activite = p?.activite ?? null;
+      if (activite !== null && activite.type === 'deplacement') {
+        dest.push(indexLieu.get(activite.vers as number) ?? -1);
+        const restant = activite.jusqua - monde.tick;
+        avance.push(Math.max(0, Math.min(100, Math.round(100 * (1 - restant / DUREE_TRAJET)))));
+      } else {
+        dest.push(-1);
+        avance.push(0);
+      }
     }
-    images.push({ t: monde.tick, lieux, actes });
+    images.push({ t: monde.tick, lieux, actes, dest, avance });
   }
 
   const dureeMs = performance.now() - debut;
@@ -131,7 +156,7 @@ export function enregistrer(options: OptionsTrace): Trace {
       dureeMs: Math.round(dureeMs),
       violations,
     },
-    plan,
+    ville,
     habitants,
     activites,
     images,

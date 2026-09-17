@@ -27,7 +27,11 @@ export const DERIVE_BASE: Readonly<Record<Besoin, number>> = {
   faim: 4.5,
   hygiene: 2,
   social: 2.5,
-  plaisir: 2,
+  // À 2, la pression de plaisir restait à 129 sur 1000 en moyenne : personne
+  // ne cherchait jamais à se faire plaisir, donc personne ne sortait, ne se
+  // promenait ni n'allait boire un verre. Une société où le divertissement
+  // n'a aucune valeur n'est pas plus sobre, elle est fausse.
+  plaisir: 3.1,
   accomplissement: 1,
   // Presque statique : la sécurité bouge par événements, pas par le temps.
   // Assez toutefois pour qu'on refasse ses courses environ une fois par
