@@ -2009,6 +2009,54 @@
         score += adequation * 520;
       }
 
+      /* ---- LA PERTINENCE PERSONNELLE -----------------------------------
+
+         LE DÉCLARÉ SÉLECTIONNE, L'IMPLICITE ORDONNE. Les deux entrent ici,
+         mais pas au même titre et surtout pas avec le même pouvoir :
+
+         · `ctx.envies` — ce qui a été COCHÉ. C'est déjà ce qui décide, en
+           amont, de ce qui a le droit d'entrer dans « Pour toi ». Ici, il ne
+           fait que confirmer un ordre.
+         · `ctx.interets` — ce que le COMPORTEMENT laisse voir. Un vecteur
+           borné entre 0 et 1 (`apprentissage.js`), qui ne peut rien faire
+           entrer : il n'est lu que sur des objets qui ont DÉJÀ passé les
+           filtres de catégorie, de zone, de temporalité et de faisabilité,
+           quarante lignes plus haut.
+
+         Les points restent sous ceux de l'adéquation à une demande explicite
+         (520) : quelqu'un qui écrit « un endroit calme où travailler » doit
+         obtenir le calme, pas ses habitudes. Et ils passent devant la
+         distance, parce qu'un concert qui vous concerne à deux kilomètres
+         vaut mieux qu'un concert quelconque au coin de la rue.
+
+         AUCUN POINT SANS PHRASE : `pertinence.js` rend zéro quand il ne sait
+         pas dire pourquoi. Un signal qui ne s'explique pas ne pèse pas. */
+      const pertinence = root.AutourPertinence;
+      let perso = 0;
+      let persoRaison = null;
+      let declare = 0;
+      if (pertinence && (ctx.interets || ctx.envies)) {
+        /* Les clés de reconnaissance de l'objet, calculées UNE fois : les
+           envies et le vecteur posent la même question à la même liste. */
+        const cles = pertinence.clesDe(item);
+        if (ctx.interets && typeof ctx.interets === "object" && !Array.isArray(ctx.interets)) {
+          const vu = pertinence.personnel(item, {vecteur: ctx.interets, cles, now});
+          perso = vu.valeur;
+          persoRaison = vu.raison;
+          score += perso * 240;
+        } else if (Array.isArray(ctx.interets) && ctx.interets.length) {
+          /* L'ancien contrat — une simple liste de catégories — reste accepté
+             pour que le câblage puisse se faire écran par écran sans que les
+             appelants non migrés changent de comportement. */
+          perso = cles.some((c) => ctx.interets.includes(c)) ? 1 : 0;
+          score += perso * 120;
+        }
+        if (Array.isArray(ctx.envies) && ctx.envies.length) {
+          declare = cles.some((c) => ctx.envies.includes(c)) ? 1 : 0;
+          score += declare * 160;
+        }
+      }
+
       /* La saison et l'heure, sans météo : le calendrier suffit à savoir qu'on
          ne cherche pas une terrasse un 15 janvier à 22 h. Ça ORDONNE, ça
          n'exclut pas — et seulement si le lieu porte réellement le signal. */
@@ -2202,6 +2250,12 @@
         rankStart: temporalStart,
         rankNow: now,
         rankRelevance: relevance,
+        /* La phrase qui justifie la poussée personnelle, quand il y en a une.
+           Elle est SÉPARÉE de `rankReason`, qui dit ce que l'objet est et
+           quand : « Ouvert maintenant · 6 min » reste la première information
+           utile, « tu regardes souvent ça » n'est qu'un complément. Les
+           confondre ferait disparaître l'horaire au profit du goût. */
+        rankPersoRaison: persoRaison,
         rankBreakdown: {availability, intentMatch, distance, community:community ? 1 : 0,
           startsAt: temporalStart, temporalDistance, temporary, quality,
           categoryFit, etaMinutes: minutes, relevance,
@@ -2213,9 +2267,37 @@
              qui a été demandé, PUIS la distance. Par quarts, pour ne pas
              réordonner sur du bruit — et à zéro partout quand la requête ne
              demande aucune caractéristique, donc sans effet. */
-          fit: Math.round(adequation * 4) / 4},
+          fit: Math.round(adequation * 4) / 4,
+          /* Les composantes que la HIÉRARCHIE lit, et elle seule. Elles sont
+             arrondies par paliers pour la même raison que `fit` : réordonner
+             sur trois centièmes de poids ou sur quarante mètres, c'est
+             réordonner sur du bruit. */
+          perso: Math.round(perso * 4) / 4,
+          declare,
+          importance: pertinence ? pertinence.importance(item) : 0,
+          palierDistance: pertinence ? pertinence.palierDistance(distance) : 0},
       });
-    }).filter(Boolean).sort((a, b) =>
+    });
+
+    /* ---- LA HIÉRARCHIE DE PERTINENCE, quand l'appelant en nomme une -------
+
+       Elle ne remplace pas la chaîne ci-dessous : elle se pose DEVANT elle et
+       ne tranche que sur ses propres critères, nommés et ordonnés selon
+       l'espace (`maintenant`, `pourtoi`, `explorer`, `avenir`). Ce qu'elle
+       laisse à égalité redescend intégralement vers le départage historique.
+
+       Sans `ctx.hierarchie`, le comparateur vaut `null` et le tri est EXACTEMENT
+       celui d'avant, à l'octet près. C'est ce qui permet de câbler cette
+       hiérarchie écran par écran plutôt que d'un bloc. */
+    const hierarchie = root.AutourPertinence
+      ? root.AutourPertinence.comparateur(ctx.hierarchie, {
+          comparerTemps: compareEventDate,
+          comparerTrajet: compareEta,
+        })
+      : null;
+
+    const ordonnes = classes.filter(Boolean).sort((a, b) =>
+      (hierarchie ? hierarchie(a, b) : 0) ||
       /* La faisabilité reste le garde-fou absolu : une séance qu'on ne peut
          plus attraper ne doit pas devancer une proposition ouverte. Dès que
          deux événements sont faisables, leur fenêtre temporelle devient le
@@ -2240,8 +2322,10 @@
 
     /* La diversité s'applique APRÈS le classement, et seulement quand
        l'appelant la demande — une recherche explicite (« pizzeria ») veut des
-       pizzerias, pas de la variété. */
-    return ctx.diversite ? diversifierResultats(classes, ctx.diversite) : classes;
+       pizzerias, pas de la variété. C'est le dernier rang de la hiérarchie, et
+       sa place à la fin n'est pas un détail d'implémentation : la variété ne
+       coûte jamais la tête de liste. */
+    return ctx.diversite ? diversifierResultats(ordonnes, ctx.diversite) : ordonnes;
   }
 
   root.AutourCore = Object.freeze({

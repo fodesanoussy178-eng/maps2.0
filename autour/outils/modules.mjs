@@ -17,6 +17,11 @@ export const MODULES = [
   "availability.js", "comprendre.js", "donnees.js", "aide-intentions.js", "intentions.js", "comptes.js",
   "maintenant.js", "ordonnanceur.js", "zones-autonomes.js", "adresse.js", "contexte.js", "territoire.js", "plafonds.js",
   "annonces-taxonomie.js", "annonces-classement.js", "envies.js",
+  /* LE MOTEUR DE CONTEXTE ET DE PERTINENCE. Trois modules purs : ce que le
+     comportement laisse voir (`apprentissage`), dans quel ordre les critères
+     tranchent (`pertinence`), et le contexte unique dont tout le reste dérive
+     (`contexte-moteur`). Ils sont chargés AVANT `core.js`, qui les lit. */
+  "apprentissage.js", "pertinence.js", "contexte-moteur.js",
   /* IL ÉTAIT CHARGÉ PAR LA PAGE, MAIS PAS PAR CE MANIFESTE — donc servi en
      cache immuable avec une empreinte figée à `00000000`, qui ne bougeait
      jamais. Un an de cache sur une version qu'on ne pouvait plus corriger :

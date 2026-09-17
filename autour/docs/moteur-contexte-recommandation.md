@@ -402,7 +402,12 @@ Chaque lot est livrable seul, testable seul, et réversible.
 
 ---
 
-### LOT A — Unifier le contexte et le profil d'intérêt
+### LOT A — Unifier le contexte et le profil d'intérêt · **LIVRÉ**
+
+> Détail, mesures et décisions : [`pertinence-personnelle.md`](./pertinence-personnelle.md).
+> La hiérarchie de critères y a été ajoutée au périmètre, sur décision produit :
+> elle est **contextuelle** (un ordre par espace) plutôt qu'une règle absolue
+> plaçant la popularité sous la pertinence personnelle.
 
 **Problème.** Six fonctions calculent chacune un morceau du contexte (É11), et
 la personnalisation n'atteint qu'un moteur sur deux (É1, É9) : le profil

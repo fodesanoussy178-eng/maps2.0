@@ -38,6 +38,23 @@ const DONNEES = window.AutourDonnees;
 const AIDE = window.AutourAide;
 const EVENEMENTS = window.AutourEvenements;
 const ENTITES = window.AutourEntites;
+/* LE MOTEUR DE CONTEXTE ET DE PERTINENCE.
+
+   `APPRENTISSAGE` dit ce que le comportement laisse voir, borné et effaçable ;
+   `CONTEXTE_MOTEUR` rassemble en un seul objet gelé ce que six fonctions
+   calculaient séparément — au risque de parler de deux instants différents
+   dans le même écran.
+
+   `pertinence.js` n'est pas aliasé ici : l'application ne le lit jamais
+   directement. Elle NOMME une hiérarchie (`"maintenant"`, `"pourtoi"`…) et
+   `rankResults` va chercher le comparateur correspondant. C'est ce qui empêche
+   un écran d'inventer son propre ordre de critères dans son coin.
+
+   Les deux sont facultatifs par construction : absents, l'application se
+   comporte exactement comme avant. C'est ce qui permet de les câbler écran par
+   écran plutôt que d'un bloc. */
+const APPRENTISSAGE = window.AutourApprentissage || null;
+const CONTEXTE_MOTEUR = window.AutourContexteMoteur || null;
 /* LE RÉSOLVEUR D'IMAGE. IL N'Y EN A QU'UN.
 
    Toute question « quelle photo pour ce lieu, et de quel droit ? » passe par
@@ -779,6 +796,9 @@ async function basculerFavori(l){
      la position. Et rien n'est noté quand on retire un favori. */
   if(!etait && l && l.family && typeof noterSignalInteret === "function")
     noterSignalInteret(l.family, "favori");
+  /* Le même geste, pour le classement : sauvegarder est la déclaration la plus
+     nette après une case cochée. Seule la CATÉGORIE est notée. */
+  if(!etait && l && l.cat && APPRENTISSAGE) APPRENTISSAGE.noter("sauvegarde", l.cat);
 
   /* Le compte est demandé ICI, au moment où il apporte quelque chose : garder
      ce favori ailleurs que sur cet appareil. On rend d'abord le cœur à son
@@ -8169,6 +8189,7 @@ function ouvrirLieuPartage(){
 }
 
 async function partagerLieu(l){
+  if(l && l.cat && APPRENTISSAGE) APPRENTISSAGE.noter("partage", l.cat);
   const url = lienVers(l);
   const txt = l.titre+" — "+l.adresse+", "+l.cp+" · "+l.quand;
   try{
@@ -9828,6 +9849,15 @@ function momentActuel(){
   return MOMENTS.find(m => m.de < m.a ? (h>=m.de && h<m.a) : (h>=m.de || h<m.a)) || MOMENTS[0];
 }
 
+/* Le moment que le Context Engine a calculé, rendu avec les POIDS que le
+   classement attend. Le moteur ne connaît que la découpe horaire — quelle
+   heure est quel moment est un fait ; ce qu'on propose à cette heure-là est
+   une préférence, et elle reste ici. */
+function momentDepuisNoyau(noyau){
+  const nom = noyau && noyau.moment ? noyau.moment.nom : null;
+  return MOMENTS.find(m => m.nom === nom) || momentActuel();
+}
+
 /* Propositions posées avant la moindre frappe : à 8 h on ne cherche pas la
    même chose qu'à 23 h, et écrire sa demande est déjà un effort. Quatre
    raccourcis suffisent — au-delà on ne choisit plus, on lit une liste. */
@@ -10013,21 +10043,55 @@ function mettreAJourProfil(action, valeur){
   if(action === "ignore" && valeur)
     PROFIL.ignores[valeur] = (PROFIL.ignores[valeur]||0) + 1;
   enregistrerProfil();
+
+  /* LE MÊME GESTE, LU PAR LES DEUX MOTEURS.
+
+     `PROFIL` ne nourrissait que `scoreLieu` — les marqueurs de la carte et le
+     jeu de découverte. Les recommandations de la feuille passent par
+     `rankResults`, qui ne voyait rien : un lieu pouvait donc être premier sur
+     la carte et absent de la liste juste en dessous. `apprentissage.js` donne
+     aux deux la même lecture, décroissance comprise.
+
+     Ce qui est noté est la CATÉGORIE, jamais le lieu, jamais la position,
+     jamais la phrase cherchée — c'est le module qui refuse les clés qui n'en
+     sont pas, et c'est une barrière, pas une convention. */
+  if(APPRENTISSAGE){
+    const geste = action === "clic" ? "clic"
+                : action === "categorie" ? "categorie"
+                : action === "recherche" ? null       // la phrase n'est pas une clé
+                : action === "ignore" ? "ignore" : null;
+    if(geste && valeur) APPRENTISSAGE.noter(geste, valeur);
+  }
 }
 
-/* Catégories sur lesquelles tu reviens : au moins deux fois, et au-dessus
-   de la moyenne, sinon un clic isolé suffirait à orienter toute la carte. */
+/* CE QUE LE COMPORTEMENT LAISSE VOIR, borné entre 0 et 1.
+
+   Avant, c'était une LISTE de catégories — et une liste se prête à la
+   sélection : rien n'empêchait un appelant d'en faire un filtre. Un vecteur
+   pondéré ne le permet pas : il ne sait que déplacer une proposition dans un
+   ordre, jamais la faire entrer. C'est la règle produit rendue impossible à
+   contourner plutôt que seulement écrite.
+
+   La règle d'avant — « au moins deux fois, et au-dessus de la moyenne » —
+   n'est pas perdue : `apprentissage.js` l'exprime en poids, ce qui permet à
+   une sauvegarde de valoir ce que valaient quatre survols. */
 function obtenirInteretsProbables(){
-  const e = Object.entries(PROFIL.categories);
-  if(!e.length) return [];
-  const moyenne = e.reduce((s,[,n])=>s+n,0) / e.length;
-  return e.filter(([,n])=>n >= 2 && n >= moyenne)
-          .sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c])=>c);
+  if(!personnalisation) return {};
+  if(APPRENTISSAGE) return APPRENTISSAGE.vecteur();
+  return {};
+}
+
+/* Le même vecteur, en liste, pour l'ancien classement qui raisonne encore par
+   catégories. Il disparaîtra avec lui. */
+function interetsEnListe(){
+  const v = obtenirInteretsProbables();
+  return Object.keys(v).sort((a,b)=>v[b]-v[a]).slice(0,4);
 }
 
 function reinitialiserProfil(){
   PROFIL = Object.assign({}, PROFIL_VIDE, {categories:{}, ignores:{}, heures:{}, recherches:[]});
   enregistrerProfil();
+  if(APPRENTISSAGE) APPRENTISSAGE.effacer();
   toast("Préférences effacées");
   rendre(); majAccueil();
 }
@@ -10036,9 +10100,35 @@ function reinitialiserProfil(){
 function contexteActuel(){
   const d = instantCreneau();
   const c = map ? map.getCenter() : null;
+  /* UN SEUL INSTANT POUR TOUT L'ÉCRAN.
+
+     `contexteActuel` lisait `instantCreneau()`, `momentActuel()` relisait
+     `instantCreneau()` à son tour, et `contexteSaison()` repartait de
+     `Date.now()`. Trois lectures, trois instants possibles : un rendu à cheval
+     sur minuit, sur 18 h ou sur un changement de créneau pouvait mélanger deux
+     contextes dans la même liste. Le moteur fixe l'instant une fois et tout en
+     dérive.
+
+     Les champs rendus ici ne changent pas d'un iota — `scoreLieu`, la carte et
+     le jeu de découverte les lisent tels quels. Ce qui change est d'où ils
+     viennent. */
+  const noyau = CONTEXTE_MOTEUR ? CONTEXTE_MOTEUR.contexte({
+    instant: d.getTime(),
+    creneau,
+    zone: {id: (ZONES && zoneActive) ? ZONES.zoneIdForContext(zoneActive) : null},
+    regarde: centreZoneActive(),
+    moi: positionMoi,
+    vacances: vacancesScolaires(d),
+    rayonM: typeof rayonDeLaZone === "function" ? rayonDeLaZone() : null,
+    intention: intentionCourante,
+  }) : null;
   return {
     t: d.getTime(), heure: d.getHours(), jour: d.getDay(),
-    moment: momentActuel(),
+    moment: noyau ? momentDepuisNoyau(noyau) : momentActuel(),
+    /* Le contexte complet, pour qui en veut plus que les six champs
+       historiques : la saison, la fenêtre du créneau, la zone, le vecteur
+       d'intérêt. Personne n'est obligé de le lire. */
+    noyau,
     centre: c ? [c.lat, c.lng] : positionMoi,
     /* Point de référence du classement. Normalement soi ; mais quand on est
        parti voir ailleurs, « loin de chez toi » n'est plus un défaut du lieu :
@@ -10049,7 +10139,12 @@ function contexteActuel(){
        part d'où l'on est, pas d'où l'on regarde. */
     positionReelle: positionMoi || [0,0],
     q: sansAccents(recherche.trim()),
-    interets: personnalisation ? obtenirInteretsProbables() : [],
+    /* L'ANCIEN CONTRAT RESTE UNE LISTE. `scoreLieu` demande « cette catégorie
+       est-elle dans les intérêts ? », et il n'a pas à changer de question pour
+       que la feuille change de moteur. Le VECTEUR, lui, voyage à côté : c'est
+       lui que `rankResults` consomme, et lui seul sait dire à quel point. */
+    interets: personnalisation ? interetsEnListe() : [],
+    interetsVecteur: personnalisation ? obtenirInteretsProbables() : {},
     large: map ? map.getZoom() < 15 : false
   };
 }
@@ -11042,6 +11137,31 @@ function diversiteDemandee(){
   return {fenetre:ACCUEIL_MAX + 3};
 }
 
+/* LES ENVIES SUIVIES, telles que le classement les lit. Une liste d'ÉTIQUETTES
+   cochées à la main — c'est la couche qui a le droit de faire entrer quelque
+   chose dans « Pour toi », et la seule.
+
+   Elle ne fait rien entrer ICI : dans Explorer et dans « À venir », tout ce qui
+   arrive au classement a déjà passé la zone, la catégorie et la temporalité.
+   Les envies n'y servent qu'à confirmer un ordre. */
+function enviesSuivies(){
+  if(!ENVIES || typeof ENVIES.choisies !== "function") return null;
+  try{
+    const choisies = ENVIES.choisies();
+    return Array.isArray(choisies) && choisies.length ? choisies : null;
+  }catch(e){ return null; }
+}
+
+/* La hiérarchie de critères de l'espace affiché. « Maintenant » se lit avec
+   les pieds ; « À venir » se lit avec le calendrier ; Explorer avec les deux.
+   Le nom voyage jusqu'à `rankResults`, qui pose le comparateur correspondant
+   devant sa chaîne de départage habituelle. */
+function hierarchieDuCreneau(){
+  if(creneau === "maintenant") return "maintenant";
+  if(creneau === "bientot" || creneau === "avenir" || creneau === "weekend") return "avenir";
+  return "explorer";
+}
+
 /* La recherche libre en cours, s'il y en a une. Elle est lue à plusieurs
    endroits : autant qu'elle ait un nom. */
 function rechercheTexte(){
@@ -11087,6 +11207,9 @@ function recommandationsBientot(limite){
     saison:contexteSaison(),
     diversite:diversiteDemandee(),
     territorial:contexteTerritorialClassement(),
+    envies:enviesSuivies(),
+    interets:personnalisation ? obtenirInteretsProbables() : null,
+    hierarchie:"avenir",
     preserveDistinctEvents:modeTerritorial && !!editoriaux.length,
   });
   const choix = classement.filter((l)=>{
@@ -11193,6 +11316,14 @@ function recommandationsAccueil(limite, options){
       saison:contexteSaison(),
       diversite:diversiteDemandee(),
       territorial:contexteTerritorialClassement(),
+      /* CE QUI A ÉTÉ COCHÉ, ET CE QUE LE COMPORTEMENT LAISSE VOIR — dans cet
+         ordre, et avec ce pouvoir-là : les envies confirment, le vecteur
+         ordonne. Ni l'un ni l'autre ne peut faire entrer quoi que ce soit ici,
+         puisque tout ce qui arrive à ce point a déjà passé la zone, la
+         catégorie, la temporalité et la faisabilité. */
+      envies:enviesSuivies(),
+      interets:personnalisation ? obtenirInteretsProbables() : null,
+      hierarchie:groupe ? "explorer" : hierarchieDuCreneau(),
     });
     recoBurstCache.set(cleBurst, classement);
   }
@@ -14701,6 +14832,18 @@ function raisonCourte(l){
   if(Number.isFinite(Number(l.note)) && Number(l.note) >= 4.5
      && Number.isFinite(avis) && avis >= 50)
     return {t:"Apprécié autour de toi", c:""};
+  /* LA RAISON PERSONNELLE, EN DERNIER RECOURS ET JAMAIS AVANT UN FAIT.
+
+     « Tu regardes souvent ce genre de chose » est une explication, pas une
+     information : elle ne dit ni si c'est ouvert, ni jusqu'à quand, ni
+     combien ça coûte. Elle ne prend donc la place d'aucune de ces réponses —
+     elle n'apparaît que lorsqu'il n'y en avait aucune à donner.
+
+     Et elle vient de `rankPersoRaison`, que `pertinence.js` ne remplit que
+     s'il sait dire pourquoi. Une poussée qui ne s'explique pas ne s'affiche
+     pas — et, par construction, elle n'a pas pesé non plus. */
+  if(l.rankPersoRaison) return {t:l.rankPersoRaison, c:""};
+
   /* Pas de repli sur la distance : la carte affiche déjà le temps de trajet,
      et « À 4 min » juste au-dessus de « 4 min » ne dit rien de plus. Mieux
      vaut aucune étiquette qu'une étiquette qui répète. */
@@ -15315,6 +15458,15 @@ function brancherFeuille2(){
     if(q === "partage"){ partagerApp(); return; }
     personnalisation = !personnalisation;
     try{ localStorage.setItem("autour:perso", personnalisation ? "oui" : "non"); }catch(e){}
+    /* ÉTEINDRE EFFACE, et l'interrupteur commande les deux moteurs.
+
+       Laisser les compteurs en place pendant que l'écran dit « préférences
+       oubliées » serait un mensonge poli : la personne croit avoir retiré ses
+       données et elles attendent qu'on rallume. `definirActif(false)` vide le
+       modèle implicite, `reinitialiserProfil()` vide l'ancien profil, et
+       `vecteur()` rend alors un objet vide — le classement redevient
+       exactement celui de quelqu'un qui arrive. */
+    if(APPRENTISSAGE) APPRENTISSAGE.definirActif(personnalisation);
     if(!personnalisation) reinitialiserProfil();
     rendre(); majAccueil(); majFeuille2();
     toast(personnalisation ? "Suggestions personnalisées" : "Préférences oubliées");
