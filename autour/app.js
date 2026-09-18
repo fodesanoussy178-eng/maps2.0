@@ -18033,12 +18033,79 @@ async function remplirLieuxExplorer(intention){
       const l = lieux2.find((x)=>String(x.id) === b.dataset.xpLieu);
       if(!l) return;
       if(l.family) noterSignalInteret(l.family, "fiche");
-      fermerExplorerDecouverte();
-      /* On recentre sur le lieu et on laisse la carte faire son travail : ce
-         lot n'invente pas une fiche de plus. */
-      allerVers([Number(l.lat), Number(l.lng)], 17, {duration:.6});
+      ouvrirLieuDepuisExplorer(l);
     };
   });
+}
+
+/* LA FAMILLE DE L'INVENTAIRE ↔ LA CATÉGORIE D'AUTOUR.
+
+   Deux nomenclatures existent, et c'est voulu : la table des familles de
+   l'inventaire décrit ce qu'un lieu EST pour la base, `CATS` décrit ce qu'on
+   vient y faire. Le pont
+   se pose ici, une fois, plutôt que d'être deviné à chaque appelant. Une
+   famille inconnue ne se traduit pas — on préfère un lieu sans catégorie à un
+   lieu rangé au hasard, parce qu'une catégorie fausse suit la fiche partout. */
+const CAT_PAR_FAMILLE_EXPLORER = Object.freeze({
+  culture:"musee", bibliotheque:"biblio", cinema:"cinema", musique:"concert",
+  patrimoine:"musee", nature:"parc", sport:"terrain", marche:"marche",
+  restauration:"resto", commerce:"commerce", association:"asso",
+  solidarite:"asso", hebergement:"hebergement",
+});
+
+/* OUVRIR UN LIEU D'EXPLORER — c'est-à-dire l'ouvrir vraiment.
+
+   LE DÉFAUT, TEL QU'IL SE VIT. On appuie sur un lieu dans Explorer. Le panneau
+   se ferme, la carte vole quelque part… et il ne se passe rien d'autre. Pas de
+   fiche, pas de marqueur mis en avant, rien qui dise ce qu'on vient
+   d'ouvrir — on se retrouve devant une carte au hasard.
+
+   LA CAUSE. Le geste faisait `fermerExplorerDecouverte()` puis `allerVers()`,
+   avec ce commentaire : « on laisse la carte faire son travail ; ce lot
+   n'invente pas une fiche de plus ». L'intention était juste — ne pas
+   dupliquer la fiche — mais elle supposait que le lieu était DÉJÀ sur la
+   carte. Il ne l'est pas : l'inventaire `places` et les lieux du runtime sont
+   deux collections distinctes, et c'est précisément ce que le lot 5 a établi.
+   La carte n'avait donc aucun travail à faire.
+
+   LA CORRECTION, et elle ne crée toujours aucune fiche de plus : on fait
+   entrer le lieu dans la collection du runtime — il devient un marqueur comme
+   les autres — puis on ouvre la fiche compacte qui existe déjà pour tous les
+   marqueurs. Un seul chemin d'ouverture pour tout le produit. */
+function ouvrirLieuDepuisExplorer(l){
+  if(!l) return;
+  const lat = Number(l.lat), lng = Number(l.lng);
+  if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+  /* Déjà connu du runtime ? On ouvre CET objet-là, pas une copie : il porte
+     ses horaires, sa note, son cœur de favori et son historique. */
+  let existant = lieux.find((x)=>x && String(x.id) === String(l.id));
+  if(!existant) existant = lieux.find((x)=>x && nomsLieuxCompatibles(x.titre, l.name) &&
+    distanceM(x.lat, x.lng, lat, lng) <= 80);
+
+  if(!existant){
+    const cat = CAT_PAR_FAMILLE_EXPLORER[String(l.family || "")] || null;
+    fusionner([{
+      id:"place-"+String(l.id),
+      titre:l.name, cat,
+      lat, lng,
+      adresse:l.address || "", cp:l.commune || "",
+      description:l.description || "",
+      url:l.official_url || "",
+      quand:l.horaires_fiables ? (l.opening_hours || "") : "",
+      image:l.image_url || "", imageSource:l.image_source || "",
+      par:"Inventaire Autour", source:"places",
+    }], "permanent");
+    existant = lieux.find((x)=>x && x.id === "place-"+String(l.id));
+  }
+
+  fermerExplorerDecouverte();
+  allerVers([lat, lng], 17, {duration:.6});
+  /* La fiche APRÈS le vol : elle se pose au-dessus de la carte qui arrive, et
+     le marqueur qu'elle met en avant est celui qu'on vient de viser.
+     `ouvrirFicheCompacte` est un écran différé : l'amorce existe dès la
+     première seconde et va chercher son module si besoin. */
+  if(existant) ouvrirFicheCompacte(existant);
 }
 
 /* Ouvrir une famille depuis la capsule : Explorer s'ouvre et se limite à
