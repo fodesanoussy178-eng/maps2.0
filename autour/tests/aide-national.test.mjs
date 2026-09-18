@@ -150,7 +150,11 @@ test("la branche DORA locale ne recycle pas Tourcoing pour Lille ou Angers", asy
   }
 });
 
-test("une panne DORA conserve le pré-calcul et expose son état", async () => {
+/* Le nom de l'état a changé avec la source : ce n'est plus « DORA », c'est
+   data·inclusion, interrogé en direct. Ce que le test protège n'a pas bougé —
+   une panne d'amont garde le pré-calcul et se déclare — mais l'extrait figé
+   dit maintenant lui aussi qu'il sert de repli, ce qui manquait. */
+test("une panne data·inclusion conserve le pré-calcul et expose son état", async () => {
   const previousToken = process.env.DORA_API_TOKEN;
   const previousFetch = globalThis.fetch;
   process.env.DORA_API_TOKEN = "test-token";
@@ -161,7 +165,10 @@ test("une panne DORA conserve le pré-calcul et expose son état", async () => {
     ));
     const body = await json(response);
     assert.ok(body.items.length > 0, "le pré-calcul n'a pas pris le relais");
-    assert.ok(body.sourceStatus.some((status) => status.source === "dora" && status.state === "unavailable"));
+    assert.ok(body.sourceStatus.some((status) =>
+      status.source === "data_inclusion" && status.state === "unavailable"));
+    assert.ok(body.sourceStatus.some((status) =>
+      status.source === "data_inclusion_extrait" && status.state === "repli"));
   } finally {
     if (previousToken == null) delete process.env.DORA_API_TOKEN;
     else process.env.DORA_API_TOKEN = previousToken;

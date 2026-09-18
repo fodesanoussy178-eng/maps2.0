@@ -193,6 +193,61 @@
     }];
   }
 
+  /* ---- LA FICHE QUI SERT (partie B) ------------------------------------
+     Huit champs, et une règle : une valeur hors vocabulaire ne devient pas la
+     valeur voisine, elle devient nulle. « CMP — santé » ne sert à personne ;
+     « consultations psychologiques gratuites, sur rendez-vous, secteur de
+     votre adresse » sert immédiatement — mais seulement si chaque morceau est
+     vrai. Un mode d'accès inventé envoie quelqu'un devant une porte close.
+
+     `quoi_concretement` n'est jamais dérivé d'une description de source : il
+     est écrit à la main, relu, et il arrive ici déjà écrit. */
+  const MODES_ACCES = Object.freeze(["libre", "rendez_vous", "orientation", "telephone"]);
+  const COUTS_FICHE = Object.freeze(["gratuit", "participation", "payant"]);
+  const TELEPHONES_CLES = Object.freeze(["115", "119", "3919", "3114", "196", "116000"]);
+
+  function motDeListe(valeur, autorises) {
+    const v = texte(valeur).toLowerCase().replace(/[\s-]+/g, "_");
+    return autorises.includes(v) ? v : null;
+  }
+
+  function publicViseDe(raw, source) {
+    return array(source.public_vise || raw.public_vise || raw.publicVise || raw.profils)
+      .map((entree) => {
+        if (entree && typeof entree === "object") {
+          const code = texte(entree.code);
+          return code ? { code, label: texte(entree.label) || code.replace(/-/g, " ") } : null;
+        }
+        const code = texte(entree);
+        return code ? { code, label: code.replace(/-/g, " ") } : null;
+      }).filter(Boolean);
+  }
+
+  function ficheDe(raw) {
+    const p = raw || {};
+    const f = p.fiche && typeof p.fiche === "object" ? p.fiche : {};
+    const telephone = texte(f.telephone_cle || p.telephone_cle || p.telephoneCle);
+    const anonymat = f.anonymat != null ? f.anonymat : (p.anonymat != null ? p.anonymat : null);
+    return {
+      public_vise: publicViseDe(p, f),
+      mode_acces: motDeListe(f.mode_acces || p.mode_acces || p.modeAcces, MODES_ACCES),
+      cout: motDeListe(f.cout || p.cout, COUTS_FICHE),
+      /* Nul n'est pas « non » : personne ne doit lire une promesse d'anonymat
+         que la source n'a pas faite. */
+      anonymat: typeof anonymat === "boolean" ? anonymat : null,
+      quoi_concretement: texte(f.quoi_concretement || p.quoi_concretement) || null,
+      telephone_cle: telephone && (TELEPHONES_CLES.includes(telephone) ||
+        /^\+?[0-9][0-9 .-]{7,17}$/.test(telephone)) ? telephone : null,
+      type_structure: texte(f.type_structure || p.type_structure || p.typeStructure) || null,
+      /* B.3 — le lieu où l'on va, et l'organisme qui le gère, jamais confondus. */
+      organisme_gestionnaire: texte(f.organisme_gestionnaire || p.organisme_gestionnaire ||
+        p.organismeGestionnaire) || null,
+      sous_type: texte(f.sous_type || p.sous_type || p.sousType) || null,
+      relu_le: f.relu_le || p.relu_le || null,
+      provenance: texte(f.provenance) || null,
+    };
+  }
+
   function aBesoinAide(raw) {
     const p = raw || {};
     return p.aideStructure === true || p.kind === "AideStructure" ||
@@ -333,6 +388,7 @@
       lastSyncedAt: p.lastSyncedAt || p.last_synced_at || p.syncedAt || null,
       officialUrl: p.officialUrl || p.url || p.url_service_public || p.lien_source || null,
       capacityHints: Object.assign({}, p.capacityHints || p.capacity_hints || {}),
+      fiche: ficheDe(p),
     };
     return evaluerCapacites(out);
   }
@@ -426,6 +482,34 @@
       (p.description ? 2 : 0);
   }
 
+  /* Deux référentiels décrivent la même porte : celui qui gagne l'identité ne
+     gagne pas les champs que l'autre est seul à porter. Un `mode_acces`
+     présent d'un côté et nul de l'autre n'est pas un désaccord ; deux valeurs
+     différentes en sont un, et il se garde au lieu de se choisir en silence —
+     c'est exactement ce que `status` fait déjà pour l'ouverture. */
+  function fusionnerFiches(principale, secondaire) {
+    const p = principale || {}, s = secondaire || {};
+    const out = {};
+    const conflits = {};
+    ["mode_acces", "cout", "anonymat", "quoi_concretement", "telephone_cle",
+      "type_structure", "organisme_gestionnaire", "sous_type", "relu_le", "provenance"]
+      .forEach((champ) => {
+        const vp = p[champ] == null || p[champ] === "" ? null : p[champ];
+        const vs = s[champ] == null || s[champ] === "" ? null : s[champ];
+        out[champ] = vp == null ? vs : vp;
+        if (vp != null && vs != null && vp !== vs) conflits[champ] = [vp, vs];
+      });
+    const vus = new Set();
+    out.public_vise = [...array(p.public_vise), ...array(s.public_vise)]
+      .filter((entree) => {
+        const code = entree && entree.code;
+        if (!code || vus.has(code)) return false;
+        vus.add(code); return true;
+      });
+    if (Object.keys(conflits).length) out.conflicts = conflits;
+    return out;
+  }
+
   function fusionner(a, b) {
     const principal = scoreFiche(a) >= scoreFiche(b) ? a : b;
     const secondaire = principal === a ? b : a;
@@ -450,6 +534,7 @@
       sourceConfidence: Math.max(a.sourceConfidence || 0, b.sourceConfidence || 0),
       sourcesCount: new Set([...(a.sources || []), ...(b.sources || [])]).size,
     });
+    out.fiche = fusionnerFiches(principal.fiche, secondaire.fiche);
     /* Les médias sont orthogonaux au score d'identité : une source plus riche
        en téléphone ou en description ne doit pas faire disparaître la photo
        portée par l'autre référentiel. */
@@ -515,6 +600,10 @@
     CONFIANCE_AIDE,
     FRAICHEUR_AIDE,
     normaliser,
+    ficheDe,
+    fusionnerFiches,
+    MODES_ACCES,
+    COUTS_FICHE,
     evaluerCapacites,
     appliquerConfianceAide,
     fraicheurDe,

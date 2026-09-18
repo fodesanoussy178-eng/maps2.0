@@ -1,9 +1,16 @@
 /* Point d'entrée source pour les référentiels Aide. Les adapters du navigateur
-   restent séparés ; cette route sert un pré-calcul national par commune puis,
-   si les secrets d'amont sont présents, le complète par DORA/FINESS. */
+   restent séparés ; cette route interroge d'abord l'API data·inclusion, et ne
+   sert les extraits versionnés que lorsque l'amont ne répond pas.
+
+   L'ORDRE A CHANGÉ, ET C'EST TOUT LE SUJET. Le pré-calcul était servi d'abord
+   et l'API venait « compléter » : une ville dont l'extrait datait d'août
+   restait donc en août même quand la source vivante avait la réponse. La
+   source vivante passe devant ; les extraits deviennent ce qui reste quand
+   elle se tait, et `sourceStatus` nomme lequel des deux a parlé. */
 import doraSnapshot from "../data/aide-dora-tourcoing.js";
 import finessSnapshot from "../data/aide-finess-tourcoing.js";
 import aidePrecalcule, { metadata as aidePrecalculeMetadata } from "../data/aide-precalcule-villes.js";
+import { interroger as interrogerDataInclusion } from "../aide-data-inclusion.mjs";
 
 export const config = { runtime: "edge" };
 
@@ -11,7 +18,6 @@ const SOURCES = new Set(["autour", "dora", "finess"]);
 const RAYON_MIN = 500;
 const RAYON_MAX = 20000;
 const RESULTATS_MAX = 60;
-const DORA_API = "https://api.data.inclusion.beta.gouv.fr/api/v1/search";
 const ZONE_PRECALCULEE_MAX_M = 30000;
 
 function nombre(value, maximum) {
@@ -48,18 +54,7 @@ function dansRayon(items, lat, lng, rayon) {
   });
 }
 
-async function doraDistant(url, signal) {
-  const token = typeof process !== "undefined" && process.env &&
-    (process.env.DORA_API_TOKEN || process.env.DATA_INCLUSION_API_TOKEN);
-  if (!token) return [];
-  const r = await fetch(url, {
-    headers: { accept: "application/json", authorization: "Bearer " + token },
-    signal,
-  });
-  if (!r.ok) return [];
-  const body = await r.json();
-  return body.results || body.items || body.data || [];
-}
+const env = () => (typeof process !== "undefined" && process.env) ? process.env : {};
 
 async function communePour(lat, lng, signal) {
   const url = "https://geo.api.gouv.fr/communes?lat=" + encodeURIComponent(lat) +
@@ -154,6 +149,10 @@ export default async function handler(request) {
 
   let items = [];
   let commune = null;
+  /* Ce drapeau ne se déduit plus de `source === "data_inclusion"` : depuis que
+     l'API vivante porte elle aussi ce nom de source, seule l'origine réelle
+     des fiches peut dire si un extrait figé a servi. */
+  let extraitsUtilises = false;
   const sourceStatus = [];
   try {
     if (source !== "autour") {
@@ -170,28 +169,47 @@ export default async function handler(request) {
           zoneFallback = true;
         }
       }
-      items = localParCommune(source, commune.code, lat, lng, rayon);
-      sourceStatus.push({
-        source: "data_inclusion",
-        state: items.length ? "ok" : "empty",
+      const portee = {
         scope: String(commune.code),
         ...(zoneFallback ? {scopeFallback: "centre_precalcule_borne"} : {}),
-        snapshotDate: aidePrecalculeMetadata && aidePrecalculeMetadata.snapshotDate || null,
-      });
-    }
-    if (source === "dora") {
-      const q = new URL(DORA_API);
-      q.searchParams.set("lat", String(lat)); q.searchParams.set("lon", String(lng));
-      q.searchParams.set("distance", String(Math.ceil(rayon / 1000)));
-      q.searchParams.set("size", String(limite));
-      q.searchParams.set("exclure_doublons", "false");
-      const distant = await doraDistant(q, request.signal);
-      items = items.concat(distant);
-      if (distant.length) sourceStatus.push({source: "dora", state: "ok", count: distant.length});
-      else if (typeof process !== "undefined" && process.env &&
-        (process.env.DORA_API_TOKEN || process.env.DATA_INCLUSION_API_TOKEN))
-        sourceStatus.push({source: "dora", state: "empty"});
-      else sourceStatus.push({source: "dora", state: "not_configured"});
+      };
+      const fige = localParCommune(source, commune.code, lat, lng, rayon);
+      const dateExtrait = aidePrecalculeMetadata && aidePrecalculeMetadata.snapshotDate || null;
+
+      if (source === "dora") {
+        /* L'API D'ABORD. Elle porte les champs que la fiche solidaire doit
+           afficher — publics visés, modes d'orientation, frais — et elle les
+           porte à jour. Les extraits versionnés viennent derrière : ils
+           complètent ce que l'API n'a pas vu, et ils prennent toute la place
+           quand elle ne répond pas. */
+        const vivant = await interrogerDataInclusion({
+          env: env(), lat, lng, rayonM: rayon, limite, codeCommune: commune.code,
+          signal: request.signal,
+        });
+        items = vivant.items.concat(fige);
+        sourceStatus.push(Object.assign({}, vivant.etat, portee));
+        /* Un extrait qui sert de repli doit se déclarer comme tel : une fiche
+           d'août affichée en septembre n'est pas fausse, mais celui qui
+           diagnostique doit savoir d'où elle vient. */
+        if (fige.length) extraitsUtilises = true;
+        if (fige.length) sourceStatus.push({
+          source: "data_inclusion_extrait",
+          state: vivant.items.length ? "complement" : "repli",
+          count: fige.length,
+          raison: vivant.items.length ? null : vivant.etat.state,
+          snapshotDate: dateExtrait,
+          ...portee,
+        });
+      } else {
+        items = fige;
+        if (fige.length) extraitsUtilises = true;
+        sourceStatus.push({
+          source: "data_inclusion",
+          state: items.length ? "ok" : "empty",
+          snapshotDate: dateExtrait,
+          ...portee,
+        });
+      }
     }
     if (source === "finess") {
       const distant = await finessDistant(request.signal);
@@ -213,7 +231,7 @@ export default async function handler(request) {
   });
   return reponse({items: uniques.slice(0, limite), source, centre: {lat, lng}, rayon,
     cityCode: commune && commune.code || null,
-    snapshot: items.some((item) => item && item.source === "data_inclusion"),
+    snapshot: extraitsUtilises,
     sourceStatus,
   });
 }

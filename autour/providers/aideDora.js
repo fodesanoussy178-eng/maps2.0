@@ -165,6 +165,16 @@
         ...(p.dataProvider ? {producer: p.dataProvider} : {}),
       }],
       sourceConfidence: dataInclusion ? 0.88 : 0.90,
+      /* La fiche utile arrive déjà traduite par `aide-data-inclusion.mjs` :
+         publics visés, mode d'accès, frais. On la transmet sans y toucher —
+         l'adapter ne décide pas comment on entre dans un lieu, il rapporte ce
+         que la source a publié. `organisme_gestionnaire` est le seul champ
+         qu'il peut compléter, parce que l'ancien extrait figé nommait la
+         structure porteuse dans un champ à lui. */
+      fiche: Object.assign({}, p.fiche || {}, {
+        organisme_gestionnaire: (p.fiche && p.fiche.organisme_gestionnaire) ||
+          texte(p.organisme_gestionnaire || p.structure_parente) || null,
+      }),
     };
   }
 

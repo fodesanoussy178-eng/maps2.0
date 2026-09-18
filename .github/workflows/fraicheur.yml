@@ -1,0 +1,92 @@
+# =============================================================================
+# Agent de fraîcheur — un cycle toutes les 48 h
+#
+# Ce que fait ce travail : appeler la fonction Edge `fraicheur`, qui remplit
+# la file `freshness_tasks` avec ce qui a dépassé son TTL, puis vérifie
+# objet par objet en essayant les voies DANS L'ORDRE DE LEUR COÛT.
+#
+# CE QUE CE CRON NE FAIT PAS : il ne vérifie rien, et il ne décide rien. Il
+# déclenche. Toute la logique — la politique de fraîcheur, l'ordre des voies,
+# le budget, la règle d'acceptation, la coupure d'une voie qui se trompe trop —
+# vit en base et dans la fonction, où elle se teste. Un cron qui porterait des
+# règles serait un endroit de plus où les changer sans que personne ne le voie.
+#
+# POURQUOI 48 H ET PAS PLUS SOUVENT. Le grounding coûte : 5 000 requêtes
+# gratuites par mois, puis 14 $ les mille, et un appel peut déclencher
+# plusieurs requêtes facturées. Cela fait environ 330 objets par cycle de
+# 48 h — et c'est précisément pour ne pas les gaspiller que les voies
+# déterministe et HTTP passent d'abord.
+#
+# Secrets attendus dans le dépôt :
+#   SUPABASE_FUNCTIONS_URL  https://<ref>.supabase.co/functions/v1
+#   FRAICHEUR_SECRET        le même que la variable d'environnement de la fonction
+#
+# ET RIEN D'AUTRE. Comme pour `evenements-sync.yml`, GitHub détient le droit de
+# DÉCLENCHER un cycle, jamais celui d'écrire en base.
+# =============================================================================
+
+name: Fraîcheur Autour
+
+on:
+  schedule:
+    # Tous les deux jours, décalé de quelques heures après les zones Overpass
+    # (17 4 */2 * *) : le diff des tuiles est un signal de la voie 1, autant
+    # qu'il soit écrit avant que le cycle le lise.
+    - cron: "40 6 */2 * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "cycle (par défaut) ou mesure (lecture seule)"
+        required: false
+        default: "cycle"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Deux cycles simultanés prendraient les mêmes tâches. L'index unique de
+  # `freshness_tasks` l'empêcherait d'écrire deux fois, mais pas de dépenser
+  # deux fois l'appel — et c'est l'appel qui coûte.
+  group: fraicheur-autour
+  cancel-in-progress: false
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Lancer le cycle
+        env:
+          BASE: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          FRAICHEUR_SECRET: ${{ secrets.FRAICHEUR_SECRET }}
+          MODE: ${{ inputs.mode || 'cycle' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE:-}" ] || [ -z "${FRAICHEUR_SECRET:-}" ]; then
+            echo "::error::SUPABASE_FUNCTIONS_URL ou FRAICHEUR_SECRET manquant"
+            exit 1
+          fi
+          case "${MODE}" in
+            cycle|mesure) ;;
+            *) echo "::error::mode inconnu : ${MODE}"; exit 1 ;;
+          esac
+
+          # --fail-with-body : le corps de la réponse ET un code de sortie non
+          # nul. Sans lui, une 502 passerait pour un succès silencieux.
+          reponse=$(curl --silent --show-error --fail-with-body \
+            --max-time 1500 \
+            --header "x-fraicheur-secret: ${FRAICHEUR_SECRET}" \
+            --request POST \
+            "${BASE}/fraicheur?mode=${MODE}") || {
+              echo "::error::cycle de fraîcheur en échec"
+              echo "${reponse:-}"
+              exit 1
+            }
+          echo "${reponse}"
+
+      - name: Rappeler ce qui attend une relecture humaine
+        if: ${{ always() }}
+        run: |
+          echo "Les propositions qui ne satisfont pas la règle d'acceptation" \
+               "automatique restent en \`en_attente\` dans freshness_proposals." \
+               "Pour la famille solidaire, c'est TOUTES : niveau 3, sans exception."

@@ -95,3 +95,13 @@ entrypoint = "./functions/sync-datatourisme/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/sync-openagenda/index.ts"
+
+# ---- Agent de fraîcheur : appelé par GitHub Actions toutes les 48 h --------
+# Même règle que les synchronisations : `verify_jwt = false` et un secret
+# vérifié (`x-fraicheur-secret`) avant la moindre lecture. Elle est la seule
+# fonction autorisée à écrire dans `freshness_proposals` — et elle n'écrit
+# jamais dans `places` ni `events` autre chose que la date de vérification.
+[functions.fraicheur]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/fraicheur/index.ts"

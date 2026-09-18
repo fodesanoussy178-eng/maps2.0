@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const apiAide = await readFile(new URL("../api/aide-structures.js", import.meta.url), "utf8");
+const clientInclusion = await readFile(new URL("../aide-data-inclusion.mjs", import.meta.url), "utf8");
 
 test("une position inconnue ne lance jamais de requête géographique", () => {
   assert.match(app, /function coordonneesValides\(lat, lng\)\{[\s\S]{0,260}\(a !== 0 \|\| b !== 0\);/);
@@ -64,7 +65,12 @@ test("Aide ne télécharge rien au démarrage et borne sa réponse explicite", (
   assert.doesNotMatch(precharge, /chargerAide\(/);
   assert.match(app, /const AIDE_RAYON_INITIAL = 5000;/);
   assert.match(apiAide, /const RESULTATS_MAX = 60;/);
-  assert.match(apiAide, /size\", String\(limite\)/);
+  /* La borne amont a déménagé avec la source : la route passe `limite` au
+     client data·inclusion, qui en fait le `size` de la requête. Ce qui est
+     protégé n'a pas changé — on ne demande jamais à l'amont plus que ce
+     qu'on servira. */
+  assert.match(apiAide, /env: env\(\), lat, lng, rayonM: rayon, limite, codeCommune/);
+  assert.match(clientInclusion, /searchParams\.set\("size", String\(Math\.min\(100, Math\.max\(1, Number\(limite\)/);
   assert.match(apiAide, /uniques\.slice\(0, limite\)/);
 });
 
