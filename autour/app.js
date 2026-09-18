@@ -17572,6 +17572,32 @@ const XP_THEMES = Object.freeze([
 /* Poser une requête d'Explorer. Le créneau passe par la MÊME porte que les
    onglets de temps de la feuille : `creneau` est la variable du moteur, et
    `majAccueil` la relit. Aucune règle temporelle n'est réécrite ici. */
+
+/* ---- DEUX MONDES, DEUX PORTES -------------------------------------------
+
+   CE QUI SE PASSAIT. Chaque entrée d'Explorer mémorisait son intention, PUIS
+   fermait le panneau et repassait la main à `appliquerPhrase`. Cette fonction
+   ne connaît qu'une chose : le tableau runtime que remplissent Overpass,
+   Google Places et DATAtourisme — le même que « Maintenant ». L'inventaire
+   `places` n'était donc jamais consulté pour ce que la personne voyait, et
+   l'intention mémorisée ne servait qu'à la RÉOUVERTURE suivante du panneau.
+
+   Conséquence mesurée : « Nature et balades » envoyait la phrase « parc » à un
+   moteur textuel qui n'en tire aucune catégorie, pendant que l'inventaire
+   contenait 39 lieux de la famille `nature` à moins de 12 km de Lille. Trois
+   des entrées du panneau étaient dans ce cas.
+
+   CE QUI CHANGE. Une entrée qui nomme une ou plusieurs familles canoniques est
+   une demande de LIEUX. Elle est donc servie par la porte des lieux —
+   `remplirLieuxExplorer`, c'est-à-dire la réponse `places` — et elle s'écrit
+   DANS le panneau d'Explorer, sous les thématiques, là où la bande des lieux a
+   toujours vécu. Le panneau ne se ferme plus, et le tableau runtime de
+   « Maintenant » n'alimente plus rien ici.
+
+   CE QUI NE CHANGE PAS. Les entrées SANS famille canonique — « Gratuit »,
+   « Insolite », « Famille » — ne peuvent rien demander à `places` : aucune
+   famille ne les nomme, et en inventer une serait remplir l'écran avec des
+   à-peu-près. Elles gardent la porte existante, mot pour mot. */
 function lancerDepuisExplorer(entree){
   if(!entree) return;
   /* Une opportunité datée n'est pas une catégorie de lieux : elle a sa propre
@@ -17584,6 +17610,16 @@ function lancerDepuisExplorer(entree){
   if(Array.isArray(entree.familles) && entree.familles.length){
     intentionExplorer = {familles:entree.familles,
       titre:entree.titreLieux || entree.titre || "Des lieux, par ici"};
+    /* La réponse arrive dans le panneau resté ouvert. On amène la bande sous
+       les yeux : elle vit sous les thématiques, donc souvent sous le pli, et
+       une réponse qu'il faut aller chercher ressemble à une absence de
+       réponse. Aucun style n'est touché — c'est le défilement du panneau. */
+    void remplirLieuxExplorer(intentionExplorer).then((montree)=>{
+      const bande = $("#xpLieux");
+      if(montree && bande && typeof bande.scrollIntoView === "function")
+        bande.scrollIntoView({block:"nearest"});
+    });
+    return;
   }
   fermerExplorerDecouverte();
   if(entree.creneau && CRENEAUX.some(c=>c.id === entree.creneau)) creneau = entree.creneau;
@@ -17910,7 +17946,13 @@ async function chargerLieuxExplorer(intention){
   const fini = PERF.requete("supabase_lieux_explorer");
   try{
     const { data, error } = await sbLecture.rpc("lieux_explorer", {
-      p_zone_id:idZoneActive(),
+      /* `sans-zone` est une SENTINELLE, pas un identifiant. Hors des cinq
+         zones connues, `idZoneActive()` rend cette chaîne, et la passer telle
+         quelle demandait à la base les lieux d'une zone qui n'existe pas :
+         zéro ligne, partout, sans erreur ni message. Le reste de
+         l'application traduit déjà cette sentinelle en `null` — « toutes
+         zones » — et c'est la même traduction ici. */
+      p_zone_id:idZoneActive() === "sans-zone" ? null : idZoneActive(),
       p_famille:i.famille || null,
       p_lat:Array.isArray(ref) ? Number(ref[0]) : null,
       p_lng:Array.isArray(ref) ? Number(ref[1]) : null,
@@ -18010,9 +18052,11 @@ function carteLieuExplorer(l){
    doit pas ramener un catalogue général. */
 let intentionExplorer = null;
 
+/* Rend `true` si la bande montre quelque chose. L'appelant a besoin de le
+   savoir : amener sous les yeux une bande restée cachée n'aurait aucun sens. */
 async function remplirLieuxExplorer(intention){
   const zone = $("#xpLieux"), titre = $("#xpLieuxTitre");
-  if(!zone || !titre) return;
+  if(!zone || !titre) return false;
   const i = (typeof intention === "string") ? {famille:intention} : intention;
   /* Sans intention explicite : la découverte, deux lieux par famille. Ce n'est
      pas « tous les lieux » — c'est un échantillon qui garde la forme des
@@ -18023,7 +18067,7 @@ async function remplirLieuxExplorer(intention){
     /* Pas assez pour tenir un écran : on ne montre rien plutôt qu'un moignon,
        et les sources live gardent la main. */
     zone.hidden = true; titre.hidden = true; zone.innerHTML = "";
-    return;
+    return false;
   }
   titre.hidden = false; zone.hidden = false;
   titre.textContent = i && i.titre ? i.titre : "Des lieux, par ici";
@@ -18036,6 +18080,7 @@ async function remplirLieuxExplorer(intention){
       ouvrirLieuDepuisExplorer(l);
     };
   });
+  return true;
 }
 
 /* LA FAMILLE DE L'INVENTAIRE ↔ LA CATÉGORIE D'AUTOUR.
