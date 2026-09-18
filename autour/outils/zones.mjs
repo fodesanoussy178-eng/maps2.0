@@ -346,6 +346,23 @@ function eclaircir(lieux, b) {
   return { retenus, cellules: cellules.size, parCat: Object.fromEntries(parCat) };
 }
 
+/* La comparaison entre deux cycles. Une clé qui mêle l'identifiant OSM et la
+   position arrondie : un objet retagué garde son identifiant, un objet
+   renuméroté garde sa place, et il faut les deux pour qu'un simple
+   déplacement de quelques mètres ne se lise pas comme une disparition.
+
+   Exportée parce que c'est la seule chose ici qui se teste sans réseau. */
+function cleDeComparaison(lieu) {
+  const id = String((lieu && (lieu.id ?? lieu.osmId ?? lieu.titre)) ?? "");
+  return id + "@" + Number(lieu && lieu.lat).toFixed(4) +
+    "," + Number(lieu && lieu.lng).toFixed(4);
+}
+
+export function disparusEntreCycles(cyclePrecedent, cycleCourant) {
+  const presents = new Set((cycleCourant || []).map(cleDeComparaison));
+  return (cyclePrecedent || []).filter((l) => !presents.has(cleDeComparaison(l)));
+}
+
 async function fabriquer(cle, noms) {
   const b = bornesTuile(cle);
   console.log("tuile " + cle + (noms.length ? " (" + noms.join(", ") + ")" : ""));
@@ -371,17 +388,46 @@ async function fabriquer(cle, noms) {
   if (!lieux.length) { console.log("    aucun lieu exploitable — tuile ignorée\n"); return false; }
 
   const { retenus, cellules, parCat } = eclaircir(lieux, b);
+
+  /* LE DIFF À 48 H — la voie 1 de l'agent de fraîcheur, gratuite.
+     Depuis que ce travail tourne tous les deux jours, la différence entre le
+     fichier précédent et celui-ci est un signal : un lieu présent au cycle N
+     et absent au cycle N+1 a disparu d'OpenStreetMap. Ce n'est PAS une preuve
+     de fermeture — un contributeur peut avoir déplacé l'objet, changé son
+     type, ou l'avoir supprimé à tort — c'est une raison d'aller demander à
+     SIRENE, qui répond gratuitement.
+
+     On l'écrit donc à côté des lieux, sans rien fermer et sans rien en faire
+     ici : ce fichier PRODUIT le signal, il ne le consomme pas. Ce qui le lira
+     viendra plus tard, et n'aura pas à refaire la récolte pour l'obtenir. */
+  let disparus = [];
+  const chemin = join(SORTIE, cle + ".json");
+  if (existsSync(chemin)) {
+    try {
+      const precedent = JSON.parse(readFileSync(chemin, "utf8"));
+      disparus = disparusEntreCycles(precedent.lieux || [], retenus)
+        .map((l) => ({ id: l.id, titre: l.titre, lat: l.lat, lng: l.lng, cat: l.cat }))
+        .slice(0, 200);
+    } catch (e) {
+      /* Un fichier précédent illisible n'est pas un lieu disparu. */
+      console.warn("    (cycle précédent illisible : pas de diff)");
+    }
+  }
+
   mkdirSync(SORTIE, { recursive: true });
-  writeFileSync(join(SORTIE, cle + ".json"), JSON.stringify({
+  writeFileSync(chemin, JSON.stringify({
     zone: cle, centre: [b.lat, b.lng],
     bornes: [Number(b.s.toFixed(4)), Number(b.o.toFixed(4)),
              Number(b.n.toFixed(4)), Number(b.e.toFixed(4))],
     noms, genere_le: new Date().toISOString(),
     source: "OpenStreetMap via Overpass · ODbL",
     lieux: retenus,
+    disparus,
   }));
   console.log("    " + lieux.length + " exploitables → " + retenus.length +
     " retenus sur " + cellules + " cellules");
+  if (disparus.length) console.log("    " + disparus.length +
+    " disparus depuis le cycle précédent (signal, pas une fermeture)");
   console.log("    " + Object.entries(parCat).map(([c, n]) => c + ":" + n).join(" ") + "\n");
   return true;
 }

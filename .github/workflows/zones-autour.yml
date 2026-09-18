@@ -33,9 +33,23 @@ on:
       - ".github/workflows/zones-autour.yml"
   workflow_dispatch:
   schedule:
-    # une fois par mois : ces données vieillissent lentement, et les sources
-    # fraîches les remplacent silencieusement à chaque ouverture de l'app
-    - cron: "17 4 1 * *"
+    # TOUS LES DEUX JOURS, et non plus une fois par mois.
+    #
+    # Le rythme mensuel était un choix de cron, jamais une contrainte
+    # d'Overpass : rien n'interdit d'y revenir toutes les 48 h, et ce sont
+    # onze requêtes tous les deux jours sur des instances qui en encaissent
+    # des millions. Ce que ça achète : un lieu disparu d'OpenStreetMap se
+    # voyait au bout d'un mois, il se voit maintenant au bout de deux jours —
+    # et cette différence entre deux cycles est un signal exploitable, que
+    # `outils/zones.mjs` écrit désormais dans le champ `disparus` de chaque
+    # tuile. Un disparu n'est PAS une fermeture : c'est une raison d'aller
+    # demander à SIRENE, qui répond gratuitement.
+    #
+    # `*/2` sur le jour du mois donne les jours impairs : l'écart retombe à
+    # 24 h une fois par mois, au passage du 31 au 1er. C'est la seule manière
+    # d'écrire « tous les deux jours » en cron, et un cycle plus court n'a
+    # jamais fait de mal à personne.
+    - cron: "17 4 */2 * *"
 
 permissions:
   contents: write
