@@ -77,7 +77,7 @@ describe('indépendance du projet', () => {
     expect(fautes).toEqual([]);
   });
 
-  it("n'a aucune dépendance d'exécution, et quatre outils à lui", () => {
+  it("n'a aucune dépendance d'exécution, et cinq outils à lui", () => {
     const paquet = JSON.parse(
       readFileSync(resolve(RACINE, 'package.json'), 'utf8'),
     ) as { dependencies?: object; devDependencies?: object };
@@ -92,6 +92,7 @@ describe('indépendance du projet', () => {
     // fichier, ni configuration, ni installation.
     expect(Object.keys(paquet.devDependencies ?? {}).sort()).toEqual([
       '@types/node',
+      'esbuild',
       'tsx',
       'typescript',
       'vitest',

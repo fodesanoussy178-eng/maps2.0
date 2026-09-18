@@ -19,7 +19,7 @@ import type { LieuId, PersoId } from '../noyau/index.ts';
 import { creerFlux, doitMettreAJour, hacher, heureDecimale } from '../noyau/index.ts';
 import type { Monde } from '../etat/monde.ts';
 import { autresPresents, domicile, posteDe } from '../etat/monde.ts';
-import type { Besoin, Personnage } from '../etat/personnage.ts';
+import type { Activite, Besoin, Personnage } from '../etat/personnage.ts';
 import { ajouterBesoin } from '../etat/personnage.ts';
 import type { Action, Contexte } from '../moteurs/personnage/actions.ts';
 import { CATALOGUE, action as actionParId } from '../moteurs/personnage/actions.ts';
@@ -51,6 +51,19 @@ export interface OptionsBoucle {
   observateur?: Observateur;
   /** Garde-fou : nombre maximum d'enchaînements d'activités par réveil. */
   enchainementsMax?: number;
+  /**
+   * Intention imposée de l'extérieur, consultée AVANT l'IA d'utilité.
+   *
+   * C'est par là que le joueur commande son personnage — et c'est la seule
+   * différence entre lui et les autres habitants. Il n'a pas de boucle à part,
+   * pas de champs à part, pas de règles à part : quand l'intention renvoie
+   * quelque chose, elle gagne ; quand elle renvoie `null`, il décide comme
+   * tout le monde.
+   *
+   * Le crochet est générique exprès : le jour où un PNJ aura un rendez-vous ou
+   * une obligation, il passera par le même chemin.
+   */
+  intention?: (monde: Monde, p: Personnage, t: number) => Activite | null;
 }
 
 /**
@@ -217,6 +230,12 @@ function engager(
   // précisément ce qui doit rendre « discuter » désirable en arrivant
   // quelque part.
   const presents = autresPresents(monde, p.id).length;
+  const imposee = options.intention?.(monde, p, t) ?? null;
+  if (imposee !== null) {
+    p.activite = imposee;
+    return true;
+  }
+
   const alea = creerFlux(monde.graine, 'decision', p.id, t);
   const decision = decider(CATALOGUE, contextePour(monde, p, presents), p, alea);
   if (decision === null) return false;

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quartier Témoin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --fond: #0E141A; --surface: #19222B; --surface-2: #131B22;
+    --encre: #E2E9EE; --encre-douce: #93A3AF; --encre-faible: #66757F;
+    --trait: #2B3944; --trait-fort: #3D4E5A;
+    --accent: #5FB0E8; --joueur: #F2C14E;
+    --r: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--fond); color: var(--encre);
+    font: 14px/1.45 Archivo, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow: hidden;
+  }
+  #jeu { height: 100%; }
+  button {
+    font: inherit; font-weight: 500; color: var(--encre); background: var(--surface-2);
+    border: 1px solid var(--trait-fort); border-radius: var(--r);
+    padding: 7px 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0B1116; }
+  .primaire { background: var(--accent); border-color: var(--accent); color: #0B1116; font-weight: 600; padding: 11px 22px; font-size: 15px; }
+  .secondaire { background: transparent; }
+  input[type="range"] { accent-color: var(--accent); width: 100%; }
+  input[type="text"], input[type="number"], select {
+    font: inherit; color: var(--encre); background: var(--surface-2);
+    border: 1px solid var(--trait-fort); border-radius: var(--r); padding: 7px 9px; width: 100%;
+  }
+  h1 { font-size: clamp(24px, 4vw, 34px); letter-spacing: -.02em; margin: 0 0 8px; }
+  h2 { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--encre-douce); margin: 22px 0 10px; }
+  .sous { color: var(--encre-douce); max-width: 58ch; }
+  .petite { font-size: 12.5px; color: var(--encre-faible); }
+
+  /* ---------- menu ---------- */
+  .menu { max-width: 620px; margin: 0 auto; padding: min(12vh, 90px) 20px; display: flex; flex-direction: column; gap: 14px; }
+  .menu p { color: var(--encre-douce); margin: 0; max-width: 56ch; }
+  .menu-reglages { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin: 10px 0; align-items: end; }
+  .menu-reglages label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--encre-douce); }
+  .menu-reglages output { font-family: "IBM Plex Mono", monospace; color: var(--encre); }
+  .menu .primaire { align-self: flex-start; }
+
+  /* ---------- création ---------- */
+  .creation { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; max-width: 1000px; margin: 0 auto; padding: 32px 20px 60px; height: 100%; overflow-y: auto; }
+  @media (max-width: 760px) { .creation { grid-template-columns: 1fr; } }
+  .creation-apercu { position: sticky; top: 24px; align-self: start; text-align: center; }
+  .creation-apercu canvas { border: 1px solid var(--trait); border-radius: 10px; width: 100%; height: auto; }
+  .apercu-nom { font-weight: 600; font-size: 17px; margin: 10px 0 0; }
+  .ligne { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin-bottom: 12px; }
+  .ligne > label { flex: 1 1 140px; }
+  label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--encre-douce); }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 18px; }
+  .grille output { font-family: "IBM Plex Mono", monospace; color: var(--encre); font-size: 12px; }
+  .cases { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .cases label { flex-direction: row; align-items: center; gap: 7px; color: var(--encre); }
+  .cases input { accent-color: var(--accent); width: auto; }
+  #entrer { margin-top: 26px; }
+
+  /* ---------- scène ---------- */
+  .scene { position: relative; height: 100%; }
+  canvas#toile { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .hud-haut {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 12px;
+    display: flex; align-items: center; gap: 12px; pointer-events: none;
+  }
+  .hud-haut > * { pointer-events: auto; }
+  .horloge {
+    background: rgba(12,18,24,.72); border: 1px solid var(--trait); border-radius: var(--r);
+    padding: 6px 12px; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(6px);
+  }
+  .horloge b { font-size: 20px; font-weight: 600; display: block; line-height: 1.1; }
+  .horloge span { font-size: 11px; color: var(--encre-douce); }
+  .vitesses { display: flex; gap: 4px; }
+  .vitesses button { font-family: "IBM Plex Mono", monospace; padding: 7px 11px; background: rgba(12,18,24,.72); backdrop-filter: blur(6px); }
+  .hud-haut #recentrer { margin-left: auto; background: rgba(12,18,24,.72); backdrop-filter: blur(6px); }
+  .hud-bas {
+    position: absolute; left: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: rgba(12,18,24,.72); border: 1px solid var(--trait); border-radius: var(--r);
+    padding: 8px 12px; backdrop-filter: blur(6px); max-width: calc(100% - 28px);
+  }
+  .hud-bas span { color: var(--encre-douce); font-size: 13px; }
+  .panneau {
+    position: absolute; top: calc(70px + env(safe-area-inset-top, 0px)); right: 14px; width: 288px;
+    max-height: calc(100% - 160px); overflow-y: auto;
+    background: rgba(12,18,24,.82); border: 1px solid var(--trait); border-radius: 10px;
+    padding: 14px; backdrop-filter: blur(8px);
+  }
+  .panneau:empty { display: none; }
+  @media (max-width: 700px) { .panneau { width: auto; left: 14px; } }
+  .panneau h2 { margin: 0; font-size: 17px; text-transform: none; letter-spacing: -.01em; color: var(--encre); }
+  .panneau h2 em { color: var(--joueur); font-style: normal; font-size: 13px; }
+  .panneau header p { color: var(--encre-douce); font-size: 13px; margin: 2px 0 12px; }
+  .panneau h3 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--encre-douce); margin: 16px 0 8px; }
+  .panneau dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; margin: 0; }
+  .panneau dt { color: var(--encre-douce); }
+  .panneau dd { margin: 0; text-align: right; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .jauge { display: grid; grid-template-columns: 96px 1fr 28px; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 4px; }
+  .jauge span { color: var(--encre-douce); }
+  .jauge i { height: 6px; border-radius: 3px; background: var(--trait); display: block; position: relative; }
+  .jauge i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--part); border-radius: 3px; background: linear-gradient(90deg, var(--accent), #E0703F); }
+  .jauge b { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-align: right; color: var(--encre-douce); }
+  .traits { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; font-size: 12.5px; color: var(--encre-douce); }
+  .traits b { color: var(--encre); font-family: "IBM Plex Mono", monospace; }
+</style>
+</head>
+<body>
+<div id="jeu"></div>
+<script src="dist/jeu.js"></script>
+</body>
+</html>

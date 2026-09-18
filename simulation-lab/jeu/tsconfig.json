@@ -1,7 +1,8 @@
 {
+  "//": "Configuration SÉPARÉE pour la couche navigateur. Le tsconfig racine compile le moteur SANS la bibliothèque DOM : c'est ce qui garantit que `noyau`, `etat`, `moteurs` et `boucle` ne peuvent pas importer le navigateur, même par accident. Seul ce répertoire-ci a le droit de connaître un canvas.",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -9,7 +10,6 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
     "noEmit": true,
-
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -17,9 +17,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true,
-
-    "types": ["node"]
+    "types": []
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "jeu"]
+  "include": ["**/*.ts"]
 }

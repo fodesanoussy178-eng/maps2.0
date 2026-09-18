@@ -26,13 +26,33 @@ découle, y compris le fait qu'il n'y ait pas de rendu.
 
 ---
 
-## Démarrer
+## Jouer
 
 ```bash
 npm install
-npm run vue             # ← POUR VOIR : produit vue/quartier.html, à ouvrir dans un navigateur
-npm run labo            # une expérience de 30 jours, 60 habitants
-npm test                # 89 tests
+npm run jeu             # construit le jeu et le sert sur http://localhost:5175
+```
+
+Ou, sans serveur du tout : `npm run jeu:construire`, puis ouvrez
+**`jeu/index.html`** dans un navigateur — le fichier construit est versionné,
+donc l'ouvrir suffit.
+
+Nouvelle partie → créez votre personnage → entrez dans le quartier. Molette
+pour zoomer, glisser pour déplacer la caméra, clic sur un bâtiment pour vous y
+rendre, clic sur un habitant pour l'observer. Espace met en pause, les touches
+1 à 4 changent la vitesse.
+
+**Ce n'est pas un rejeu.** La simulation tourne dans la page ; le rendu lit
+l'état courant du monde à chaque image. Mettez en pause : tout s'arrête.
+Passez à ×40 : les habitants continuent de décider et de se déplacer, et le
+jour se lève.
+
+## Les autres outils
+
+```bash
+npm run labo            # une expérience de 30 jours, 60 habitants, sans écran
+npm run vue             # un enregistrement de deux jours, en un fichier HTML
+npm test                # 133 tests
 npm run verifier        # types + tests
 ```
 
