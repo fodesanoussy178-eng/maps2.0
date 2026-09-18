@@ -436,7 +436,12 @@ inchangé doit rester vert.
 
 ---
 
-### LOT B — Les phases d'événement et l'espace « À venir »
+### LOT B — Les phases d'événement et l'espace « À venir » · **LIVRÉ**
+
+> Détail, scénario et mesures : [`cycle-evenement.md`](./cycle-evenement.md).
+> Ajouté au périmètre en cours de route : la **bascule Pour toi → Maintenant**
+> conditionnée à la portée, sans quoi un événement imminent mais lointain
+> disparaissait des deux espaces à la fois.
 
 **Problème.** É2, É3. Les dates d'annonce et de billetterie sont en base
 depuis `20260827151757_annonces_pour_toi.sql` et ne servent à rien.

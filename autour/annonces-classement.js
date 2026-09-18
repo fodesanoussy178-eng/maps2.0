@@ -147,8 +147,27 @@
     const end = etat && etat.finReelle != null ? etat.finReelle : eventEnd(e);
     if (!fiable(e, now) || start <= now || end != null && end <= now) return null;
     if (etat && (!["soon", "today", "tonight", "weekend", "upcoming"].includes(etat.status) || !etat.hasKnownDate)) return null;
+
     if (e.cancelled || e.annule || e.status === "cancelled") return null;
     const distance = typeof o.distanceFor === "function" ? o.distanceFor(e) : o.distanceMeters;
+    const cycle = root.AutourCycle;
+
+    /* ---- LA BASCULE VERS « MAINTENANT » ---------------------------------
+
+       Un événement qui commence dans vingt minutes à trois rues d'ici n'est
+       plus une recommandation : c'est quelque chose à faire tout de suite, et
+       sa place est dans « Maintenant ». Le garder ici en plus, c'est le
+       montrer deux fois avec deux niveaux d'urgence différents — et laisser
+       « Pour toi » revendiquer un classement qui ne lui appartient plus.
+
+       MAIS SEULEMENT S'IL EST À PORTÉE, et cette condition manquait. Sans
+       elle, un concert parisien imminent quittait « Pour toi » pour un
+       « Maintenant » qui le rejetait aussitôt : à deux cent vingt kilomètres,
+       il ne passe aucun filtre de proximité. L'événement s'évaporait entre
+       deux espaces exactement à l'heure où il comptait le plus. Hors de
+       portée, il reste donc ici, avec le mot juste — « ce soir ». */
+    if (cycle && etat && cycle.basculeVersMaintenant(etat.status, distance,
+        {porteeM: o.porteeMaintenantM})) return null;
     if (!poolAutorise(e, o)) return null;
     if (o.pool !== "major_cross_zone" && o.local === false) return null;
     if (!territoireCompatible(e, o, distance)) return null;
@@ -167,8 +186,26 @@
     const matchedInterests = [...new Set(matches.map((match) => String(match.id)))];
     const matchingTags = [...new Set(matches.flatMap((match) => match.tags))];
     const announced = announcedAt(e);
+    /* ---- LE CYCLE, LU UNE FOIS ------------------------------------------
+       La phase sert au score, au groupe et à la phrase affichée. Trois
+       lectures du même fait, c'est trois occasions de ne pas dire pareil. */
+    const phaseCycle = cycle ? cycle.phaseDe(e, now) : null;
+    const urgence = phaseCycle && cycle ? cycle.urgenceAjustee(phaseCycle, distance) : 0;
+    /* LA FRAÎCHEUR D'UNE ANNONCE ET LA PHASE « ANNONCE » SONT LE MÊME FAIT.
+       Les additionner le comptait deux fois, et le résultat était absurde : à
+       l'ouverture de la billetterie, l'événement marquait MOINS qu'au jour de
+       son annonce, parce que les douze points de fraîcheur perdus dépassaient
+       les onze points d'échéance gagnés. On ne compte donc le fait qu'une
+       fois, du côté du cycle, qui est désormais la source. */
+    const dejaComptee = phaseCycle && cycle && phaseCycle.phase === cycle.PHASES.ANNONCE;
     const score = Math.max(0, Math.round(
-      50 + sourcePriority(e) + importancePoints(e.importance_level || e.importanceLevel) + noveltyPoints(announced, now) + proximityPoints(distance) + (Number(e.local_rarity_score) || 0) + (Number(e.quality_score) || 0) +
+      50 + sourcePriority(e) + importancePoints(e.importance_level || e.importanceLevel) + (dejaComptee ? 0 : noveltyPoints(announced, now)) + proximityPoints(distance) + (Number(e.local_rarity_score) || 0) + (Number(e.quality_score) || 0) +
+      /* L'ÉCHÉANCE DE L'INFORMATION, bornée. Une billetterie qui ouvre ce
+         matin, trois jours avant le concert : autant de raisons de le dire
+         maintenant plutôt que la semaine prochaine. Bornée à 30 points pour
+         qu'aucune échéance ne renverse à elle seule l'ampleur et la
+         pertinence personnelle, qui la précèdent dans la hiérarchie. */
+      Math.min(30, Math.round(urgence * 0.35)) +
       (o.pool === "major_cross_zone" ? 12 : 0)
     ));
     return {
@@ -193,6 +230,14 @@
       endAt: end,
       temporal: etat,
       temporal_status: etat ? etat.status : null,
+      /* LA PHASE DU CYCLE, lue une fois et transportée. « Pour toi » et
+         « À venir » écrivent la même phrase parce qu'ils lisent la même
+         lecture, pas parce qu'ils appliquent deux fois la même règle. */
+      phase: phaseCycle ? phaseCycle.phase : null,
+      phase_libelle: phaseCycle ? phaseCycle.libelle : null,
+      phase_horloge: phaseCycle ? phaseCycle.horloge : null,
+      echeance: urgence,
+      jours_restants: phaseCycle ? phaseCycle.joursRestants : null,
       isNew: announced != null && now - announced >= 0 && now - announced <= NOUVELLE_MS
       ,pool: o.pool || "local"
       ,crossZone: o.pool === "major_cross_zone"

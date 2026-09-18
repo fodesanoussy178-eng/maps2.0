@@ -43,6 +43,7 @@ require(join(RACINE, "availability.js"));
 require(join(RACINE, "temporel.js"));
 require(join(RACINE, "apprentissage.js"));
 require(join(RACINE, "pertinence.js"));
+require(join(RACINE, "cycle-evenement.js"));
 
 const A = globalThis.AutourApprentissage;
 for (let i = 0; i < 8; i += 1) A.noter("sauvegarde", "musee");
@@ -74,7 +75,13 @@ for (let i = 0; i < 20; i += 1) items.push({
   id: "e" + i, titre: "Événement " + i, cat: "concert", isTemporary: true,
   lat: 50.632 + (i % 7) * 0.002, lng: 3.062 + (i % 5) * 0.002,
   startsAt: now + (i - 3) * JOUR, endsAt: now + (i - 3) * JOUR + 3 * 36e5,
-  date_confidence: "exact",
+  start_at: new Date(now + (i - 3) * JOUR).toISOString(),
+  end_at: new Date(now + (i - 3) * JOUR + 3 * 36e5).toISOString(),
+  date_confidence: "exact", timezone: "Europe/Paris",
+  /* Des dates d'annonce et de billetterie sur la moitié d'entre eux : le
+     cycle doit être payé pour de vrai, pas court-circuité faute de données. */
+  announced_at: i % 2 ? new Date(now - (i + 1) * JOUR).toISOString() : null,
+  tickets_open_at: i % 3 ? new Date(now + (i - 1) * JOUR).toISOString() : null,
   importance_level: i % 5 === 0 ? "major" : "local", importance_score: i % 5 === 0 ? 90 : 10,
 });
 

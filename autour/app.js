@@ -11330,8 +11330,20 @@ function recommandationsAccueil(limite, options){
 
   if(!groupe){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
-    const retenus = classement.filter(l=>sections.includes(l.rankSection))
-      .sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
+    const retenus = classement.filter(l=>sections.includes(l.rankSection));
+    /* « CE WEEK-END » SE LIT DANS L'ORDRE DES HEURES. La fenêtre est courte et
+       fermée : on y cherche un programme, et un programme se lit du samedi
+       matin au dimanche soir.
+
+       « À VENIR » NON, ET C'EST TOUT L'ÉCART. Sur trois mois, l'ordre des
+       dates répond toujours la même chose — le plus proche d'abord, quoi qu'il
+       soit. Trois semaines d'ateliers de quartier passeraient devant le
+       festival du mois prochain et devant la billetterie qui ouvre demain, et
+       l'espace cesserait d'aider à anticiper, ce qui est son seul métier. On y
+       garde donc le classement, qui a déjà rangé par pertinence personnelle,
+       ampleur, échéance, PUIS distance temporelle. */
+    const chronologique = creneau !== "avenir";
+    if(chronologique) retenus.sort((a,b)=>(a.rankStart||0)-(b.rankStart||0));
     return Number.isFinite(limite) ? retenus.slice(0, limite || 12) : retenus;
   }
 
@@ -14805,6 +14817,14 @@ function raisonCourte(l){
       return {t:"Bientôt", c:""};
     if(section === "ce_soir") return {t:"Ce soir", c:""};
     if(section === "ce_week_end") return {t:"Ce week-end", c:""};
+    /* « ÉPHÉMÈRE » NE DISAIT RIEN. C'était le mot qu'on écrivait faute d'en
+       avoir un autre, sur un concert dans trois mois comme sur un festival
+       dans trois jours. Le cycle en a un vrai, et il l'a calculé une seule
+       fois : « 🔥 Dans 3 jours », « 🎟️ Billetterie ouverte », « 🆕 Nouvelle
+       annonce ». Quand il n'a rien de particulier à dire, il ne dit rien, et
+       on retombe sur l'ancien mot. */
+    const phase = phaseCycleDe(l);
+    if(phase && phase.libelle) return {t:phase.libelle, c:classePhase(phase)};
     return {t:"Éphémère", c:""};
   }
   const d = dispoDe(l);
@@ -14848,6 +14868,36 @@ function raisonCourte(l){
      et « À 4 min » juste au-dessus de « 4 min » ne dit rien de plus. Mieux
      vaut aucune étiquette qu'une étiquette qui répète. */
   return null;
+}
+
+/* LA PHASE DU CYCLE D'UN OBJET, SANS LA RECALCULER.
+
+   Le classement l'a déjà lue et posée sur le résultat (`rankPhase…`). Une
+   carte, une ligne de liste ou un marqueur lisent donc ce qui est là plutôt
+   que de redemander. Le repli n'existe que pour les objets qui n'ont pas
+   traversé `rankResults` — une fiche ouverte par URL, par exemple — et il
+   passe par le même module, avec son cache : jamais par une règle écrite une
+   seconde fois ici. */
+function phaseCycleDe(l){
+  if(!l) return null;
+  if(l.rankPhase) return {phase:l.rankPhase, libelle:l.rankPhaseLibelle,
+    horloge:l.rankPhaseHorloge, joursRestants:l.rankJoursRestants};
+  const cycle = window.AutourCycle;
+  if(!cycle || !estTemporaire(l)) return null;
+  return cycle.phaseDe(l, Date.now());
+}
+
+/* La teinte de la pastille. L'orange est réservé à ce qui presse vraiment —
+   le jour J, l'approche, une billetterie qui vient d'ouvrir. Une annonce ou
+   une date lointaine restent grises : tout mettre en avant, c'est ne rien
+   mettre en avant. */
+function classePhase(phase){
+  const cycle = window.AutourCycle;
+  if(!cycle || !phase) return "";
+  const P = cycle.PHASES;
+  if(phase.phase === P.EN_COURS || phase.phase === P.JOUR_J) return "chaud";
+  if(phase.phase === P.APPROCHE || phase.phase === P.BILLETTERIE_OUVERTE) return "tiede";
+  return "";
 }
 
 function fermeDansMoinsDUneHeure(d){
@@ -14978,6 +15028,17 @@ function carteRecommandation(l){
               esc(lie.id)+'" title="Voir ce lieu">'+esc(ou)+'</span>'
           : '<span class="rc-ou">'+esc(ou)+'</span>'; })() : '')+
       (quand ? '<span class="rc-quand'+classeQuand+'" data-testid="carte-quand">'+esc(quand)+'</span>' : '')+
+      /* LA PHASE D'INFORMATION S'AJOUTE À LA DATE, ELLE NE LA REMPLACE PAS.
+
+         « 12 juin » et « 🎟️ Billetterie ouverte » sont deux faits vrais en
+         même temps, et le second est précisément celui qui fait agir
+         aujourd'hui. Les phases de l'HORLOGE DE L'ÉVÉNEMENT, elles, ne sont
+         pas répétées : « 🔥 Dans 3 jours » sous « samedi 14 » dit deux fois la
+         même chose. */
+      (()=>{ const phase = phaseCycleDe(l);
+        if(!phase || !phase.libelle || phase.horloge !== "information") return '';
+        return '<span class="rc-pourquoi '+classePhase(phase)+'" data-testid="carte-phase">'+
+          esc(phase.libelle)+'</span>'; })()+
       (()=>{ const r = raisonCourte(l);
         // sur un événement, la date dit déjà pourquoi : pas deux fois
         return r && !quand

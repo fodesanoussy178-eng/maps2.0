@@ -2057,6 +2057,32 @@
         }
       }
 
+      /* ---- LE CYCLE DE L'ÉVÉNEMENT --------------------------------------
+
+         Une SEULE lecture, ici, réutilisée partout. La phase est demandée par
+         le classement, par la carte de recommandation et par « À venir » ;
+         `cycle-evenement.js` la mémorise sur l'objet jusqu'à son `expireLe`,
+         si bien que cent cinquante objets ne coûtent qu'un calcul chacun et,
+         surtout, rendent la MÊME réponse aux trois appelants. Deux lectures
+         indépendantes du même instant finissent toujours par diverger, et
+         c'est l'écran qui montre l'écart.
+
+         ELLE N'AUTORISE RIEN. Le filtre temporel est passé depuis longtemps à
+         ce point du code : une billetterie qui ouvre ne peut pas faire entrer
+         un concert de juin dans « Maintenant », parce qu'il n'est jamais
+         arrivé jusqu'ici en mode `nowOnly`. Elle ORDONNE et elle NOMME. */
+      const cycle = root.AutourCycle;
+      /* Sur l'OBJET LUI-MÊME, pas sur une copie : `phaseDe` mémorise sa
+         réponse dessus, et une copie fraîche à chaque tour rendrait ce cache
+         inutile tout en payant l'allocation. Le module sait lire les mêmes
+         champs de date que `parseTime` ci-dessus. */
+      const etatCycle = temporary && cycle ? cycle.phaseDe(item, now) : null;
+      /* L'urgence tient compte du déplacement : on ne part pas à deux cents
+         kilomètres sur un coup de tête un jour J, mais c'est justement à trois
+         jours qu'il faut s'y préparer. */
+      const echeance = etatCycle && cycle ? cycle.urgenceAjustee(etatCycle, distance) : 0;
+      if (echeance) score += Math.min(60, echeance * 0.6);
+
       /* La saison et l'heure, sans météo : le calendrier suffit à savoir qu'on
          ne cherche pas une terrasse un 15 janvier à 22 h. Ça ORDONNE, ça
          n'exclut pas — et seulement si le lieu porte réellement le signal. */
@@ -2256,6 +2282,15 @@
            utile, « tu regardes souvent ça » n'est qu'un complément. Les
            confondre ferait disparaître l'horaire au profit du goût. */
         rankPersoRaison: persoRaison,
+        /* LA PHASE DU CYCLE, telle que l'interface doit l'écrire. Elle voyage
+           avec le résultat plutôt que d'être recalculée à l'affichage : c'est
+           la même règle que `rankTemporal`, et pour la même raison — deux
+           calculs du même fait finissent par ne pas dire pareil. */
+        rankPhase: etatCycle ? etatCycle.phase : null,
+        rankPhaseLibelle: etatCycle ? etatCycle.libelle : null,
+        rankPhaseHorloge: etatCycle ? etatCycle.horloge : null,
+        rankPhaseExpire: etatCycle ? etatCycle.expireLe : null,
+        rankJoursRestants: etatCycle ? etatCycle.joursRestants : null,
         rankBreakdown: {availability, intentMatch, distance, community:community ? 1 : 0,
           startsAt: temporalStart, temporalDistance, temporary, quality,
           categoryFit, etaMinutes: minutes, relevance,
@@ -2274,6 +2309,9 @@
              réordonner sur du bruit. */
           perso: Math.round(perso * 4) / 4,
           declare,
+          /* Par paliers de dix : réordonner sur trois points d'urgence, c'est
+             réordonner sur du bruit. */
+          echeance: Math.round(echeance / 10) * 10,
           importance: pertinence ? pertinence.importance(item) : 0,
           palierDistance: pertinence ? pertinence.palierDistance(distance) : 0},
       });

@@ -39,7 +39,7 @@
      devant une porte fermée est la seule faute qu'Autour ne peut pas se
      permettre, et aucun classement n'a le droit de la commettre. */
   const CRITERES = Object.freeze([
-    "faisabilite", "personnel", "importance", "temporalite",
+    "faisabilite", "personnel", "importance", "echeance", "temporalite",
     "proximite", "accessibilite", "fraicheur", "diversite",
   ]);
 
@@ -47,14 +47,19 @@
     /* Ce qui se passe là, maintenant. La temporalité d'abord — être en cours
        n'est pas une préférence —, puis les pieds. Le goût vient après : il
        choisit entre deux choses également possibles, il n'en fait pas entrer
-       une troisième. */
+       une troisième.
+
+       L'ÉCHÉANCE N'Y FIGURE PAS, et c'est délibéré. Ici, tout se passe déjà :
+       savoir qu'une billetterie a ouvert ce matin n'ordonne rien entre deux
+       choses en cours. Laisser ce critère entrer ferait remonter un concert de
+       juin dans un espace qui ne parle que de l'instant. */
     maintenant: Object.freeze([
       "faisabilite", "temporalite", "proximite", "personnel", "importance",
       "accessibilite", "fraicheur", "diversite",
     ]),
     /* Tout y est à venir : la question n'est plus quand, mais pour qui. */
     pourtoi: Object.freeze([
-      "personnel", "importance", "temporalite", "proximite",
+      "personnel", "importance", "echeance", "temporalite", "proximite",
       "accessibilite", "fraicheur", "diversite",
     ]),
     /* L'exploration : ce qui est faisable, puis ce qui vient, puis ce qui
@@ -63,9 +68,19 @@
       "faisabilite", "temporalite", "personnel", "importance",
       "proximite", "accessibilite", "fraicheur", "diversite",
     ]),
-    /* Ce qui arrive bientôt : entre « maintenant » et « pour toi ». */
+    /* « À VENIR » N'EST PAS « MAINTENANT AVEC UNE DATE PLUS LOIN ».
+
+       Un tri par date y répond toujours la même chose : le plus proche dans le
+       temps en premier, quoi qu'il soit. Trois semaines d'ateliers de quartier
+       passeraient ainsi devant le festival du mois prochain, et l'espace
+       cesserait d'aider à ANTICIPER, ce qui est son seul métier.
+
+       L'ordre est donc : ce qui concerne la personne, puis ce qui est grand,
+       puis ce qu'il faut savoir MAINTENANT à leur sujet — une billetterie qui
+       ouvre, trois jours avant —, et la distance temporelle seulement ensuite.
+       Elle reste un facteur ; elle n'est plus le seul. */
     avenir: Object.freeze([
-      "faisabilite", "temporalite", "personnel", "importance",
+      "faisabilite", "personnel", "importance", "echeance", "temporalite",
       "proximite", "accessibilite", "fraicheur", "diversite",
     ]),
   });
@@ -95,6 +110,19 @@
       nombre(detail(b).perso) - nombre(detail(a).perso),
 
     importance: () => (a, b) => nombre(detail(b).importance) - nombre(detail(a).importance),
+
+    /* L'ÉCHÉANCE DE L'INFORMATION — à ne pas confondre avec la temporalité de
+       l'événement, qui vient juste après et dit tout autre chose.
+
+       « La billetterie ouvre aujourd'hui » et « le concert est en juin » sont
+       deux faits vrais en même temps sur la même ligne. Le premier est une
+       échéance : il y a quelque chose à faire, et une fenêtre pour le faire.
+       Le second est une distance. Les additionner dans un même critère revenait
+       à choisir lequel des deux on allait perdre.
+
+       Arrondie par paliers de dix : réordonner sur trois points d'urgence,
+       c'est réordonner sur du bruit. */
+    echeance: () => (a, b) => nombre(detail(b).echeance) - nombre(detail(a).echeance),
 
     /* La temporalité n'est pas un nombre : « en cours » contre « ce soir »
        contre « samedi » demande de connaître les fenêtres locales. C'est le
