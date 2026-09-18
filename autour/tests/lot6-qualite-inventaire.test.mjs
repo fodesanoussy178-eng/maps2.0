@@ -278,13 +278,28 @@ test("une offre dont la date de fin est passée n'est pas affichée du tout", ()
   assert.match(o, /vivantes\.map\(carteOffre\)/);
 });
 
-test("le panneau Explorer reste une surface mobile", () => {
-  /* Décision du Lot 3, inchangée : au-delà de 768 px le panneau n'existe pas —
-     le desktop a sa propre navigation haute. Ce test empêche qu'on le
-     « réactive » par inadvertance en desktop, ce qui ferait de l'interface
-     mobile une simple version rétrécie. */
-  assert.match(html, /#selecteurSurface,#fabCreer,#explorerDecouverte\{display:none\}/);
-  assert.match(html, /@media \(max-width:768px\)[\s\S]{0,4000}#explorerDecouverte\{display:flex/);
+test("le panneau Explorer existe sur toutes les largeurs", () => {
+  /* CETTE RÈGLE A ÉTÉ INVERSÉE, et il faut dire pourquoi plutôt que de la
+     réécrire en silence.
+
+     Le Lot 3 avait décidé : au-delà de 768 px le panneau n'existe pas, le
+     desktop a sa propre navigation. Ce test gardait cette décision — et c'est
+     exactement ce qui l'a rendue invisible quand le code a cessé de la
+     suivre. Le gestionnaire de la barre basse a été élargi à toutes les
+     largeurs : appuyer sur Explorer ouvrait l'état partout (`body.explorer-
+     ouvert`, `hidden` retiré, contenu rempli) pendant que le CSS gardait
+     `display:none`. Sur ordinateur et sur tablette, Explorer ne faisait rien.
+     Le test, lui, restait vert : il vérifiait le CSS, pas la cohérence des
+     deux.
+
+     La décision produit est désormais l'inverse : même produit à toutes les
+     largeurs, géométrie différente. `tests/explorer-toutes-largeurs.test.mjs`
+     tient les règles, `outils/explorer.mjs` joue le parcours réel dans un
+     navigateur — c'est lui qui aurait attrapé le défaut. */
+  assert.doesNotMatch(html, /#selecteurSurface,#fabCreer,#explorerDecouverte\{display:none\}/);
+  /* Le sélecteur de surface et le bouton flottant, eux, restent mobiles : le
+     desktop a ses six entrées de navigation, qui font le même travail. */
+  assert.match(html, /#selecteurSurface,#fabCreer\{display:none\}/);
 });
 
 /* ---- Ce que le lot ne devait pas toucher -------------------------------- */

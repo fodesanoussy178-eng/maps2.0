@@ -1326,7 +1326,102 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
    de six entrées, inchangée. */
 
 /* Par défaut — donc sur desktop — rien de tout cela n'existe. */
-#selecteurSurface,#fabCreer,#explorerDecouverte{display:none}
+/* `#explorerDecouverte` a quitté cette liste : le code ouvre cette surface sur
+   toutes les largeurs. Voir sa géométrie plus bas. */
+#selecteurSurface,#fabCreer{display:none}
+
+/* ---- Explorer, surface de découverte ----
+   Il monte du bas comme les autres panneaux, et laisse voir la carte
+   derrière : découvrir sans perdre où l'on est. */
+/* LA GÉOMÉTRIE PAR DÉFAUT EST CELLE DU TÉLÉPHONE ; le desktop la redéfinit
+   plus bas. Tout ce bloc vivait sous `@media (max-width:768px)` alors que le
+   code ouvre la surface sur toutes les largeurs : l'état s'ouvrait, le CSS
+   gardait `display:none`, et Explorer ne faisait rien. Une règle de
+   présentation bornée à une largeur doit être un OVERRIDE, jamais une
+   condition d'existence. Détail : docs/explorer-toutes-largeurs.md */
+#explorerDecouverte{display:flex;flex-direction:column;
+  position:absolute;z-index:900;left:0;right:0;bottom:0;
+  max-height:78%;
+  background:var(--paper);border-radius:20px 20px 0 0;
+  border-top:1px solid var(--bord);
+  box-shadow:0 -8px 30px rgba(20,30,25,.18)}
+#explorerDecouverte[hidden]{display:none}
+.xp-poignee{width:38px;height:4px;margin:8px auto 2px;border-radius:99px;
+  background:var(--bord)}
+.xp-corps{overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:6px 16px calc(16px + var(--nav-height))}
+.xp-titre{margin:4px 0 12px;font-size:21px;font-weight:800;letter-spacing:-.03em}
+.xp-section{margin:20px 0 9px;font-size:11.5px;font-weight:750;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--ink2)}
+.xp-recherche{display:flex;align-items:center;gap:9px;width:100%;min-height:46px;
+  padding:0 14px;border:1px solid var(--bord);border-radius:14px;background:#fff;
+  color:var(--ink2);font-size:14.5px;text-align:left}
+.xp-recherche span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.xp-intentions{display:flex;flex-wrap:wrap;gap:8px}
+.xp-int{min-height:40px;padding:0 14px;border:1px solid var(--bord);
+  border-radius:99px;background:#fff;color:var(--ink);
+  font-size:14px;font-weight:650}
+.xp-int:active{transform:scale(.97)}
+/* Les sélections défilent horizontalement : elles ne doivent jamais forcer
+   la page à défiler de côté. */
+.xp-selections{display:flex;gap:10px;margin-inline:-16px;padding-inline:16px;
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.xp-selections::-webkit-scrollbar{display:none}
+.xp-carte{flex:0 0 auto;width:172px;padding:0;overflow:hidden;
+  border:1px solid var(--bord);border-radius:16px;background:#fff;
+  display:flex;flex-direction:column;text-align:left}
+/* Même gabarit que la photo des cartes de résultats : hauteur fixe, `cover`,
+   tuile teintée dessous. La hauteur est posée avant que l'image existe, donc
+   rien ne saute quand elle arrive — et rien ne saute non plus quand elle
+   n'arrive jamais. */
+.xp-photo{position:relative;display:grid;place-items:center;
+  height:84px;background:var(--teinte,#5D6B63)}
+.xp-photo::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
+.xp-photo i{position:relative;z-index:1;font-style:normal;font-size:22px;opacity:.9}
+.xp-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
+  object-fit:cover;opacity:0;transition:opacity .18s ease}
+.xp-photo img.vue{opacity:1}
+.xp-carte-txt{display:flex;flex-direction:column;gap:3px;padding:10px 12px 12px}
+.xp-carte b{font-size:14px;font-weight:750;line-height:1.25;letter-spacing:-.01em}
+.xp-carte i{font-style:normal;font-size:12px;color:var(--ink2)}
+.xp-themes{display:flex;flex-direction:column;gap:1px}
+.xp-theme{display:flex;align-items:center;gap:11px;width:100%;min-height:48px;
+  padding:0 4px;border:0;border-bottom:1px solid var(--bord);background:none;
+  color:var(--ink);font-size:15px;font-weight:600;text-align:left}
+.xp-theme:last-child{border-bottom:0}
+.xp-theme em{font-style:normal;font-size:17px}
+.xp-theme span{flex:1;min-width:0}
+.xp-theme::after{content:"›";color:var(--ink2);font-size:19px}
+
+/* LOT 5 · LES LIEUX DE L'INVENTAIRE
+   Même gabarit que les sélections : une tuile teintée posée à sa taille
+   définitive, la photo par-dessus si elle existe. */
+.xp-lieux{display:flex;flex-direction:column;gap:10px}
+.xp-lieu{display:flex;gap:12px;width:100%;padding:0;overflow:hidden;
+  border:1px solid var(--bord);border-radius:14px;background:#fff;text-align:left}
+.xp-lieu-photo{position:relative;flex:0 0 92px;height:92px;display:grid;
+  place-items:center;background:var(--teinte,#5D6B63)}
+.xp-lieu-photo::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
+.xp-lieu-photo i{position:relative;z-index:1;font-style:normal;font-size:24px;opacity:.9}
+.xp-lieu-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
+  object-fit:cover;opacity:0;transition:opacity .18s ease}
+.xp-lieu-photo img.vue{opacity:1}
+/* CE QUE MONTRE L'IMAGE, ÉCRIT DESSUS. Une affiche d'événement n'est pas une
+   photo du lieu : quand c'en est une, la vignette le dit, en toutes lettres
+   et par-dessus l'image. */
+.xp-lieu-photo b{position:absolute;left:0;right:0;bottom:0;z-index:3;
+  padding:3px 5px;background:rgba(20,30,25,.72);color:#fff;
+  font-size:11px;font-weight:600;line-height:1.15;text-align:center}
+.xp-lieu-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
+  padding:11px 12px 11px 0}
+.xp-lieu-nom{font-size:14.5px;font-weight:750;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xp-lieu-meta{font-size:12px;color:var(--ink2)}
+.xp-lieu-desc{font-size:12.5px;color:var(--ink2);line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 @media (max-width:768px){
   /* Le sélecteur de surface prend le créneau sous l'en-tête ; tout ce qui s'y
@@ -1391,92 +1486,6 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   body.explorer-ouvert #fabCreer,
   body:has(#feuille:not([hidden])) #fabCreer{opacity:0;transform:scale(.8);pointer-events:none}
 
-  /* ---- Explorer, surface de découverte ----
-     Il monte du bas comme les autres panneaux, et laisse voir la carte
-     derrière : découvrir sans perdre où l'on est. */
-  #explorerDecouverte{display:flex;flex-direction:column;
-    position:absolute;z-index:900;left:0;right:0;bottom:0;
-    max-height:78%;
-    background:var(--paper);border-radius:20px 20px 0 0;
-    border-top:1px solid var(--bord);
-    box-shadow:0 -8px 30px rgba(20,30,25,.18)}
-  #explorerDecouverte[hidden]{display:none}
-  .xp-poignee{width:38px;height:4px;margin:8px auto 2px;border-radius:99px;
-    background:var(--bord)}
-  .xp-corps{overflow-y:auto;-webkit-overflow-scrolling:touch;
-    padding:6px 16px calc(16px + var(--nav-height))}
-  .xp-titre{margin:4px 0 12px;font-size:21px;font-weight:800;letter-spacing:-.03em}
-  .xp-section{margin:20px 0 9px;font-size:11.5px;font-weight:750;
-    letter-spacing:.07em;text-transform:uppercase;color:var(--ink2)}
-  .xp-recherche{display:flex;align-items:center;gap:9px;width:100%;min-height:46px;
-    padding:0 14px;border:1px solid var(--bord);border-radius:14px;background:#fff;
-    color:var(--ink2);font-size:14.5px;text-align:left}
-  .xp-recherche span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
-    white-space:nowrap}
-  .xp-intentions{display:flex;flex-wrap:wrap;gap:8px}
-  .xp-int{min-height:40px;padding:0 14px;border:1px solid var(--bord);
-    border-radius:99px;background:#fff;color:var(--ink);
-    font-size:14px;font-weight:650}
-  .xp-int:active{transform:scale(.97)}
-  /* Les sélections défilent horizontalement : elles ne doivent jamais forcer
-     la page à défiler de côté. */
-  .xp-selections{display:flex;gap:10px;margin-inline:-16px;padding-inline:16px;
-    overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-  .xp-selections::-webkit-scrollbar{display:none}
-  .xp-carte{flex:0 0 auto;width:172px;padding:0;overflow:hidden;
-    border:1px solid var(--bord);border-radius:16px;background:#fff;
-    display:flex;flex-direction:column;text-align:left}
-  /* Même gabarit que la photo des cartes de résultats : hauteur fixe, `cover`,
-     tuile teintée dessous. La hauteur est posée avant que l'image existe, donc
-     rien ne saute quand elle arrive — et rien ne saute non plus quand elle
-     n'arrive jamais. */
-  .xp-photo{position:relative;display:grid;place-items:center;
-    height:84px;background:var(--teinte,#5D6B63)}
-  .xp-photo::after{content:"";position:absolute;inset:0;
-    background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
-  .xp-photo i{position:relative;z-index:1;font-style:normal;font-size:22px;opacity:.9}
-  .xp-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
-    object-fit:cover;opacity:0;transition:opacity .18s ease}
-  .xp-photo img.vue{opacity:1}
-  .xp-carte-txt{display:flex;flex-direction:column;gap:3px;padding:10px 12px 12px}
-  .xp-carte b{font-size:14px;font-weight:750;line-height:1.25;letter-spacing:-.01em}
-  .xp-carte i{font-style:normal;font-size:12px;color:var(--ink2)}
-  .xp-themes{display:flex;flex-direction:column;gap:1px}
-  .xp-theme{display:flex;align-items:center;gap:11px;width:100%;min-height:48px;
-    padding:0 4px;border:0;border-bottom:1px solid var(--bord);background:none;
-    color:var(--ink);font-size:15px;font-weight:600;text-align:left}
-  .xp-theme:last-child{border-bottom:0}
-  .xp-theme em{font-style:normal;font-size:17px}
-  .xp-theme span{flex:1;min-width:0}
-  .xp-theme::after{content:"›";color:var(--ink2);font-size:19px}
-
-  /* LOT 5 · LES LIEUX DE L'INVENTAIRE
-     Même gabarit que les sélections : une tuile teintée posée à sa taille
-     définitive, la photo par-dessus si elle existe. */
-  .xp-lieux{display:flex;flex-direction:column;gap:10px}
-  .xp-lieu{display:flex;gap:12px;width:100%;padding:0;overflow:hidden;
-    border:1px solid var(--bord);border-radius:14px;background:#fff;text-align:left}
-  .xp-lieu-photo{position:relative;flex:0 0 92px;height:92px;display:grid;
-    place-items:center;background:var(--teinte,#5D6B63)}
-  .xp-lieu-photo::after{content:"";position:absolute;inset:0;
-    background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.90))}
-  .xp-lieu-photo i{position:relative;z-index:1;font-style:normal;font-size:24px;opacity:.9}
-  .xp-lieu-photo img{position:absolute;inset:0;z-index:2;width:100%;height:100%;
-    object-fit:cover;opacity:0;transition:opacity .18s ease}
-  .xp-lieu-photo img.vue{opacity:1}
-  /* CE QUE MONTRE L'IMAGE, ÉCRIT DESSUS. Une affiche d'événement n'est pas une
-     photo du lieu : quand c'en est une, la vignette le dit, en toutes lettres
-     et par-dessus l'image. */
-  .xp-lieu-photo b{position:absolute;left:0;right:0;bottom:0;z-index:3;
-    padding:3px 5px;background:rgba(20,30,25,.72);color:#fff;
-    font-size:11px;font-weight:600;line-height:1.15;text-align:center}
-  .xp-lieu-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
-    padding:11px 12px 11px 0}
-  .xp-lieu-nom{font-size:14.5px;font-weight:750;line-height:1.25;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .xp-lieu-meta{font-size:12px;color:var(--ink2)}
-  .xp-lieu-desc{font-size:12.5px;color:var(--ink2);line-height:1.35;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
   /* LA DERNIÈRE LIGNE D'UNE FEUILLE PASSAIT SOUS LA BARRE BASSE.
      `#feuille` monte depuis `bottom:0`, la barre flotte au-dessus (z-index
@@ -1826,6 +1835,32 @@ a.ac-item{text-decoration:none;color:inherit}
   #feuilleBesoins,#feuilleBesoins.accueil,#feuilleBesoins.deplie,
   #feuilleBesoins.reduite{
     top:calc(var(--safe-t) + var(--marge-desktop) + 74px)}
+
+  /* ---- Explorer prend la place du panneau de gauche ----------------------
+     Même produit, autre disposition — la règle déjà appliquée à la barre de
+     navigation. Le contenu ne change pas d'une ligne : mêmes cartes, mêmes
+     envies, mêmes sélections. */
+  #explorerDecouverte{
+    left:var(--marge-desktop);right:auto;width:var(--panneau);
+    top:calc(var(--safe-t) + var(--marge-desktop) + 74px);
+    /* IL S'ARRÊTE AU-DESSUS DE LA BARRE, comme le panneau de recommandations.
+       `--nav-height` vaut zéro ici — la barre ne POUSSE rien — mais elle
+       RECOUVRE : une règle plus bas la centre sur toute la largeur. Descendre
+       jusqu'à `--marge-desktop` mettait les dernières thématiques derrière une
+       barre opaque. `--nav-flottante` est republié par `mesurerHeader()` à la
+       hauteur RÉELLE de la barre ; un nombre écrit ici redonnerait le défaut au
+       premier écran qui n'y ressemble pas. */
+    bottom:calc(var(--nav-flottante, 96px) + 40px);
+    max-height:none;
+    border:1px solid var(--bord);border-radius:28px;border-top-width:1px;
+    box-shadow:0 8px 34px rgba(20,30,25,.18)}
+  /* La poignée sert à tirer une feuille au pouce. Un panneau ancré ne se tire
+     pas : ce serait un ornement suggérant un geste inexistant. */
+  #explorerDecouverte .xp-poignee{display:none}
+  .xp-corps{padding:14px 20px 20px}
+  /* Deux panneaux principaux ne se superposent jamais : Explorer occupe la
+     place, la feuille s'efface le temps qu'on explore. */
+  body.explorer-ouvert #feuilleBesoins{opacity:0;pointer-events:none}
 
   /* PAS DE CROIX SUR L'INTERFACE PRINCIPALE.
 
@@ -3234,7 +3269,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   },true);
 })();
 </script>
-<script src="availability.js?v=6a6564df" defer></script>
+<script src="availability.js?v=ac5d4d30" defer></script>
 <script src="comprendre.js?v=674ea341" defer></script>
 <script src="donnees.js?v=49ec48a8" defer></script>
 <script src="aide-intentions.js?v=a00115e8" defer></script>
@@ -3246,8 +3281,13 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="adresse.js?v=3e38153c" defer></script>
 <script src="plafonds.js?v=a922a210" defer></script>
 <script src="annonces-taxonomie.js?v=3a17b2a2" defer></script>
-<script src="annonces-classement.js?v=9d607f4b" defer></script>
+<script src="annonces-classement.js?v=1e52703d" defer></script>
 <script src="envies.js?v=b3211e1e" defer></script>
+<script src="apprentissage.js?v=b0a8bc05" defer></script>
+<script src="pertinence.js?v=65064ccf" defer></script>
+<script src="cycle-evenement.js?v=bb9933ae" defer></script>
+<script src="grille.js?v=8793aab6" defer></script>
+<script src="contexte-moteur.js?v=5e6a5bd9" defer></script>
 <script src="enrichissements.js?v=f49d26ee" defer></script>
 <script src="contexte.js?v=54aec3b1" defer></script>
 <script src="territoire.js?v=a3338eb0" defer></script>
@@ -3258,13 +3298,13 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="aide-contexte-ia.js?v=3da4c06f" defer></script>
 <script src="aide.js?v=86fea5f0" defer></script>
 <script src="signaux.js?v=319acaa9" defer></script>
-<script src="temporel.js?v=4e389e92" defer></script>
+<script src="temporel.js?v=499fbeb9" defer></script>
 <script src="evenements-canoniques.js?v=46471f92" defer></script>
 <script src="entites-canoniques.js?v=64938bfe" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=68b5ce89" defer></script>
 <script src="images.js?v=6303b727" defer></script>
-<script src="core.js?v=a211a4e6" defer></script>
+<script src="core.js?v=962c5e9e" defer></script>
 <script src="providers/normaliser.js?v=08b99c2e" defer></script>
 <script src="providers/googlePlaces.js?v=f5f5029d" defer></script>
 <script src="providers/datatourisme.js?v=6f242f4e" defer></script>
@@ -3275,6 +3315,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=5bb877df" defer></script>
+<script src="app.js?v=bffcd801" defer></script>
 </body>
 </html>

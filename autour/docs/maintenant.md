@@ -307,9 +307,39 @@ millisecondes, et la carte peut bouger pendant ce temps.
 | hub · cache froid | 1355 ms | **775 ms** | — | — |
 | zone peu dense | 1626 ms | **1487 ms** | — | — |
 
-### Ce qui reste
+### Ce qui restait — et ce que la mesure a démenti
 
-**L'objectif d'une seconde de blocage n'est pas tenu** sur zone dense : 1815 ms.
-Les deux classements sont sortis du chemin critique ; ce qui reste est la pose
-des marqueurs et la déduplication, toujours d'un bloc. Le banc l'imprime à
-chaque exécution, avec son chiffre.
+Cette section a longtemps affirmé que le blocage résiduel venait de « la pose
+des marqueurs et la déduplication, toujours d'un bloc ». **C'était faux, et le
+lot E l'a établi en mesurant plutôt qu'en supposant.**
+
+Sur un centre-ville dense de 130 lieux :
+
+| fonction | coût |
+|---|---|
+| `dedupeItems` | **0,16 ms** |
+| `groupLogicalPlaces` | 0,65 ms |
+| `rankResults` | **108 ms** |
+
+Et à l'intérieur de `rankResults`, un seul coupable : 130 appels à
+`getPlaceAvailability` pour 111 ms. Pas l'analyse des horaires — la
+construction d'un `Intl.DateTimeFormat` à chaque appel, pour projeter l'instant
+dans le fuseau du lieu. Construire un formateur coûte 0,067 ms ; s'en servir
+en coûte 0,013. On payait cinq fois le prix du travail utile, plusieurs fois
+par lieu.
+
+Le formateur ne dépend que de sa locale, de ses options et de son fuseau : il
+est immuable et se partage. En le gardant (`availability.js`, `temporel.js`) :
+
+| | avant | après |
+|---|---|---|
+| `rankResults` · 130 lieux | 108,6 ms | **14,0 ms** |
+| `rankResults` · 600 lieux | 495,5 ms | **52,9 ms** |
+| pire blocage du fil principal, centre dense *(banc navigateur)* | 556 ms | **175 ms** |
+
+L'objectif du banc — 300 ms — est désormais **tenu**. La déduplication, accusée
+pendant des mois, n'a jamais coûté un sixième de milliseconde.
+
+> La leçon vaut mieux que le chiffre : la section précédente nommait un
+> coupable plausible sans l'avoir mesuré, et personne ne l'a rouverte tant
+> qu'elle semblait raisonnable.

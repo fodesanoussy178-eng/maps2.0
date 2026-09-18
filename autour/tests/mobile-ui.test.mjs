@@ -1395,7 +1395,10 @@ test("le classement tranche le temps avant de calculer la pertinence",()=>{
 test("la proximité de date des événements passe avant leur trajet",()=>{
   assert.match(core,/function compareEventDate\(a, b\) \{/);
   assert.match(core,/startsAt: temporalStart, temporalDistance, temporary, quality,/);
-  const tri = core.indexOf("}).filter(Boolean).sort((a, b) =>");
+  /* L'ancre du tri a bougé quand la hiérarchie de pertinence s'est posée
+     devant lui : le classement passe par une variable avant d'être diversifié.
+     Le CONTRAT, lui, n'a pas changé — c'est l'ordre des comparaisons. */
+  const tri = core.indexOf("classes.filter(Boolean).sort((a, b) =>");
   const date = core.indexOf("compareEventDate(a, b)", tri);
   const eta = core.indexOf("compareEta(a, b)", tri);
   assert.ok(date > 0 && eta > 0 && date < eta,
@@ -1630,9 +1633,12 @@ test("les contraintes dures sont appliquées avant tout calcul de pertinence",()
 test("l'adéquation passe devant la distance dans le tri",()=>{
   // le tri regardait la distance bien avant le score : « où bosser » plaçait
   // le bar d'en face devant la bibliothèque
-  assert.match(core,/fit: Math\.round\(adequation \* 4\) \/ 4\},/);
+  assert.match(core,/fit: Math\.round\(adequation \* 4\) \/ 4,/);
   assert.match(core,/\(b\.rankBreakdown\.fit \|\| 0\) - \(a\.rankBreakdown\.fit \|\| 0\) \|\|/);
-  const tri = core.indexOf("}).filter(Boolean).sort((a, b) =>");
+  /* L'ancre du tri a bougé quand la hiérarchie de pertinence s'est posée
+     devant lui : le classement passe par une variable avant d'être diversifié.
+     Le CONTRAT, lui, n'a pas changé — c'est l'ordre des comparaisons. */
+  const tri = core.indexOf("classes.filter(Boolean).sort((a, b) =>");
   const fit = core.indexOf("(b.rankBreakdown.fit || 0)", tri);
   const eta = core.indexOf("compareEta(a, b)", tri);
   assert.ok(fit > 0 && eta > 0 && fit < eta, "l'adéquation est comparée avant le trajet");

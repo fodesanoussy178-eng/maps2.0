@@ -251,8 +251,14 @@ test("« À propos » dit ce qu'est Autour, sans devenir une page de présentati
 /* ---- 7. Le desktop ne bouge pas ---------------------------------------- */
 
 test("tout ce que ce lot ajoute est borné au mobile", () => {
-  /* Hors du média mobile, aucune de ces pièces n'existe. */
-  assert.match(html, /#selecteurSurface,#fabCreer,#explorerDecouverte\{display:none\}/);
+  /* Hors du média mobile, aucune de ces pièces n'existe.
+
+     EXCEPTÉ EXPLORER, retiré de cette liste après coup. Le geste qui l'ouvre a
+     été élargi à toutes les largeurs sans que le CSS suive : l'état s'ouvrait,
+     `display:none` tenait, et Explorer ne faisait rien sur ordinateur. Le
+     sélecteur de surface et le bouton flottant, eux, restent mobiles — le
+     desktop a ses six entrées de navigation, qui font le même travail. */
+  assert.match(html, /#selecteurSurface,#fabCreer\{display:none\}/);
   assert.match(blocMobile, /@media \(max-width:768px\)\{/);
   /* Et la barre desktop garde ses cinq colonnes et ses placements. */
   assert.match(html, /grid-template-columns:repeat\(5,minmax\(0,1fr\)\);/);

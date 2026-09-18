@@ -279,12 +279,25 @@
      « Ce soir » et « ce week-end » n'ont de sens que là où se trouve
      l'endroit. Calculer dans le fuseau du navigateur donnait un jour de
      décalage dès qu'on regardait ailleurs — ou depuis un serveur en UTC. */
+  /* Les formateurs se gardent — voir la note dans `availability.js` : les
+     construire coûte cinq fois plus cher que s'en servir, et ces trois-là sont
+     appelés pour chaque lieu de chaque classement. Un formateur est immuable
+     et ne dépend que de son fuseau ; on ne retient jamais la date qu'il rend. */
+  const FORMATEURS = new Map();
+
+  function formateur(cle, fabriquer) {
+    let fmt = FORMATEURS.get(cle);
+    if (!fmt) { fmt = fabriquer(); FORMATEURS.set(cle, fmt); }
+    return fmt;
+  }
+
   function partsLocales(epoch, timeZone) {
-    const fmt = new Intl.DateTimeFormat("fr-FR", {
-      timeZone: timeZone || DEFAULT_TIMEZONE,
+    const zone = timeZone || DEFAULT_TIMEZONE;
+    const fmt = formateur("parts:" + zone, () => new Intl.DateTimeFormat("fr-FR", {
+      timeZone: zone,
       year: "numeric", month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit", weekday: "short", hour12: false,
-    });
+    }));
     const parts = {};
     fmt.formatToParts(new Date(epoch)).forEach((p) => { parts[p.type] = p.value; });
     return {
@@ -304,9 +317,10 @@
      UTC en tenant compte du décalage du lieu (y compris les changements
      d'heure). */
   function jourSemaine(epoch, timeZone) {
-    const nom = new Intl.DateTimeFormat("en-US", {
-      timeZone: timeZone || DEFAULT_TIMEZONE, weekday: "short",
-    }).format(new Date(epoch));
+    const zone = timeZone || DEFAULT_TIMEZONE;
+    const nom = formateur("jour:" + zone, () => new Intl.DateTimeFormat("en-US", {
+      timeZone: zone, weekday: "short",
+    })).format(new Date(epoch));
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(nom);
   }
 
