@@ -129,7 +129,7 @@ function rest(chemin: string, init: RequestInit = {}): Promise<Response> {
 
 async function lireAnnonceCanonique(eventId: string): Promise<Json> {
   try {
-    const path = "events?id=" + encodeURIComponent(eventId) +
+    const path = "events?id=eq." + encodeURIComponent(eventId) +
       "&select=primary_source,source_url,description,announced_at,presale_at," +
       "tickets_open_at,ticket_url,announcement_tags,performers,organizer," +
       "artist_names,music_genres,event_kind,announcement_provenance,venue_name,organizer_name,price_amount,price_text," +
