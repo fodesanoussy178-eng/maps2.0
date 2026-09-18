@@ -520,7 +520,13 @@ scénario parisien.
 
 ---
 
-### LOT E — Le quadrillage et la découpe de l'ingestion
+### LOT E — Le quadrillage et la découpe de l'ingestion · **LIVRÉ**
+
+> Détail et mesures : [`performance-lot-e.md`](./performance-lot-e.md).
+> **Le diagnostic de ce plan était faux** : la déduplication coûtait 0,16 ms,
+> pas le blocage. Le coût était un `Intl.DateTimeFormat` reconstruit à chaque
+> appel. La découpe de l'ingestion n'a donc pas été faite — elle n'avait plus
+> d'objet.
 
 **Problème.** É5, plus la dette de performance connue et documentée : 1 815 ms
 de blocage sur zone dense, pour un objectif de 1 000 ms.

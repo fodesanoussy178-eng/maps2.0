@@ -16088,7 +16088,57 @@ function majAccueil(){
   if(renduEnLot){ PERF.travail("accueil", debutCpu); return; }
   if(feuilleNiveau !== null) majFeuille2();
   rendre();
+  reglerReveilTemporel(choisis);
   PERF.travail("accueil", debutCpu);
+}
+
+/* ---- LE RÉVEIL TEMPOREL ---------------------------------------------------
+
+   LE DÉFAUT, TEL QU'IL SE VIT. Quelqu'un laisse Autour ouvert pendant la
+   soirée. À 22 h 10, l'écran affiche toujours « Ouvert · jusqu'à 22:00 » et
+   « 🔥 Dans 3 jours » sur un événement qui, depuis minuit, est à deux jours.
+   Rien n'est faux au moment où c'est écrit ; tout devient faux ensuite, et
+   personne ne le corrige tant qu'on ne touche pas l'écran.
+
+   LES DEUX MAUVAISES RÉPONSES. Ne rien faire laisse la phrase mentir. Un
+   battement régulier paie un recalcul toutes les minutes pour rien la plupart
+   du temps — et sur un téléphone, ça se voit sur la batterie.
+
+   LA BONNE. Le cycle d'un événement SAIT quand sa lecture cesse d'être vraie,
+   et il le dit (`expireLe`) : minuit pour une approche, deux jours pour une
+   billetterie qui vient d'ouvrir. `grille.js` prend le plus proche de ce qui
+   est à l'écran, et on ne se réveille qu'à ce moment-là. Le plus souvent il
+   n'y a rien à programmer, et c'est une réponse saine : un écran qui ne
+   contient que des lieux permanents n'a aucune raison de se réveiller.
+
+   Le réveil ne demande RIEN au réseau. Il reclasse ce qu'on a déjà, comme le
+   battement territorial : recalculer n'est pas resynchroniser. */
+let reveilTemporel = null;
+
+function annulerReveilTemporel(){
+  if(reveilTemporel === null) return;
+  clearTimeout(reveilTemporel);
+  reveilTemporel = null;
+}
+
+function reglerReveilTemporel(items){
+  annulerReveilTemporel();
+  const GRILLE = window.AutourGrille;
+  if(!GRILLE || !Array.isArray(items) || !items.length) return;
+  /* Onglet caché : personne ne lit, donc rien à corriger. Le rendu suivant
+     reprogrammera ce qu'il faut au retour au premier plan. */
+  if(typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  const maintenant = Date.now();
+  const delai = GRILLE.delaiReveil(GRILLE.indexer(items, {maintenant}), {maintenant});
+  if(delai == null) return;
+  reveilTemporel = setTimeout(()=>{
+    reveilTemporel = null;
+    /* La zone a pu changer entre-temps : on ne réveille pas l'écran d'une
+       ville qu'on a quittée. */
+    if(typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    rendre();
+    majAccueil();
+  }, delai);
 }
 
 /* Le nom est conservé : plusieurs endroits l'appellent après une publication
