@@ -252,6 +252,12 @@ seize phrases en français clair.
 
 ## Ce qu'il reste à faire, et par qui
 
+- **Migrations non exécutées, à valider par `supabase db reset` en local avant
+  PR 2.** Les trois fichiers de `supabase/migrations/2026091809*` passent le
+  parseur grammatical, et rien de plus : aucun serveur PostgreSQL n'était
+  disponible là où ils ont été écrits. Une contrainte qui ne s'applique pas,
+  un déclencheur qui refuse la mauvaise ligne ou une fonction qui ne compile
+  pas ne se voient qu'à l'exécution.
 - **Les émetteurs de la voie 2.** Le mécanisme lit le JSON-LD de l'URL
   officielle d'un objet. La liste de trente à cinquante émetteurs locaux
   (mairies MEL, MJC, salles, médiathèques, offices de tourisme) n'est pas
