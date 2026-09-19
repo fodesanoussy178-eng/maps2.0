@@ -179,11 +179,15 @@ Cinq communes de la MEL, le 19 septembre 2026 :
 
 ```
 358 opportunités découvertes, 0 doublon créé
-249 qualifiées · 109 renvoyées à l'examen humain
-  2 opportunités sur 249 portent un canal de contact public
+248 qualifiées · 109 renvoyées à l'examen humain
+  2 brouillons de contact en attente de validation
+247 opportunités qualifiées sur 249 n'ont AUCUN canal de contact public
   0 contact envoyé — l'agent n'a pas de fonction d'envoi
   0 € de coût IA — aucun appel de modèle
+  0 tâche en échec
 ```
+
+96 lignes de journal, 414 sources conservées, 2 142 critères justifiés.
 
 En tête, par nombre de rendez-vous à venir : Gare Saint Sauveur (55), Lille
 Grand Palais (42), Médiathèque Jean Lévy (23), Médiathèque André Malraux (22),
