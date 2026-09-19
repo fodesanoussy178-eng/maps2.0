@@ -232,7 +232,7 @@ documente pas est un compromis qu'on oublie.
 | opérateur autorisé, code donné | accès | déverrouillage 12 h |
 | `/control/*` en accès direct | protégé | la page s'affiche, les données non |
 | API du Control Center | protégée | RLS, pas le front |
-| `AGORA59` côté client | absent | `grep` sur `app.js`, `control.html`, `control/control.js` |
+| le code en clair côté client | absent | `grep` sur `app.js`, `control.html`, `control/control.js` et le bundle livré |
 | élévation de privilèges | impossible | `control_operateurs` non écrivable par l'opérateur |
 | action sensible sans validation | impossible | `contact_externe` sous CHECK |
 
