@@ -34,13 +34,30 @@ export function normaliserTexte(valeur) {
    So » doivent se rapprocher ; « la » et « de » n'y aident pas. */
 const MOTS_VIDES = new Set(["le", "la", "les", "l", "de", "du", "des", "d", "et", "a", "au", "aux"]);
 
-export function nomNormalise(nom) {
-  const brut = String(nom ?? "").replace(PREFIXE_COMMUNE, "");
-  return normaliserTexte(brut).split(" ").filter((m) => m && !MOTS_VIDES.has(m)).join(" ");
-}
+/* L'ACRONYME ENTRE PARENTHÈSES N'EST PAS LE NOM.
+
+   L'annuaire des entreprises rend « AFEJI HAUTS DE FRANCE (AFEJI) »,
+   « CROIX ROUGE FRANCAISE (CRF) », « BGE HAUTS DE FRANCE (BGE) ». Personne
+   n'écrit ça sur une porte, et surtout : aucune autre source ne le porte, si
+   bien que la structure ne se rapproche jamais de sa fiche dans l'annuaire du
+   service public ou dans OpenStreetMap. Trouvé en relisant les opportunités
+   de Tourcoing, où 33 contacts publics étaient disponibles et zéro rapproché.
+
+   On ne retire QUE ce qui est manifestement un sigle : entre parenthèses, en
+   fin de nom, sans minuscule, dix caractères au plus. « Gare Saint Sauveur
+   (ancienne gare) » garde sa parenthèse — elle contient des minuscules. */
+const SIGLE_FINAL = /\s*\(([A-ZÀ-Ÿ0-9&.\- ]{2,10})\)\s*$/;
 
 export function nomAffiche(nom) {
-  return String(nom ?? "").replace(PREFIXE_COMMUNE, "").trim();
+  return String(nom ?? "")
+    .replace(PREFIXE_COMMUNE, "")
+    .replace(SIGLE_FINAL, "")
+    .trim();
+}
+
+export function nomNormalise(nom) {
+  return normaliserTexte(nomAffiche(nom))
+    .split(" ").filter((m) => m && !MOTS_VIDES.has(m)).join(" ");
 }
 
 export function cleDedup(nom, ville) {

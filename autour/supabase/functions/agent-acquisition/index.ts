@@ -40,17 +40,130 @@ import {
   candidatsDepuisAgendas, candidatsDepuisAnnuaire,
   candidatsDepuisEvenements, candidatsDepuisLieux,
 } from "./sources.mjs";
-import { fusionner } from "./normalisation.mjs";
+import { fusionner, nomNormalise, deduireType } from "./normalisation.mjs";
 import { qualifier } from "./qualification.mjs";
 import { preparerContact } from "./contact.mjs";
+import {
+  canauxDepuisAnnuaireServicePublic, canauxDepuisOsm, rapprocherCanaux, canalOpportunite,
+  candidatsDepuisAnnuaireServicePublicOpportunites,
+} from "./canaux.mjs";
+import {
+  candidatsDepuisOsmStructures, candidatsEcosysteme, requeteOverpassAutour,
+} from "./ecosysteme.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const SYNC_SECRET = Deno.env.get("EVENT_SYNC_SECRET") ?? "";
 
 const AGENT = "acquisition";
-const TACHES_PAR_REVEIL = 5;
+const TACHES_PAR_REVEIL = 3;
+
+/* LE WORKER EST TUÉ AVANT LA FIN, ET LA TÂCHE RESTE « EN_COURS ».
+
+   Mesuré deux fois : un réveil a pris cinq tâches `find_contact_channel`, la
+   première a mis 76 s, la deuxième a été coupée en plein travail —
+   `WORKER_RESOURCE_LIMIT`, HTTP 546. Un deuxième réveil est mort de la même
+   façon après 270 s, en pleine tâche `scan_incubators`. Le plafond n'est donc
+   pas un temps mural fixe : il monte avec ce que l'exécution a accumulé.
+   Prendre cinq tâches n'a de sens que si cinq tâches tiennent ; rien ne le
+   garantissait. Trois, avec un budget, tiennent.
+
+   On ne lance donc une tâche de plus que s'il reste du temps. Les autres
+   restent en `file` : le réveil suivant les prendra, et aucune ne meurt au
+   milieu d'une écriture.
+
+   QUATRE-VINGTS SECONDES, ET LE CALCUL EST CELUI-LÀ. Un premier essai à 150 s
+   n'a rien changé : le budget dit s'il reste du temps pour COMMENCER, pas si la
+   tâche tiendra. Une tâche lancée à 149 s qui dure soixante secondes finit à
+   210 s, et le worker est mort avant — c'est exactement ce qui est arrivé à
+   Wattrelos. Les durées mesurées sont de 42 à 63 secondes par recherche de
+   canal, et les deux morts observées sont survenues à 160 s et à 270 s. Le
+   budget doit donc laisser une tâche entière après lui : 80 + 63 = 143 s, sous
+   la plus basse des deux. */
+const BUDGET_MS = 80_000;
+
+/* UNE TÂCHE TUÉE EN VOL NE REVIENT JAMAIS TOUTE SEULE.
+
+   Quand le worker meurt, la tâche reste `en_cours` pour toujours : plus personne
+   ne la prendra, parce que la file ne lit que `statut = 'file'`. Deux tâches
+   s'y sont déjà perdues, et à chaque fois il a fallu un UPDATE à la main.
+
+   Au début de chaque réveil, on remet donc en file ce qui est `en_cours` depuis
+   plus longtemps qu'aucune tâche ne peut honnêtement durer. Ce n'est pas une
+   supposition sur la santé du worker : au-delà de ce délai, le worker qui la
+   tenait a forcément été tué, puisqu'il ne peut pas vivre aussi longtemps. */
+const ORPHELINE_APRES_MIN = 10;
 const ANNUAIRE = "https://recherche-entreprises.api.gouv.fr/search";
+
+/* L'annuaire officiel des administrations et équipements publics. C'est lui
+   qui publie les adresses de contact des médiathèques, musées et centres
+   sociaux — celles que ni `places` ni l'annuaire des entreprises ne donnent. */
+const ANNUAIRE_SP =
+  "https://api-lannuaire.service-public.fr/api/explore/v2.1/catalog/datasets/" +
+  "api-lannuaire-administration/records";
+
+/* Les mêmes instances qu'`autour/api/lieux.js` : elles portent la planète
+   entière et Autour les interroge déjà côté serveur. Une seule requête par
+   tâche, jamais une par opportunité. */
+const OVERPASS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+const UA = "Autour/agent-acquisition (https://autour.eu)";
+
+/* UN DÉPASSEMENT DE DÉLAI OVERPASS REND HTTP 200.
+
+   Mesuré le 19/09 sur Villeneuve-d'Ascq : la fonction a journalisé
+   « OpenStreetMap : 0 entités lues » — en succès — après SOIXANTE-QUATORZE
+   secondes. Overpass n'avait rien répondu de faux : il avait rendu un corps
+   JSON parfaitement valide, `elements: []` avec un champ `remark` qui disait
+   « runtime error: Query timed out ». Le code ne lisait pas `remark`, donc il
+   a pris un échec pour une absence de données.
+
+   C'est exactement le mensonge que la consigne interdit : « Données
+   insuffisantes » doit vouloir dire que la source a répondu et n'avait rien,
+   jamais que la source n'a pas répondu. `remark` est donc lu, et un dépassement
+   de délai lève — l'instance suivante est essayée, et si toutes échouent la
+   tâche le dit.
+
+   Le délai par instance est borné côté client (`AbortSignal`) : sans cela une
+   seule instance lente consomme tout le budget de la fonction Edge, et le
+   worker est tué avec `WORKER_RESOURCE_LIMIT` — ce qui est arrivé, et a laissé
+   une tâche bloquée en `en_cours`.
+
+   VINGT-CINQ SECONDES, ET PAS PLUS, PARCE QUE C'EST LA POIGNÉE DE MAIN QUI
+   COÛTE. Mesuré le 19/09 sur overpass-api.de : handshake TCP/SSL 15,1 s, puis
+   14,9 s de requête, avant un dépassement à 30 s — deux fois de suite. Le
+   problème n'est pas la requête d'Autour, ce sont les instances publiques
+   elles-mêmes. Trois instances × 25 s = 75 s au pire, ce qui tient dans le
+   budget ; et si les trois échouent, la tâche écrit « source indisponible »,
+   pas « données insuffisantes ». Les deux ne veulent pas dire la même chose. */
+const OVERPASS_DELAI_MS = 25_000;
+
+async function overpass(requete: string): Promise<any> {
+  let derniere = "aucune instance essayée";
+  for (const url of OVERPASS) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
+        body: "data=" + encodeURIComponent(requete),
+        signal: AbortSignal.timeout(OVERPASS_DELAI_MS),
+      });
+      if (!r.ok) { derniere = `HTTP ${r.status} sur ${new URL(url).host}`; continue; }
+      const charge = await r.json();
+      const remarque = String(charge?.remark || "");
+      if (/error|timed out|timeout/i.test(remarque)) {
+        derniere = `${remarque} sur ${new URL(url).host}`;
+        continue;
+      }
+      return charge;
+    } catch (e) { derniere = `${(e as Error).message} sur ${new URL(url).host}`; }
+  }
+  throw new Error(`Overpass injoignable : ${derniere}`);
+}
 
 type Json = Record<string, unknown>;
 
@@ -145,6 +258,9 @@ async function verserOpportunite(c: any) {
     coordonnees_publiques: c.coordonnees_publiques ?? {},
     place_id: c.place_id ?? null,
     faits: c.faits ?? {}, faits_mesures_le: new Date().toISOString(),
+    pays: c.pays ?? "FR", region: c.region ?? null,
+    territoire_id: c.territoire_id ?? null,
+    raison_pertinence: c.raison_pertinence ?? null,
     cle_dedup: c.cle,
   }], "return=representation,resolution=merge-duplicates");
 
@@ -260,8 +376,18 @@ async function scanCity(task: any, contrat: Contrat) {
     `${listes.flat().length} candidats, ${doublons} doublons rapprochés, ${opportunites.length} opportunités distinctes`,
     { candidats: listes.flat().length, doublons, distinctes: opportunites.length });
 
+  /* Le territoire est porté par la TÂCHE, pas par la source : une médiathèque
+     lue dans `events` ne sait pas à quel territoire d'acquisition elle
+     appartient, et c'est la tâche qui l'a demandée qui le sait. */
+  const rattachement = {
+    territoire_id: task.params?.territoire_id ?? null,
+    pays: task.params?.pays ?? "FR",
+    region: task.params?.region ?? null,
+  };
+
   let crees = 0, revus = 0, sourcesAjoutees = 0;
-  for (const c of opportunites) {
+  for (const brut of opportunites) {
+    const c = { ...brut, ...rattachement };
     const avant = await lire(`acquisition_opportunites?cle_dedup=eq.${encodeURIComponent(c.cle)}&select=id`);
     const existait = (avant || []).length > 0;
     const r = await verserOpportunite(c);
@@ -285,7 +411,11 @@ async function qualify(task: any, _contrat: Contrat) {
   let qualifiees = 0, aExaminer = 0, ecartees = 0;
   for (const o of cibles || []) {
     const sources = await lire(`acquisition_sources?opportunite_id=eq.${o.id}&select=*`);
-    const resultat = qualifier({ ...o, sources }, new Date());
+    /* Les canaux entrent dans la qualification : c'est ce qui donne son niveau
+       au septième critère. Sans eux, « facilité de contact » resterait
+       « inconnu » même après une recherche de canal réussie. */
+    const canaux = await lire(`acquisition_canaux?opportunite_id=eq.${o.id}&select=*`);
+    const resultat = qualifier({ ...o, sources, canaux }, new Date());
 
     await rest("acquisition_qualifications", {
       method: "POST",
@@ -424,6 +554,502 @@ async function followupAnalysis(task: any, _contrat: Contrat) {
   return { etapes };
 }
 
+
+/* ===========================================================================
+   LA MÉMOIRE DES TERRITOIRES
+
+   Un territoire balayé il y a trois jours ne se rebalaie pas. C'est la mesure
+   d'économie la plus efficace du système et elle ne coûte rien : une lecture
+   d'une ligne avant de lancer deux cents requêtes. `force: true` dans les
+   paramètres de la tâche passe outre — pour un rejeu délibéré, pas par défaut.
+   ======================================================================== */
+type Territoire = {
+  id: number; slug: string; nom: string; pays: string; region: string | null;
+  ville: string | null; langue: string; portee: string; statut: string;
+  derniere_recherche: string | null; intervalle: string; zone_id: string | null;
+  lat: number | null; lng: number | null; rayon_km: number | null;
+  sources_disponibles: string[]; couverture: string; confiance: string;
+};
+
+async function lireTerritoire(slug: string): Promise<Territoire> {
+  const lignes = await lire(
+    `acquisition_territoires?slug=eq.${encodeURIComponent(slug)}&select=*`);
+  if (!lignes?.length) throw new Error(`territoire « ${slug} » inconnu`);
+  return lignes[0] as Territoire;
+}
+
+/* PostgREST rend `intervalle` en texte (« 30 days », « 7 days »). On ne
+   réimplémente pas l'arithmétique d'intervalle de Postgres : on demande à
+   Postgres, une fois, ce qu'il en pense. */
+async function territoireEchu(t: Territoire): Promise<boolean> {
+  if (!t.derniere_recherche) return true;
+  const r = await rest("rpc/acquisition_couverture", { method: "POST", body: "{}" });
+  const ligne = (r || []).find((x: any) => x.slug === t.slug);
+  return ligne ? Boolean(ligne.a_revoir) : true;
+}
+
+async function marquerTerritoire(t: Territoire, couverture: string, confiance: string) {
+  await majLigne(`acquisition_territoires?id=eq.${t.id}`, {
+    derniere_recherche: new Date().toISOString(),
+    couverture, confiance,
+    statut: t.statut === "a_explorer" ? "en_cours" : t.statut,
+  });
+}
+
+/* Écrire les canaux d'une opportunité, et dire franchement quand il n'y en a
+   pas. Une ligne `non_trouve` vaut mieux qu'une absence de ligne : elle
+   distingue « cherché sans succès » de « pas encore cherché ». */
+async function verserCanaux(opportuniteId: string, canaux: any[], source: string) {
+  const existants = await lire(
+    `acquisition_canaux?opportunite_id=eq.${opportuniteId}&select=type,valeur`);
+  const deja = new Set((existants || []).map((c: any) => `${c.type}|${c.valeur}`));
+
+  const lignes = (canaux || [])
+    .filter((c) => !deja.has(`${c.type}|${c.valeur}`))
+    .map((c) => ({
+      opportunite_id: opportuniteId, type: c.type, valeur: c.valeur,
+      source: c.source, url_source: c.url_source ?? null,
+      type_source: c.type_source, confiance: c.confiance, statut: "trouve",
+      notes: c.notes ?? null,
+    }));
+
+  if (!lignes.length && !canaux.length && !deja.has("site_officiel|")) {
+    lignes.push({
+      opportunite_id: opportuniteId, type: "site_officiel", valeur: "",
+      source, url_source: null, type_source: "donnee_ouverte",
+      confiance: "faible", statut: "non_trouve",
+    } as any);
+  }
+  if (lignes.length) await ecrire("acquisition_canaux", lignes, "return=minimal");
+  return lignes.filter((l: any) => l.statut === "trouve").length;
+}
+
+
+/* ===========================================================================
+   CHERCHER LA PORTE
+
+   Le blocage mesuré à la première mission : 247 opportunités qualifiées sur
+   249 sans canal. Deux sources publient ce que les deux premières ignorent —
+   l'annuaire du service public pour les équipements publics, OpenStreetMap
+   pour tout le reste — et on les interroge UNE fois par commune, pas une fois
+   par opportunité.
+   ======================================================================== */
+async function findContactChannel(task: any, contrat: Contrat) {
+  const ville: string = task.params?.ville;
+  if (!ville) throw new Error("paramètre `ville` manquant");
+  const limite = Number(task.params?.limite ?? 150);
+  const t0 = Date.now();
+
+  /* OÙ EST CETTE COMMUNE, ET QUEL EST SON CODE INSEE.
+
+     Les deux sources en ont besoin, et pour des raisons différentes :
+     l'annuaire du service public se filtre par code INSEE (un `where` sur le
+     nom de commune rend un 400 — mesuré), Overpass se requête autour d'un
+     point. On lit donc ce qu'Autour sait déjà, dans cet ordre : le territoire
+     d'acquisition, puis `mel_communes`, puis `territories`. */
+  const [terr] = await lire(
+    `acquisition_territoires?ville=eq.${encodeURIComponent(ville)}&select=lat,lng,rayon_km&limit=1`) || [];
+  const [commune] = await lire(
+    `mel_communes?nom=eq.${encodeURIComponent(ville)}&select=insee,lat,lng&limit=1`) || [];
+  const [territoire] = await lire(
+    `territories?name=eq.${encodeURIComponent(ville)}&select=latitude,longitude,radius_km&limit=1`) || [];
+
+  const insee = commune?.insee ?? null;
+  const lat = terr?.lat ?? commune?.lat ?? territoire?.latitude ?? null;
+  const lng = terr?.lng ?? commune?.lng ?? territoire?.longitude ?? null;
+  const rayonKm = terr?.rayon_km ?? territoire?.radius_km ?? 10;
+
+  const cibles = await lire(
+    `acquisition_opportunites?ville=eq.${encodeURIComponent(ville)}` +
+    `&canal_cherche_le=is.null&statut=in.(nouvelle,qualifiee,a_examiner)` +
+    `&select=id,nom,ville&limit=${limite}`);
+
+  if (!cibles?.length) {
+    await journal(task.id, "canaux", "info",
+      `Aucune opportunité à ${ville} dont le canal n'ait pas déjà été cherché.`);
+    return { ville, examinees: 0, canaux_trouves: 0, sans_canal: 0 };
+  }
+
+  const index = new Map<string, any>();
+  let chargeAnnuaire: any = null;
+
+  if (contrat.sources_autorisees.includes("annuaire_service_public")) {
+    const t1 = Date.now();
+    try {
+      /* `where=nom_commune like "…"` a rendu HTTP 400 : ce champ n'existe pas
+         au premier niveau du jeu de données. `code_insee_commune`, si. Sans
+         code INSEE on ne devine pas : on saute la source et on le dit. */
+      if (!insee) throw new Error(`code INSEE inconnu pour ${ville}`);
+      const params = new URLSearchParams({
+        where: `code_insee_commune="${insee}"`,
+        limit: "100",
+      });
+      const r = await fetch(`${ANNUAIRE_SP}?${params}`,
+        { headers: { accept: "application/json", "User-Agent": UA } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const charge = await r.json();
+      chargeAnnuaire = charge;
+      const trouves = canauxDepuisAnnuaireServicePublic(charge);
+      for (const [k, v] of trouves) index.set(k, v);
+      await journal(task.id, "canaux_annuaire_public", "succes",
+        `Annuaire du service public : ${(charge?.results || []).length} fiches lues à ${ville}, ${trouves.size} portent un contact exploitable.`,
+        { fiches: (charge?.results || []).length, avec_contact: trouves.size }, {}, 0, t1);
+    } catch (e) {
+      await journal(task.id, "canaux_annuaire_public", "partiel",
+        `Annuaire du service public injoignable : ${(e as Error).message}. On continue avec OpenStreetMap.`,
+        {}, {}, 0, t1);
+    }
+  }
+
+  if (contrat.sources_autorisees.includes("osm_overpass")) {
+    const t2 = Date.now();
+    try {
+      if (lat == null || lng == null) throw new Error(`coordonnées inconnues pour ${ville}`);
+      const charge = await overpass(requeteOverpassAutour(lat, lng, rayonKm, 400));
+      const trouves = canauxDepuisOsm(charge);
+      /* L'annuaire du service public fait autorité : il est tenu par les
+         administrations elles-mêmes. OSM complète, il ne remplace pas. */
+      for (const [k, v] of trouves) if (!index.has(k)) index.set(k, v);
+      await journal(task.id, "canaux_osm", "succes",
+        `OpenStreetMap : ${(charge?.elements || []).length} entités lues à ${ville}, ${trouves.size} portent un contact tagué.`,
+        { entites: (charge?.elements || []).length, avec_contact: trouves.size }, {}, 0, t2);
+    } catch (e) {
+      await journal(task.id, "canaux_osm", "partiel",
+        `OpenStreetMap injoignable : ${(e as Error).message}.`, {}, {}, 0, t2);
+    }
+  }
+
+  const { trouves, manquants } = rapprocherCanaux(cibles, index);
+
+  /* ÉCRIRE EN LOT, PAS LIGNE À LIGNE.
+
+     La première version faisait quatre appels REST par opportunité : lire les
+     canaux existants, les insérer, mettre à jour l'opportunité, tracer. Sur
+     cent cinquante opportunités, six cents allers-retours — et deux tâches se
+     sont arrêtées en cours d'exécution sur le temps mural de la fonction Edge.
+     Mesuré, pas supposé.
+
+     Ici : une lecture, deux écritures, et un PATCH par valeur de canal. Une
+     dizaine d'appels au total, quelle que soit la taille de la ville. */
+  const tousIds = cibles.map((o: any) => o.id);
+  const existants = await lire(
+    `acquisition_canaux?opportunite_id=in.(${tousIds.join(",")})&select=opportunite_id,type,valeur`);
+  const deja = new Set((existants || []).map((c: any) => `${c.opportunite_id}|${c.type}|${c.valeur}`));
+
+  const lignesCanaux: Json[] = [];
+  const lignesActions: Json[] = [];
+  const parCanal = new Map<string, string[]>();
+
+  for (const t of trouves) {
+    for (const c of t.canaux) {
+      const cle = `${t.opportunite.id}|${c.type}|${c.valeur}`;
+      if (deja.has(cle)) continue;
+      deja.add(cle);
+      lignesCanaux.push({
+        opportunite_id: t.opportunite.id, type: c.type, valeur: c.valeur,
+        source: c.source, url_source: c.url_source ?? null,
+        type_source: c.type_source, confiance: c.confiance,
+        statut: "trouve", notes: c.notes ?? null,
+      });
+    }
+    const canal = canalOpportunite(t.canaux);
+    if (canal) {
+      if (!parCanal.has(canal)) parCanal.set(canal, []);
+      parCanal.get(canal)!.push(t.opportunite.id);
+    }
+    lignesActions.push({
+      opportunite_id: t.opportunite.id, action: "canal_trouve", task_id: task.id, par: null,
+      detail: `${t.canaux.map((c: any) => c.type).join(", ")} via ${t.canaux[0].source}`
+            + (t.exact ? "" : ` (rapproché par inclusion : « ${t.correspondance} »)`),
+    });
+  }
+
+  for (const o of manquants) {
+    const cle = `${o.id}|site_officiel|`;
+    if (!deja.has(cle)) {
+      deja.add(cle);
+      lignesCanaux.push({
+        opportunite_id: o.id, type: "site_officiel", valeur: "",
+        source: "recherche_canal", url_source: null, type_source: "donnee_ouverte",
+        confiance: "faible", statut: "non_trouve",
+        notes: "Cherché dans l'annuaire du service public et OpenStreetMap, sans correspondance.",
+      });
+    }
+    lignesActions.push({
+      opportunite_id: o.id, action: "canal_non_trouve", task_id: task.id, par: null,
+      detail: "Cherché dans l'annuaire du service public et OpenStreetMap, sans correspondance.",
+    });
+  }
+
+  /* PostgREST reçoit les identifiants dans l'URL : au-delà de quelques
+     dizaines, elle devient trop longue pour certains intermédiaires. */
+  const parLots = (l: string[], n = 50) => {
+    const lots = [];
+    for (let i = 0; i < l.length; i += n) lots.push(l.slice(i, i + n));
+    return lots;
+  };
+
+  if (lignesCanaux.length) await ecrire("acquisition_canaux", lignesCanaux, "return=minimal");
+  if (lignesActions.length) await ecrire("acquisition_actions", lignesActions, "return=minimal");
+
+  const maintenant = new Date().toISOString();
+  for (const [canal, ids] of parCanal) {
+    for (const lot of parLots(ids)) {
+      await majLigne(`acquisition_opportunites?id=in.(${lot.join(",")})`,
+        { canal, canal_cherche_le: maintenant });
+    }
+  }
+  for (const lot of parLots(manquants.map((o: any) => o.id))) {
+    await majLigne(`acquisition_opportunites?id=in.(${lot.join(",")})`,
+      { canal_cherche_le: maintenant });
+  }
+
+  /* LES FICHES QUE LE RAPPROCHEMENT N'A PAS CONSOMMÉES SONT DES OPPORTUNITÉS.
+
+     Voir le long commentaire de `canaux.mjs` : les deux populations sont
+     disjointes, et ces fiches-là décrivent des structures dont le métier est
+     d'orienter des gens — avec leur porte déjà ouverte. Les ignorer serait
+     jeter la moitié utile de la réponse de la source.
+
+     Elles passent par `verserOpportunite`, donc par `on_conflict=cle_dedup` :
+     une structure qu'Autour connaît déjà sous le même nom est mise à jour, pas
+     dupliquée. */
+  let issuesAnnuaire = 0;
+  if (chargeAnnuaire) {
+    const consommees = new Set(trouves.map((t: any) => nomNormalise(t.correspondance || t.opportunite.nom)));
+    for (const o of cibles) consommees.add(nomNormalise(o.nom));
+
+    const candidats = candidatsDepuisAnnuaireServicePublicOpportunites(chargeAnnuaire, {
+      ville, deja: consommees, deduireType,
+      zone_id: task.params?.zone_id ?? null,
+    });
+
+    for (const c of candidats) {
+      const avant = await lire(
+        `acquisition_opportunites?cle_dedup=eq.${encodeURIComponent(c.cle)}&select=id`);
+      if ((avant || []).length) continue;
+      const r = await verserOpportunite({ ...c, canal_cherche_le: null });
+      issuesAnnuaire += 1;
+      await verserCanaux(r.id, [{
+        type: c.canal_type, valeur: c.canal_valeur, source: "annuaire_service_public",
+        type_source: "annuaire_public", url_source: c.sources[0]?.url ?? null,
+        confiance: "eleve", statut: "trouve",
+        notes: "Publié par la structure elle-même dans l'annuaire du service public.",
+      }], "annuaire_service_public");
+      await majLigne(`acquisition_opportunites?id=eq.${r.id}`,
+        { canal_cherche_le: new Date().toISOString() });
+      await tracer(r.id, "decouverte",
+        `Découverte par l'annuaire du service public, avec son canal de contact (${c.canal_type})`,
+        task.id);
+    }
+
+    await journal(task.id, "canaux_annuaire_opportunites",
+      issuesAnnuaire ? "succes" : "info",
+      issuesAnnuaire
+        ? `${issuesAnnuaire} structures de l'annuaire du service public n'existaient pas dans Autour et sont entrées AVEC leur canal de contact.`
+        : `Aucune fiche de l'annuaire du service public à ${ville} qui ne soit déjà connue d'Autour.`,
+      { issues_annuaire: issuesAnnuaire });
+  }
+
+  const parInclusion = trouves.filter((t: any) => !t.exact).length;
+  await journal(task.id, "canaux", trouves.length ? "succes" : "partiel",
+    `${cibles.length} opportunités examinées à ${ville} : ${trouves.length} canaux publics trouvés ` +
+    `(dont ${parInclusion} rapprochés par inclusion de nom, à vérifier), ` +
+    `${manquants.length} « canal non trouvé » (cherché, rien trouvé — ce n'est pas « pas encore cherché »).`,
+    { examinees: cibles.length, trouvees: trouves.length, par_inclusion: parInclusion,
+      sans_canal: manquants.length, canaux_ecrits: lignesCanaux.length }, {}, 0, t0);
+
+  return { ville, examinees: cibles.length, canaux_trouves: trouves.length,
+           par_inclusion: parInclusion, sans_canal: manquants.length,
+           issues_annuaire: issuesAnnuaire };
+}
+
+
+/* ===========================================================================
+   BALAYER UN TERRITOIRE DÉCLARÉ — avec sa mémoire
+   ======================================================================== */
+async function scanTerritory(task: any, contrat: Contrat) {
+  const slug: string = task.params?.territoire;
+  if (!slug) throw new Error("paramètre `territoire` manquant");
+  const t = await lireTerritoire(slug);
+
+  if (!task.params?.force && !(await territoireEchu(t))) {
+    await journal(task.id, "memoire", "info",
+      `${t.nom} : déjà examiné le ${String(t.derniere_recherche).slice(0, 10)}, échéance non atteinte. ` +
+      `Aucune requête lancée — passer { "force": true } pour rejouer malgré tout.`,
+      { territoire: t.slug });
+    return { territoire: t.slug, ignore: true,
+             raison: "déjà examiné récemment", derniere_recherche: t.derniere_recherche };
+  }
+
+  if (!t.ville) throw new Error(`le territoire « ${slug} » n'a pas de ville : utiliser scan_incubators`);
+
+  const resultat = await scanCity(
+    { ...task, params: { ...task.params, ville: t.ville, zone_id: t.zone_id,
+                         territoire_id: t.id, pays: t.pays, region: t.region } },
+    contrat);
+
+  const trouve = Number((resultat as any).crees || 0) + Number((resultat as any).revus || 0);
+  await marquerTerritoire(t, trouve > 20 ? "partielle" : (trouve > 0 ? "aucune" : "aucune"),
+                          trouve > 0 ? "moyen" : "faible");
+  return { ...resultat, territoire: t.slug };
+}
+
+
+/* ===========================================================================
+   L'ÉCOSYSTÈME ENTREPRENEURIAL
+
+   Le code NAF ne distingue pas un incubateur d'un cabinet de conseil : 70.22Z
+   couvre les deux. C'est donc le NOM qui sert de signal, et il est fiable ici
+   parce que ces structures se nomment explicitement. Une requête par terme,
+   quatre termes, un territoire : douze requêtes au pire, pas un balayage.
+   ======================================================================== */
+const TERMES_ECOSYSTEME = ["incubateur", "pepiniere entreprises", "accelerateur", "coworking"];
+
+async function scanIncubators(task: any, contrat: Contrat) {
+  const slug: string = task.params?.territoire || "fr-national";
+  const t = await lireTerritoire(slug);
+  if (!contrat.lecture_externe || !contrat.sources_autorisees.includes("recherche_entreprises")) {
+    throw new Error("source « recherche_entreprises » absente de sources_autorisees");
+  }
+
+  const t0 = Date.now();
+  const candidats: any[] = [];
+  let lignesLues = 0;
+
+  for (const terme of TERMES_ECOSYSTEME) {
+    const params = new URLSearchParams({ q: terme, per_page: "25", page: "1" });
+    if (t.ville) params.set("q", `${terme} ${t.ville}`);
+    try {
+      const r = await fetch(`${ANNUAIRE}?${params}`,
+        { headers: { accept: "application/json", "User-Agent": UA } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const charge = await r.json();
+      lignesLues += (charge?.results || []).length;
+      candidats.push(...candidatsEcosysteme(charge,
+        { ville: t.ville, zone_id: t.zone_id, territoire_id: t.id }));
+    } catch (e) {
+      await journal(task.id, "ecosysteme_requete", "partiel",
+        `Terme « ${terme} » : ${(e as Error).message}.`);
+    }
+  }
+
+  const { opportunites, doublons } = fusionner(candidats);
+  await journal(task.id, "ecosysteme_lecture", "succes",
+    `${TERMES_ECOSYSTEME.length} termes cherchés sur ${t.nom} : ${lignesLues} lignes lues, ` +
+    `${candidats.length} structures d'accompagnement reconnues au nom, ${doublons} doublons, ` +
+    `${opportunites.length} distinctes. Les lignes dont le nom ne désigne rien de l'écosystème sont écartées.`,
+    { lignes_lues: lignesLues, reconnues: candidats.length, doublons,
+      distinctes: opportunites.length }, {}, 0, t0);
+
+  let crees = 0, revus = 0;
+  for (const c of opportunites) {
+    const avant = await lire(`acquisition_opportunites?cle_dedup=eq.${encodeURIComponent(c.cle)}&select=id`);
+    const existait = (avant || []).length > 0;
+    const r = await verserOpportunite(c);
+    if (existait) revus += 1;
+    else { crees += 1; await tracer(r.id, "decouverte", `Écosystème entrepreneurial — ${c.type}`, task.id); }
+  }
+
+  await marquerTerritoire(t, crees + revus > 0 ? "partielle" : "aucune",
+                          crees + revus > 0 ? "moyen" : "faible");
+  await journal(task.id, "versement", "succes",
+    `${crees} structures nouvelles, ${revus} déjà connues. Aucune n'est réputée pertinente du seul fait ` +
+    `d'être un incubateur : chacune porte sa raison, et elle dit si le lien est observé ou supposé.`,
+    { crees, revus });
+
+  return { territoire: t.slug, lignes_lues: lignesLues, crees, revus, doublons };
+}
+
+
+/* ===========================================================================
+   L'INTERNATIONAL — expérimental, et honnête sur ce qu'il trouve
+
+   Hors de France, l'annuaire des entreprises s'arrête et `events` est vide.
+   OpenStreetMap reste : c'est la seule base ouverte et mondiale licenciée pour
+   cet usage. Avantage inattendu — ses tags apportent la structure ET sa porte
+   dans la même réponse, là où il faut deux sources françaises pour les deux.
+   ======================================================================== */
+async function scanInternational(task: any, contrat: Contrat) {
+  const slug: string = task.params?.territoire;
+  if (!slug) throw new Error("paramètre `territoire` manquant");
+  const t = await lireTerritoire(slug);
+  if (t.pays === "FR") throw new Error(`« ${slug} » est un territoire français : utiliser scan_territory`);
+  if (!contrat.sources_autorisees.includes("osm_overpass")) {
+    throw new Error("source « osm_overpass » absente de sources_autorisees");
+  }
+  if (!task.params?.force && !(await territoireEchu(t))) {
+    await journal(task.id, "memoire", "info",
+      `${t.nom} : déjà exploré le ${String(t.derniere_recherche).slice(0, 10)}, échéance non atteinte.`);
+    return { territoire: t.slug, ignore: true, raison: "déjà examiné récemment" };
+  }
+
+  const t0 = Date.now();
+  let charge: any;
+  try {
+    charge = await overpass(requeteOverpassAutour(t.lat, t.lng, t.rayon_km ?? 10, 300));
+  } catch (e) {
+    await journal(task.id, "international", "echec",
+      `${t.nom} : ${(e as Error).message}. Aucune autre source n'est déclarée pour ce territoire — ` +
+      `données insuffisantes, rien n'est inventé.`, {}, {}, 0, t0);
+    await marquerTerritoire(t, "inconnue", "faible");
+    return { territoire: t.slug, erreur: (e as Error).message, crees: 0,
+             constat: "Données insuffisantes" };
+  }
+
+  const candidats = candidatsDepuisOsmStructures(charge,
+    { ville: t.ville || t.nom, pays: t.pays, territoire_id: t.id });
+  const { opportunites, doublons } = fusionner(candidats);
+
+  await journal(task.id, "international_lecture", "succes",
+    `${t.nom} (${t.pays}) : ${(charge?.elements || []).length} entités OpenStreetMap lues, ` +
+    `${candidats.length} structures retenues, ${doublons} doublons, ${opportunites.length} distinctes.`,
+    { entites: (charge?.elements || []).length, retenues: candidats.length,
+      doublons, distinctes: opportunites.length }, {}, 0, t0);
+
+  let crees = 0, revus = 0, avecCanal = 0;
+  for (const c of opportunites) {
+    const avant = await lire(`acquisition_opportunites?cle_dedup=eq.${encodeURIComponent(c.cle)}&select=id`);
+    const existait = (avant || []).length > 0;
+    const r = await verserOpportunite({ ...c, region: t.region });
+    if (existait) revus += 1;
+    else { crees += 1; await tracer(r.id, "decouverte", `OpenStreetMap — ${t.nom} (${t.pays})`, task.id); }
+
+    /* Le canal arrive avec la structure : on l'enregistre tout de suite plutôt
+       que de relancer une recherche de canal qui ne trouverait rien de plus. */
+    const canaux = [];
+    if (c.coordonnees_publiques?.email) {
+      canaux.push({ type: "email_public", valeur: c.coordonnees_publiques.email.valeur,
+                    source: "osm_overpass", type_source: "donnee_ouverte",
+                    url_source: c.coordonnees_publiques.email.vu_sur, confiance: "moyen" });
+    }
+    if (c.coordonnees_publiques?.site) {
+      canaux.push({ type: "site_officiel", valeur: c.coordonnees_publiques.site.valeur,
+                    source: "osm_overpass", type_source: "donnee_ouverte",
+                    url_source: c.coordonnees_publiques.site.vu_sur, confiance: "moyen" });
+    }
+    if (canaux.length) {
+      await verserCanaux(r.id, canaux, "osm_overpass");
+      avecCanal += 1;
+    }
+    await majLigne(`acquisition_opportunites?id=eq.${r.id}`,
+      { canal_cherche_le: new Date().toISOString() });
+  }
+
+  const couverture = opportunites.length === 0 ? "aucune"
+    : (avecCanal > opportunites.length / 3 ? "partielle" : "aucune");
+  await marquerTerritoire(t, couverture, opportunites.length ? "moyen" : "faible");
+
+  await journal(task.id, "international", opportunites.length ? "succes" : "partiel",
+    opportunites.length
+      ? `${t.nom} : ${crees} structures nouvelles, ${avecCanal} avec un canal public tagué dans OpenStreetMap.`
+      : `${t.nom} : données insuffisantes — OpenStreetMap n'a rien rendu d'exploitable, et aucune autre source n'est déclarée.`,
+    { crees, revus, avec_canal: avecCanal });
+
+  return { territoire: t.slug, pays: t.pays, crees, revus, avec_canal: avecCanal,
+           constat: opportunites.length ? null : "Données insuffisantes" };
+}
+
 const TACHES: Record<string, (t: any, c: Contrat) => Promise<Json>> = {
   acquisition_scan_city: scanCity,
   acquisition_find_structures: scanCity,   // même moteur, paramètres plus étroits
@@ -431,6 +1057,10 @@ const TACHES: Record<string, (t: any, c: Contrat) => Promise<Json>> = {
   acquisition_prepare_contact: prepareContact,
   acquisition_review_opportunity: reviewOpportunity,
   acquisition_followup_analysis: followupAnalysis,
+  acquisition_find_contact_channel: findContactChannel,
+  acquisition_scan_territory: scanTerritory,
+  acquisition_scan_incubators: scanIncubators,
+  acquisition_scan_international: scanInternational,
 };
 
 /* ---------------------------------------------------------------------------
@@ -438,9 +1068,27 @@ const TACHES: Record<string, (t: any, c: Contrat) => Promise<Json>> = {
    ------------------------------------------------------------------------ */
 async function executer(task: any) {
   const debut = Date.now();
-  await majLigne(`tasks?id=eq.${task.id}`, {
+
+  /* PRENDRE LA TÂCHE, PAS SEULEMENT LA MARQUER.
+
+     Mesuré : deux réveils lancés à quarante-cinq secondes d'intervalle ont
+     tourné en même temps, et les deux ont lu la même file. Wattrelos et
+     Roubaix se sont retrouvées `en_cours` ensemble, chacune traitée par une
+     instance différente, l'une écrivant par-dessus l'autre. Un PATCH sans
+     condition marque toujours, même ce qui ne nous appartient plus.
+
+     Le filtre `statut=eq.file` fait du PATCH une PRISE : PostgreSQL ne met à
+     jour la ligne que si elle est encore en file, et PostgREST rend les lignes
+     touchées. Zéro ligne veut dire qu'une autre exécution l'a prise — on passe,
+     sans rien écrire et sans rien journaliser. */
+  const prises = await majLigne(`tasks?id=eq.${task.id}&statut=eq.file`, {
     statut: "en_cours", demarree_le: new Date().toISOString(), tentatives: (task.tentatives ?? 0) + 1,
   });
+  if (!prises?.length) {
+    return { id: task.id, type: task.type, statut: "ignoree",
+             raison: "tâche déjà prise par une autre exécution" };
+  }
+
   await journal(task.id, "demarrage", "info", `Tâche ${task.type} démarrée`, {}, { params: task.params });
 
   try {
@@ -504,12 +1152,39 @@ Deno.serve(async (requete) => {
       : `tasks?agent=eq.${AGENT}&statut=eq.file&planifiee_pour=lte.${new Date().toISOString()}` +
         `&select=*&order=priorite.asc,cree_le.asc&limit=${TACHES_PAR_REVEIL}`;
 
+    /* Reprise des orphelines, avant de lire la file : une tâche remise en file
+       ici peut être prise dans le même réveil. */
+    let reprises = 0;
+    if (mode !== "task") {
+      const limite = new Date(Date.now() - ORPHELINE_APRES_MIN * 60_000).toISOString();
+      const remises = await majLigne(
+        `tasks?agent=eq.${AGENT}&statut=eq.en_cours&demarree_le=lt.${limite}`,
+        { statut: "file", erreur: "Reprise : l'exécution précédente a été interrompue avant la fin." });
+      reprises = (remises || []).length;
+      if (reprises) {
+        await journal(null, "reprise", "partiel",
+          `${reprises} tâche(s) restée(s) « en_cours » plus de ${ORPHELINE_APRES_MIN} min ont été remises en file : ` +
+          `l'exécution qui les tenait a été interrompue.`, { reprises });
+      }
+    }
+
     const taches = await lire(filtre);
-    if (!taches?.length) return Response.json({ agent: AGENT, traitees: 0, message: "aucune tâche en file" });
+    if (!taches?.length) {
+      return Response.json({ agent: AGENT, traitees: 0, reprises, message: "aucune tâche en file" });
+    }
 
     const resultats = [];
-    for (const t of taches) resultats.push(await executer(t));
-    return Response.json({ agent: AGENT, traitees: resultats.length, resultats });
+    const depart = Date.now();
+    let reportees = 0;
+    for (const t of taches) {
+      /* La première tâche part toujours : sinon un réveil pourrait ne rien
+         faire du tout et la file n'avancerait jamais. */
+      if (resultats.length && Date.now() - depart > BUDGET_MS) { reportees++; continue; }
+      resultats.push(await executer(t));
+    }
+    return Response.json({
+      agent: AGENT, traitees: resultats.length, reportees, reprises, resultats,
+    });
   } catch (e) {
     console.error("agent-acquisition", (e as Error).message);
     return new Response(JSON.stringify({ error: (e as Error).message }),

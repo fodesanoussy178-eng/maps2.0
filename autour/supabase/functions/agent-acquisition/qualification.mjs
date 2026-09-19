@@ -41,6 +41,16 @@ const TYPES_PERTINENTS = new Set([
 ]);
 const TYPES_PERIPHERIQUES = new Set(["commerce", "collectivite", "creche_tiers_lieu"]);
 
+/* L'ÉCOSYSTÈME ENTREPRENEURIAL EST UN CAS À PART, ET C'EST TOUT L'ENJEU DU §8.
+
+   Un incubateur ne produit pas de sorties. Le ranger avec les lieux culturels
+   parce qu'il « a l'air intéressant » serait exactement l'erreur que la
+   consigne interdit. Son lien possible avec Autour est la DIFFUSION — il
+   réunit des gens qui lancent des projets locaux — et c'est une hypothèse tant
+   qu'aucune activité publique n'a été observée. Ces types ne montent donc
+   jamais au-dessus de « moyen » sans fait observé, et leur phrase le dit. */
+const TYPES_ECOSYSTEME = new Set(["incubateur", "coworking", "reseau_entrepreneurial"]);
+
 function critere(nom, niveau, pourquoi, fait, methode = "regle") {
   return { critere: nom, niveau, pourquoi, fait_observe: fait ?? null, methode };
 }
@@ -67,6 +77,11 @@ export function qualifier(opportunite, maintenant = new Date()) {
   } else if (TYPES_PERTINENTS.has(opportunite.type)) {
     criteres.push(critere("pertinence", "moyen",
       `Type « ${opportunite.type} » : son activité ordinaire produit des sorties ou touche le public d'Autour, mais aucune programmation n'a été observée.`,
+      opportunite.type_pourquoi || null));
+  } else if (TYPES_ECOSYSTEME.has(opportunite.type)) {
+    criteres.push(critere("pertinence", "moyen",
+      opportunite.raison_pertinence
+        || `Type « ${opportunite.type} » : lien possible par la diffusion, pas par le contenu. Hypothèse non vérifiée.`,
       opportunite.type_pourquoi || null));
   } else if (TYPES_PERIPHERIQUES.has(opportunite.type)) {
     criteres.push(critere("pertinence", "faible",
@@ -153,6 +168,39 @@ export function qualifier(opportunite, maintenant = new Date()) {
      Elle porte sur LA DONNÉE, pas sur la structure : « à quel point suis-je sûr
      que ce que je viens d'écrire est vrai ». Deux provenances indépendantes qui
      concordent valent mieux qu'une seule, quelle qu'elle soit. */
+  /* ----- FACILITÉ DE CONTACT ---------------------------------------------
+     Distincte de l'accessibilité : celle-ci dit qu'une porte EXISTE, celle-là
+     ce qu'il en coûte de la pousser. Écrire à une adresse de fonction prend
+     deux minutes ; trouver le formulaire enfoui d'un site municipal en prend
+     vingt, et c'est le temps du fondateur qui est la ressource rare. */
+  const canaux = (opportunite.canaux || []).filter((c) => c.statut === "trouve");
+  const aType = (t) => canaux.some((c) => c.type === t);
+  if (aType("email_public")) {
+    criteres.push(critere("facilite_contact", "eleve",
+      "Adresse de fonction publique relevée : un message suffit, sans chercher.",
+      canaux.find((c) => c.type === "email_public").valeur));
+  } else if (aType("formulaire")) {
+    criteres.push(critere("facilite_contact", "moyen",
+      "Formulaire officiel relevé : joignable, mais sans trace de l'échange côté expéditeur.",
+      canaux.find((c) => c.type === "formulaire").valeur));
+  } else if (aType("site_officiel") || aType("page_contact")) {
+    criteres.push(critere("facilite_contact", "moyen",
+      "Site officiel relevé : la page de contact reste à ouvrir à la main.",
+      (canaux.find((c) => c.type === "page_contact") || canaux.find((c) => c.type === "site_officiel")).valeur));
+  } else if (aType("telephone_public")) {
+    criteres.push(critere("facilite_contact", "faible",
+      "Seul un numéro public est connu : un appel ne laisse pas de message relisible et ne se prépare pas d'avance.",
+      canaux.find((c) => c.type === "telephone_public").valeur));
+  } else if (opportunite.canal_cherche_le) {
+    criteres.push(critere("facilite_contact", "faible",
+      "Canal cherché dans les sources publiques autorisées, et non trouvé.",
+      `recherche effectuée le ${String(opportunite.canal_cherche_le).slice(0, 10)}`));
+  } else {
+    criteres.push(critere("facilite_contact", "inconnu",
+      "Le canal n'a pas encore été cherché : lancer acquisition_find_contact_channel avant de conclure.",
+      null));
+  }
+
   const provenances = new Set(sources.map((s) => s.source));
   const officielle = sources.some((s) => s.type_source === "donnee_autour" || s.type_source === "site_officiel");
   if (provenances.size >= 2) {
@@ -180,9 +228,15 @@ export function qualifier(opportunite, maintenant = new Date()) {
   } else if (indecis.includes("pertinence")) {
     statut = "a_examiner";
     prochaine_action = `Examen humain : les règles ne tranchent pas (${indecis.join(", ")}). Ouvrir les sources et décider.`;
-  } else if (par.accessibilite === "faible") {
+  } else if (par.facilite_contact === "inconnu") {
+    /* On ne renvoie plus une structure pertinente à l'humain sous prétexte
+       qu'on n'a pas de canal : on dit qu'il faut d'abord le CHERCHER. C'est
+       une tâche de l'agent, pas un travail du fondateur. */
+    statut = "qualifiee";
+    prochaine_action = "Chercher le canal de contact public (acquisition_find_contact_channel), puis préparer.";
+  } else if (par.accessibilite === "faible" && par.facilite_contact === "faible") {
     statut = "a_examiner";
-    prochaine_action = "Examen humain : structure pertinente, mais aucun moyen de contact observé. Chercher une page officielle à la main.";
+    prochaine_action = "Examen humain : structure pertinente, mais le canal a été cherché sans succès dans les sources autorisées.";
   } else {
     statut = "qualifiee";
     prochaine_action = par.pertinence === "eleve"

@@ -303,7 +303,12 @@ export function candidatsDepuisAnnuaire(charge, options = {}) {
     const url = siren ? `https://annuaire-entreprises.data.gouv.fr/entreprise/${siren}` : null;
 
     sortie.push({
-      cle, nom: String(nom).trim(), ville, type: t.type, type_pourquoi: t.pourquoi,
+      /* `nomAffiche`, PAS `nom` BRUT. `cleDedup` retire le sigle final pour
+         rapprocher, mais le nom stocké le gardait : soixante-deux lignes
+         portaient « … (CRF) » dans la colonne `nom`, illisibles pour qui relit
+         et impossibles à rapprocher d'une fiche d'annuaire. Les deux doivent
+         venir de la même fonction. */
+      cle, nom: nomAffiche(nom), ville, type: t.type, type_pourquoi: t.pourquoi,
       famille,
       code_insee: siege.commune || null, zone_id: options.zone_id || null,
       description: null,

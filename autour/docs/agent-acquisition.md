@@ -1,4 +1,7 @@
-# Agent Acquisition et Control Center
+# Agent Acquisition et AGORA
+
+*(Le Control Center de la première mission s'appelle désormais AGORA. Ce
+document couvre les deux versions : le socle, puis ce que la V2 y a ajouté.)*
 
 ## Ce qui existait déjà, et ce qui manquait vraiment
 
@@ -65,8 +68,68 @@ fonction d'envoi désactivée » : aucune.
 | `acquisition_review_opportunity` | remet à l'examen humain | — | 0 € |
 | `acquisition_followup_analysis` | mesure l'entonnoir | — | 0 € |
 
+Quatre types ajoutés par la V2 :
+
+| Type | Ce qu'elle fait | Sources autorisées | Coût max |
+|---|---|---|---|
+| `acquisition_find_contact_channel` | cherche la PORTE d'une commune, et crée les structures de l'annuaire qui en ont une | `annuaire_service_public`, `osm_overpass`, `autour_places`, `recherche_entreprises` | 0 € |
+| `acquisition_scan_territory` | balaie un territoire déclaré, avec sa mémoire | comme `scan_city` | 0 € |
+| `acquisition_scan_incubators` | l'écosystème entrepreneurial, reconnu au nom | `recherche_entreprises` | 0 € |
+| `acquisition_scan_international` | un territoire hors de France, OSM seul | `osm_overpass` | 0 € |
+
 Une tâche dont le type n'a pas de ligne dans `task_permissions` **ne peut pas
 être créée** : la clé étrangère la refuse.
+
+### Les territoires, et la mémoire
+
+`acquisition_territoires` porte pays, région, ville, langue, portée, statut,
+dernière et prochaine recherche, sources disponibles, couverture et confiance.
+Un territoire examiné il y a trois jours **ne se rebalaie pas** : `scanTerritory`
+lit la ligne avant de lancer deux cents requêtes, et `{"force": true}` passe
+outre pour un rejeu délibéré.
+
+La couverture de la France est **progressive et déclarée**, pas un balayage
+national : Lille et la MEL, puis Paris, Lyon, Marseille, Toulouse, Bordeaux,
+Nantes, Strasbourg, Rennes, Montpellier, Grenoble. Chacune est une ligne, avec
+sa propre échéance.
+
+`fr-national` est volontairement **sans coordonnées** : un pays n'a pas de
+centre utile pour une requête `around:`. La fonction refuse donc la source OSM
+pour ce territoire et le dit, plutôt que d'interroger le point (0, 0).
+
+Un territoire hors de France porte une contrainte en base :
+
+```sql
+constraint international_avec_raison
+  check (pays = 'FR' or coalesce(btrim(raison_du_test), '') <> '')
+```
+
+On ne peut pas déclarer un territoire international sans écrire pourquoi on le
+teste. Trois seulement sont déclarés — Bruxelles, Genève, Montréal — parce que
+l'international est une expérience, pas une extension.
+
+### L'écosystème entrepreneurial n'est jamais pertinent « parce que »
+
+C'est la consigne la plus facile à trahir sans s'en apercevoir : un agent qui
+cherche « incubateur » trouve des incubateurs, les range en pertinents, et rend
+une liste qui a l'air excellente alors qu'aucun fait n'a été observé.
+
+Autour montre des SORTIES ; un incubateur n'en produit pas. Le lien possible est
+la DIFFUSION — il réunit des porteurs de projets locaux. `raisonPourAutour()`
+écrit donc, pour chaque structure, le mécanisme ET son statut :
+
+* **Observé** — la structure programme des rendez-vous publics qu'Autour lit
+  déjà ;
+* **Hypothèse non vérifiée** — le lien est plausible, rien ne l'atteste.
+
+Une hypothèse non vérifiée ne monte jamais au-dessus de « moyen » en pertinence.
+
+### Le septième critère : facilité de contact
+
+Distinct de l'accessibilité. Celle-ci dit qu'une porte EXISTE ; celui-là ce
+qu'il en coûte de la pousser. Écrire à une adresse de fonction prend deux
+minutes ; trouver le formulaire enfoui d'un site municipal en prend vingt, et
+c'est le temps du fondateur qui est la ressource rare.
 
 ### Les sources, et pourquoi celles-là
 
@@ -117,9 +180,61 @@ brouillon contenant un nombre d'utilisateurs, une audience en volume, un
 partenariat existant, un superlatif invérifiable, ou une affirmation selon
 laquelle l'expéditeur serait une personne.
 
-## Le Control Center
+## AGORA — l'espace privé
 
 `/control`, `/control/acquisition`, `/control/validation`, `/control/journal`.
+
+### On y entre par la recherche publique
+
+Il n'y a aucun lien vers AGORA nulle part dans l'application. On tape **`fodé`**
+dans la barre de recherche d'Autour ; le champ se vide, et la page privée
+s'ouvre. `app.js` ne contient pour cela qu'une comparaison de chaîne
+normalisée — pas de code, pas de secret, rien qui vaille la peine d'être lu
+dans le bundle.
+
+### Trois facteurs qui ne se remplacent pas
+
+1. **Authentification** — Supabase Auth, lien e-mail. Elle dit QUI.
+2. **Autorisation** — une ligne dans `control_operateurs`. Elle dit qui a le
+   DROIT. Elle est distincte de l'authentification, et c'est voulu : être
+   connecté à Autour ne donne rien.
+3. **Le code AGORA** — un déverrouillage de 12 h, par utilisateur.
+
+Les trois convergent dans `public.est_operateur()`, qui est la seule fonction
+que les quinze policies appellent. Ajouter un facteur ne demande donc pas de
+toucher aux policies.
+
+### Le code n'est écrit nulle part
+
+Il n'est **ni dans le HTML, ni dans le JavaScript, ni dans le bundle, ni dans
+ce dépôt, ni dans une variable d'environnement Supabase ou Vercel, ni dans les
+journaux, ni dans aucune réponse d'API.** La base ne stocke qu'un sel aléatoire
+de 32 octets et l'empreinte `hmac(code, sel, 'sha256')`, dans le schéma
+`private`, qui n'est pas exposé par PostgREST.
+
+`public.agora_ouvrir(p_code)` compare l'empreinte et ne rend jamais ni le code,
+ni le sel, ni l'empreinte — seulement vrai ou faux, et la date d'expiration.
+
+Un code court se casse par force brute, pas par cryptanalyse : la vraie défense
+est donc le **plafond de cinq échecs par quinze minutes**, appliqué côté base.
+C'est écrit en clair dans la migration, parce qu'un compromis qu'on ne
+documente pas est un compromis qu'on oublie.
+
+`agora_ouvrir` **refuse les sessions anonymes** avant même de regarder le code.
+
+### Ce que couvrent les tests
+
+| Cas | Attendu | Où |
+|---|---|---|
+| utilisateur non connecté | refus | `est_operateur()` = faux |
+| connecté, non opérateur | refus | pas de ligne `control_operateurs` |
+| session anonyme | refus | claim `is_anonymous` |
+| opérateur autorisé, code donné | accès | déverrouillage 12 h |
+| `/control/*` en accès direct | protégé | la page s'affiche, les données non |
+| API du Control Center | protégée | RLS, pas le front |
+| `AGORA59` côté client | absent | `grep` sur `app.js`, `control.html`, `control/control.js` |
+| élévation de privilèges | impossible | `control_operateurs` non écrivable par l'opérateur |
+| action sensible sans validation | impossible | `contact_externe` sous CHECK |
 
 Une **page à part** (`control.html` + `control/control.js`), qui ne partage
 aucun octet avec l'application publique en dehors du SDK Supabase vendorisé.
@@ -173,6 +288,77 @@ select cron.schedule('agent-acquisition-quotidien', '0 5 * * *',
                      $$select private.invoke_agent_acquisition('work')$$);
 ```
 
+## Chercher la porte — et ce que la mesure a dit
+
+C'était le blocage de la première mission : 247 opportunités qualifiées sur 249
+sans aucun moyen de contact. La V2 y consacre un type de tâche entier.
+
+### Ce qui ne marche pas, et pourquoi
+
+L'idée de départ était de rapprocher par le nom les structures qu'Autour
+connaît avec les fiches de l'annuaire du service public. **Elle ne marche pas**,
+et la mesure du 19 septembre le montre sans ambiguïté :
+
+| Commune | Fiches avec contact | Rapprochées par le nom |
+|---|---|---|
+| Villeneuve-d'Ascq | 25 | **0** |
+| Lille | 96 | **0** |
+| Roubaix | 29 | **0** |
+
+Ce n'est pas un défaut de l'algorithme de rapprochement — le premier correctif
+(retrait des sigles, inclusion ordonnée à deux mots) n'a rien changé. Les deux
+listes décrivent des structures **différentes** :
+
+```
+annuaire : Mission locale, CCAS, CIO, Point-justice, Centre information
+           jeunesse, Point d'information personnes âgées, Maison de l'emploi…
+Autour   : Château de Flers, Musée du Terroir, Cinéma Le Méliès, églises,
+           maisons de quartier, fermes pédagogiques…
+```
+
+Aucun rapprochement de noms ne fait se rencontrer deux populations disjointes.
+Continuer à l'améliorer aurait été du travail dépensé contre un mur.
+
+### Ce qui marche
+
+Ces fiches ne sont pas des déchets : ce sont des structures **dont le métier est
+d'orienter des gens vers ce qui existe autour d'eux** — le sujet d'Autour, mot
+pour mot — et elles arrivent avec leur porte déjà ouverte.
+
+La tâche crée donc, à partir des fiches que le rapprochement n'a pas
+consommées, des opportunités à part entière, canal compris :
+
+| Commune | Structures entrées AVEC leur canal |
+|---|---|
+| Villeneuve-d'Ascq | 25 |
+| Lille | 96 |
+| Roubaix | 29 |
+
+Le « 247 sans canal » ne se résout pas seulement en cherchant des portes pour
+les structures connues ; il se résout aussi en allant chercher les structures
+qui en ont une.
+
+### « Données insuffisantes » ne veut pas dire « source injoignable »
+
+Le premier passage a journalisé, **en succès**, « OpenStreetMap : 0 entités lues
+à Villeneuve-d'Ascq » — après 74 secondes. Overpass n'avait pas rendu une liste
+vide : il avait rendu **HTTP 200** avec un corps JSON valide contenant
+
+```json
+{"remark": "runtime error: Query timed out in \"query\" at line 1 after 33 seconds.",
+ "elements": []}
+```
+
+Le code ne lisait pas `remark`. Un échec de source était donc raconté comme une
+absence de données — exactement le mensonge que la consigne interdit.
+`overpass()` lit maintenant `remark`, essaie l'instance suivante, et si les
+trois échouent écrit « OpenStreetMap injoignable : … » en `partiel`.
+
+Mesuré ensuite, sur les instances publiques : poignée de main TCP/SSL de 15,1 s,
+puis 14,9 s de requête, puis dépassement — deux fois de suite ; un HTTP 504 sur
+une troisième. **Le problème n'est pas la requête d'Autour, ce sont les
+instances publiques.** Chaque appel est donc borné à 25 s par instance.
+
 ## Ce que la première mission a donné
 
 Cinq communes de la MEL, le 19 septembre 2026 :
@@ -209,6 +395,38 @@ zéro qui se lirait comme un résultat :
 * **réponses** — rien n'a été envoyé, un taux n'aurait pas de dénominateur ;
 * **utilisateurs générés** — Autour ne mesure pas l'origine d'un visiteur :
   aucune attribution n'existe dans `profiles` ni ailleurs.
+
+## Ce que la fonction Edge ne peut pas faire, et qui a coûté trois tâches
+
+Trois défauts d'exécution trouvés en faisant tourner les missions de contrôle,
+tous les trois invisibles en test :
+
+**1. Le worker est tué, et la tâche reste `en_cours` pour toujours.** Un réveil
+a pris cinq tâches ; la première a mis 76 s, la deuxième a été coupée en plein
+travail — `WORKER_RESOURCE_LIMIT`, HTTP 546. La file ne lit que `statut =
+'file'` : plus personne ne reprend une tâche morte en vol.
+
+Trois mesures :
+
+* un **budget** avant de lancer une tâche de plus (80 s, calculé pour qu'une
+  tâche entière de 63 s tienne encore après lui) ;
+* une **reprise des orphelines** au début de chaque réveil : ce qui est
+  `en_cours` depuis plus de dix minutes retourne en file, avec la raison écrite ;
+* un **délai borné** sur chaque appel Overpass (25 s par instance).
+
+**2. Deux réveils concurrents traitent la même tâche.** Deux appels lancés à
+quarante-cinq secondes d'intervalle ont lu la même file ; Wattrelos et Roubaix
+se sont retrouvées `en_cours` ensemble, chacune tenue par une instance
+différente. Un `PATCH tasks?id=eq.X` marque toujours, même ce qui ne nous
+appartient plus. Le filtre `statut=eq.file` fait du PATCH une **prise** : zéro
+ligne rendue veut dire qu'une autre exécution l'a déjà prise, et on passe.
+
+**3. `acquisition_opportunites.canal` porte le TYPE, pas la valeur.** Un CHECK
+en base n'accepte que `email_public`, `formulaire_site`, `site_officiel`,
+`telephone_public`, `sur_place`, `reseau_public`. Le premier jet du nouveau
+lecteur y écrivait une adresse e-mail : chaque insertion serait tombée. Trouvé
+en relisant le schéma avant de déployer, et un test garde désormais la
+frontière.
 
 ## L'autonomie réelle, sans exagération
 
