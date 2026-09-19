@@ -40,7 +40,7 @@
 
   function vueDepuisURL() {
     const p = location.pathname.replace(/\/+$/, "");
-    for (const v of ["acquisition", "territoires", "validation", "taches", "journal", "operateur"]) {
+    for (const v of ["acquisition", "territoires", "assistant", "validation", "taches", "journal", "operateur"]) {
       if (p.endsWith("/" + v)) return v;
     }
     return "tableau";
@@ -703,7 +703,233 @@
       || '<p class="vide">Le journal est vide.</p>'}</div>`;
   };
 
-  /* --- 8. OPÉRATEUR ---------------------------------------------------- */
+  /* --- 8. ASSISTANT ----------------------------------------------------
+     CE QU'IL EST : quelqu'un à qui dire « rends ce message plus humain »,
+     « traduis pour un incubateur néerlandais », « rappelle-moi mes objectifs ».
+
+     CE QU'IL N'EST PAS : une autorité sur les faits. Tout ce que le modèle
+     rend repasse par la relecture automatique côté serveur AVANT d'arriver
+     ici. Un texte refusé n'est pas affiché puis corrigé : il n'est pas affiché.
+
+     LE RÉCAPITULATIF NE COÛTE RIEN. Il n'appelle aucun modèle : les objectifs
+     sont ceux que vous avez écrits, les chiffres viennent de l'entonnoir. Faire
+     reformuler des nombres exacts serait payer pour risquer une paraphrase.
+     ------------------------------------------------------------------- */
+  let atelier = { opportunite: null, objet: "", message: "" };
+
+  async function appelerAssistant(corps) {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch(SUPABASE_URL + "/functions/v1/agora-assistant", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_CLE,
+        Authorization: "Bearer " + session.access_token,
+      },
+      body: JSON.stringify(corps),
+    });
+    const j = await r.json().catch(() => ({ erreur: "réponse illisible" }));
+    if (!r.ok) {
+      const detail = (j.interdits || []).map((i) => `« ${i.extrait} » (${i.pourquoi})`).join(" ; ");
+      throw new Error(j.erreur + (detail ? " — " + detail : ""));
+    }
+    return j;
+  }
+
+  VUES.assistant = async function () {
+    const [{ data: objectifs }, { data: cibles }, { data: cout }] = await Promise.all([
+      sb.from("agora_objectifs").select("*").order("ordre").order("id"),
+      sb.from("acquisition_vue").select("id,nom,ville,pays,type,canal,canal_principal,canal_type,pertinence")
+        .eq("statut", "qualifiee").not("canal", "is", null)
+        .order("pertinence", { ascending: true }).limit(200),
+      sb.rpc("agora_assistant_cout_du_jour"),
+    ]);
+
+    ecran.innerHTML = `
+      <h2>Objectifs</h2>
+      <div class="carte">
+        ${(objectifs || []).length ? (objectifs || []).map((o) => `
+          <div class="critere"><b>${esc(o.titre)}</b>
+            <span class="etiq ${o.actif ? "eleve" : "faible"}">${esc(o.horizon)}</span>
+            ${o.detail ? `<span class="pq">${esc(o.detail)}</span>` : ""}</div>`).join("")
+          : `<p class="vide">Aucun objectif écrit. L'assistant ne les devinera pas :
+             il récapitule ce que vous avez posé, il n'invente pas une stratégie.</p>`}
+        <div class="rangee" style="margin-top:10px">
+          <input id="o-titre" placeholder="un objectif, en une phrase" style="max-width:380px">
+          <select id="o-horizon">
+            <option value="semaine">semaine</option><option value="mois">mois</option>
+            <option value="trimestre" selected>trimestre</option><option value="annee">année</option>
+          </select>
+          <button class="act" id="o-ajouter">Ajouter</button>
+        </div>
+        <p class="meta" id="o-retour"></p>
+      </div>
+
+      <h2>Récapitulatif</h2>
+      <div class="carte">
+        <button class="act" id="recap">Où j'en suis</button>
+        <span class="meta"> — gratuit : aucun appel de modèle.</span>
+        <div id="recap-sortie"></div>
+      </div>
+
+      <h2>Atelier d'écriture</h2>
+      <div class="carte">
+        <div class="rangee">
+          <select id="a-cible" style="max-width:420px">
+            <option value="">— choisir une structure (qualifiée, avec un canal) —</option>
+            ${(cibles || []).map((c) => `<option value="${c.id}">${esc(c.nom)} — ${esc(c.ville)}${c.pays && c.pays !== "FR" ? " (" + esc(c.pays) + ")" : ""}</option>`).join("")}
+          </select>
+          <select id="a-langue">
+            ${["français", "anglais", "néerlandais", "allemand", "espagnol", "italien"]
+              .map((l) => `<option>${l}</option>`).join("")}
+          </select>
+        </div>
+        <div class="rangee" style="margin-top:8px">
+          <input id="a-consigne" placeholder="dis-lui quoi faire : « plus humain », « plus court », « ton d'un incubateur »…" style="max-width:520px">
+        </div>
+        <div class="rangee" style="margin-top:8px">
+          <button class="act" id="a-rediger">Rédiger</button>
+          <button class="act" id="a-humaniser">Reformuler le texte ci-dessous</button>
+          <button class="act" id="a-traduire">Traduire</button>
+        </div>
+        <p class="meta" id="a-retour">Dépense estimée aujourd'hui : ${Number(cout || 0).toFixed(4)} €.
+          La relecture automatique s'applique au texte du modèle comme à celui de l'agent.</p>
+      </div>
+
+      <div class="carte">
+        <div class="rangee"><input id="a-objet" placeholder="objet" style="max-width:520px"></div>
+        <textarea id="a-message" style="margin-top:8px;min-height:240px" placeholder="le message apparaîtra ici — et reste modifiable"></textarea>
+        <div class="rangee" style="margin-top:8px">
+          <button class="act" id="a-copier">Copier</button>
+          <button class="act" id="a-mailto">Ouvrir dans ma messagerie</button>
+          <button class="act oui" id="a-brouillon">Enregistrer comme brouillon à valider</button>
+        </div>
+        <p class="meta">Autour n'envoie rien. « Ouvrir dans ma messagerie » prépare
+          le message dans VOTRE client mail : c'est vous qui appuyez sur envoyer.</p>
+      </div>`;
+
+    const retour = document.getElementById("a-retour");
+    const champObjet = document.getElementById("a-objet");
+    const champMessage = document.getElementById("a-message");
+    const dire = (texte, erreur) => {
+      retour.className = erreur ? "err" : "meta";
+      retour.textContent = texte;
+    };
+    const cibleChoisie = () => (cibles || []).find((c) => c.id === document.getElementById("a-cible").value);
+
+    document.getElementById("o-ajouter").onclick = async () => {
+      const titre = document.getElementById("o-titre").value.trim();
+      const o = document.getElementById("o-retour");
+      if (!titre) return;
+      const { error } = await sb.from("agora_objectifs").insert({
+        titre, horizon: document.getElementById("o-horizon").value,
+      });
+      o.className = error ? "err" : "meta";
+      o.textContent = error ? error.message : "Objectif ajouté.";
+      if (!error) setTimeout(() => VUES.assistant(), 600);
+    };
+
+    document.getElementById("recap").onclick = async () => {
+      const boite = document.getElementById("recap-sortie");
+      boite.innerHTML = '<p class="vide">Lecture…</p>';
+      try {
+        const r = await appelerAssistant({ mode: "recap" });
+        boite.innerHTML = `
+          ${r.sans_objectif ? '<p class="meta">Aucun objectif écrit : le récapitulatif ne porte que sur les chiffres.</p>' : ""}
+          ${(r.objectifs || []).map((o) => `<div class="critere"><b>${esc(o.titre)}</b>
+            <span class="pq">${esc(o.horizon)}${o.detail ? " — " + esc(o.detail) : ""}</span></div>`).join("")}
+          ${(r.entonnoir || []).map((e) => `<div class="critere"><b>${esc(e.etape.replace(/_/g, " "))}</b>
+            ${e.mesurable ? `<strong>${e.valeur}</strong>`
+              : `<span class="etiq inconnu">Données insuffisantes</span>
+                 <span class="pq">${esc(e.pourquoi_pas || "")}</span>`}</div>`).join("")}
+          ${(r.territoires_a_revoir || []).length
+            ? `<div class="critere"><b>Territoires à revoir</b>
+                 <span class="pq">${esc(r.territoires_a_revoir.join(", "))}</span></div>` : ""}`;
+      } catch (e) { boite.innerHTML = `<p class="vide err">${esc(e.message)}</p>`; }
+    };
+
+    document.getElementById("a-rediger").onclick = async () => {
+      const c = cibleChoisie();
+      if (!c) return dire("Choisis d'abord une structure.", true);
+      dire("Rédaction…");
+      try {
+        const r = await appelerAssistant({
+          mode: "rediger", opportunite_id: c.id,
+          consigne: document.getElementById("a-consigne").value,
+          langue: document.getElementById("a-langue").value,
+        });
+        champObjet.value = r.objet || "";
+        champMessage.value = r.message || r.texte || "";
+        atelier.opportunite = c;
+        dire(`Rédigé pour ${c.nom}. Coût estimé ${Number(r.cout_estime || 0).toFixed(5)} €.`
+           + (r.objet ? "" : " Le modèle n'a pas respecté le format : l'objet est vide, à écrire à la main."));
+      } catch (e) { dire(e.message, true); }
+    };
+
+    document.getElementById("a-humaniser").onclick = async () => {
+      if (!champMessage.value.trim()) return dire("Il n'y a aucun texte à reformuler.", true);
+      dire("Reformulation…");
+      try {
+        const r = await appelerAssistant({
+          mode: "humaniser", texte: champMessage.value,
+          consigne: document.getElementById("a-consigne").value,
+        });
+        champMessage.value = r.texte;
+        dire(`Reformulé. Coût estimé ${Number(r.cout_estime || 0).toFixed(5)} €.`);
+      } catch (e) { dire(e.message, true); }
+    };
+
+    document.getElementById("a-traduire").onclick = async () => {
+      if (!champMessage.value.trim()) return dire("Il n'y a aucun texte à traduire.", true);
+      const langue = document.getElementById("a-langue").value;
+      dire("Traduction…");
+      try {
+        const r = await appelerAssistant({ mode: "traduire", texte: champMessage.value, langue });
+        champMessage.value = r.texte;
+        dire(`Traduit en ${langue}. Coût estimé ${Number(r.cout_estime || 0).toFixed(5)} €. `
+           + "La relecture automatique a été faite sur le texte français, avant traduction.");
+      } catch (e) { dire(e.message, true); }
+    };
+
+    document.getElementById("a-copier").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(
+          (champObjet.value ? champObjet.value + "\n\n" : "") + champMessage.value);
+        dire("Copié.");
+      } catch (e) { dire("Copie refusée par le navigateur : sélectionne le texte à la main.", true); }
+    };
+
+    document.getElementById("a-mailto").onclick = () => {
+      const c = cibleChoisie();
+      const adresse = c && c.canal_type === "email_public" ? c.canal_principal : "";
+      if (!adresse) {
+        dire("Cette structure n'a pas d'adresse e-mail publique : son canal est "
+           + (c ? esc(c.canal_type || "inconnu") : "inconnu") + ". Copie le texte et passe par là.", true);
+        return;
+      }
+      location.href = "mailto:" + encodeURIComponent(adresse)
+        + "?subject=" + encodeURIComponent(champObjet.value)
+        + "&body=" + encodeURIComponent(champMessage.value);
+    };
+
+    document.getElementById("a-brouillon").onclick = async () => {
+      const c = cibleChoisie();
+      if (!c) return dire("Choisis une structure avant d'enregistrer.", true);
+      if (!champObjet.value.trim() || !champMessage.value.trim()) {
+        return dire("Un brouillon a besoin d'un objet et d'un message.", true);
+      }
+      const { error } = await sb.from("acquisition_contacts").insert({
+        opportunite_id: c.id, canal: c.canal, objet: champObjet.value,
+        message: champMessage.value, statut: "attente_validation",
+        /* Ce brouillon vient de l'atelier, pas du rédacteur déterministe : il ne
+           porte pas de faits joints, et on l'écrit plutôt que de le taire. */
+        faits_utilises: [{ fait: "Rédigé dans l'atelier AGORA par l'opérateur, avec l'assistant.", source_url: null }],
+      });
+      dire(error ? error.message : "Brouillon enregistré, il attend dans « À valider ».", !!error);
+    };
+  };
+
+  /* --- 9. OPÉRATEUR ---------------------------------------------------- */
   VUES.operateur = async function () {
     const [{ data: etat }, { data: operateurs }, { data: tentatives }] = await Promise.all([
       sb.rpc("agora_etat"),

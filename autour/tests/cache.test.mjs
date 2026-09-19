@@ -188,6 +188,7 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
     "/control": "/control.html",
     "/control/acquisition": "/control.html",
     "/control/territoires": "/control.html",
+    "/control/assistant": "/control.html",
     "/control/validation": "/control.html",
     "/control/taches": "/control.html",
     "/control/journal": "/control.html",

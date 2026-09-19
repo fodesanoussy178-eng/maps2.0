@@ -25,42 +25,19 @@
    l'a écrite.
 --------------------------------------------------------------------------- */
 
-/* La présentation d'Autour. Vraie au moment où elle est écrite, sans chiffre,
-   sans superlatif, sans promesse d'audience. Toute modification de ces lignes
-   est une décision produit, pas une retouche de style. */
-const AUTOUR_TEL_QUEL =
-  "Autour est une application gratuite qui rassemble ce qu'il y a à faire " +
-  "autour de soi — événements, lieux, sorties — à partir de sources publiques " +
-  "et d'agendas officiels. Le projet est récent et porté par une seule personne.";
+/* LA LISTE DES INTERDITS A DÉMÉNAGÉ, ET C'EST VOLONTAIRE.
 
-/* Ce qu'un brouillon ne peut pas contenir, quelle que soit la main qui l'a
-   écrit. Les motifs visent des AFFIRMATIONS, pas des mots : « utilisateurs »
-   seul est licite (« utilisateurs d'Autour »), « 3 000 utilisateurs » ne l'est
-   pas. */
-const INTERDITS = [
-  [/\b\d[\d\s.,]*\s*(utilisateurs?|membres?|abonn[ée]s?|visiteurs?|t[ée]l[ée]chargements?)\b/i,
-   "un nombre d'utilisateurs — Autour n'en communique aucun"],
-  [/\b(des\s+)?(milliers|centaines|millions)\s+(d['’]|de\s+)(utilisateurs?|membres?|visiteurs?|personnes)/i,
-   "une audience chiffrée en volume"],
-  [/\bnos\s+(partenaires?|clients?|utilisateurs?)\b/i,
-   "une relation existante — Autour n'a pas encore de partenaires à citer"],
-  [/\b(notre|nos)\s+(partenariat|collaboration)s?\s+(avec|existants?)\b/i,
-   "un partenariat existant"],
-  [/\b(nous\s+(travaillons|collaborons)\s+d[ée]j[àa]\s+avec)\b/i, "une collaboration existante"],
-  [/\b(leader|r[ée]f[ée]rence|incontournable|n°\s*1|num[ée]ro\s+un)\b/i,
-   "un superlatif invérifiable"],
-  [/\b(je\s+suis|nous\s+sommes)\s+une?\s+(personne|humain|[ée]quipe\s+humaine)\b/i,
-   "une affirmation sur la nature de l'expéditeur — l'agent ne se présente jamais comme humain"],
-];
+   Elle vit maintenant dans `../shared/interdits.mjs`, parce qu'un deuxième
+   rédacteur l'utilise : l'assistant d'AGORA, qui fait reformuler un message par
+   un modèle. Deux listes auraient divergé, et c'est toujours la plus permissive
+   qui aurait servi.
 
-export function verifierInterdits(texte) {
-  const trouves = [];
-  for (const [motif, quoi] of INTERDITS) {
-    const m = String(texte || "").match(motif);
-    if (m) trouves.push({ extrait: m[0], pourquoi: quoi });
-  }
-  return trouves;
-}
+   `verifierInterdits` est réexportée ici : le contrat de ce module ne change
+   pas pour qui l'importait déjà, et les tests continuent de l'interroger au
+   même endroit. */
+import { AUTOUR_TEL_QUEL, verifierInterdits } from "../shared/interdits.mjs";
+
+export { verifierInterdits };
 
 /* ---------------------------------------------------------------------------
    LES PHRASES QUI CITENT UN FAIT
