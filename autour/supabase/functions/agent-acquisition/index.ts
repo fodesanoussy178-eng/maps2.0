@@ -59,39 +59,21 @@ const AGENT = "acquisition";
 const TACHES_PAR_REVEIL = 3;
 
 /* LE WORKER EST TUÉ AVANT LA FIN, ET LA TÂCHE RESTE « EN_COURS ».
+   `WORKER_RESOURCE_LIMIT` (HTTP 546) observé deux fois, à 160 s et à 270 s : le
+   plafond n'est pas un temps mural fixe, il monte avec ce que l'exécution a
+   accumulé. On ne lance donc une tâche de plus que s'il reste du temps ; les
+   autres restent en `file`.
 
-   Mesuré deux fois : un réveil a pris cinq tâches `find_contact_channel`, la
-   première a mis 76 s, la deuxième a été coupée en plein travail —
-   `WORKER_RESOURCE_LIMIT`, HTTP 546. Un deuxième réveil est mort de la même
-   façon après 270 s, en pleine tâche `scan_incubators`. Le plafond n'est donc
-   pas un temps mural fixe : il monte avec ce que l'exécution a accumulé.
-   Prendre cinq tâches n'a de sens que si cinq tâches tiennent ; rien ne le
-   garantissait. Trois, avec un budget, tiennent.
-
-   On ne lance donc une tâche de plus que s'il reste du temps. Les autres
-   restent en `file` : le réveil suivant les prendra, et aucune ne meurt au
-   milieu d'une écriture.
-
-   QUATRE-VINGTS SECONDES, ET LE CALCUL EST CELUI-LÀ. Un premier essai à 150 s
-   n'a rien changé : le budget dit s'il reste du temps pour COMMENCER, pas si la
-   tâche tiendra. Une tâche lancée à 149 s qui dure soixante secondes finit à
-   210 s, et le worker est mort avant — c'est exactement ce qui est arrivé à
-   Wattrelos. Les durées mesurées sont de 42 à 63 secondes par recherche de
-   canal, et les deux morts observées sont survenues à 160 s et à 270 s. Le
-   budget doit donc laisser une tâche entière après lui : 80 + 63 = 143 s, sous
-   la plus basse des deux. */
+   Quatre-vingts secondes, parce que le budget dit s'il reste du temps pour
+   COMMENCER, pas si la tâche tiendra : une tâche lancée à 149 s qui dure 63 s
+   finit à 212 s. 80 + 63 = 143 s, sous la plus basse des deux morts. */
 const BUDGET_MS = 80_000;
 
-/* UNE TÂCHE TUÉE EN VOL NE REVIENT JAMAIS TOUTE SEULE.
-
-   Quand le worker meurt, la tâche reste `en_cours` pour toujours : plus personne
-   ne la prendra, parce que la file ne lit que `statut = 'file'`. Deux tâches
-   s'y sont déjà perdues, et à chaque fois il a fallu un UPDATE à la main.
-
-   Au début de chaque réveil, on remet donc en file ce qui est `en_cours` depuis
-   plus longtemps qu'aucune tâche ne peut honnêtement durer. Ce n'est pas une
-   supposition sur la santé du worker : au-delà de ce délai, le worker qui la
-   tenait a forcément été tué, puisqu'il ne peut pas vivre aussi longtemps. */
+/* UNE TÂCHE TUÉE EN VOL NE REVIENT JAMAIS TOUTE SEULE : la file ne lit que
+   `statut = 'file'`. Quatre tâches s'y sont perdues pendant la mission, chacune
+   rattrapée par un UPDATE à la main. Au début de chaque réveil, ce qui est
+   `en_cours` depuis plus longtemps qu'aucune tâche ne peut durer retourne en
+   file — au-delà de ce délai, le worker qui la tenait est forcément mort. */
 const ORPHELINE_APRES_MIN = 10;
 const ANNUAIRE = "https://recherche-entreprises.api.gouv.fr/search";
 
@@ -113,33 +95,17 @@ const OVERPASS = [
 
 const UA = "Autour/agent-acquisition (https://autour.eu)";
 
-/* UN DÉPASSEMENT DE DÉLAI OVERPASS REND HTTP 200.
+/* UN DÉPASSEMENT DE DÉLAI OVERPASS REND HTTP 200 : corps JSON valide,
+   `elements: []`, et un champ `remark` qui dit « Query timed out ». Ne pas lire
+   `remark` revient à raconter un échec de source comme une absence de données —
+   le mensonge que la consigne interdit. On le lit, on essaie l'instance
+   suivante, et si les trois échouent la tâche écrit « injoignable ».
 
-   Mesuré le 19/09 sur Villeneuve-d'Ascq : la fonction a journalisé
-   « OpenStreetMap : 0 entités lues » — en succès — après SOIXANTE-QUATORZE
-   secondes. Overpass n'avait rien répondu de faux : il avait rendu un corps
-   JSON parfaitement valide, `elements: []` avec un champ `remark` qui disait
-   « runtime error: Query timed out ». Le code ne lisait pas `remark`, donc il
-   a pris un échec pour une absence de données.
-
-   C'est exactement le mensonge que la consigne interdit : « Données
-   insuffisantes » doit vouloir dire que la source a répondu et n'avait rien,
-   jamais que la source n'a pas répondu. `remark` est donc lu, et un dépassement
-   de délai lève — l'instance suivante est essayée, et si toutes échouent la
-   tâche le dit.
-
-   Le délai par instance est borné côté client (`AbortSignal`) : sans cela une
-   seule instance lente consomme tout le budget de la fonction Edge, et le
-   worker est tué avec `WORKER_RESOURCE_LIMIT` — ce qui est arrivé, et a laissé
-   une tâche bloquée en `en_cours`.
-
-   VINGT-CINQ SECONDES, ET PAS PLUS, PARCE QUE C'EST LA POIGNÉE DE MAIN QUI
-   COÛTE. Mesuré le 19/09 sur overpass-api.de : handshake TCP/SSL 15,1 s, puis
-   14,9 s de requête, avant un dépassement à 30 s — deux fois de suite. Le
-   problème n'est pas la requête d'Autour, ce sont les instances publiques
-   elles-mêmes. Trois instances × 25 s = 75 s au pire, ce qui tient dans le
-   budget ; et si les trois échouent, la tâche écrit « source indisponible »,
-   pas « données insuffisantes ». Les deux ne veulent pas dire la même chose. */
+   Le délai par instance est borné côté client : une instance lente consomme
+   sinon tout le budget, et le worker est tué (`WORKER_RESOURCE_LIMIT`).
+   Vingt-cinq secondes, parce que c'est la poignée de main qui coûte : 15,1 s de
+   handshake TCP/SSL mesurés sur overpass-api.de. Chiffres et dates complets
+   dans `docs/agent-acquisition.md`. */
 const OVERPASS_DELAI_MS = 25_000;
 
 async function overpass(requete: string): Promise<any> {
@@ -721,16 +687,10 @@ async function findContactChannel(task: any, contrat: Contrat) {
 
   const { trouves, manquants } = rapprocherCanaux(cibles, index);
 
-  /* ÉCRIRE EN LOT, PAS LIGNE À LIGNE.
-
-     La première version faisait quatre appels REST par opportunité : lire les
-     canaux existants, les insérer, mettre à jour l'opportunité, tracer. Sur
-     cent cinquante opportunités, six cents allers-retours — et deux tâches se
-     sont arrêtées en cours d'exécution sur le temps mural de la fonction Edge.
-     Mesuré, pas supposé.
-
-     Ici : une lecture, deux écritures, et un PATCH par valeur de canal. Une
-     dizaine d'appels au total, quelle que soit la taille de la ville. */
+  /* ÉCRIRE EN LOT, PAS LIGNE À LIGNE. La première version faisait quatre
+     appels REST par opportunité — six cents allers-retours sur cent cinquante
+     opportunités, et deux tâches arrêtées sur le temps mural. Ici : une
+     lecture, deux écritures, un PATCH par valeur de canal. */
   const tousIds = cibles.map((o: any) => o.id);
   const existants = await lire(
     `acquisition_canaux?opportunite_id=in.(${tousIds.join(",")})&select=opportunite_id,type,valeur`);
@@ -1069,18 +1029,12 @@ const TACHES: Record<string, (t: any, c: Contrat) => Promise<Json>> = {
 async function executer(task: any) {
   const debut = Date.now();
 
-  /* PRENDRE LA TÂCHE, PAS SEULEMENT LA MARQUER.
-
-     Mesuré : deux réveils lancés à quarante-cinq secondes d'intervalle ont
-     tourné en même temps, et les deux ont lu la même file. Wattrelos et
-     Roubaix se sont retrouvées `en_cours` ensemble, chacune traitée par une
-     instance différente, l'une écrivant par-dessus l'autre. Un PATCH sans
-     condition marque toujours, même ce qui ne nous appartient plus.
-
-     Le filtre `statut=eq.file` fait du PATCH une PRISE : PostgreSQL ne met à
-     jour la ligne que si elle est encore en file, et PostgREST rend les lignes
-     touchées. Zéro ligne veut dire qu'une autre exécution l'a prise — on passe,
-     sans rien écrire et sans rien journaliser. */
+  /* PRENDRE LA TÂCHE, PAS SEULEMENT LA MARQUER. Deux réveils lancés à
+     quarante-cinq secondes d'intervalle ont lu la même file : Wattrelos et
+     Roubaix se sont retrouvées `en_cours` ensemble. Un PATCH sans condition
+     marque toujours, même ce qui ne nous appartient plus. Le filtre
+     `statut=eq.file` en fait une PRISE : zéro ligne rendue veut dire qu'une
+     autre exécution l'a déjà prise, et on passe. */
   const prises = await majLigne(`tasks?id=eq.${task.id}&statut=eq.file`, {
     statut: "en_cours", demarree_le: new Date().toISOString(), tentatives: (task.tentatives ?? 0) + 1,
   });
