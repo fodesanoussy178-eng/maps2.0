@@ -171,13 +171,43 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
     "/mentions-legales": "/mentions-legales.html",
     "/confidentialite": "/confidentialite.html",
   };
+  /* TROISIÈME FAMILLE : le Control Center. Ses écrans sont servis par une page
+     à part, `control.html`, qui ne partage aucun octet avec l'application —
+     c'est tout l'intérêt : un tableau de bord que seuls les opérateurs voient
+     n'a pas à peser sur le chemin critique de tous les visiteurs.
+
+     Les chemins sont ÉNUMÉRÉS, jamais génériques. Un `/control/:vue` attraperait
+     `/control/control.js` et servirait le HTML à la place du script. */
+  const pagesPrivees = {
+    "/control": "/control.html",
+    "/control/acquisition": "/control.html",
+    "/control/validation": "/control.html",
+    "/control/journal": "/control.html",
+  };
   (vercel.rewrites || []).forEach((r) => {
     if (versApplication.includes(r.source))
       return assert.equal(r.destination, "/index.html");
+    if (Object.prototype.hasOwnProperty.call(pagesPrivees, r.source))
+      return assert.equal(r.destination, pagesPrivees[r.source]);
     assert.ok(Object.prototype.hasOwnProperty.call(pagesStatiques, r.source),
       "réécriture inattendue : " + r.source);
     assert.equal(r.destination, pagesStatiques[r.source]);
   });
+  Object.keys(pagesPrivees).forEach((source) =>
+    assert.ok(cibles.includes(source), source + " doit être routé"));
+
+  /* LE CONTROL CENTER NE DOIT PAS ÊTRE FIGÉ UN AN. `control/control.js` ne
+     porte pas d'empreinte dans son URL, contrairement aux modules de
+     l'application. Sa règle doit donc passer AVANT celle des `.js`, qui
+     archive tout pour un an — sans quoi une correction resterait invisible
+     pendant douze mois sur les navigateurs qui l'ont déjà vu. */
+  const iControl = vercel.headers.findIndex((h) => h.source === "/control/(.*)");
+  const iJs = vercel.headers.findIndex((h) => h.source === "/(.*)\\.js");
+  assert.ok(iControl !== -1, "une règle doit viser /control/");
+  assert.ok(iControl < iJs, "la règle /control/ doit précéder celle des .js");
+  const cacheControl = vercel.headers[iControl].headers
+    .find((h) => h.key === "Cache-Control").value;
+  assert.match(cacheControl, /must-revalidate/);
   Object.keys(pagesStatiques).forEach((source) =>
     assert.ok(cibles.includes(source), source + " doit être routé"));
 });
