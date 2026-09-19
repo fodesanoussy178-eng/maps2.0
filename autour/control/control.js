@@ -94,8 +94,9 @@
     nav.hidden = true;
     ecran.innerHTML = `<div class="connexion">
       <h2>AGORA</h2>
-      <p>Espace privé. Entre l'adresse du compte opérateur : un code à six
-         chiffres arrive par e-mail.</p>
+      <p>Espace privé. Entre l'adresse du compte opérateur. L'e-mail contient
+         soit un code à six chiffres à recopier ici, soit un lien à ouvrir —
+         les deux marchent.</p>
       <input id="mail" type="email" placeholder="adresse e-mail" autocomplete="email">
       <button class="act" id="envoyer">Recevoir le code</button>
       <p id="etat" class="meta"></p></div>`;
@@ -106,7 +107,30 @@
       etat.textContent = "Envoi…";
       /* `shouldCreateUser: false` : on n'ouvre pas de compte depuis ici. Une
          adresse inconnue reçoit un refus, pas un compte neuf. */
-      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+      /* DEUX CHEMINS POUR LE MÊME JETON, PARCE QU'ON NE MAÎTRISE PAS LE
+         GABARIT D'E-MAIL.
+
+         `signInWithOtp` envoie le gabarit « Magic Link » de Supabase. S'il ne
+         contient que `{{ .ConfirmationURL }}`, la personne reçoit un LIEN et
+         aucun chiffre — mesuré, et l'écran promettait des chiffres qui
+         n'arrivaient jamais.
+
+         `emailRedirectTo` fait revenir ce lien sur /control, où ce client-ci
+         ramasse la session tout seul (`detectSessionInUrl` est actif par
+         défaut) — et c'est bien CE client qu'il faut, parce qu'il a son propre
+         `storageKey` : une session ouverte sur l'application publique ne serait
+         pas vue par AGORA.
+
+         Le champ « code » reste affiché : si le gabarit porte `{{ .Token }}`,
+         les six chiffres marchent aussi. On ne choisit pas à la place de la
+         configuration, on accepte les deux. */
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: location.origin + "/control",
+        },
+      });
       if (error) { etat.className = "err"; etat.textContent = error.message; return; }
       etat.className = "meta";
       ecran.querySelector(".connexion").insertAdjacentHTML("beforeend",
@@ -118,7 +142,8 @@
         if (e2) { etat.className = "err"; etat.textContent = e2.message; return; }
         location.reload();
       };
-      etat.textContent = "Code envoyé.";
+      etat.textContent = "E-mail envoyé. Recopie le code s'il y en a un, "
+                       + "sinon ouvre le lien : il ramène ici, déjà connecté.";
     };
   }
 
