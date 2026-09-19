@@ -16903,10 +16903,41 @@ $("#rech").oninput=e=>{
    se ferme d'abord (blur), sinon il masque la carte qu'on vient de déplacer. */
 $("#formRech").addEventListener("submit", e=>{ e.preventDefault(); lancerRecherche(); });
 
+/* ===================================================================
+   L'ENTRÉE DE L'ESPACE PRIVÉ
+
+   AGORA — le centre de pilotage des agents — n'a aucun lien dans Autour. Pas
+   de bouton, pas d'élément de menu, rien dans le pied de page : ce qui n'est
+   pas affiché ne se découvre pas par curiosité, et un espace privé qui
+   s'annonce invite à être essayé.
+
+   Il s'ouvre donc par un mot tapé dans la recherche. Ce mot N'EST PAS un
+   secret et ne protège rien : il ne fait qu'ouvrir la page, qui demande
+   ensuite une adresse e-mail connue et un code vérifié par le serveur. Le
+   code, lui, n'existe nulle part dans ce fichier, ni dans le paquet livré au
+   navigateur, ni dans le dépôt — seule une empreinte HMAC en base le connaît.
+   Quelqu'un qui devine ce mot obtient un écran de connexion, rien d'autre.
+
+   La comparaison est faite sur la forme normalisée : « Fodé », « fode » et
+   « FODÉ » ouvrent la même porte, parce qu'un accent tapé sur un téléphone
+   n'est pas une épreuve.
+   =================================================================== */
+function estEntreeAgora(texte){
+  return String(texte || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim() === "fode";
+}
+
 async function lancerRecherche(){
   const champ = $("#rech");
   const q = (champ.value || "").trim();
   if(!q) return;
+  if(estEntreeAgora(q)){
+    champ.value = "";           // le mot ne reste pas dans l'historique du champ
+    champ.blur();
+    location.assign("/control");
+    return;
+  }
   champ.blur();                 // referme le clavier avant de bouger la carte
   if(modeAide){
     fermerRecherche({force:true});

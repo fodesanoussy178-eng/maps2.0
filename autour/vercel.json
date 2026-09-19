@@ -3,6 +3,13 @@
   "outputDirectory": "livraison",
   "headers": [
     {
+      "source": "/control/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/(.*)\\.js",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
@@ -30,6 +37,13 @@
   "rewrites": [
     { "source": "/mentions-legales", "destination": "/mentions-legales.html" },
     { "source": "/confidentialite", "destination": "/confidentialite.html" },
+    { "source": "/control", "destination": "/control.html" },
+    { "source": "/control/acquisition", "destination": "/control.html" },
+    { "source": "/control/validation", "destination": "/control.html" },
+    { "source": "/control/journal", "destination": "/control.html" },
+    { "source": "/control/territoires", "destination": "/control.html" },
+    { "source": "/control/taches", "destination": "/control.html" },
+    { "source": "/control/operateur", "destination": "/control.html" },
     { "source": "/l/:id", "destination": "/index.html" },
     { "source": "/e/:id", "destination": "/index.html" }
   ]

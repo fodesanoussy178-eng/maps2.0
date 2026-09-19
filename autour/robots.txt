@@ -14,6 +14,14 @@ Allow: /
 # coût sans produire une seule ligne de résultat de recherche.
 Disallow: /api/
 
+# LE CONTROL CENTER N'EST PAS UNE PAGE PUBLIQUE.
+#
+# `/control` est l'espace de pilotage des agents. Il ne montre rien à qui n'est
+# pas opérateur — la protection est en base, pas ici — mais il n'a aucune raison
+# d'apparaître dans un index. La page porte aussi `noindex` : robots.txt
+# empêche la visite, la balise empêche l'indexation d'un lien trouvé ailleurs.
+Disallow: /control
+
 # Pas de directive `Sitemap:` ici : aucun sitemap n'existe encore. En annoncer
 # un qui répond 404 est un signal d'erreur envoyé volontairement. La ligne sera
 # ajoutée le jour où le fichier existera réellement.

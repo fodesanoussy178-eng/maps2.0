@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>AGORA — Autour</title>
+
+<!--
+  LE CONTROL CENTER EST UNE PAGE À PART, ET C'EST LE POINT IMPORTANT.
+
+  Autour sert `index.html` avec une quarantaine de modules fusionnés en un seul
+  paquet critique, mesuré au dixième de kilo-octet parce qu'il décide du temps
+  de premier affichage sur un téléphone lent. Ajouter le Control Center à ce
+  paquet ferait payer à chaque visiteur — qui n'y aura jamais accès — le poids
+  d'un tableau de bord qu'il ne verra jamais.
+
+  Cette page ne partage donc aucun octet avec l'application publique : son
+  propre HTML, son propre CSS, son propre script, et le SDK Supabase déjà
+  vendorisé (`/vendeur/`), qui est le seul fichier commun. `index.html`,
+  `app.js` et le manifeste de livraison ne sont pas touchés.
+
+  CE QUI PROTÈGE VRAIMENT N'EST PAS ICI. Cette page peut être ouverte par
+  n'importe qui — c'est un fichier statique sur un CDN, et tout le monde peut
+  le télécharger. Elle ne montrera rien : les tables du socle agents ne portent
+  aucun privilège pour `anon`, et leurs policies passent toutes par
+  `public.est_operateur()`. Un visiteur qui ouvre /control obtient une page
+  vide et un refus du serveur, pas un accès.
+-->
+
+<style>
+:root{
+  --fond:#0d0f12; --fond-2:#14171c; --bord:#232830; --texte:#e7e9ee;
+  --doux:#9aa3b2; --accent:#7aa2f7; --vert:#7fca8a; --ambre:#e0b25e; --rouge:#e07a7a;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--fond); color:var(--texte); font:15px/1.5 -apple-system,BlinkMacSystemFont,
+  "Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; padding-bottom:64px;
+}
+a{color:var(--accent)}
+header{
+  position:sticky; top:0; z-index:5; background:rgba(13,15,18,.92);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--bord); padding:14px 16px;
+}
+.titre{font-size:13px; letter-spacing:.22em; text-transform:uppercase; color:var(--texte); margin:0; font-weight:600}
+.titre .sous{letter-spacing:.08em; color:var(--doux); font-weight:400}
+.pastille{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px;
+  background:var(--bord)}
+.pastille.on{background:var(--vert)}
+.agent{display:flex; align-items:center; gap:2px; font-size:13px; padding:3px 0}
+.agent .quoi{color:var(--doux); margin-left:auto; font-size:12px}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th{text-align:left; color:var(--doux); font-weight:500; font-size:12px; padding:6px 8px 6px 0; border-bottom:1px solid var(--bord)}
+td{padding:7px 8px 7px 0; border-bottom:1px solid var(--bord); vertical-align:top}
+.pagination{display:flex; gap:8px; align-items:center; justify-content:center; margin-top:12px; color:var(--doux); font-size:13px}
+nav{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap}
+nav button{
+  background:transparent; border:1px solid var(--bord); color:var(--doux);
+  padding:6px 12px; border-radius:99px; font-size:13px; cursor:pointer;
+}
+nav button[aria-current="page"]{background:var(--fond-2); color:var(--texte); border-color:#38404d}
+main{max-width:1080px; margin:0 auto; padding:16px}
+h2{font-size:15px; font-weight:600; margin:24px 0 10px}
+h2:first-child{margin-top:4px}
+.grille{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px}
+.tuile{background:var(--fond-2); border:1px solid var(--bord); border-radius:var(--r); padding:12px 14px}
+.tuile .n{font-size:26px; font-variant-numeric:tabular-nums; line-height:1.15}
+.tuile .l{font-size:12px; color:var(--doux); margin-top:2px}
+.tuile .l small{display:block; color:#6d7583; font-size:11px; margin-top:3px}
+.carte{background:var(--fond-2); border:1px solid var(--bord); border-radius:var(--r); padding:14px; margin-bottom:10px}
+.carte h3{margin:0 0 2px; font-size:16px}
+.meta{color:var(--doux); font-size:13px}
+.rangee{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0}
+.etiq{
+  font-size:11px; border:1px solid var(--bord); border-radius:99px; padding:2px 9px; color:var(--doux);
+}
+.etiq.eleve{color:var(--vert); border-color:#2f4a36}
+.etiq.moyen{color:var(--ambre); border-color:#4a412a}
+.etiq.faible,.etiq.inconnu{color:var(--rouge); border-color:#4a2f2f}
+.critere{border-top:1px solid var(--bord); padding:8px 0; font-size:14px}
+.critere b{display:inline-block; min-width:110px; color:var(--doux); font-weight:500}
+.critere .pq{display:block; color:var(--doux); font-size:13px; margin-top:2px}
+button.act{
+  background:var(--fond); border:1px solid var(--bord); color:var(--texte);
+  padding:7px 14px; border-radius:8px; cursor:pointer; font-size:14px;
+}
+button.act:hover{border-color:#38404d}
+button.act.oui{border-color:#2f4a36; color:var(--vert)}
+button.act.non{border-color:#4a2f2f; color:var(--rouge)}
+input,select,textarea{
+  background:var(--fond); border:1px solid var(--bord); color:var(--texte);
+  border-radius:8px; padding:8px 10px; font:inherit; width:100%;
+}
+textarea{min-height:230px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px}
+.filtres{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-bottom:12px}
+.journal{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px}
+.journal div{display:flex; gap:12px; padding:5px 0; border-bottom:1px solid var(--bord)}
+.journal time{color:var(--doux); flex:none}
+.vide{color:var(--doux); padding:18px 0}
+.err{color:var(--rouge)}
+.connexion{max-width:380px; margin:12vh auto; padding:0 16px}
+.connexion p{color:var(--doux)}
+.connexion input{margin-bottom:8px}
+details summary{cursor:pointer; color:var(--doux); font-size:13px; padding:6px 0}
+@media (max-width:520px){ .critere b{min-width:0; display:block} }
+</style>
+</head>
+<body>
+<header>
+  <p class="titre">AGORA <span class="sous">· pilotage Autour</span></p>
+  <nav id="nav" hidden>
+    <button data-vue="tableau">Vue générale</button>
+    <button data-vue="acquisition">Acquisition</button>
+    <button data-vue="territoires">Territoires</button>
+    <button data-vue="validation">À valider</button>
+    <button data-vue="taches">Tâches</button>
+    <button data-vue="journal">Journal</button>
+    <button data-vue="operateur">Opérateur</button>
+    <button data-vue="sortir">Verrouiller</button>
+  </nav>
+</header>
+<main id="ecran"><p class="vide">Chargement…</p></main>
+
+<script src="/vendeur/supabase-2.108.2.js" defer></script>
+<script src="/control/control.js" defer></script>
+</body>
+</html>
