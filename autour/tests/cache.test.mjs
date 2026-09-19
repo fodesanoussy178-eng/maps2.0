@@ -177,12 +177,21 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
      n'a pas à peser sur le chemin critique de tous les visiteurs.
 
      Les chemins sont ÉNUMÉRÉS, jamais génériques. Un `/control/:vue` attraperait
-     `/control/control.js` et servirait le HTML à la place du script. */
+     `/control/control.js` et servirait le HTML à la place du script.
+
+     ET CETTE LISTE DOIT SUIVRE LES ÉCRANS. La V2 a ajouté trois vues —
+     territoires, tâches, opérateur — et `control.js` fait un `pushState` vers
+     leur URL. Sans réécriture, un rechargement ou un lien copié rend un 404 sur
+     un écran qui, lui, existe. Trouvé en relisant, pas en production : c'est
+     exactement ce que ce test doit attraper. */
   const pagesPrivees = {
     "/control": "/control.html",
     "/control/acquisition": "/control.html",
+    "/control/territoires": "/control.html",
     "/control/validation": "/control.html",
+    "/control/taches": "/control.html",
     "/control/journal": "/control.html",
+    "/control/operateur": "/control.html",
   };
   (vercel.rewrites || []).forEach((r) => {
     if (versApplication.includes(r.source))

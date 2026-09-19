@@ -41,6 +41,9 @@
     { "source": "/control/acquisition", "destination": "/control.html" },
     { "source": "/control/validation", "destination": "/control.html" },
     { "source": "/control/journal", "destination": "/control.html" },
+    { "source": "/control/territoires", "destination": "/control.html" },
+    { "source": "/control/taches", "destination": "/control.html" },
+    { "source": "/control/operateur", "destination": "/control.html" },
     { "source": "/l/:id", "destination": "/index.html" },
     { "source": "/e/:id", "destination": "/index.html" }
   ]
