@@ -464,6 +464,42 @@ Ce qu'il faudra pour que l'expérience ait lieu : une instance Overpass qui
 réponde — la sienne, ou un miroir payant — ou une deuxième source déclarée pour
 ces territoires.
 
+### L'entonnoir, à la fin de la mission
+
+```
+621  opportunités découvertes          (358 à la fin de la première mission)
+612  qualifiées
+197  avec un canal de contact          (2 à la fin de la première mission)
+  4  brouillons en attente de validation
+  0  contact envoyé — l'agent n'a pas de fonction d'envoi
+  0 € de coût IA
+```
+
+677 sources conservées, 2 770 critères justifiés, 15 territoires déclarés.
+
+### Ce qui bloque encore, et c'est précis
+
+**164 des 193 structures trouvées avec leur porte sont en attente d'examen
+humain.** Leur type est `structure`, que la qualification ne sait ni retenir ni
+écarter : elle écrit « ni programmation observée, ni type identifié » et passe
+la main. Ce sont les CCAS, les maisons de l'emploi, les points-justice, les
+PMI — et aussi un commissariat de police, ce qui montre que le refus de
+trancher automatiquement était le bon choix.
+
+Le correctif est étroit et connu : dans `canaux.mjs`, les pivots dont la
+mission EST d'informer et d'orienter le public (`mission_locale`, `cij`, `cio`,
+`clic`, `cdad`, `maison_emploi`) doivent porter une `raison_pertinence` écrite,
+comme le fait déjà `raisonPourAutour()` pour l'écosystème entrepreneurial. Les
+autres — commissariat, gendarmerie, direction régionale — doivent rester en
+examen.
+
+**Une porte ne suffit pas : il faut aussi avoir quelque chose de vrai à dire.**
+Trois brouillons ont été refusés sur cinq tentatives, avec le même motif :
+« aucun fait collecté ne permet d'écrire une phrase personnalisée vraie ».
+L'annuaire donne le contact d'une mission locale, il ne dit rien de son
+activité. Le refus est correct, et il désigne le prochain chantier : relier ces
+structures à une activité observable.
+
 ### Coût
 
 **0 €.** Aucun appel de modèle n'a été fait. Toutes les sources sont des API
