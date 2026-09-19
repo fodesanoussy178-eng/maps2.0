@@ -277,6 +277,24 @@ values ('acquisition', 'acquisition_scan_city',
 select private.invoke_agent_acquisition('work');   -- réveille l'agent
 ```
 
+### Chercher le canal d'une commune
+
+```sql
+insert into public.tasks (agent, type, params, origine, demandee_par)
+values ('acquisition', 'acquisition_find_contact_channel',
+        '{"ville":"Tourcoing","limite":150}'::jsonb, 'humain', auth.uid());
+```
+
+### Balayer un territoire déclaré
+
+```sql
+insert into public.tasks (agent, type, params, origine, demandee_par)
+values ('acquisition', 'acquisition_scan_territory',
+        '{"territoire":"fr-lyon"}'::jsonb, 'humain', auth.uid());
+```
+
+`{"force": true}` passe outre la mémoire du territoire.
+
 Aucune planification n'existe (§20) : `private.invoke_agent_acquisition()` est
 écrite, elle marche, et **rien ne l'appelle**. Un agent qui se réveille seul
 avant que quiconque ait relu ce qu'il produit, c'est une base d'opportunités
@@ -385,6 +403,72 @@ est nul pour la quasi-totalité de l'inventaire MEL, et l'annuaire des
 entreprises n'en publie aucune. Trouver ces pages est aujourd'hui un travail
 humain — ou le sujet d'un futur type de tâche.
 
+## Ce que la deuxième mission a donné
+
+Le 19 septembre 2026, onze tâches, cinq missions de contrôle.
+
+### Chercher la porte, sur les cinq communes de la MEL
+
+| Commune | Examinées | Canal rapproché | Fiches annuaire avec contact | Structures entrées AVEC leur canal |
+|---|---|---|---|---|
+| Lille | 120 | 0 | 96 | **96** |
+| Villeneuve-d'Ascq | 58 | 0 | 25 | **25** |
+| Roubaix | 49 | 0 | 29 | **29** |
+| Tourcoing | 40 | 1 | 32 | **32** |
+| Wattrelos | 24 | 0 | 11 | **11** |
+| **Total** | **291** | **1** | **193** | **193** |
+
+Un seul canal rapproché sur 291. C'est le résultat qui a fait changer
+l'approche, et il est écrit ici tel quel.
+
+### Paris, Lyon — et la limite qu'il faut dire
+
+| Territoire | events | places | Annuaire | Créées |
+|---|---|---|---|---|
+| Paris | **0** | **0** | 25 lignes | 25 |
+| Lyon | **0** | **0** | 25 lignes | 23 |
+
+Hors de la MEL, Autour n'a **aucune** donnée : ni événement, ni lieu. Un
+balayage de territoire s'y réduit donc à **une page de l'annuaire des
+entreprises**, vingt-cinq lignes. Ce n'est pas une couverture de Paris ; c'est
+la preuve que le mécanisme fonctionne sur un territoire neuf, et rien de plus.
+Dire « Autour couvre Paris » sur cette base serait faux.
+
+### Incubateurs, France
+
+100 lignes lues sur quatre termes, 84 structures reconnues au nom,
+**48 nouvelles**, 36 déjà connues. Aucune n'est réputée pertinente du fait
+d'être un incubateur : chacune porte sa raison, et la raison dit si le lien est
+**observé** ou **supposé**.
+
+### International : l'expérience n'a pas pu avoir lieu
+
+Trois territoires déclarés, chacun avec sa raison écrite : Bruxelles, Genève,
+Montréal. Hors de France, `events` est vide et l'annuaire des entreprises
+s'arrête à la frontière : **OpenStreetMap est la seule source déclarée**.
+
+Or les trois instances publiques d'Overpass ont échoué, à chaque essai :
+
+```
+Bruxelles : Overpass injoignable : Signal timed out. sur overpass.private.coffee.
+            Aucune autre source n'est déclarée pour ce territoire —
+            données insuffisantes, rien n'est inventé.
+```
+
+**Ce n'est pas un résultat sur Bruxelles, c'est une panne de source.** Aucune
+opportunité internationale n'a été créée, et il n'y a rien à conclure sur la
+pertinence d'Autour hors de France. La tâche l'écrit ainsi, plutôt que de
+rendre un zéro qui se lirait comme une mesure.
+
+Ce qu'il faudra pour que l'expérience ait lieu : une instance Overpass qui
+réponde — la sienne, ou un miroir payant — ou une deuxième source déclarée pour
+ces territoires.
+
+### Coût
+
+**0 €.** Aucun appel de modèle n'a été fait. Toutes les sources sont des API
+publiques sans clé ni quota facturé.
+
 ## Ce qui n'est pas mesurable, et qui le dit
 
 `acquisition_entonnoir()` rend `mesurable = false` avec la raison, plutôt qu'un
@@ -430,12 +514,26 @@ frontière.
 
 ## L'autonomie réelle, sans exagération
 
-L'agent fait seul : chercher, dédupliquer, qualifier, expliquer, journaliser,
-mesurer.
+L'agent fait seul : chercher, dédupliquer, qualifier, expliquer, chercher le
+canal, journaliser, mesurer, et se souvenir de ce qu'il a déjà examiné.
 
-L'humain fait, et devra continuer de faire : trouver les pages de contact que
-les sources publiques ne donnent pas, relire les 109 cas indécis, décider de
-chaque message, et l'envoyer lui-même.
+L'humain fait, et devra continuer de faire :
+
+* **le réveiller** — rien ne l'appelle ; `pg_cron` n'est pas branché, et ce
+  n'est pas un oubli (voir « Lancer une recherche ») ;
+* **relire les cas indécis**, que les règles laissent exprès en `a_examiner` ;
+* **décider de chaque message**, et **l'envoyer lui-même** — l'agent n'a
+  aucune fonction d'envoi, et un CHECK en base refuserait qu'on lui en donne
+  une ;
+* **trouver à la main les portes que les sources publiques ne donnent pas** :
+  sur la MEL, 290 opportunités sur 291 n'ont toujours aucun canal.
+
+Et il a fallu l'humain pour autre chose pendant cette mission : **débloquer
+quatre tâches tuées en vol** et relancer l'agent à chaque fois. Les correctifs
+(prise atomique, reprise des orphelines, budget) sont écrits pour que ça cesse,
+mais ils n'ont pas encore tourné assez longtemps pour qu'on puisse dire qu'ils
+suffisent. Ce sera à la prochaine mission de le montrer.
 
 Ce n'est pas un agent autonome. C'est un agent qui fait le travail de recherche
-et de préparation, et qui s'arrête exactement là où commence une relation.
+et de préparation, qui s'arrête exactement là où commence une relation, et qui
+a encore besoin qu'on le réveille.
