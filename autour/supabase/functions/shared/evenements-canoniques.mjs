@@ -157,7 +157,7 @@ function numberValue(value) {
 
 function currencyAmount(value) {
   const match = String(value ?? "").replace(/\u202f/g, " ")
-    .match(/(\d+(?:[,.]\d{1,2})?)\s*(?:€|euros?|eur)(?=\b|\s|$)/i);
+    .match(/(\d+(?:[,.]\d{1,2})?)\s*(?:€|euros?|eur)(?![A-Za-z0-9])/i);
   return match ? numberValue(match[1]) : null;
 }
 
@@ -194,9 +194,9 @@ function priceData(record, description) {
   const textCandidate = structuredText || description;
   const paidAmount = currencyAmount(textCandidate) ?? (structuredText ? numberValue(textCandidate) : null);
   const freeInText = /\b(?:gratuit(?:e|s)?|entrée\s+libre|ac(?:c|ç)ès\s+libre)\b/i.test(textCandidate);
-  if (structuredAmount != null || (structuredText && paidAmount != null && /(?:€|euros?|eur)(?=\b|\s|$)/i.test(structuredText))) {
+  if (structuredAmount != null || (structuredText && paidAmount != null && /(?:€|euros?|eur)(?![A-Za-z0-9])/i.test(structuredText))) {
     const amount = structuredAmount ?? paidAmount;
-    const label = structuredText || sentenceWith(description, /\d+(?:[,.]\d{1,2})?\s*(?:€|euros?|eur)(?=\b|\s|$)/i) || `${amount} €`;
+    const label = structuredText || sentenceWith(description, /\d+(?:[,.]\d{1,2})?\s*(?:€|euros?|eur)(?![A-Za-z0-9])/i) || `${amount} €`;
     return {price_amount: amount, price_text: label, is_free: false, price_confidence: "high"};
   }
   if (structuredFree === true || (structuredFree == null && freeInText)) {
@@ -205,10 +205,10 @@ function priceData(record, description) {
   if (structuredFree === false) {
     return {price_amount: null, price_text: null, is_free: false, price_confidence: "unknown"};
   }
-  if (paidAmount != null && /(?:€|euros?|eur)(?=\b|\s|$)/i.test(textCandidate)) {
+  if (paidAmount != null && /(?:€|euros?|eur)(?![A-Za-z0-9])/i.test(textCandidate)) {
     return {
       price_amount: paidAmount,
-      price_text: sentenceWith(description, /\d+(?:[,.]\d{1,2})?\s*(?:€|euros?|eur)(?=\b|\s|$)/i) || `${paidAmount} €`,
+      price_text: sentenceWith(description, /\d+(?:[,.]\d{1,2})?\s*(?:€|euros?|eur)(?![A-Za-z0-9])/i) || `${paidAmount} €`,
       is_free: false,
       price_confidence: "medium",
     };
@@ -453,6 +453,11 @@ const EVENT_FACT_FIELDS = Object.freeze([
   "date_confidence", "temporal_status", "price_amount", "price_text", "is_free",
   "audience", "min_age", "reservation_required", "reservation_text", "event_source",
   "event_source_url", "place_source", "image_source", "image_source_url",
+  /* Une coordonnée trouvée une fois ne doit pas disparaître à la
+     synchronisation suivante : si l'organisateur retire le numéro de sa fiche
+     OpenAgenda, la source dira `null` et l'ancien numéro serait effacé. Il est
+     plus utile de le garder — et un numéro public reste vérifiable. */
+  "booking_url", "phone", "email", "website",
 ]);
 
 /* Une source pauvre ne doit pas effacer un fait déjà fiable lors d'un

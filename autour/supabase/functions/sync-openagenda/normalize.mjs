@@ -1,3 +1,4 @@
+import {contactsOpenAgenda} from "./contacts.mjs";
 import {imageOpenAgenda} from "./image.mjs";
 import {extractOccurrences} from "./occurrences.mjs";
 import {normaliserAnnonce} from "../shared/annonces.mjs";
@@ -110,6 +111,19 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
   const shortDescription = text(event.description) || null;
   const longDescription = text(event.longDescription) || null;
   const description = longDescription || shortDescription;
+  /* LES CONDITIONS D'ACCÈS SONT LE TARIF, ET LA SOURCE LES ÉCRIT.
+     OpenAgenda range sous `conditions` la phrase que l'organisateur a rédigée
+     sur l'accès à son événement — « Gratuit », « 5 € / 3 € réduit », « sur
+     réservation ». Elle arrive ici comme `price_text` : la cascade tarifaire
+     de `normaliserEvenementCanonique` en tirera ensuite le montant et la
+     gratuité, avec la confiance qui va avec un champ structuré. */
+  const conditions = text(event.conditions) || null;
+  /* Les coordonnées publiées avec la fiche. Le texte sert de repêchage, et
+     `conditions` en fait partie : « Réservation au 03 20 … » y vit souvent. */
+  const contacts = contactsOpenAgenda(event, {
+    sourceUrl: sourceUrl(event, source, externalId),
+    textes: [shortDescription, longDescription, conditions],
+  });
   const firstOccurrence = occurrences[0];
   const timezone = firstOccurrence.timezone || source.timezone;
   /* L'affiche officielle de l'événement, recomposée depuis `base` + `filename`
@@ -146,6 +160,7 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
     end_at: firstOccurrence.end_at,
     timezone,
     venue_name: location.venueName,
+    price_text: conditions,
     source_url: sourceUrl(event, source, externalId),
   }, {
     source: "openagenda",
@@ -197,6 +212,13 @@ export function normalizeOpenAgendaEvent(event, {source, now = new Date(), from,
       lng: normalized.longitude,
       primary_source: "openagenda",
       source_url: normalized.source_url,
+      /* Quatre champs qui décident de ce que la fiche peut proposer :
+         « Réserver » n'apparaît que si `booking_url` existe, « Appeler » que
+         si `phone` a passé la normalisation E.164. Rien n'est deviné. */
+      booking_url: contacts.booking_url,
+      phone: contacts.phone,
+      email: contacts.email,
+      website: contacts.website,
       image_url: normalized.image_url,
       /* Les six champs du contrat, écrits tels quels : `persistEvent` recopie
          `normalized.event` dans la table, donc la provenance suit la photo
