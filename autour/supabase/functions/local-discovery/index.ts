@@ -3,6 +3,7 @@ import {
   preuveDansPage, publishable, sourceFingerprint, sourceType, texteDePage,
   verificationStatus,
 } from "./discovery.mjs";
+import { questionsOuvertes, rattacher } from "./taxonomie.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -143,11 +144,51 @@ psychological_support,listening.
 evidence est une liste courte de faits paraphrasés, chacun avec source_url.`;
 }
 
-async function search(city:string, category:string, queries:string[]) {
+/* ---------------------------------------------------------------------------
+   L'INVITE OUVERTE — ON DEMANDE CE QUI SE PASSE, PAS SI X A LIEU
+
+   L'invite « solidarité » énumère ce qu'elle cherche : c'est correct pour un
+   domaine où l'exhaustivité prime (il ne faut manquer aucune distribution).
+   Celle-ci fait l'inverse, et c'est tout l'objet de l'univers `events` : elle
+   ne nomme AUCUNE catégorie. Si elle en nommait, on aurait simplement déplacé
+   `WORDINGS` dans une chaîne de caractères.
+
+   Le modèle rend donc ce que la ville produit, avec le nom que la ville lui
+   donne — « Nuit des ateliers », « Ducasse de la Bourgogne ». Le rangement
+   vient après, dans `taxonomie.mjs`, à partir du libellé et de la page.
+
+   ET L'URL N'EST PLUS UNE PROMESSE. Le rapport précédent a montré que cinq
+   URL sur huit étaient inventées (404, domaines injoignables). On demande donc
+   explicitement de ne rendre QUE des pages réellement ouvertes, et on le
+   vérifie de toute façon en les lisant : `verified_url` n'est pas une
+   déclaration, c'est le résultat d'un GET.
+--------------------------------------------------------------------------- */
+function promptOuvert(city:string, questions:string[]) {
+  return `Tu observes ce qui se passe réellement à ${city} et tu le rapportes.
+
+Questions à explorer : ${questions.join(" ; ")}
+
+RÈGLES ABSOLUES
+1. N'invente JAMAIS une URL. Ne rends que des pages que la recherche t'a
+   réellement montrées. Une URL devinée sera détectée et tout le candidat sera
+   rejeté : mieux vaut rendre moins d'éléments, avec des pages qui existent.
+2. Ne force aucune catégorie. Garde le nom EXACT que l'organisateur emploie,
+   même s'il est inhabituel ou inventé. Le rangement n'est pas ton travail.
+3. N'affirme une date, un prix ou un lieu que si la page l'écrit.
+
+Rends uniquement un tableau JSON d'objets :
+name (le libellé exact tel qu'il est écrit), description, source_url,
+official_url, address, postal_code, city, lat, lng, phone, email,
+starts_at (ISO 8601 si la page la donne, sinon null), ends_at, is_free,
+price_text, organizer, what_it_is (une phrase disant ce que c'est, dans tes
+mots, sans catégorie imposée).`;
+}
+
+async function search(city:string, category:string, queries:string[], invite?:string) {
   if (!GEMINI_KEY) throw new Error("GEMINI_API_KEY absente");
   const response = await fetch(ENDPOINT, {method:"POST",
     headers:{"Content-Type":"application/json","x-goog-api-key":GEMINI_KEY},
-    body:JSON.stringify({model:MODEL,input:prompt(city,category,queries),tools:[{type:"google_search"}]}),
+    body:JSON.stringify({model:MODEL,input:invite || prompt(city,category,queries),tools:[{type:"google_search"}]}),
     signal:AbortSignal.timeout(60_000)});
   if (!response.ok) throw new Error(`Gemini HTTP ${response.status}`);
   const json = await response.json();
@@ -298,10 +339,109 @@ async function publishPlace(c:any) {
   return rows?.[0]?.place_id || null;
 }
 
+/* ---------------------------------------------------------------------------
+   L'UNIVERS OUVERT
+
+   Même pipeline que la solidarité — recherche, lecture de page, preuve,
+   déduplication — avec deux différences : les questions ne nomment aucune
+   catégorie, et le rangement se fait APRÈS, sur le libellé rendu.
+
+   Rien n'est publié dans `places` ici. Un événement n'est pas un lieu, et le
+   verser dans le catalogue des lieux ferait apparaître une brocante d'un
+   dimanche comme une adresse permanente. Les candidats sont enregistrés avec
+   leur classification ; le versement vers `events` est un pas suivant, qui
+   demande son propre contrat de dates.
+   ------------------------------------------------------------------------ */
+async function executerOuvert(task:any, city:string) {
+  const questions = questionsOuvertes(city);
+  const [run] = await insert("local_discovery_runs", [{task_id:task.id, territory:city,
+    universe:"events", category:"open", queries:questions,
+    sources_queried:["google_search"], web_search_used:true}]);
+  try {
+    const result = await search(city, "open", questions, promptOuvert(city, questions));
+    const bruts = result.raw.slice(0, 20);
+    const candidats:any[] = [];
+    for (let debut = 0; debut < bruts.length; debut += 5) {
+      candidats.push(...await Promise.all(bruts.slice(debut, debut + 5).map(async (raw:any) => {
+        const url = String(raw?.source_url || raw?.official_url || "");
+        /* LA PAGE D'ABORD, LE RANGEMENT ENSUITE. C'est elle qui sert à la fois
+           de preuve et de second avis pour comprendre un libellé inconnu. */
+        const page = url ? await lirePage(url) : {ok:false, statut:0, texte:"", url:""};
+        const classe = rattacher(raw?.name, page.texte || raw?.description || raw?.what_it_is || "");
+        const preuve = page.ok
+          ? preuveDansPage(page.texte, {nom:raw?.name, codePostal:raw?.postal_code,
+              ville:raw?.city || city, categorie:null})
+          : {identite:0, service:0, raison:page.statut ? `page_http_${page.statut}` : "page_injoignable"};
+        const st = sourceType(page.url || url, "", raw?.city || city);
+        const candidat:any = {
+          run_id:run.id,
+          name:String(raw?.name || "").trim(), name_normalized:normalizeText(raw?.name),
+          address:raw?.address || null, postal_code:raw?.postal_code || null,
+          city:String(raw?.city || city).trim(),
+          lat:Number.isFinite(Number(raw?.lat)) ? Number(raw.lat) : null,
+          lng:Number.isFinite(Number(raw?.lng)) ? Number(raw.lng) : null,
+          phone:raw?.phone || null, official_url:raw?.official_url || null,
+          source_url:page.url || url, source_type:st,
+          official_source:st === "official_structure" || st === "official_government",
+          /* La classification voyage dans `service_categories` (le parent et la
+             sous-catégorie) et le libellé original dans `raw_data` : aucune
+             colonne nouvelle, et rien de perdu. */
+          service_categories:[classe.category_parent, classe.subcategory].filter(Boolean),
+          identity_evidence:preuve.identite, service_evidence:preuve.identite ? 0.6 : 0,
+          evidence:[], entity_status:"unknown",
+          raw_data:{...raw, taxonomie:classe},
+        };
+        try { candidat.source_domain = new URL(candidat.source_url).hostname; } catch {}
+        candidat.confidence = confidenceFor(st, candidat.identity_evidence, candidat.service_evidence);
+        candidat.source_fingerprint = sourceFingerprint(candidat.source_url, candidat.name, candidat.address);
+        candidat.verification_status = verificationStatus(candidat);
+        /* SANS URL VÉRIFIABLE, LE CANDIDAT EXISTE MAIS N'EST PAS PUBLIÉ.
+           C'est la règle demandée : une piste reste une piste. */
+        if (preuve.identite <= 0) {
+          candidat.rejection_reason = preuve.raison || "source_non_verifiable";
+          candidat.verification_status = "rejected";
+        }
+        candidat.last_verified_at = preuve.identite > 0 ? new Date().toISOString() : null;
+        return candidat;
+      })));
+    }
+    for (const c of candidats)
+      await insert("local_discovery_candidates?on_conflict=source_fingerprint", [c],
+        "resolution=merge-duplicates,return=minimal");
+
+    const refus:Record<string,number> = {};
+    for (const c of candidats) if (c.rejection_reason)
+      refus[c.rejection_reason] = (refus[c.rejection_reason] || 0) + 1;
+    const familles:Record<string,number> = {};
+    for (const c of candidats) {
+      const t = c.raw_data?.taxonomie;
+      const cle = t ? `${t.category_parent}/${t.subcategory || "a_qualifier"}` : "?";
+      familles[cle] = (familles[cle] || 0) + 1;
+    }
+    const retenus = candidats.filter((c:any) => !c.rejection_reason);
+    const counts = {candidates_count:candidats.length, new_count:0,
+      duplicate_count:0, updated_count:retenus.length,
+      uncertain_count:candidats.filter((c:any)=>c.verification_status==="uncertain").length,
+      rejected_count:candidats.filter((c:any)=>c.verification_status==="rejected").length};
+    await patch(`local_discovery_runs?id=eq.${run.id}`, {...counts, status:"completed",
+      finished_at:new Date().toISOString()});
+    return {run_id:run.id, territory:city, universe:"events", ...counts,
+      diagnostic:{...result.diagnostic, refus, familles, pages_lues:pagesLues.size}};
+  } catch (error) {
+    await patch(`local_discovery_runs?id=eq.${run.id}`, {status:"failed",
+      error:(error as Error).message, finished_at:new Date().toISOString()});
+    throw error;
+  }
+}
+
 async function execute(task:any) {
   const city=String(task.params?.ville || task.params?.city || "").trim();
   const category=String(task.params?.categorie || task.params?.category || "food").trim();
   if (!city) throw new Error("ville requise");
+  /* Deux univers, un seul pipeline. `solidarity` cherche ce qu'on sait nommer
+     — l'exhaustivité prime. `events` observe ce qui se passe, sans nommer. */
+  if (String(task.params?.univers || task.params?.universe || "") === "events" || category === "open")
+    return executerOuvert(task, city);
   const queries=buildQueries(city,category);
   const [run]=await insert("local_discovery_runs", [{task_id:task.id,territory:city,
     universe:"solidarity",category,queries,sources_queried:["google_search"],web_search_used:true}]);
