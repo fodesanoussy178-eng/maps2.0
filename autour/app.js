@@ -214,7 +214,7 @@ const ECRANS_DIFFERES = [
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c45bcc03"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=2547e418"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -2881,7 +2881,7 @@ function signatureCoucheSupabase(entree){
     l && l.temporalStatus, l && l.temporal_status,
     l && l.price_amount, l && l.price_text, l && l.is_free, l && l.audience,
     l && l.min_age, l && l.reservation_required, l && l.reservation_text,
-    l && l.booking_url, l && l.phone, l && l.website,
+    l && l.booking_url, l && l.phone, l && l.email, l && l.website,
     l && l.event_source, l && l.event_source_url, l && l.place_source,
     l && l.description,
     l && l.status, l && l.annule, l && l.cancelled,
@@ -3083,6 +3083,7 @@ function versEvenementCanonique(e){
        absence — c'est elle qui grise le bouton. */
     booking_url:e.booking_url || null,
     phone:e.phone || null,
+    email:e.email || null,
     website:e.website || null,
     venue_name:e.venue_name || e.place_name || null,
     organizer_name:e.organizer_name || e.organizer || null,
@@ -4875,7 +4876,7 @@ const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre",
   /* Une fiche relue depuis le cache doit pouvoir rappeler et rouvrir le site :
      sans ces trois champs, la réouverture regrisait des boutons qui venaient
      d'être cliquables. */
-  "booking_url","phone","website",
+  "booking_url","phone","email","website",
   "event_source","event_source_url","place_source","place_source_url","entity_type"];
 
 function estContenuGoogle(l){

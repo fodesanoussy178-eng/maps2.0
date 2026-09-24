@@ -12,10 +12,12 @@
 -- « Appeler » et « Site web » restaient donc grisés sur une fiche dont la base
 -- connaissait le numéro.
 --
--- `email` RESTE DEHORS, ET C'EST DÉLIBÉRÉ. La fiche ne propose pas d'écrire :
--- rien ne la consomme, donc rien ne justifie de l'envoyer. Elle sert côté
--- opérateur, où elle est lue avec la clé de service. Le principe posé par la
--- migration d'origine tient : on expose ce qui est affiché, pas ce qui existe.
+-- `email` EST EXPOSÉE, APRÈS AVOIR ÉTÉ GARDÉE DEHORS. Le premier jet la
+-- laissait côté opérateur : la fiche ne proposait pas d'écrire, donc rien ne
+-- justifiait de l'envoyer. La fiche le propose désormais — quand un événement
+-- n'a ni lien d'inscription ni téléphone, « Réservation » doit quand même
+-- mener quelque part, et `mailto:` est ce qui reste. Le principe ne change
+-- pas : on expose ce qui est AFFICHÉ. C'est l'affichage qui a changé.
 -- ---------------------------------------------------------------------------
 
 drop function if exists public.evenements_locaux(
@@ -51,6 +53,7 @@ returns table (
   reservation_text text,
   booking_url text,
   phone text,
+  email text,
   website text,
   place_name text,
   venue_name text,
@@ -103,7 +106,7 @@ as $function$
                                  e.cancelled, now()),
     e.date_confidence, e.price_amount, e.price_text, e.is_free,
     e.price_confidence, e.audience, e.min_age, e.reservation_required,
-    e.reservation_text, e.booking_url, e.phone, e.website,
+    e.reservation_text, e.booking_url, e.phone, e.email, e.website,
     e.place_name, e.venue_name, e.address, e.city,
     e.insee_code, e.lat, e.lng, e.primary_source, e.source_url,
     e.event_source, e.event_source_url, e.place_source, e.image_url,
@@ -131,7 +134,7 @@ $function$;
 comment on function public.evenements_locaux(
   text, double precision, double precision, double precision, double precision, integer
 ) is
-  'Les événements à venir d''une zone, colonnes explicitement choisies. Porte booking_url, phone et website — ce que la fiche affiche. Pas email : rien ne la consomme côté public.';
+  'Les événements à venir d''une zone, colonnes explicitement choisies. Porte booking_url, phone, email et website : les quatre moyens que la fiche propose pour joindre l''organisateur.';
 
 grant execute on function public.evenements_locaux(
   text, double precision, double precision, double precision, double precision, integer

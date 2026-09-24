@@ -282,6 +282,8 @@ function ouvrirDetail(id){
     : (l.tel ? String(l.tel).replace(/\s/g, "") : "");
   const resaUrl = evenement && EVENEMENTS && EVENEMENTS.reservationUrlEvenement
     ? EVENEMENTS.reservationUrlEvenement(evenement) : "";
+  const lienResa = evenement && EVENEMENTS && EVENEMENTS.lienReservationEvenement
+    ? EVENEMENTS.lienReservationEvenement(evenement) : null;
   /* Une billetterie marchande et un lien d'inscription peuvent être le même
      lien. Deux boutons vers la même page ne donnent pas deux choix : ils font
      douter de celui qu'on vient de lire. */
@@ -368,9 +370,14 @@ function ouvrirDetail(id){
         /* La ligne « Réservation » énonçait une consigne sans donner le moyen
            de la suivre. Quand la source a publié un lien, la phrase EST le
            lien. */
+        /* Trois moyens possibles, un seul rendu : lien, puis téléphone, puis
+           adresse. « Réservation obligatoire » sans porte n'est pas une
+           information, c'est une contrariété. */
         '<div><dt>Réservation</dt><dd>'+
-          (resaUrl
-            ? '<a href="'+esc(resaUrl)+'" target="_blank" rel="noopener">'+esc(EVENEMENTS.reservationEvenement(evenement))+'</a>'
+          (lienResa
+            ? '<a href="'+esc(lienResa.href)+'"'+
+              (lienResa.externe ? ' target="_blank" rel="noopener"' : '')+'>'+
+              esc(EVENEMENTS.reservationEvenement(evenement))+'</a>'
             : esc(EVENEMENTS.reservationEvenement(evenement)))+'</dd></div>'+
         (evenement.event_source ? '<div><dt>Source événement</dt><dd>'+esc(libelleSourceEvenement(evenement.event_source))+
           (eventSourceUrl ? ' · <a href="'+esc(eventSourceUrl)+'" target="_blank" rel="noopener">Voir la source</a>' : '')+'</dd></div>' : '')+

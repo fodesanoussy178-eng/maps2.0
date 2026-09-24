@@ -147,7 +147,9 @@ test("les boutons d'un événement lisent l'événement, plus le lieu", () => {
 test("la ligne du tarif porte la billetterie, et la réservation est cliquable", () => {
   assert.match(source, /<dt>Tarif &amp; billetterie<\/dt>/);
   assert.match(source, /resaUrl \? ' <a class="prix-tag g" href="'\+esc\(resaUrl\)/);
-  assert.match(source, /<dt>Réservation<\/dt><dd>'\+\s*\n?\s*\(resaUrl/);
+  /* La ligne est passée de « lien ou rien » à « lien, numéro ou adresse » :
+     c'est `lienResa` qui décide maintenant, pas la seule URL. */
+  assert.match(source, /<dt>Réservation<\/dt><dd>'\+\s*\n?\s*\(lienResa/);
 });
 
 test("les séances passent par une question, pas par la table", () => {
@@ -166,15 +168,15 @@ test("la croix de fermeture a sa colonne, et le titre ne passe plus dessous", ()
 /* ==========================================================================
    4. CE QUI SORT DE LA BASE
    ======================================================================== */
-test("evenements_locaux transporte les trois champs affichés, et pas l'adresse", () => {
-  assert.match(migration, /e\.reservation_text, e\.booking_url, e\.phone, e\.website,/);
-  assert.match(migration, /^\s*booking_url text,$/m);
-  assert.match(migration, /^\s*phone text,$/m);
-  assert.match(migration, /^\s*website text,$/m);
-  /* `email` reste dehors : la fiche ne propose pas d'écrire, donc rien ne
-     justifie de l'envoyer sur le réseau de quelqu'un. */
-  assert.doesNotMatch(migration, /e\.email/);
-  assert.doesNotMatch(migration, /^\s*email text,$/m);
+test("evenements_locaux transporte les quatre moyens de joindre l'organisateur", () => {
+  /* LE CHOIX A ÉTÉ RETOURNÉ, ET C'EST DÉLIBÉRÉ. `email` était gardée hors du
+     chemin public tant que la fiche ne proposait pas d'écrire. La ligne
+     « Réservation » le propose maintenant, en dernier recours, quand il n'y a
+     ni lien ni numéro. Le principe ne bouge pas — on expose ce qui est
+     AFFICHÉ — c'est l'affichage qui a changé. */
+  assert.match(migration, /e\.reservation_text, e\.booking_url, e\.phone, e\.email, e\.website,/);
+  for (const colonne of ["booking_url", "phone", "email", "website"])
+    assert.match(migration, new RegExp("(^|\\s)" + colonne + " text,"), colonne);
 });
 
 test("la liste de colonnes et la liste de valeurs ont la même longueur", () => {
@@ -189,6 +191,32 @@ test("la liste de colonnes et la liste de valeurs ont la même longueur", () => 
   let sansAppels = corps.split("select")[1];
   for (let passe = 0; passe < 8; passe += 1) sansAppels = sansAppels.replace(/\([^()]*\)/g, "");
   const valeurs = sansAppels.split(",").length;
-  assert.equal(colonnes, 59, "59 colonnes déclarées");
-  assert.equal(valeurs, 59, "59 valeurs sélectionnées");
+  assert.equal(colonnes, 60, "60 colonnes déclarées");
+  assert.equal(valeurs, 60, "60 valeurs sélectionnées");
+});
+
+/* ==========================================================================
+   5. RÉSERVER PAR OÙ — LES TROIS MOYENS
+   ======================================================================== */
+test("la ligne Réservation mène quelque part : lien, numéro ou adresse", () => {
+  assert.equal(EVENEMENTS.lienReservationEvenement(ev({booking_url: "https://billet.fr/a"})).genre, "url");
+  assert.equal(EVENEMENTS.lienReservationEvenement(ev({phone: "+33320475060"})).href, "tel:+33320475060");
+  assert.equal(EVENEMENTS.lienReservationEvenement(ev({email: "Info@Lille.FR"})).href, "mailto:info@lille.fr");
+  /* Rien de fabriqué : sans moyen, la phrase reste une phrase. */
+  assert.equal(EVENEMENTS.lienReservationEvenement(ev({})), null);
+  /* Un numéro que la base refuserait ne devient pas un `tel:`. */
+  assert.equal(EVENEMENTS.lienReservationEvenement(ev({phone: "0320475060"})), null);
+});
+
+test("l'ordre est celui du moindre effort pour qui lit", () => {
+  const tout = ev({booking_url: "https://billet.fr/a", phone: "+33320475060", email: "a@b.fr"});
+  assert.equal(EVENEMENTS.lienReservationEvenement(tout).genre, "url");
+  const sansLien = ev({phone: "+33320475060", email: "a@b.fr"});
+  assert.equal(EVENEMENTS.lienReservationEvenement(sansLien).genre, "telephone");
+});
+
+test("un mailto ne s'ouvre pas dans un onglet neuf", () => {
+  /* `target=_blank` sur un `mailto:` laisse un onglet vide derrière le client
+     de messagerie. La fiche ne le pose que sur les liens externes. */
+  assert.match(source, /lienResa\.externe \? ' target="_blank" rel="noopener"' : ''/);
 });

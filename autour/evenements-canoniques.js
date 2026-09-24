@@ -258,6 +258,13 @@
          n'existe pas. */
       booking_url: text(first(input, ["booking_url", "bookingUrl"])) || null,
       phone: text(first(input, ["phone", "telephone"])) || null,
+      /* L'ADRESSE DE L'ORGANISATEUR REVIENT, ET C'EST UN CHOIX RETOURNÉ.
+         Elle avait été gardée hors du chemin public au motif que la fiche ne
+         proposait pas d'écrire. La fiche le propose maintenant : quand ni
+         lien ni numéro n'existent, « Réservation » doit quand même mener
+         quelque part. C'est l'adresse qu'un organisateur a publiée lui-même
+         sur son agenda, jamais celle d'un habitant. */
+      email: text(first(input, ["email", "courriel"])) || null,
       website: text(first(input, ["website", "site_web", "siteWeb"])) || null,
       cancelled:input.cancelled === true || input.annule === true || input.status === "cancelled",
     };
@@ -312,6 +319,26 @@
     return event ? urlHttp(event.booking_url) : "";
   }
 
+  /* ---------------------------------------------------------------------
+     RÉSERVER PAR OÙ ?
+
+     « Réservation obligatoire » sans moyen de réserver est une consigne sans
+     porte. Les trois moyens que la source peut donner sont rendus dans
+     l'ordre où ils coûtent le moins à celui qui lit : un lien s'ouvre, un
+     numéro se compose, une adresse s'écrit. Aucun n'est fabriqué — chacun
+     vient d'un champ vérifié à l'import.
+     ------------------------------------------------------------------- */
+  function lienReservationEvenement(event) {
+    const url = reservationUrlEvenement(event);
+    if (url) return {href: url, genre: "url", externe: true};
+    const tel = telephoneEvenement(event);
+    if (tel) return {href: "tel:" + tel, genre: "telephone", externe: false};
+    const courriel = text(event && event.email).trim().toLowerCase();
+    if (/^[a-z0-9._%+-]+@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(courriel))
+      return {href: "mailto:" + courriel, genre: "email", externe: false};
+    return null;
+  }
+
   function tarifEvenement(event) {
     if (!event) return "Tarif à vérifier";
     if (event.is_free === true) return "Entrée libre";
@@ -351,5 +378,6 @@
     siteEvenement,
     telephoneEvenement,
     reservationUrlEvenement,
+    lienReservationEvenement,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

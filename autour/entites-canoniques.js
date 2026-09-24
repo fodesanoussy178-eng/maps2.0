@@ -423,6 +423,7 @@
          garantit encore pour le téléphone. */
       booking_url: normalized.booking_url || null,
       phone: normalized.phone || null,
+      email: normalized.email || null,
       website: normalized.website || null,
       venue_name: normalized.venue_name || null,
       organizer_name: normalized.organizer_name || null,
