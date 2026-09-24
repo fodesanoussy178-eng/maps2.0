@@ -767,7 +767,15 @@ test("le calque voyage jusqu'au moteur sans être réinterprété", () => {
 test("aucun bouton billetterie sans URL réelle", () => {
   /* Un bouton qui mène nulle part fait cliquer pour rien quelqu'un qui
      voulait y aller. */
-  assert.match(html, /\(l\.ticket_url[\s\S]{0,140}?<a class="act"[\s\S]{0,120}?Billetterie/,
+  /* La garde s'est resserrée : elle ne demande plus seulement qu'une URL
+     existe, mais qu'elle survive à `urlSiteSure` ET qu'elle ne soit pas déjà
+     le lien « Réserver » de la ligne tarif. Deux boutons vers la même page ne
+     donnent pas deux choix ; ils font douter de celui qu'on vient de lire. */
+  assert.match(html, /const billetUrl = urlSiteSure\(l\.ticket_url\);/,
+    "l'URL de billetterie passe par la validation http\(s\)");
+  assert.match(html, /billetADistinguer = billetUrl && billetUrl !== resaUrl \? billetUrl : ""/,
+    "une billetterie identique au lien de réservation n'est pas doublée");
+  assert.match(html, /\(billetADistinguer[\s\S]{0,140}?<a class="act"[\s\S]{0,120}?Billetterie/,
     "la fiche n'affiche le billet que si l'URL existe");
   assert.match(html, /\(l\.ticket_url[\s\S]{0,140}?<a class="pt-billet"/,
     "« Pour toi » suit la même règle");

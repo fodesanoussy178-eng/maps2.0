@@ -214,7 +214,7 @@ const ECRANS_DIFFERES = [
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=6bc8206e"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=9ff6f2ee"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -2881,6 +2881,7 @@ function signatureCoucheSupabase(entree){
     l && l.temporalStatus, l && l.temporal_status,
     l && l.price_amount, l && l.price_text, l && l.is_free, l && l.audience,
     l && l.min_age, l && l.reservation_required, l && l.reservation_text,
+    l && l.booking_url, l && l.phone, l && l.website,
     l && l.event_source, l && l.event_source_url, l && l.place_source,
     l && l.description,
     l && l.status, l && l.annule, l && l.cancelled,
@@ -3077,6 +3078,12 @@ function versEvenementCanonique(e){
     min_age:e.min_age,
     reservation_required:e.reservation_required,
     reservation_text:e.reservation_text,
+    /* Ce que la source a publié pour être joint. Rien n'est reconstruit ici :
+       `evenements_locaux` les rend déjà validés, et une absence reste une
+       absence — c'est elle qui grise le bouton. */
+    booking_url:e.booking_url || null,
+    phone:e.phone || null,
+    website:e.website || null,
     venue_name:e.venue_name || e.place_name || null,
     organizer_name:e.organizer_name || e.organizer || null,
     event_source:e.event_source || e.primary_source || null,
@@ -4865,6 +4872,10 @@ const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre",
   "event_kind","eventKind","start_at","end_at","timezone","temporal_status","temporalStatus",
   "date_confidence","dateConfidence","price_amount","price_text","is_free","price_confidence",
   "audience","min_age","reservation_required","reservation_text","venue_name","organizer_name",
+  /* Une fiche relue depuis le cache doit pouvoir rappeler et rouvrir le site :
+     sans ces trois champs, la réouverture regrisait des boutons qui venaient
+     d'être cliquables. */
+  "booking_url","phone","website",
   "event_source","event_source_url","place_source","place_source_url","entity_type"];
 
 function estContenuGoogle(l){

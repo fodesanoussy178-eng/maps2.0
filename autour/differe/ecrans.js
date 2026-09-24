@@ -269,7 +269,24 @@ function ouvrirDetail(id){
     : lieu && (lieu.is_free === true || lieu.price_amount != null || lieu.price_text)
       ? ENTITES.tarifLieu(lieu) : "";
   const eventSourceUrl = evenement ? urlSiteSure(evenement.event_source_url) : "";
-  const site = urlSiteSure(l.url);
+  /* LES TROIS BOUTONS LISAIENT DES CHAMPS DE LIEU SUR UN ÉVÉNEMENT.
+     `l.url` et `l.tel` n'existent jamais sur un événement — la fiche affichait
+     donc « Appeler » et « Site web » grisés quelle que soit la richesse de la
+     source. Un événement a maintenant ses propres réponses, et elles viennent
+     du module canonique, pas d'une cascade réécrite ici. */
+  const site = evenement
+    ? (EVENEMENTS && EVENEMENTS.siteEvenement ? EVENEMENTS.siteEvenement(evenement) : eventSourceUrl)
+    : urlSiteSure(l.url);
+  const tel = evenement
+    ? (EVENEMENTS && EVENEMENTS.telephoneEvenement ? EVENEMENTS.telephoneEvenement(evenement) : "")
+    : (l.tel ? String(l.tel).replace(/\s/g, "") : "");
+  const resaUrl = evenement && EVENEMENTS && EVENEMENTS.reservationUrlEvenement
+    ? EVENEMENTS.reservationUrlEvenement(evenement) : "";
+  /* Une billetterie marchande et un lien d'inscription peuvent être le même
+     lien. Deux boutons vers la même page ne donnent pas deux choix : ils font
+     douter de celui qu'on vient de lire. */
+  const billetUrl = urlSiteSure(l.ticket_url);
+  const billetADistinguer = billetUrl && billetUrl !== resaUrl ? billetUrl : "";
 
   /* DEUX PANNEAUX, UNE SEULE FEUILLE.
 
@@ -301,15 +318,15 @@ function ouvrirDetail(id){
     '</p>'+
     '<div class="actions">'+
       '<button class="act act-1" id="btnYAller">'+(ficheAide?'Itinéraire':'Y aller')+'</button>'+
-      (l.tel ? '<a class="act" href="tel:'+esc(l.tel.replace(/\s/g,""))+'">Appeler</a>'
+      (tel ? '<a class="act" href="tel:'+esc(tel)+'">Appeler</a>'
         : '<button class="act" type="button" disabled aria-label="Téléphone non renseigné">Appeler</button>')+
       (site ? '<a class="act" href="'+esc(site)+'" target="_blank" rel="noopener">Site web</a>'
         : '<button class="act" type="button" disabled aria-label="Site non renseigné">Site web</button>')+
       /* La billetterie n'apparaît QUE si une source vérifiée en a trouvé une.
          Un bouton « Billetterie » qui mène nulle part est pire que son
          absence : il fait cliquer pour rien quelqu'un qui voulait y aller. */
-      (l.ticket_url
-        ? '<a class="act" href="'+esc(l.ticket_url)+'" target="_blank" rel="noopener">Billetterie</a>'
+      (billetADistinguer
+        ? '<a class="act" href="'+esc(billetADistinguer)+'" target="_blank" rel="noopener">Billetterie</a>'
         : '')+
       '<button class="act" id="btnPartLieu">Partager</button>'+
       '<button class="act" id="btnGarder">'+(estGarde(l.id)?'Favori ajouté':'Favori')+'</button>'+
@@ -333,10 +350,28 @@ function ouvrirDetail(id){
     '</address>'+
     (ficheAide ? faitsAide(l) : evenement ?
       '<dl class="faits faits-evenement">'+
-        '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+'</dd></div>'+
-        '<div><dt>Tarif</dt><dd>'+esc(EVENEMENTS.tarifEvenement(evenement))+'</dd></div>'+
+        '<div><dt>Quand</dt><dd>'+esc(libelleHoraires(l))+
+          /* Les séances arrivent ici quand la base en connaît plusieurs : une
+             plage « 20/09 → 04/01 » ne dit pas à quelle heure venir. */
+          '<span id="seancesBloc"></span></dd></div>'+
+        /* « Tarif » seul laissait la question suivante sans réponse : et où
+           est-ce qu'on prend sa place ? Les deux vivent sur la même ligne
+           parce que c'est la même décision. */
+        '<div><dt>Tarif &amp; billetterie</dt><dd>'+esc(EVENEMENTS.tarifEvenement(evenement))+
+          /* La pastille est celle des tarifs, réutilisée telle quelle : la
+             feuille de style d'`index.html` arrive en premier sur le réseau et
+             n'avait plus la place d'une classe de plus. Le rendu y gagne — une
+             seule pastille pour toute la fiche. */
+          (resaUrl ? ' <a class="prix-tag g" href="'+esc(resaUrl)+'" target="_blank" rel="noopener">Réserver</a>' : '')+
+        '</dd></div>'+
         '<div><dt>Public</dt><dd>'+esc(EVENEMENTS.publicEvenement(evenement))+'</dd></div>'+
-        '<div><dt>Réservation</dt><dd>'+esc(EVENEMENTS.reservationEvenement(evenement))+'</dd></div>'+
+        /* La ligne « Réservation » énonçait une consigne sans donner le moyen
+           de la suivre. Quand la source a publié un lien, la phrase EST le
+           lien. */
+        '<div><dt>Réservation</dt><dd>'+
+          (resaUrl
+            ? '<a href="'+esc(resaUrl)+'" target="_blank" rel="noopener">'+esc(EVENEMENTS.reservationEvenement(evenement))+'</a>'
+            : esc(EVENEMENTS.reservationEvenement(evenement)))+'</dd></div>'+
         (evenement.event_source ? '<div><dt>Source événement</dt><dd>'+esc(libelleSourceEvenement(evenement.event_source))+
           (eventSourceUrl ? ' · <a href="'+esc(eventSourceUrl)+'" target="_blank" rel="noopener">Voir la source</a>' : '')+'</dd></div>' : '')+
         (evenement.place_source ? '<div><dt>Source lieu</dt><dd>'+esc(libelleSourceEvenement(evenement.place_source))+'</dd></div>' : '')+
@@ -367,6 +402,7 @@ function ouvrirDetail(id){
   if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
   completerExplication(l);
   if(l.dbId) chargerCanal(l);
+  if(evenement && l.dbId) chargerSeances(l);
 
   const modifier = $("#btnModifier");
   if(modifier) modifier.onclick = async ()=>{
@@ -712,6 +748,53 @@ async function afficherTrajet(l){
 /* ---- Canal d'un événement ------------------------------------------------
    Annonces visibles par tous ceux qui regardent l'événement, actions
    réservées à son créateur. Rien ici ne ressemble à une conversation. */
+/* ---------------------------------------------------------------------------
+   LES SÉANCES D'UN ÉVÉNEMENT
+
+   `event_occurrences` porte une ligne par horaire depuis le début, et la table
+   est fermée à `anon` — elle contient `raw_data`. On n'ouvre donc pas la
+   table : on pose UNE question, `evenement_seances`, qui rend les prochaines
+   séances dédupliquées sur (début, fin) et rien d'autre.
+
+   LE BLOC NE S'AFFICHE PAS TOUJOURS, ET C'EST LE POINT. Quand il n'y a qu'une
+   séance, la ligne « Quand » la dit déjà : répéter la même heure juste en
+   dessous ferait douter de l'avoir bien lue. Le bloc apparaît à partir de deux.
+--------------------------------------------------------------------------- */
+async function chargerSeances(l){
+  const bloc = $("#seancesBloc");
+  if(!bloc || !l || !l.dbId) return;
+  const T = window.AutourTemps;
+  if(!T || !T.libelleSeances || typeof sbLecture === "undefined" || !sbLecture) return;
+  let lignes = [];
+  try{
+    const {data, error} = await sbLecture.rpc("evenement_seances", {
+      p_event_id:l.dbId, p_limite:40,
+    });
+    /* Une séance manquante n'est pas une panne de fiche : la plage reste
+       affichée, et l'utilisateur voit moins plutôt que rien. */
+    if(error || !Array.isArray(data)) return;
+    lignes = data;
+  }catch(e){ return; }
+  if(!document.contains(bloc)) return;
+
+  const rendu = T.libelleSeances(lignes, {timeZone:l.timezone || "Europe/Paris", maximum:8});
+  const creneaux = rendu.jours.reduce((total, j)=>total + j.creneaux.length, 0);
+  if(rendu.jours.length < 2 && creneaux < 2) return;
+
+  /* `fb-section` est l'intitulé déjà utilisé par le bloc des mises à jour :
+     même rôle, même graisse, aucune règle nouvelle à faire tenir dans le
+     budget de la page. */
+  bloc.innerHTML =
+    '<p class="fb-section">Prochaines séances</p>'+
+    '<ul class="seances">'+
+      rendu.jours.map(j=>'<li><b>'+esc(j.jour)+'</b> '+esc(j.creneaux.join(", "))+'</li>').join("")+
+      (rendu.restantes
+        ? '<li><b>'+esc("+ "+rendu.restantes+
+            (rendu.restantes > 1 ? " autres jours" : " autre jour"))+'</b></li>'
+        : "")+
+    '</ul>';
+}
+
 async function chargerCanal(l){
   const bloc = $("#canalBloc");
   if(!bloc || !window.AutourEvents) return;

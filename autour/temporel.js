@@ -740,6 +740,76 @@
     return String(p.heure).padStart(2, "0") + ":" + String(p.minute).padStart(2, "0");
   }
 
+  /* --------------------------------------------------------------------------
+     LES SÉANCES, ET POURQUOI UNE PLAGE NE SUFFIT PAS
+
+     `events` porte un début et une fin ; `event_occurrences` porte une ligne
+     par horaire. La fiche n'affichait que la plage, ce qui donne, pour une
+     exposition de trois mois, « Samedi 20 septembre · 10h–18h » et rien sur
+     les 90 jours suivants — ou, pour un atelier joué trois fois le même
+     samedi, une seule des trois séances.
+
+     Ce formateur rend une ligne par JOUR, avec ses créneaux. Le regroupement
+     est ce qui rend la liste lisible : « Dimanche 21 septembre · 8h–18h,
+     9h–18h » se lit, douze lignes ne se lisent pas.
+
+     Il ne fabrique rien : une séance sans fin n'affiche qu'une heure de début,
+     et une séance sans heure exacte n'affiche que son jour.
+     ------------------------------------------------------------------------ */
+  function libelleSeances(seances, options) {
+    const o = options || {};
+    const zone = o.timeZone || DEFAULT_TIMEZONE;
+    const maximum = Number.isFinite(Number(o.maximum)) ? Math.max(1, Number(o.maximum)) : 8;
+    const liste = (Array.isArray(seances) ? seances : [])
+      .map((seance) => {
+        const debut = toEpoch(seance && (seance.start_at != null ? seance.start_at : seance.debut));
+        const fin = toEpoch(seance && (seance.end_at != null ? seance.end_at : seance.fin));
+        return Number.isFinite(debut)
+          ? {debut, fin: Number.isFinite(fin) && fin > debut ? fin : null,
+             zone: (seance && seance.timezone) || zone}
+          : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.debut - b.debut);
+    if (!liste.length) return {jours: [], restantes: 0};
+
+    const jours = [];
+    const parJour = new Map();
+    for (const seance of liste) {
+      const p = partsLocales(seance.debut, seance.zone);
+      const cle = p.annee + "-" + p.mois + "-" + p.jour;
+      if (!parJour.has(cle)) {
+        const entree = {cle, debut: seance.debut, zone: seance.zone, creneaux: []};
+        parJour.set(cle, entree);
+        jours.push(entree);
+      }
+      const entree = parJour.get(cle);
+      const creneau = heureLocale(seance.debut, seance.zone).replace(":", "h") +
+        (seance.fin ? "–" + heureLocale(seance.fin, seance.zone).replace(":", "h") : "");
+      /* Deux sources qui décrivent le même créneau ne doivent pas le faire
+         apparaître deux fois : la liste aurait l'air précise en étant fausse. */
+      if (!entree.creneaux.includes(creneau)) entree.creneaux.push(creneau);
+    }
+
+    const retenus = jours.slice(0, maximum);
+    return {
+      jours: retenus.map((entree) => {
+        /* Le formateur passe par le cache : une exposition de trois mois
+           construisait sinon un `Intl.DateTimeFormat` par jour affiché, pour
+           un objet qui ne dépend que du fuseau. */
+        const date = formateur("seance:" + entree.zone, () => new Intl.DateTimeFormat("fr-FR", {
+          weekday: "long", day: "numeric", month: "long", timeZone: entree.zone,
+        })).format(new Date(entree.debut));
+        return {
+          jour: date.charAt(0).toUpperCase() + date.slice(1),
+          creneaux: entree.creneaux.slice(),
+          debut: entree.debut,
+        };
+      }),
+      restantes: Math.max(0, jours.length - retenus.length),
+    };
+  }
+
   function libelleTemporel(item, now, options) {
     const t = now == null ? Date.now() : Number(now);
     const etat = (options && options.statut) || statutTemporel(item, t, options);
@@ -876,6 +946,7 @@
     estMaintenant,
     libelleTemporel,
     libelleDate,
+    libelleSeances,
     sectionTemporelle,
     estDansFenetre,
     fenetreSurface,

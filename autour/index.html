@@ -2140,6 +2140,10 @@ body.nav .leaflet-control-zoom{display:none}
 .feuille-x{position:sticky;top:0;z-index:3;float:right;width:44px;height:44px;margin:0 0 4px 8px;
   border:1px solid var(--bord);border-radius:50%;background:#fff;color:var(--ink);
   font-size:17px;font-weight:700;box-shadow:0 2px 8px rgba(20,30,25,.14)}
+/* Croix sticky : colonne réservée, sinon titre et pastille défilent dessous. */
+#feuille .d-haut,#feuille h2.titre{padding-right:60px}
+ul.seances{margin:2px 0 0;padding:0;list-style:none;font-size:13px;font-weight:600;line-height:1.4}
+ul.seances b{color:var(--ink2)}
 .annuler-publication{width:100%;margin-top:10px;padding:14px;border:1px solid var(--bord);
   border-radius:2px;background:#fff;color:var(--ink);font-size:14px;font-weight:700}
 .etat-vide-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
@@ -3298,9 +3302,9 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="aide-contexte-ia.js?v=3da4c06f" defer></script>
 <script src="aide.js?v=86fea5f0" defer></script>
 <script src="signaux.js?v=319acaa9" defer></script>
-<script src="temporel.js?v=499fbeb9" defer></script>
-<script src="evenements-canoniques.js?v=46471f92" defer></script>
-<script src="entites-canoniques.js?v=64938bfe" defer></script>
+<script src="temporel.js?v=63cd4fb1" defer></script>
+<script src="evenements-canoniques.js?v=0ee4993b" defer></script>
+<script src="entites-canoniques.js?v=cfcc73cd" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=68b5ce89" defer></script>
 <script src="images.js?v=6303b727" defer></script>
@@ -3315,6 +3319,6 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 <script src="providers/aideDora.js?v=f2c4aa5e" defer></script>
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=b4e57619" defer></script>
+<script src="app.js?v=eb53b78f" defer></script>
 </body>
 </html>

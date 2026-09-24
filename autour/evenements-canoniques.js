@@ -250,8 +250,66 @@
       place_source: text(first(input, ["place_source", "placeSource", "venue_source", "venueSource"])) || null,
       image_source: text(first(input, ["image_source", "imageSource"])) || null,
       image_source_url: text(first(input, ["image_source_url", "imageSourceUrl"])) || null,
+      /* LES COORDONNÉES VIENNENT DE LA SOURCE, ET NE SONT PAS DEVINÉES ICI.
+         `sync-openagenda` les a lues dans `registration[]` et validées :
+         `booking_url` signifie « la source dit qu'on s'inscrit là », `phone`
+         est déjà en E.164. Cette couche ne fait que les transporter — si
+         elle inventait une URL, la fiche promettrait une réservation qui
+         n'existe pas. */
+      booking_url: text(first(input, ["booking_url", "bookingUrl"])) || null,
+      phone: text(first(input, ["phone", "telephone"])) || null,
+      website: text(first(input, ["website", "site_web", "siteWeb"])) || null,
       cancelled:input.cancelled === true || input.annule === true || input.status === "cancelled",
     };
+  }
+
+  /* --------------------------------------------------------------------------
+     CE QUE LA FICHE PEUT PROPOSER
+
+     Trois questions, trois réponses, un seul endroit où la règle est écrite —
+     la fiche compacte, la fiche détaillée et les tests interrogent les mêmes
+     fonctions plutôt que de réimplémenter chacune sa cascade.
+     ------------------------------------------------------------------------ */
+  function urlHttp(value) {
+    const brut = text(value);
+    if (!brut) return "";
+    try {
+      const url = new URL(brut);
+      return /^https?:$/.test(url.protocol) ? url.href : "";
+    } catch (e) { return ""; }
+  }
+
+  /* « Site web » n'était jamais cliquable sur un événement : le bouton lisait
+     `l.url`, un champ de LIEU, vide par construction sur un événement. La
+     cascade descend maintenant du plus précis au plus général — où réserver,
+     puis le site de l'organisateur, puis la fiche source. La dernière marche
+     mène toujours quelque part : un événement a toujours une source. */
+  function siteEvenement(event) {
+    if (!event) return "";
+    return urlHttp(event.booking_url) || urlHttp(event.website)
+      || urlHttp(event.event_source_url) || urlHttp(event.source_url) || "";
+  }
+
+  /* `tel:` n'est proposé que sur un numéro vérifié deux fois.
+
+     La contrainte CHECK de `events.phone` vérifie la forme GÉNÉRALE de l'E.164
+     — un « + », un premier chiffre non nul, 7 à 15 chiffres. Elle laisse donc
+     passer « +33 0 3 20 … », où le zéro de service a été recopié derrière
+     l'indicatif national : douze chiffres, forme valide, numéro inexistant.
+     L'import le refuse déjà ; on refait le même contrôle ici, parce que
+     composer un numéro faux fait sonner chez un inconnu et que la vérification
+     coûte une expression régulière. */
+  function telephoneEvenement(event) {
+    const brut = text(event && event.phone);
+    if (!/^\+[1-9][0-9]{6,14}$/.test(brut)) return "";
+    if (brut.startsWith("+33") && !/^\+33[1-9][0-9]{8}$/.test(brut)) return "";
+    return brut;
+  }
+
+  /* « Réserver » n'apparaît QUE sur `booking_url` : un lien repêché dans une
+     description est rangé dans `website` précisément pour ne pas arriver ici. */
+  function reservationUrlEvenement(event) {
+    return event ? urlHttp(event.booking_url) : "";
   }
 
   function tarifEvenement(event) {
@@ -267,10 +325,21 @@
     return event.min_age == null ? event.audience : event.audience + " · dès " + event.min_age + " ans";
   }
 
+  /* LA PHRASE DE LA SOURCE PASSAIT AVANT, ET ELLE ÉTAIT JETÉE.
+     L'ordre précédent sortait « Réservation à vérifier » dès que
+     `reservation_required` valait null — même quand la source avait écrit
+     « inscriptions à la billetterie 30 minutes avant la séance ». Or c'est le
+     cas le plus courant : les agendas publient une phrase, pas un booléen. La
+     phrase est donc lue d'abord ; le booléen ne sert qu'à défaut. */
   function reservationEvenement(event) {
-    if (!event || event.reservation_required == null) return "Réservation à vérifier";
+    if (!event) return "Réservation à vérifier";
     if (event.reservation_text) return event.reservation_text;
-    return event.reservation_required ? "Réservation obligatoire" : "Sans réservation";
+    if (event.reservation_required != null)
+      return event.reservation_required ? "Réservation obligatoire" : "Sans réservation";
+    /* Un lien d'inscription publié par la source dit au moins qu'on PEUT
+       réserver. Il ne dit pas que c'est obligatoire, et on ne l'ajoute pas. */
+    if (reservationUrlEvenement(event)) return "Réservation en ligne";
+    return "Réservation à vérifier";
   }
 
   root.AutourEvenements = Object.freeze({
@@ -279,5 +348,8 @@
     tarifEvenement,
     publicEvenement,
     reservationEvenement,
+    siteEvenement,
+    telephoneEvenement,
+    reservationUrlEvenement,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
