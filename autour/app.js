@@ -203,7 +203,7 @@ const ECRANS_DIFFERES = [
   "ouvrirFicheCompacte", "ouvrirDetail", "faitsAide",
   /* l'itinéraire */
   "afficherTrajet", "entrerNav", "itineraireOSRM", "dessinerSegments",
-  "urlItineraireExterne", "liensItinerairesExternes",
+  "urlItineraireExterne", "liensItinerairesExternes", "ouvrirChoixItineraire",
   /* publier */
   "ouvrirChoixLieu", "dessinerFormulaire", "publier",
   "reessayerPublication", "annulerPublication", "continuerPublication",
@@ -214,7 +214,7 @@ const ECRANS_DIFFERES = [
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=9ff6f2ee"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c45bcc03"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -18227,6 +18227,52 @@ async function chargerOffres(audience){
   finally { fini(); }
 }
 
+/* ---------------------------------------------------------------------------
+   « Y ALLER » DEPUIS UNE OFFRE, ET L'APPLICATION QU'ON PRÉFÈRE
+
+   Autour ne route pas la voiture : les applications qui le font pour de vrai
+   le font mieux. Le bouton les ouvre donc, avec les coordonnées de l'offre.
+
+   POURQUOI MÉMORISER. Quelqu'un qui a Waze a Waze à chaque fois. Lui redemander
+   à chaque offre, c'est un choix par offre pour une réponse qui ne change
+   jamais. Le choix est donc retenu, et le bouton porte le nom de l'application
+   retenue — « Y aller · Waze » — pour que la mémoire soit VISIBLE plutôt que
+   surprenante. L'écran des offres porte une ligne pour l'oublier.
+
+   Ces trois fonctions vivent dans `app.js` et non dans l'écran différé, parce
+   que la carte d'offre a besoin de lire le choix pour écrire son libellé,
+   avant que le module des écrans ne soit demandé.
+--------------------------------------------------------------------------- */
+const CLE_APPLI_ITINERAIRE = "autour.appli.itineraire";
+
+/* Les quatre applications, et rien d'autre. Chacune a une URL PUBLIQUE et
+   documentée : aucune n'est appelée par un SDK, aucune n'est pistée. Les logos
+   ne sont pas reproduits — le dépôt n'en porte aucun, et un logo redessiné à la
+   main serait un faux logo. */
+const APPLIS_ITINERAIRE = Object.freeze([
+  {cle:"google", nom:"Google Maps"},
+  {cle:"apple", nom:"Apple Plans"},
+  {cle:"waze", nom:"Waze"},
+  {cle:"citymapper", nom:"Citymapper"},
+]);
+
+function appliItineraireMemorisee(){
+  try{
+    const cle = localStorage.getItem(CLE_APPLI_ITINERAIRE);
+    return APPLIS_ITINERAIRE.find(a=>a.cle === cle) || null;
+  }catch(e){ return null; }        // navigation privée, stockage refusé
+}
+
+function memoriserAppliItineraire(cle){
+  if(!APPLIS_ITINERAIRE.some(a=>a.cle === cle)) return false;
+  try{ localStorage.setItem(CLE_APPLI_ITINERAIRE, cle); return true; }
+  catch(e){ return false; }        // le choix vaut pour cette fois, pas plus
+}
+
+function oublierAppliItineraire(){
+  try{ localStorage.removeItem(CLE_APPLI_ITINERAIRE); }catch(e){}
+}
+
 const NATURE_OFFRE = Object.freeze({
   gratuite:"Gratuit", reduction:"Réduction", tarif_reduit:"Tarif réduit",
   avantage:"Avantage", operation:"Opération", pass:"Pass",
@@ -18269,8 +18315,34 @@ function carteOffre(o){
       ? '<span class="of-ferme">Fermé'+
         (o.ouvre_a ? ' · ouvre '+esc(heureCourte(o.ouvre_a)) : '')+'</span>'
     : '';
-  return '<a class="of-carte" href="'+esc(o.source_url)+'" target="_blank" rel="noopener"'+
-    ' data-offre="'+esc(o.id)+'">'+
+  /* LA CARTE N'EST PLUS UN SEUL LIEN, ET C'EST CE QUI LA REND UTILE.
+
+     Elle était un `<a>` vers le jeu de données source. Un tap ouvrait donc un
+     onglet sur data.enseignementsup-recherche.gouv.fr — informatif, mais ce
+     n'est pas ce qu'on veut savoir devant une cafétéria à 800 m. Les trois
+     gestes possibles sont maintenant distincts et nommés : voir où c'est,
+     y aller, et lire la source. Un `<a>` ne pouvait en contenir aucun autre :
+     un lien dans un lien n'est pas du HTML valide.
+
+     Les coordonnées voyagent dans les attributs plutôt que dans une clôture :
+     la liste est rendue en une chaîne, et un gestionnaire délégué unique lit
+     `data-lat`/`data-lng` au moment du geste. Une offre sans position n'écrit
+     donc aucun bouton — il n'y a rien à centrer ni à ouvrir. */
+  const lat = Number(o.lat), lng = Number(o.lng);
+  const situee = Number.isFinite(lat) && Number.isFinite(lng);
+  const ou_ = situee ? esc(lat.toFixed(6)+","+lng.toFixed(6)) : "";
+  const appli = appliItineraireMemorisee();
+  const gestes = situee
+    ? '<span class="itin-liens">'+
+        '<button type="button" class="act" data-of-centrer="'+ou_+'"'+
+          ' data-of-nom="'+esc(o.title)+'">Sur la carte</button>'+
+        '<button type="button" class="act" data-of-yaller="'+ou_+'"'+
+          ' data-of-nom="'+esc(o.title)+'">'+
+          (appli ? 'Y aller · '+esc(appli.nom) : 'Y aller')+'</button>'+
+      '</span>'
+    : '';
+  return '<div class="of-carte" data-offre="'+esc(o.id)+'"'+
+    (situee ? ' data-of-lat="'+esc(String(lat))+'" data-of-lng="'+esc(String(lng))+'"' : '')+'>'+
     '<span class="of-tete"><span class="of-titre">'+esc(o.title)+'</span>'+
       '<span class="of-nature">'+esc(NATURE_OFFRE[o.offer_type] || "Avantage")+'</span></span>'+
     (ou ? '<span class="of-lieu">'+esc(ou)+'</span>' : '')+
@@ -18278,8 +18350,12 @@ function carteOffre(o){
     (pour ? '<span class="of-public">'+esc(pour)+'</span>' : '')+
     (o.eligibility ? '<span class="of-condition">'+esc(o.eligibility)+'</span>' : '')+
     (fin ? '<span class="of-fin">Jusqu’au '+esc(fin.toLocaleDateString("fr-FR"))+'</span>' : '')+
-    '<span class="of-source">↗ '+esc(o.source_name)+'</span>'+
-  '</a>';
+    /* La source reste un lien, et reste obligatoire : c'est elle qui fait que
+       l'offre est vérifiable plutôt que affirmée. */
+    '<a class="of-source" href="'+esc(o.source_url)+'" target="_blank" rel="noopener">'+
+      '↗ '+esc(o.source_name)+'</a>'+
+    gestes+
+  '</div>';
 }
 
 /* « ferme à 18:00 » aujourd'hui, « ouvre lundi 09:00 » un autre jour. */
@@ -18315,9 +18391,57 @@ async function ouvrirBonsPlansEtudiants(){
       'ce qui s’affiche ici vient toujours d’un organisme identifié.</p>');
     return;
   }
+  const appli = appliItineraireMemorisee();
   hote.insertAdjacentHTML("beforeend",
     '<div class="of-liste">'+
-      vivantes.map(carteOffre).join("")+'</div>');
+      vivantes.map(carteOffre).join("")+'</div>'+
+    /* LA MÉMOIRE DOIT ÊTRE ANNULABLE À L'ENDROIT OÙ ELLE SE VOIT.
+       Un réglage retenu sans moyen visible de le défaire n'est plus un choix,
+       c'est une contrainte. Cette ligne n'existe que quand il y a quelque chose
+       à oublier, et elle dit laquelle. */
+    (appli
+      ? '<p class="of-vide" data-testid="offres-appli">Les itinéraires s’ouvrent dans '+
+        esc(appli.nom)+'. <button type="button" class="act" data-of-oublier="1">'+
+        'Changer d’application</button></p>'
+      : ''));
+
+  /* UN SEUL GESTIONNAIRE POUR TOUTE LA LISTE. Trente cartes ne posent pas
+     quatre-vingt-dix écouteurs : la délégation lit l'attribut du bouton
+     touché. C'est aussi ce qui fait que la liste peut être réécrite sans
+     avoir à recâbler quoi que ce soit. */
+  hote.addEventListener("click", (e)=>{
+    const cible = e.target instanceof Element ? e.target : null;
+    if(!cible) return;
+    const oublier = cible.closest("[data-of-oublier]");
+    if(oublier){
+      oublierAppliItineraire();
+      toast("Autour redemandera l’application au prochain itinéraire");
+      const ligne = hote.querySelector("[data-testid='offres-appli']");
+      if(ligne) ligne.remove();
+      /* Les libellés « Y aller · Waze » deviennent faux à la seconde où le
+         choix est oublié : on les remet au nom générique plutôt que de
+         laisser l'écran mentir jusqu'au prochain rendu. */
+      hote.querySelectorAll("[data-of-yaller]").forEach(b=>{ b.textContent = "Y aller"; });
+      return;
+    }
+    const centrer = cible.closest("[data-of-centrer]");
+    if(centrer){
+      const point = String(centrer.getAttribute("data-of-centrer") || "").split(",").map(Number);
+      if(!allerVers(point, (m)=>Math.max(m.getZoom(), 17))) return;
+      /* La feuille couvre la carte : la laisser ouverte reviendrait à centrer
+         sur un lieu que personne ne voit. On la ferme, et le toast dit sur
+         quoi on vient d'atterrir. */
+      fermerFeuille();
+      toast(centrer.getAttribute("data-of-nom") || "Lieu situé sur la carte");
+      return;
+    }
+    const yaller = cible.closest("[data-of-yaller]");
+    if(yaller){
+      const point = String(yaller.getAttribute("data-of-yaller") || "").split(",").map(Number);
+      if(point.length !== 2 || !point.every(Number.isFinite)) return;
+      ouvrirChoixItineraire(point, yaller.getAttribute("data-of-nom") || "");
+    }
+  });
 }
 
 

@@ -559,7 +559,76 @@ function urlItineraireExterne(fournisseur, mode, depart, destination){
       "daddr="+encodeURIComponent(arrivee)+
       "&dirflg="+(mode === "transit" ? "r" : "d");
   }
+  /* Citymapper est la seule des quatre à savoir les transports d'une métropole
+     mieux que Google sur certains réseaux, et c'est l'application que beaucoup
+     d'étudiants ont déjà. Son URL publique attend `endcoord`, et accepte un
+     `endname` qui s'affiche dans son écran d'arrivée. */
+  if(fournisseur === "citymapper"){
+    return "https://citymapper.com/directions?endcoord="+encodeURIComponent(arrivee)+
+      (origine ? "&startcoord="+encodeURIComponent(origine) : "");
+  }
   return "https://www.waze.com/ul?ll="+encodeURIComponent(arrivee)+"&navigate=yes";
+}
+
+/* ---------------------------------------------------------------------------
+   CHOISIR SON APPLICATION D'ITINÉRAIRE — une fois
+
+   Appelé depuis une carte d'offre, où il n'y a pas de panneau d'itinéraire
+   complet : on ne route pas, on passe la main. Le choix est retenu par
+   `memoriserAppliItineraire`, et un choix déjà retenu SAUTE cette feuille —
+   redemander à chaque offre serait un choix par offre pour une réponse qui ne
+   change jamais. L'écran des offres porte la ligne qui l'oublie.
+
+   Rien n'est ouvert par programme : chaque application est une VRAIE ancre.
+   Un `window.open` déclenché après un `await` est bloqué par les navigateurs
+   comme une popup — le geste doit rester le clic de la personne.
+--------------------------------------------------------------------------- */
+function ouvrirChoixItineraire(point, titre){
+  if(!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite)) return;
+  /* Le départ est la position PHYSIQUE quand on l'a. Sans elle on n'en
+     fabrique pas une : Google Maps et Apple Plans savent partir de « ici »,
+     et Waze le fait toujours. Un départ inventé enverrait quelqu'un depuis un
+     endroit où il n'est pas. */
+  const depart = pointGeographiqueValide(positionMoi) ? positionMoi : null;
+  const lien = (appli)=>
+    '<a class="itin-lien" target="_blank" rel="noopener" data-provider="'+esc(appli.cle)+'"'+
+      ' data-choix-appli="'+esc(appli.cle)+'" href="'+
+      esc(urlItineraireExterne(appli.cle, "driving", depart, point))+'">'+
+      '<span class="itin-lien-marque" aria-hidden="true">'+traitSvg(SORTIE_APPLI, 15, 1.9)+'</span>'+
+      '<span>'+esc(appli.nom)+'</span></a>';
+
+  const memorisee = appliItineraireMemorisee();
+  if(memorisee){
+    /* Déjà choisi : on n'ouvre pas de feuille pour faire confirmer ce qui est
+       décidé. Le lien est posé et suivi dans le même geste, ce qui garde
+       l'ouverture rattachée au clic. */
+    const a = document.createElement("a");
+    a.href = urlItineraireExterne(memorisee.cle, "driving", depart, point);
+    a.target = "_blank"; a.rel = "noopener";
+    a.click();
+    return;
+  }
+
+  ouvrirFeuille('<section class="itin-externes" data-testid="choix-itineraire">'+
+    '<h3 class="itin-externes-titre">Ouvrir l’itinéraire'+
+      (titre ? ' vers '+esc(titre) : '')+'</h3>'+
+    '<span class="itin-liens">'+APPLIS_ITINERAIRE.map(lien).join("")+'</span>'+
+    /* Ce que la mémoire fait, dit avant qu'elle le fasse. */
+    '<p class="itin-note">Autour ouvrira désormais cette application '+
+      'directement. Tu pourras en changer depuis la liste des bons plans.</p>'+
+    '</section>', {ariaLabel:"Choisir une application d’itinéraire"});
+
+  const hote = $("#feuille [data-testid='choix-itineraire']");
+  if(!hote) return;
+  hote.addEventListener("click", (e)=>{
+    const choix = e.target instanceof Element ? e.target.closest("[data-choix-appli]") : null;
+    if(!choix) return;
+    memoriserAppliItineraire(choix.getAttribute("data-choix-appli"));
+    /* On ne bloque pas la navigation : l'ancre part, et la feuille se referme
+       derrière elle pour que le retour ne tombe pas sur un écran de choix
+       déjà tranché. */
+    setTimeout(()=>fermerFeuille(), 0);
+  });
 }
 
 /* ---- Les pictogrammes du mode itinéraire --------------------------------
