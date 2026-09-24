@@ -193,6 +193,52 @@
   const RAYON_MAX_M = 3000;
 
   /* ===================================================================
+     LA PHASE DE DÉMARRAGE — UN SEUIL, ÉCRIT UNE FOIS
+
+     Tant qu'Autour a peu d'habitants, un événement publié par l'un d'eux vaut
+     plus qu'un lieu ouvert de plus : c'est la seule preuve que l'application
+     sert à quelque chose, et c'est ce qui donne envie à la personne suivante
+     de publier. Passé un millier de comptes, cette béquille n'a plus lieu
+     d'être — les publications se défendent alors toutes seules dans le
+     classement ordinaire.
+
+     LE SEUIL EST UNE DONNÉE, PAS UNE CONSTANTE CACHÉE. Il se lit dans le
+     contexte (`ctx.seuilDemarrage`), et `SEUIL_DEMARRAGE` n'est que sa valeur
+     par défaut. Changer la règle ne demande donc pas de retoucher ce fichier.
+
+     ET IL NE DÉFORME RIEN D'AUTRE. La priorité ne s'applique qu'à un
+     événement qui a DÉJÀ passé toutes les portes d'éligibilité : validité,
+     nom, catégorie, fenêtre temporelle, distance. Elle décide d'un ORDRE,
+     jamais d'une admission. Un événement utilisateur expiré ou mal renseigné
+     reste dehors, et le fait qu'un habitant l'ait écrit n'y change rien.
+     =================================================================== */
+  const SEUIL_DEMARRAGE = 1000;
+
+  function phaseDemarrage(ctx) {
+    const seuil = Number((ctx && ctx.seuilDemarrage) != null ? ctx.seuilDemarrage : SEUIL_DEMARRAGE);
+    const brut = ctx ? ctx.utilisateurs : null;
+    /* SANS MÉTRIQUE, PAS DE FAVEUR — et `null` n'est pas zéro.
+       `Number(null)` vaut 0, donc un `null` passait pour « zéro utilisateur »
+       et déclenchait la priorité de démarrage. C'est exactement le contraire
+       de ce qu'il faut : une métrique absente est le cas où l'on sait le
+       moins, pas celui où l'on favorise le plus. */
+    if (brut == null || brut === "" || typeof brut === "boolean") return false;
+    const comptes = Number(brut);
+    if (!Number.isFinite(comptes) || !Number.isFinite(seuil)) return false;
+    return comptes < seuil;
+  }
+
+  /* Un événement d'habitant, et rien d'autre. `publication_id` est ce que la
+     base pose sur un événement issu d'une publication ; les deux autres
+     graphies existent parce que l'adaptateur client les pose aussi. */
+  function estEvenementHabitant(item) {
+    if (!item) return false;
+    return !!(item.publication_id || item.publicationId ||
+      item.estPublication === true || item.source === "publication" ||
+      item.primary_source === "publication" || item.event_source === "publication");
+  }
+
+  /* ===================================================================
      2. CE QUI A LE DROIT D'ENTRER
 
      La règle est volontairement stricte, et chaque refus porte un nom : quand
@@ -950,6 +996,50 @@
     return out;
   }
 
+  /* ===================================================================
+     LE FAVORI VERROUILLÉ, ET CE QU'IL NE PEUT PAS FAIRE
+
+     Mettre un cœur sur une proposition veut dire « garde-la sous les yeux ».
+     Elle cesse donc de tourner : les deux autres places continuent de
+     changer, celle-là non.
+
+     MAIS UN CŒUR NE SUSPEND AUCUNE RÈGLE. Le favori reste soumis à
+     `candidats()` comme les autres — s'il est terminé, fermé, hors zone ou
+     hors fenêtre, il quitte Maintenant. Il reste dans la liste Favoris, qui
+     est une liste de choses gardées, pas une liste de choses faisables
+     maintenant. Confondre les deux ferait traverser la ville pour une porte
+     fermée.
+     =================================================================== */
+  function estVerrouille(item, ctx) {
+    const gardes = (ctx && ctx.favorisVerrouilles) || null;
+    if (!gardes || !item) return false;
+    const id = item.id != null ? String(item.id) : null;
+    if (id == null) return false;
+    return typeof gardes.has === "function" ? gardes.has(id) : gardes.indexOf(id) >= 0;
+  }
+
+  /* ===================================================================
+     LE TURNOVER — CHANGER SANS S'AGITER
+
+     Deux défauts opposés guettent une vitrine de trois places. Figée, elle
+     donne à croire qu'il n'y a que ça à faire dans le quartier. Agitée, elle
+     empêche de lire : on revient et ce qu'on avait repéré a disparu.
+
+     La règle tient en une phrase : à pertinence COMPARABLE, ce qu'on a déjà
+     beaucoup montré passe derrière. `ctx.vues` porte un compte par
+     identifiant, tenu par l'application ; il départage, il ne classe pas.
+     Un événement en cours passe toujours devant un lieu ouvert, quel que
+     soit le nombre de fois qu'on l'a montré — sinon la rotation ferait
+     descendre le meilleur contenu simplement parce qu'il est bon.
+     =================================================================== */
+  function vuesDe(item, ctx) {
+    const registre = (ctx && ctx.vues) || null;
+    if (!registre || !item || item.id == null) return 0;
+    const valeur = typeof registre.get === "function"
+      ? registre.get(String(item.id)) : registre[String(item.id)];
+    return Number(valeur) > 0 ? Number(valeur) : 0;
+  }
+
   function selection(items, contexte) {
     const ctx = contexte || {};
     /* HORS ZONE, ON NE COMPOSE PAS. Le bloc ne doit pas fabriquer une
@@ -959,6 +1049,40 @@
     if (ctx.zoneTerritoriale === false) return [];
     const combien = Number(ctx.places) > 0 ? Number(ctx.places) : PLACES;
     const pool = candidats(items, ctx);
+
+    /* L'ORDRE DES QUESTIONS, ET IL EST LE SUJET.
+
+       `candidats()` a déjà trié par nature puis distance — c'est la pertinence
+       éditoriale, et elle reste la base. On ne la remplace pas : on la
+       départage, dans cet ordre-là.
+
+         1. le favori verrouillé, qui a demandé à rester ;
+         2. l'événement d'un habitant, tant qu'Autour démarre ;
+         3. la pertinence (nature, puis distance) — l'ordre d'origine ;
+         4. ce qu'on a le moins montré, pour que la vitrine respire.
+
+       Chaque cran ne s'applique qu'à égalité du précédent. Un lieu ouvert
+       verrouillé ne passe donc PAS devant un concert en cours : le verrou
+       garantit la présence, pas la première place. */
+    const demarrage = phaseDemarrage(ctx);
+    /* L'ORDRE DE PERTINENCE, ET IL NE CONTIENT PAS LE VERROU.
+
+       Ce que quelqu'un peut faire là, tout de suite, passe avant tout le
+       reste : un événement en cours devant une séance, devant une activité,
+       devant un lieu ouvert. La faveur de démarrage se glisse APRÈS la
+       nature — elle départage deux contenus comparables, elle ne fait pas
+       passer une publication d'habitant devant un concert qui a commencé.
+       Puis la distance, puis ce qu'on a le moins montré.
+
+       Le favori verrouillé, lui, n'est pas un critère de pertinence : c'est
+       une RÉSERVATION de place. Il est traité plus bas, à la cueillette. */
+    const pertinence = (a, b) =>
+      (a.rang - b.rang) ||
+      (demarrage ? (estEvenementHabitant(b.item) - estEvenementHabitant(a.item)) : 0) ||
+      (a.distance - b.distance) ||
+      (vuesDe(a.item, ctx) - vuesDe(b.item, ctx)) ||
+      ((horodatage(a.item.finLe) || Infinity) - (horodatage(b.item.finLe) || Infinity));
+    pool.sort(pertinence);
 
     /* LA DIVERSITÉ SE PREND EN DEUX PASSES, ET C'EST VOULU.
 
@@ -971,7 +1095,19 @@
     const choisis = [];
     const famillesPrises = new Set();
     let nourriturePrise = false;
+    /* LA RÉSERVATION DU FAVORI, AVANT TOUT LE RESTE.
+       Il a demandé à rester : sa place est prise d'abord, dans l'ordre de
+       pertinence entre favoris. Il garde sa place, pas son rang — le tri
+       final le remettra où son contenu le mérite. */
     for (const c of pool) {
+      if (choisis.length >= combien) break;
+      if (!estVerrouille(c.item, ctx)) continue;
+      famillesPrises.add(c.famille);
+      if (estNourriture(c.item, c.famille)) nourriturePrise = true;
+      choisis.push(c);
+    }
+    for (const c of pool) {
+      if (choisis.indexOf(c) >= 0) continue;
       if (choisis.length >= combien) break;
       if (famillesPrises.has(c.famille)) continue;
       if (estNourriture(c.item, c.famille) && nourriturePrise) continue;
@@ -994,9 +1130,17 @@
        ce chemin n'est jamais emprunté, et la hiérarchie tient d'elle-même. */
     if (!choisis.length) return selectionRepliNocturne(items, ctx);
 
-    /* On rend l'ordre de priorité, pas l'ordre de cueillette. */
-    choisis.sort((a, b) => (a.rang - b.rang) || (a.distance - b.distance));
-    return choisis.map((c) => Object.assign({}, c.item, { nature: c.nature }));
+    /* On rend l'ordre de pertinence, pas l'ordre de cueillette. Le verrou a
+       fait son travail — être là — et n'a rien à dire sur la position. */
+    choisis.sort(pertinence);
+    return choisis.map((c) => Object.assign({}, c.item, {
+      nature: c.nature,
+      /* Pourquoi celle-ci est là. L'interface n'en fait rien aujourd'hui, mais
+         « expliquer chaque sélection » cesse d'être une enquête. */
+      motifMaintenant: estVerrouille(c.item, ctx) ? "favori_verrouille"
+        : (demarrage && estEvenementHabitant(c.item)) ? "evenement_habitant_demarrage"
+        : c.nature,
+    }));
   }
 
   /* Le moteur ne possède qu'une vitrine : trois propositions éditorialisées.
@@ -1097,7 +1241,8 @@
   }
 
   root.AutourMaintenant = Object.freeze({
-    ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES,
+    ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES, SEUIL_DEMARRAGE,
+    phaseDemarrage, estEvenementHabitant, estVerrouille,
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
     SEANCE_MIN_MS, SEANCE_MAX_MS,
     fiable, disponible, candidats, selection, selectionCeSoir, total, etat, textes,

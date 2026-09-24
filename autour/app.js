@@ -14340,11 +14340,83 @@ function fuseauZoneActive(){
   return def.timezone;
 }
 
+/* ---------------------------------------------------------------------------
+   CE QUE LA VITRINE A BESOIN DE SAVOIR, EN PLUS DE L'HEURE
+
+   Trois états vivent côté application et non côté moteur, parce qu'ils
+   concernent CETTE personne sur CET appareil : ce qu'elle a mis en favori, ce
+   qu'on lui a déjà montré, et combien d'habitants compte Autour.
+--------------------------------------------------------------------------- */
+
+/* Le compte des habitants confirmés, lu une fois et gardé. `null` tant qu'on
+   ne l'a pas : le moteur refuse alors la faveur de démarrage plutôt que de
+   l'accorder sur une valeur inventée. */
+let habitantsConnus = null;
+let habitantsDemandes = false;
+
+function chargerHabitants(){
+  if(habitantsDemandes || typeof sbLecture === "undefined" || !sbLecture) return;
+  habitantsDemandes = true;
+  Promise.resolve(sbLecture.rpc("autour_habitants")).then(({data, error})=>{
+    if(error || !Number.isFinite(Number(data))) return;
+    habitantsConnus = Number(data);
+  }).catch(()=>{});
+}
+
+/* COMBIEN DE FOIS ON A MONTRÉ QUOI.
+   Un compteur par identifiant, gardé pour la session et relu du stockage
+   local. Il ne sert qu'à départager deux contenus de pertinence égale : il
+   n'a donc besoin ni d'être exact, ni de survivre à un effacement. */
+const CLE_VUES_MAINTENANT = "autour.maintenant.vues";
+let vuesMaintenant = null;
+
+function registreVues(){
+  if(vuesMaintenant) return vuesMaintenant;
+  vuesMaintenant = new Map();
+  try{
+    const brut = JSON.parse(localStorage.getItem(CLE_VUES_MAINTENANT) || "{}");
+    for(const [id, n] of Object.entries(brut)) if(Number(n) > 0) vuesMaintenant.set(id, Number(n));
+  }catch(e){}
+  return vuesMaintenant;
+}
+
+function noterVuesMaintenant(liste){
+  const registre = registreVues();
+  for(const item of liste || []){
+    if(!item || item.id == null) continue;
+    registre.set(String(item.id), (registre.get(String(item.id)) || 0) + 1);
+  }
+  /* Deux cents entrées suffisent à faire tourner trois places ; au-delà on
+     garderait la mémoire d'un quartier qu'on a quitté. */
+  if(registre.size > 200){
+    const ordonne = [...registre.entries()].sort((a, b)=>b[1] - a[1]).slice(0, 200);
+    vuesMaintenant = new Map(ordonne);
+  }
+  try{ localStorage.setItem(CLE_VUES_MAINTENANT, JSON.stringify(Object.fromEntries(vuesMaintenant))); }
+  catch(e){}
+}
+
+/* Les favoris encore en mémoire, sous la forme d'identifiants de propositions.
+   Le moteur ne lit que des identifiants : il n'a pas à connaître la forme
+   d'un favori, ni où ils sont rangés. */
+function favorisVerrouilles(){
+  const verrous = new Set();
+  for(const l of favorisEnMemoire.values()) if(l && l.id != null) verrous.add(String(l.id));
+  return verrous;
+}
+
 function contexteMaintenant(){
   const ref = pointDeReference();
+  chargerHabitants();
   return {
     rayonMax: rayonRegarde(),
     maintenant: Date.now(),
+    /* La phase de démarrage : le moteur décide, l'application fournit le
+       nombre. `null` veut dire « je ne sais pas », et le moteur en tire la
+       conséquence prudente. */
+    utilisateurs: habitantsConnus,
+    favorisVerrouilles: favorisVerrouilles(),
+    vues: registreVues(),
     timeZone: fuseauZoneActive(),
     /* Y A-T-IL UN TERRITOIRE DONT PARLER ? Hors des zones supportées, il n'y
        a ni données territoriales, ni programmation, ni fuseau déclaré : parler
@@ -14693,6 +14765,10 @@ function blocMaintenantAccueil(){
      c'est exactement ce qu'on veut, et c'est ce qu'il faut pouvoir prouver. */
   if(liste.length >= 1) PERF.jalon("maintenant_premier");
   if(liste.length >= MAINTENANT_APERCU) PERF.jalon("maintenant_complet");
+  /* Ce qu'on vient de montrer est noté ICI, au rendu, et nulle part ailleurs :
+     c'est le seul endroit où l'on sait ce qui est réellement passé sous les
+     yeux. C'est ce compteur qui fera tourner la vitrine au prochain passage. */
+  if(etat === M.ETATS.READY) noterVuesMaintenant(liste);
   const mots = M.textes(etat, ctx);
 
   /* Le compteur est celui de la sélection effectivement rendue. Il ne peut
