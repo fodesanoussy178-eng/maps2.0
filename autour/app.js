@@ -13243,7 +13243,17 @@ function groupesInteretsPourToi(propositions){
       groupes.get(id).propositions.push(proposition);
     });
   });
-  return ordre.map((item)=> groupes.get(item.id)).filter(Boolean);
+  const parEnvie = ordre.map((item)=> groupes.get(item.id)).filter(Boolean);
+  /* ---- LE GROUPE QUI N'EST DANS AUCUNE ENVIE ---------------------------
+     Les propositions d'exploration n'ont, par construction, aucune envie à
+     rejoindre : sans ce groupe elles seraient classées puis silencieusement
+     perdues à l'affichage. Il vient EN DERNIER et porte son nom, pour que la
+     personne voie d'un coup d'œil où s'arrête ce qu'elle a demandé et où
+     commence ce qu'Autour propose en plus. */
+  const decouvertes = propositions.filter((x)=> x && x.exploration === true);
+  return decouvertes.length
+    ? parEnvie.concat([{id:"exploration", label:"\xC0 d\xE9couvrir", propositions:decouvertes}])
+    : parEnvie;
 }
 
 function propositionsPourToi(limite = POURTOI_MAX){
@@ -13280,6 +13290,7 @@ function propositionsPourToi(limite = POURTOI_MAX){
     vu: classe.seen,
     score: classe.score,
     matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : [],
+    exploration: classe.exploration === true,
     temporal: classe.temporal || null,
     temporalStatus: classe.temporal_status || null,
     pool: classe.pool || "local",
@@ -13648,6 +13659,10 @@ function nouveautesPourToi(propositions){
      lors d'un changement de goûts. */
   return (propositions||[]).filter((x)=>{
     if(!x || !x.l || x.l.id == null) return false;
+    /* Une proposition d'exploration est un appoint, pas une nouvelle qui
+       concerne la personne : la compter ferait clignoter la cloche pour un
+       événement dont Autour dit lui-même qu'il sort de ses goûts. */
+    if(x.exploration === true) return false;
     const id = String(x.l.id);
     return !annoncees.has(id) && !vues.has(id);
   });

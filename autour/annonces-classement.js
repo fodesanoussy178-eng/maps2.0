@@ -100,7 +100,15 @@
     const niveau = importanceLevel(e);
     const qualificatif = isMajor(e) ? "\xE9v\xE9nement majeur" : niveau === "important" ? "\xE9v\xE9nement important" : "\xE9v\xE9nement local";
     const bassin = String(e.metro_area_label || e.metroAreaLabel || e.territory_label || "").trim();
-    return labels.join(" \xB7 ") + " \xB7 " + qualificatif + (bassin ? " dans " + bassin : "");
+    /* ---- DIRE « JE NE SAIS PAS ENCORE QUE TU AIMES ÇA » -----------------
+       Une proposition d'exploration n'a aucune envie à citer : la phrase
+       nomme alors ce que l'événement EST, d'après ses propres tags, et
+       annonce franchement qu'elle sort des goûts suivis. Sans elle, la carte
+       arriverait sans justification et « Pour toi » mentirait sur son propre
+       critère. */
+    const enonce = labels.length ? labels.join(" \xB7 ")
+      : ["\xC0 d\xE9couvrir", ...TAXONOMIE.libelles(TAXONOMIE.tagsDe(e)).slice(0, 2)].join(" \xB7 ");
+    return enonce + " \xB7 " + qualificatif + (bassin ? " dans " + bassin : "");
   }
   function territoireCompatible(event, options, distanceMeters) {
     const level = importanceLevel(event);
@@ -180,8 +188,27 @@
     if (o.pool !== "major_cross_zone" && !eventBasin(e) && proximityPoints(distance) < 0) return null;
     if (!TAXONOMIE) return null;
     const matches = TAXONOMIE.correspondances(e, o.interests || []);
-    if (!matches.length) return null;
     const announcementTags = TAXONOMIE.tagsDe(e);
+    /* ---- LA BULLE FERMÉE ÉTAIT ICI --------------------------------------
+
+       « Pas de correspondance, donc rien à dire » : l'appariement servait de
+       portail, pas de classement. Un quartier pouvait organiser sa braderie,
+       son concours de pétanque et son vide-grenier — si la personne avait
+       coché « rap » un soir d'installation, elle ne voyait plus jamais rien
+       d'autre. Les goûts devenaient les murs du produit.
+
+       Une absence de correspondance devient donc une PROPOSITION
+       D'EXPLORATION : elle garde son score, sans la bonification d'affinité,
+       elle se range derrière les correspondances, et `classerPourToi` ne lui
+       laisse qu'une minorité de places. La préférence pèse sur le classement
+       — elle ne décide plus seule de ce qui existe.
+
+       UNE SEULE EXIGENCE : l'événement doit porter ses propres tags. Sans
+       eux, personne ne peut dire ce qu'il est, donc la carte ne pourrait pas
+       expliquer sa présence — et une proposition inexplicable n'est pas de
+       l'exploration, c'est du remplissage. */
+    const exploration = matches.length === 0;
+    if (exploration && !announcementTags.length) return null;
     const userInterests = [...new Set((Array.isArray(o.interests) ? o.interests : []).map((interest) => String(interest || "").trim()).filter(Boolean))];
     const matchedInterests = [...new Set(matches.map((match) => String(match.id)))];
     const matchingTags = [...new Set(matches.flatMap((match) => match.tags))];
@@ -206,6 +233,13 @@
          qu'aucune échéance ne renverse à elle seule l'ampleur et la
          pertinence personnelle, qui la précèdent dans la hiérarchie. */
       Math.min(30, Math.round(urgence * 0.35)) +
+      /* L'AFFINITÉ, DEVENUE UN POIDS. Tant qu'elle ouvrait ou fermait la
+         porte, elle ne pesait rien dans l'ordre : deux événements appariés
+         se classaient uniquement sur l'ampleur et la distance, et un
+         événement apparié à trois envies suivies ne valait pas mieux qu'un
+         autre apparié à une seule. Bornée à trois envies pour qu'un
+         événement fourre-tout ne dépasse pas un grand concert attendu. */
+      Math.min(3, matches.length) * 6 +
       (o.pool === "major_cross_zone" ? 12 : 0)
     ));
     return {
@@ -222,6 +256,7 @@
       major_scope: majorScope(e),
       majorScope: majorScope(e),
       matches,
+      exploration,
       score,
       reason: reasonFor(e, matches),
       group: announced != null ? "nouvelles_annonces" : "a_ne_pas_manquer",
@@ -243,19 +278,50 @@
       ,crossZone: o.pool === "major_cross_zone"
     };
   }
+  /* ---- LA PART D'EXPLORATION -------------------------------------------
+
+     Un panneau qui ne montre que ce qu'on a déjà déclaré aimer n'apprend
+     plus rien à personne. Un quart des places — au moins une dès qu'il y en
+     a trois — revient donc à des propositions qui ne correspondent à AUCUNE
+     envie suivie, prises dans l'ordre de leur score.
+
+     La réserve est un PLAFOND, jamais un plancher imposé aux
+     correspondances : elle ne retient que ce que l'exploration peut
+     réellement remplir, et quand les correspondances manquent, l'exploration
+     prend toute la place restante plutôt que de laisser le panneau vide. */
+  const PART_EXPLORATION = 0.25;
+  function reserveExploration(max, disponibles) {
+    if (!(max >= 3) || !disponibles) return 0;
+    return Math.min(disponibles, Math.max(1, Math.floor(max * PART_EXPLORATION)));
+  }
   function classerPourToi(events, options) {
     const o = options || {};
     const vues = new Set(Array.isArray(o.seenIds) ? o.seenIds : []);
     const masquees = new Set(Array.isArray(o.hiddenIds) ? o.hiddenIds : []);
     const result = (Array.isArray(events) ? events : []).filter((event) => event && !masquees.has(event.id)).map((event) => classer(event, o)).filter(Boolean).sort((a, b) => {
       if (a.group !== b.group) return a.group === "nouvelles_annonces" ? -1 : 1;
+      /* L'exploration passe DERRIÈRE les correspondances de son groupe : la
+         préférence garde la main sur l'ordre, la découverte est un appoint
+         visible en fin de liste, pas une surprise en tête de panneau. */
+      const ae = a.exploration ? 1 : 0, be = b.exploration ? 1 : 0;
+      if (ae !== be) return ae - be;
       const av = vues.has(a.event.id) ? 1 : 0, bv = vues.has(b.event.id) ? 1 : 0;
       if (av !== bv) return av - bv;
       if (a.score !== b.score) return b.score - a.score;
       return (a.startAt || Infinity) - (b.startAt || Infinity);
     });
-    const max = Number.isFinite(Number(o.limit)) ? Number(o.limit) : 6;
-    return result.slice(0, Math.max(0, max)).map((item) => Object.assign(item, {
+    const max = Math.max(0, Number.isFinite(Number(o.limit)) ? Number(o.limit) : 6);
+    const affinites = result.filter((item) => !item.exploration);
+    const explorations = result.filter((item) => item.exploration);
+    const placesAffinite = Math.min(affinites.length,
+      Math.max(0, max - reserveExploration(max, explorations.length)));
+    const gardes = new Set([
+      ...affinites.slice(0, placesAffinite),
+      ...explorations.slice(0, Math.max(0, max - placesAffinite))
+    ]);
+    /* On refiltre `result` pour que l'ordre affiché reste celui du tri, sans
+       recoller deux listes dans un ordre que le comparateur n'a pas décidé. */
+    return result.filter((item) => gardes.has(item)).map((item) => Object.assign(item, {
       seen: vues.has(item.event.id)
     }));
   }
@@ -286,6 +352,8 @@
     territoireCompatible,
     classer,
     classerPourToi,
+    PART_EXPLORATION,
+    reserveExploration,
     libelleGroupe,
     libelleDate
     ,CROSS_ZONE_MIN_SCORE
