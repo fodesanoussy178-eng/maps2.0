@@ -640,3 +640,77 @@ test("la fenêtre est posée avant les modules qui en dépendent", () => {
   assert.ok(source.indexOf('import "./fenetre.mjs"') < source.indexOf('import "../providers/'),
     "sans cela, providers/normaliser.js échoue au chargement en production");
 });
+
+/* ==========================================================================
+   8. CE QUE LA PRODUCTION A TROUVÉ, ET QUI NE DOIT PLUS REVENIR
+
+   Les quatre défauts ci-dessous ont été rendus par le serveur DÉPLOYÉ, le
+   25/09/2026, en rejouant les dix scénarios. Aucun n'était visible sur les
+   lignes de test : il a fallu les vraies données pour les voir.
+   ======================================================================== */
+
+test("« rap » ne se trouve pas dans « réalité virtuelle » — un mot n'est pas une sous-chaîne", async () => {
+  /* Rendu en production : « Quels concerts rap cette semaine ? » → trois
+     résultats, dont une expérience en réalité virtuelle. `includes("rap")`
+     trouve « rap » dans « graphique », « thérapie », « rapide ». */
+  const faux = Object.assign({}, F.EVENEMENTS_LILLE_EN_COURS[0], {
+    id: "00000000-0000-4000-8000-00000000rap1",
+    title: "Expérience en réalité virtuelle",
+    description: "Un rendu graphique rapide, une thérapie par l'image.",
+    start_at: "2026-09-26T10:00:00+00:00", end_at: "2026-09-26T18:00:00+00:00",
+    category: null, event_kind: null, announcement_tags: [],
+  });
+  const vrai = Object.assign({}, faux, { id: "00000000-0000-4000-8000-00000000rap2",
+    title: "Soirée rap et open mic", description: "Scène ouverte." });
+  brancher(Object.assign({}, TOURCOING, { "rpc:evenements_locaux": [faux, vrai] }));
+  const r = await PAR_NOM.search_events.executer({
+    location: "Tourcoing", query: "concert rap", when: "ce week-end", time: QUAND });
+  assert.equal(r.results.length, 1, "seul l'événement qui parle vraiment de rap");
+  assert.match(r.results[0].name, /rap/i);
+});
+
+test("un événement qui dure l'année ne s'annonce pas « jeudi 1 janvier »", async () => {
+  /* Rendu en production : « Halles de Wazemmes · Marché · Jeudi 1 janvier ·
+     08h00–20h00 » en réponse à « que faire ce soir ». Le marché est bien
+     ouvert ; la date affichée était sa borne de début. */
+  const marche = Object.assign({}, F.EVENEMENTS_LILLE_EN_COURS[0], {
+    id: "00000000-0000-4000-8000-000000marche", title: "Halles de Wazemmes",
+    start_at: "2026-01-01T07:00:00+00:00", end_at: "2026-12-31T19:00:00+00:00",
+    temporal_status: "now", category: "marche",
+  });
+  brancher(Object.assign({}, LILLE, { "rpc:evenements_locaux": [marche] }));
+  const r = await PAR_NOM.search_now.executer({ location: "Lille", time: QUAND });
+  assert.equal(r.results.length, 1);
+  assert.doesNotMatch(String(r.results[0].date_label), /janvier/,
+    "le libellé doit parler du moment, pas de la borne de début");
+});
+
+test("le service demandé passe devant les autres", async () => {
+  brancher(TOURCOING);
+  const r = await PAR_NOM.search_help.executer({ location: "Tourcoing", need: "logement",
+    limit: 5, time: QUAND });
+  for (const point of r.results) {
+    if (!point.service_labels || !point.service_labels.length) continue;
+    if (!point.services.some((s) => ["housing", "shelter", "foyer"].includes(s))) continue;
+    assert.equal(point.service_labels[0], "Logement",
+      "un point d'hébergement ne s'annonce pas « Travail / argent » à qui cherche à dormir");
+  }
+});
+
+test("les séances répétées sont dédoublonnées et datées", async () => {
+  brancher(Object.assign({}, TOURCOING, {
+    "rpc:evenement_seances": [
+      { start_at: "2026-09-26T08:00:00+00:00", end_at: "2026-09-26T09:00:00+00:00" },
+      { start_at: "2026-09-26T09:00:00+00:00", end_at: "2026-09-26T10:00:00+00:00" },
+      { start_at: "2026-09-27T08:00:00+00:00", end_at: "2026-09-27T09:00:00+00:00" },
+    ],
+  }));
+  const appel = await serveur.traiter({ jsonrpc: "2.0", id: 40, method: "tools/call",
+    params: { name: "search_events", arguments: { location: "Tourcoing",
+      when: "ce week-end", time: QUAND } } });
+  const texte = appel.result.content[0].text;
+  assert.match(texte, /séances : 26\/09 \d{2}:\d{2}, 26\/09 \d{2}:\d{2}, 27\/09/,
+    "des séances sur deux jours doivent porter leur jour");
+  const repetitions = (texte.match(/26\/09 10:00/g) || []).length;
+  assert.ok(repetitions <= 1, "aucune heure répétée à l'identique");
+});
