@@ -223,6 +223,7 @@ export function projeterPointDeService(structure, contexte = {}) {
   const statut = String(structure.verificationStatus || "").toLowerCase();
   const confiance = Number(structure.sourceConfidence);
   const services = [...new Set([...(structure.services || [])])].slice(0, 8);
+  const servicesLisibles = libellesDeServices(services, moteurs);
   const sortie = {
     id: structure.autourId || structure.id,
     kind: "service_point",
@@ -234,6 +235,11 @@ export function projeterPointDeService(structure, contexte = {}) {
     organisation: organisationDe(structure, moteurs),
     need: besoin || null,
     services,
+    /* `food_bank` ou `administrative_assistance` sont les mots des SOURCES.
+       Ce qu'une personne lit doit être le mot d'Autour — « Manger »,
+       « Papiers / démarches » —, et c'est la taxonomie de Solidarité qui fait
+       le pont, pas une table écrite ici. */
+    service_labels: servicesLisibles.length ? servicesLisibles : null,
     address: texte(structure.address, 160),
     city: texte(structure.commune, 80),
     postal_code: texte(structure.postalCode, 12),
@@ -258,6 +264,22 @@ export function projeterPointDeService(structure, contexte = {}) {
     cta: cta || null,
   };
   return auditer(sortie, "service_point");
+}
+
+function libellesDeServices(services, moteurs) {
+  const TAXO = moteurs && moteurs.AIDE_TAXONOMIE;
+  const AIDE = moteurs && moteurs.AIDE;
+  if (!TAXO || !AIDE) return [];
+  const vus = new Set();
+  const libelles = [];
+  for (const service of services) {
+    const besoin = (TAXO.BESOINS || []).find((b) => (b.services || []).includes(service));
+    if (!besoin || vus.has(besoin.id)) continue;
+    vus.add(besoin.id);
+    const libelle = (AIDE.BESOINS || []).find((b) => b.id === besoin.id);
+    if (libelle && libelle.label) libelles.push(libelle.label);
+  }
+  return libelles;
 }
 
 function organisationDe(structure, moteurs) {

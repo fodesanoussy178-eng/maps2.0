@@ -1,15 +1,15 @@
 # Recette de l'intégration ChatGPT — les dix cas
 
-> Exécuté le 25/09/2026 à 16 h 30 (Paris), par la vraie route `/api/mcp`,
+> Exécuté le 25/09/2026 à 16 h 30 (Paris) par la vraie route `/api/mcp`,
 > avec les lignes réelles relevées en base le même jour
-> (`tests/fixtures-mcp.mjs`). Le seul maillon remplacé est le transport
-> vers Supabase : le proxy de l'environnement de développement refuse
-> `*.supabase.co`. L'exécution contre la base en production reste à faire,
-> après déploiement — elle est notée comme telle dans le rapport.
+> (`tests/fixtures-mcp.mjs`). Le seul maillon remplacé est le transport vers
+> Supabase : le proxy de l'environnement de développement refuse `*.supabase.co`.
+> L'exécution contre la base de production reste à faire après déploiement ;
+> elle est notée comme non faite dans le rapport, pas présentée comme passée.
 
-Pour chaque cas : la question, l'outil choisi, les paramètres, ce qu'Autour
-a rendu, et le texte exact transmis au modèle — c'est lui qui porte la
-réponse, liens compris.
+Pour chaque cas : la question, l'outil, les paramètres, ce qu'Autour a rendu,
+et le texte exact transmis au modèle — c'est lui qui porte la réponse, liens
+compris.
 
 ---
 
@@ -128,8 +128,8 @@ Voir tous les résultats dans Autour : https://autour.eu/explorer?q=concert+rap+
 
 | Résultat | Type / service | Quand | Distance | Fiabilité |
 |---|---|---|---|---|
-| Croix-Rouge française - Unité Locale de Tourcoing | food, food_bank, grocery | — | 1399 m | verified |
-| CCAS de Tourcoing | administrative_assistance, food, meals | — | 74 m | verified |
+| Croix-Rouge française - Unité Locale de Tourcoing | Manger, Vêtements, Santé | — | 1399 m | verified |
+| CCAS de Tourcoing | Papiers / démarches, Manger | — | 74 m | verified |
 
 **Ce qu'Autour dit en plus :**
 
@@ -139,9 +139,9 @@ Voir tous les résultats dans Autour : https://autour.eu/explorer?q=concert+rap+
 **Texte transmis au modèle :**
 
 ```
-- Croix-Rouge française - Unité Locale de Tourcoing · food/food_bank/grocery · 2 Rue de la Vigne 59200 Tourcoing · tél. 03 20 46 39 00 · 1,4 km
+- Croix-Rouge française - Unité Locale de Tourcoing · Manger, Vêtements, Santé · 2 Rue de la Vigne 59200 Tourcoing · tél. 03 20 46 39 00 · 1,4 km
   Voir les aides autour de moi dans Autour : https://autour.eu/place/3391a002-ceda-4706-b85b-f98ecd635986/croix-rouge-francaise-unite-locale-de-tourcoing?lat=50.71975&lng=3.14190&utm_source=chatgpt&utm_medium=app&utm_campaign=search_help&utm_content=manger
-- CCAS de Tourcoing · administrative_assistance/food/meals · 26 Rue de la Bienveillance · tél. 03 20 11 34 34 · 74 m
+- CCAS de Tourcoing · Papiers / démarches, Manger · 26 Rue de la Bienveillance · tél. 03 20 11 34 34 · 74 m
   Voir les aides autour de moi dans Autour : https://autour.eu/place/9072d1c4-f65c-42d8-bdf8-93e650498647/ccas-de-tourcoing?lat=50.72310&lng=3.16040&utm_source=chatgpt&utm_medium=app&utm_campaign=search_help&utm_content=manger
 3 point(s) de service trouvé(s) mais NON vérifié(s) ne sont pas rendus : Autour ne les présente pas comme certains.
 Autour sait que sa couverture est incomplète pour ce besoin ici : d'autres points de service existent probablement et ne sont pas encore vérifiés.
@@ -164,8 +164,8 @@ Voir les aides autour de moi dans Autour : https://autour.eu/solidarite?besoin=m
 
 | Résultat | Type / service | Quand | Distance | Fiabilité |
 |---|---|---|---|---|
-| Communauté Emmaüs de Tourcoing | housing, shelter, clothing | — | 1062 m | verified |
-| CCAS de Tourcoing | administrative_assistance, food, meals | — | 74 m | verified |
+| Communauté Emmaüs de Tourcoing | Logement, Vêtements | — | 1062 m | verified |
+| CCAS de Tourcoing | Papiers / démarches, Manger | — | 74 m | verified |
 
 **Ce qu'Autour dit en plus :**
 
@@ -174,9 +174,9 @@ Voir les aides autour de moi dans Autour : https://autour.eu/solidarite?besoin=m
 **Texte transmis au modèle :**
 
 ```
-- Communauté Emmaüs de Tourcoing · housing/shelter/clothing · 172 Rue Winoc Chocqueel 59200 Tourcoing · tél. 03 20 70 90 00 · 1,1 km
+- Communauté Emmaüs de Tourcoing · Logement, Vêtements · 172 Rue Winoc Chocqueel 59200 Tourcoing · tél. 03 20 70 90 00 · 1,1 km
   Voir les aides autour de moi dans Autour : https://autour.eu/place/48ad1cae-a0fa-4cb7-b8b4-3f4b67fe3916/communaute-emmaus-de-tourcoing?lat=50.71966&lng=3.17440&utm_source=chatgpt&utm_medium=app&utm_campaign=search_help&utm_content=logement
-- CCAS de Tourcoing · administrative_assistance/food/meals · 26 Rue de la Bienveillance · tél. 03 20 11 34 34 · 74 m
+- CCAS de Tourcoing · Papiers / démarches, Manger · 26 Rue de la Bienveillance · tél. 03 20 11 34 34 · 74 m
   Voir les aides autour de moi dans Autour : https://autour.eu/place/9072d1c4-f65c-42d8-bdf8-93e650498647/ccas-de-tourcoing?lat=50.72310&lng=3.16040&utm_source=chatgpt&utm_medium=app&utm_campaign=search_help&utm_content=logement
 Autour sait que sa couverture est incomplète pour ce besoin ici : d'autres points de service existent probablement et ne sont pas encore vérifiés.
 Couverture Autour : incomplete.
@@ -255,7 +255,6 @@ Voir tous les résultats dans Autour : https://autour.eu/explorer?q=march%C3%A9&
 Autour ne couvre pas encore Bordeaux. Zones couvertes : Métropole lilloise, Paris, Angers, Rennes, Rouen.
 ```
 
-
 ---
 
 ## « Ouvre-moi la fiche de la braderie »
@@ -269,12 +268,19 @@ Autour ne couvre pas encore Bordeaux. Zones couvertes : Métropole lilloise, Par
 
 | Résultat | Type / service | Quand | Distance | Fiabilité |
 |---|---|---|---|---|
-| Grande Braderie d'Automne à Tissel | Braderie | Samedi 26 septembre · 10h00–17h00 (2 séances) | 0 m | verified |
+| Grande Braderie d'Automne à Tissel | Braderie | Samedi 26 septembre · 10h00–17h00 · 2 séances | — | verified |
 
 **Texte transmis au modèle :**
 
 ```
-- Grande Braderie d'Automne à Tissel · Braderie · Samedi 26 septembre · 10h00–17h00 · séances : 08:00, 12:00 · TISSEL · Entrée libre · 0 m
+- Grande Braderie d'Automne à Tissel · Braderie · Samedi 26 septembre · 10h00–17h00 · séances : 08:00, 12:00 · TISSEL · Entrée libre
   Voir la fiche dans Autour : https://autour.eu/event/3957e0d9-da67-4376-a9d2-0ebf1f7bbff3/grande-braderie-d-automne-a-tissel?utm_source=chatgpt&utm_medium=app&utm_campaign=get_event&utm_content=braderie
 ```
 
+---
+
+## Aperçu rendu dans ChatGPT
+
+![Trois événements, thème clair](../data/app-chatgpt/apercu-evenements.png)
+
+![Deux points de service, thème sombre](../data/app-chatgpt/apercu-aides.png)

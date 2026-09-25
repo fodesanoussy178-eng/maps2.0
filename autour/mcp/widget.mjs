@@ -168,7 +168,8 @@ export const HTML_WIDGET = `<!doctype html>
     var corps = el("div");
     corps.appendChild(el("p", "titre", item.name));
     var meta = el("div", "meta");
-    [item.services && item.services.length ? item.services.slice(0, 3).join(" · ") : null,
+    [(item.service_labels && item.service_labels.length ? item.service_labels
+        : (item.services || [])).slice(0, 3).join(" · ") || null,
       distance(item.distance_m), item.city].filter(Boolean)
       .forEach(function (bout) { meta.appendChild(el("span", null, bout)); });
     corps.appendChild(meta);

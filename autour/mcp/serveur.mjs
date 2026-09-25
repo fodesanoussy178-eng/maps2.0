@@ -84,7 +84,9 @@ function declaration(outil) {
 function ligneResultat(item) {
   const bouts = [item.name];
   if (item.kind === "service_point") {
-    if (item.services && item.services.length) bouts.push(item.services.slice(0, 3).join("/"));
+    const services = item.service_labels && item.service_labels.length
+      ? item.service_labels : item.services;
+    if (services && services.length) bouts.push(services.slice(0, 3).join(", "));
     if (item.address) bouts.push(item.address);
     if (item.hours) bouts.push("horaires : " + item.hours);
     if (item.phone) bouts.push("tél. " + item.phone);
