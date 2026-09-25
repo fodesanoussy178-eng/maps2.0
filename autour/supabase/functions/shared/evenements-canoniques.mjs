@@ -659,6 +659,28 @@ const EVENT_FACT_FIELDS = Object.freeze([
      OpenAgenda, la source dira `null` et l'ancien numéro serait effacé. Il est
      plus utile de le garder — et un numéro public reste vérifiable. */
   "booking_url", "phone", "email", "website",
+  /* UNE AFFICHE TROUVÉE NE DOIT PAS DISPARAÎTRE À LA SYNCHRO SUIVANTE.
+
+     LE DÉFAUT, MESURÉ EN PRODUCTION LE 25/09/2026.
+
+     L'événement NeS à Roubaix existe dans les deux catalogues. À 06:00:56 la
+     synchronisation OpenAgenda l'a fusionné et lui a apporté son affiche. À
+     09:34:04 la synchronisation DATAtourisme a réécrit la même ligne :
+     DATAtourisme ne sert AUCUNE image (0 sur 1 137 événements à venir), donc
+     elle a écrit `image_url: null` — et l'affiche a disparu.
+
+     `image_source` et `image_source_url` étaient déjà protégés ; `image_url`
+     ne l'était pas. La ligne se retrouvait donc incohérente : une provenance
+     d'affiche, et pas d'affiche. Et le cycle recommençait quatre fois par
+     jour, ce qui rendait tout le travail sur les images réversible sans que
+     personne ne voie pourquoi.
+
+     Les huit champs d'image voyagent ensemble, pour la même raison qu'un
+     numéro de téléphone : une source qui ne dit rien ne dit pas « il n'y a
+     rien ». Une image réellement morte se retire par la cascade, qui la
+     RELIT — `image_checked_at` est là pour ça — pas par une source muette. */
+  "image_url", "image_author", "image_license", "image_updated_at",
+  "image_type", "image_confidence", "image_usage_status", "image_checked_at",
 ]);
 
 /* Une source pauvre ne doit pas effacer un fait déjà fiable lors d'un

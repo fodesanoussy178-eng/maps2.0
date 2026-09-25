@@ -223,3 +223,53 @@ test("la cascade n'écrase jamais une image déjà présente", async () => {
         fichier + " : une étape écrit sans vérifier que l'image est absente");
   }
 });
+
+/* ==========================================================================
+   6. UNE AFFICHE TROUVÉE NE DISPARAÎT PAS À LA SYNCHRO SUIVANTE
+   ======================================================================== */
+
+test("une source muette n'efface pas l'image d'une autre", async () => {
+  const { fusionnerEvenementFaits } =
+    await import("../supabase/functions/shared/evenements-canoniques.mjs");
+
+  /* LE DÉFAUT, MESURÉ EN PRODUCTION LE 25/09/2026. L'événement NeS existe dans
+     les deux catalogues. À 06:00:56 la synchro OpenAgenda lui a apporté son
+     affiche ; à 09:34:04 la synchro DATAtourisme a réécrit la même ligne avec
+     `image_url: null` — DATAtourisme ne sert aucune image — et l'affiche a
+     disparu. Quatre fois par jour. */
+  const existant = {
+    title: "NES", primary_source: "openagenda",
+    image_url: "https://img.openagenda.com/main/ac77b70e788f41f9a7c70e109096118c.full.image.jpg",
+    image_source: "openagenda", image_source_url: "https://openagenda.com/roubaix/events/95539747",
+    image_type: "event_poster", image_confidence: 0.9, image_usage_status: "remote_only",
+    image_updated_at: "2026-08-06T07:40:28Z", image_checked_at: "2026-09-25T10:00:00Z",
+    image_author: null, image_license: null,
+  };
+  const datatourisme = {
+    title: "NES", image_url: null, image_source: null, image_source_url: null,
+    image_author: null, image_license: null, image_updated_at: null,
+  };
+
+  const fusionne = fusionnerEvenementFaits(existant, datatourisme);
+  assert.equal(fusionne.image_url, existant.image_url, "l'affiche doit survivre");
+  assert.equal(fusionne.image_source, "openagenda");
+  assert.equal(fusionne.image_type, "event_poster");
+  assert.equal(fusionne.image_confidence, 0.9);
+  assert.equal(fusionne.image_usage_status, "remote_only");
+  assert.equal(fusionne.image_checked_at, "2026-09-25T10:00:00Z");
+  assert.equal(fusionne.image_updated_at, "2026-08-06T07:40:28Z");
+});
+
+test("une source qui DONNE une image remplace bien l'ancienne", () => {
+  /* La protection ne doit pas figer une image : elle empêche l'effacement par
+     le silence, pas la mise à jour par une source qui parle. */
+  return import("../supabase/functions/shared/evenements-canoniques.mjs")
+    .then(({ fusionnerEvenementFaits }) => {
+      const fusionne = fusionnerEvenementFaits(
+        {image_url: "https://ancienne.test/a.jpg", image_source: "openagenda"},
+        {image_url: "https://nouvelle.test/b.jpg", image_source: "event_page",
+         image_type: "event_poster"});
+      assert.equal(fusionne.image_url, "https://nouvelle.test/b.jpg");
+      assert.equal(fusionne.image_source, "event_page");
+    });
+});
