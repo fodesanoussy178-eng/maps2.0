@@ -62,7 +62,44 @@
       confidence: Number(l.confianceAide) || 0,
       openingHours: l.quand || null,
       source: l.source || null,
+      /* ---- CE QUI FAIT DE CETTE FICHE UN POINT DE SERVICE ---------------
+
+         Un modèle qui reçoit un nom et une catégorie répond par un nom et une
+         catégorie — c'est-à-dire par l'organisation. Pour répondre par un
+         ENDROIT, il lui faut l'endroit : l'adresse, ce qu'on y rend, quand,
+         à quelles conditions, et depuis quand on le sait.
+
+         `organisation` voyage à part, et son rôle est écrit dedans :
+         `verification`. Elle sert à dire « cette fiche est bien celle qu'elle
+         prétend être », jamais à composer la réponse. Voir
+         `supabase/functions/shared/points-de-service.mjs`. */
+      address: texteOuNull(l.adresse || l.address),
+      phone: texteOuNull(l.telephone || l.phone || (l.tags && l.tags.phone)),
+      serviceCategories: Array.isArray(l.services) ? l.services.map(String)
+        : (l.services ? [String(l.services)] : []),
+      accessConditions: texteOuNull(l.conditionsAcces || l.access_conditions),
+      lastVerifiedAt: l.lastVerifiedAt || l.last_verified_at || l.lastSourceUpdate || null,
+      organisation: organisationDe(l),
     };
+  }
+
+  const texteOuNull = (v) => {
+    const t = v == null ? "" : String(v).trim();
+    return t === "" ? null : t;
+  };
+
+  /* L'organisation de rattachement, et son rôle explicite. Les identifiants de
+     personne morale sont transmis pour VÉRIFIER — et un modèle qui les reçoit
+     sans cette étiquette finit par répondre « SIRET 339863417 » à quelqu'un qui
+     a faim. */
+  function organisationDe(lieu) {
+    const l = lieu || {};
+    const refs = l.sourceRefs || l.identifiers || {};
+    const nom = texteOuNull(l.organisation || l.organisationNom || l.reseau);
+    const siret = texteOuNull(refs.siret || l.siret);
+    const siren = texteOuNull(refs.siren || l.siren);
+    if (!nom && !siret && !siren) return null;
+    return {role: "verification", name: nom, siret, siren};
   }
 
   const CLES_UTILES = Object.freeze(["amenity", "social_facility",
@@ -104,6 +141,7 @@
       allowedCategories: TAXO.BESOINS.map((b) => b.id).concat(TAXO.BESOIN_OUVERT),
       allowedPlaceIds: candidats.map((c) => c.id),
       rules: REGLES,
+      reasoningOrder: ORDRE_DE_RAISONNEMENT,
     };
   }
 
@@ -117,6 +155,29 @@
     "Ne jamais affirmer qu’une structure fournit un service que les données ne montrent pas.",
     "Ne retenir que des catégories présentes dans allowedCategories.",
     "Préférer deux structures sûres à dix approximatives.",
+    /* ---- LA DOCTRINE POINT DE SERVICE ---------------------------------
+       « Restos du Cœur — association départementale » n'est pas une réponse à
+       quelqu'un qui cherche à manger : c'est le nom de celui qui organise. La
+       réponse est un endroit, une heure et une distance. */
+    "Répondre par un POINT DE SERVICE — adresse, service rendu, horaires, " +
+      "distance, téléphone, conditions d’accès, fraîcheur — jamais par la seule " +
+      "organisation ni par un SIRET.",
+    "Une même organisation peut avoir plusieurs points de service : ne jamais " +
+      "les fusionner ni n’en retenir qu’un parce qu’ils partagent un SIRET, un " +
+      "SIREN, un réseau, un téléphone ou un domaine Internet.",
+    "L’organisation sert à vérifier l’identité et la provenance ; le point de " +
+      "service sert à aider la personne.",
+  ]);
+
+  /* L'ordre du raisonnement attendu. Il part du besoin, pas de la base : c'est
+     ce qui empêche de répondre par ce qu'on a plutôt que par ce qu'il faut. */
+  const ORDRE_DE_RAISONNEMENT = Object.freeze([
+    "besoin de la personne",
+    "service cherché",
+    "points de service pertinents",
+    "organisation de rattachement (vérification)",
+    "distance, horaires, disponibilité, fiabilité",
+    "recommandation",
   ]);
 
   /* ===================================================================
@@ -208,6 +269,7 @@
   }
 
   root.AutourAideContexteIA = Object.freeze({
+    ORDRE_DE_RAISONNEMENT,
     REGLES, MOTIFS, CLES_UTILES,
     contexte, candidat, tagsUtiles, valider, appliquer,
   });

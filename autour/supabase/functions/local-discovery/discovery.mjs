@@ -1,3 +1,5 @@
+import { memePointDeService } from "../shared/points-de-service.mjs";
+
 const DIACRITIQUES = /[̀-ͯ]/g;
 
 export const VERIFICATION_STATUSES = Object.freeze([
@@ -164,21 +166,29 @@ function distanceM(a, b) {
    une CONCORDANCE : la même identité (nom) et la même implantation (adresse
    ou 120 mètres). Le téléphone ne fait que renforcer, il ne décide plus.
 --------------------------------------------------------------------------- */
+/* UN SIRET NE DIT PAS « LE MÊME ENDROIT ».
+
+   CE QUE CETTE FONCTION FAISAIT, ET CE QUE ÇA COÛTAIT.
+
+   Elle commençait par les identifiants officiels et RENDAIT AUSSITÔT leur
+   comparaison :
+
+     for (const key of ["siret", "finess", "institutional_id"])
+       if (a[key] && b[key]) return String(a[key]) === String(b[key]);
+
+   Donc deux points de service portant le SIRET de leur association — ce qui
+   est le cas normal d'un réseau — étaient déclarés le MÊME endroit, quelle que
+   soit leur adresse. Mesuré : les Restaurants du Cœur n'ont que deux
+   établissements au registre à Tourcoing, pour cinq centres de distribution
+   réels. La règle écrasait donc trois points sur cinq, silencieusement, avant
+   même que la question de la preuve se pose.
+
+   La règle est désormais dite une seule fois, dans
+   `shared/points-de-service.mjs`, et elle vaut pour les sept lecteurs qui en
+   dépendent : un identifiant d'ORGANISATION corrobore un rapprochement, il ne
+   le décide jamais. L'emplacement décide. */
 export function samePlace(a, b) {
-  const officialIds = ["siret", "finess", "institutional_id"];
-  for (const key of officialIds) {
-    if (a?.[key] && b?.[key]) return String(a[key]) === String(b[key]);
-  }
-  const sameName = normalizeText(a?.name) === normalizeText(b?.name);
-  const adresseA = normalizeText(a?.address);
-  const sameAddress = !!adresseA && adresseA === normalizeText(b?.address);
-  const memeEndroit = sameAddress || distanceM(a, b) <= 120;
-  if (sameName && memeEndroit) return true;
-  /* Même téléphone ET même endroit : c'est le même guichet sous deux noms
-     (« CCAS » et « Centre Communal d'Action Sociale »). Le téléphone seul,
-     lui, ne dit que « même association ». */
-  const phone = normalizeText(a?.phone).replace(/ /g, "");
-  return !!phone && phone === normalizeText(b?.phone).replace(/ /g, "") && memeEndroit;
+  return memePointDeService(a, b, {rayon: 120});
 }
 
 export function deduplicate(candidates, existing = []) {

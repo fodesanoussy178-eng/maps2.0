@@ -5,6 +5,7 @@ import {
   verificationStatus,
 } from "./discovery.mjs";
 import { questionsOuvertes, rattacher } from "./taxonomie.mjs";
+import { DOCTRINE_POINT_DE_SERVICE } from "../shared/points-de-service.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -129,12 +130,27 @@ function parseJson(text:string) {
   return Array.isArray(value) ? value : [];
 }
 
+/* L'INVITE DIT « POINT DE SERVICE », PAS « ÉTABLISSEMENT ».
+
+   Elle disait déjà « UN établissement physique, jamais le réseau entier » —
+   l'intention était bonne, le mot était faux. « Établissement » est le terme du
+   registre des entreprises, et c'est exactement la confusion qui a coûté cher :
+   les Restaurants du Cœur n'ont que deux établissements au registre à Tourcoing
+   pour cinq centres de distribution réels. Un modèle à qui l'on demande des
+   établissements rend des personnes morales.
+
+   La doctrine est donc injectée depuis `shared/points-de-service.mjs`, la même
+   pour tous les agents, avec son contre-exemple — parce qu'une règle sans son
+   contre-exemple se réinterprète. */
 function prompt(city:string, category:string, queries:string[]) {
-  return `Tu aides Autour à DÉCOUVRIR, puis vérifier, des structures locales réelles.
+  return `Tu aides Autour à DÉCOUVRIR, puis vérifier, des POINTS DE SERVICE locaux réels.
 Territoire: ${city}. Catégorie: ${category}.
 Requêtes à explorer: ${queries.join(" ; ")}.
-Cherche les pages officielles des établissements et les sources publiques/institutionnelles.
-Chaque objet doit désigner UN établissement physique, jamais le réseau entier. N'invente rien.
+Cherche les pages officielles et les sources publiques/institutionnelles.
+
+${DOCTRINE_POINT_DE_SERVICE}
+
+Chaque objet doit désigner UN endroit où une personne est reçue. N'invente rien.
 N'inclus un service que si une page citée l'affirme. Une page secondaire sert seulement de piste.
 Rends uniquement un tableau JSON d'objets avec: name,address,postal_code,city,lat,lng,phone,
 official_url,source_url,service_categories,identity_evidence,service_evidence,entity_status,

@@ -438,20 +438,27 @@ begin
        rayon de rapprochement reste court — 120 m — parce que deux antennes
        d'un même réseau peuvent être à deux rues l'une de l'autre et ne
        doivent jamais fusionner. */
-    /* UNE STRUCTURE, UN LIEU. `source_fingerprint` est propre à chaque
-       DÉCOUVERTE : quatre passages sur la Croix-Rouge de Tourcoing en avaient
-       fabriqué quatre, donc `places_ingerer` créait un lieu par empreinte.
-       Mesuré : deux lieux « Communauté Emmaüs de Tourcoing » et deux
-       « Croix-Rouge française - Unité locale de Tourcoing » aux mêmes
-       coordonnées, servis deux fois à l'écran.
+    /* UN POINT DE SERVICE, UN LIEU — ET LE SIRET N'EST PAS LE POINT.
 
-       L'identifiant externe est donc celui de la STRUCTURE, pas de la
-       découverte : son SIRET, à défaut son identifiant BAN. Deux antennes
-       distinctes gardent des identifiants distincts — c'est exactement ce que
-       la règle multi-antennes demande — et deux découvertes de la même
-       structure retombent sur le même lieu. */
+       Premier défaut : `source_fingerprint` est propre à chaque DÉCOUVERTE, si
+       bien que quatre passages sur la Croix-Rouge de Tourcoing créaient quatre
+       lieux, servis quatre fois à l'écran.
+
+       Second défaut, introduit en corrigeant le premier : la clé était devenue
+       `coalesce(siret, ban_id, …)`. Or un SIRET appartient à l'ORGANISATION et
+       se répète sur tous ses points de service. Keyée ainsi, une association à
+       deux lieux de distribution n'en publiait qu'un — l'écrasement était
+       simplement déplacé, de la découverte vers l'organisation.
+
+       La clé est donc celle du POINT : l'identifiant BAN de l'adresse, qui EST
+       un endroit. À défaut, le nom normalisé et les coordonnées arrondies. Le
+       SIRET n'y entre pas ; il sert à vérifier, pas à identifier un lieu. */
     select p.place_id into v_place from public.places_ingerer(
-      'web_discovery', coalesce(c.siret, c.ban_id, c.source_fingerprint),
+      'web_discovery',
+      coalesce('ban:' || c.ban_id,
+               'lieu:' || public.place_nom_normalise(c.name) || '@'
+                 || to_char(c.lat, 'FM990.0000') || ',' || to_char(c.lng, 'FM990.0000'),
+               'decouverte:' || c.source_fingerprint),
       c.name, c.lat, c.lng, c.address,
       c.postal_code, c.city, v_cat, null, null, c.official_url, '{}'::jsonb,
       c.source_url,

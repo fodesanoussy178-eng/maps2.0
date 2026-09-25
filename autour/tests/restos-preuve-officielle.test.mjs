@@ -104,11 +104,19 @@ test("ce qui n'est pas prouvé reste candidat, avec ce qui manque", () => {
    3. UNE STRUCTURE, UN LIEU — ET DEUX ANTENNES, DEUX LIEUX
    ======================================================================== */
 
-test("la publication est clé sur la structure, pas sur la découverte", () => {
-  /* `source_fingerprint` est propre à chaque passage : quatre découvertes de la
-     Croix-Rouge de Tourcoing avaient créé quatre lieux. L'identifiant externe
-     est donc celui de la structure — SIRET, à défaut identifiant BAN. */
-  assert.match(sql, /coalesce\(c\.siret, c\.ban_id, c\.source_fingerprint\)/);
+test("la publication est clé sur le POINT DE SERVICE", () => {
+  /* Deux fautes, à la suite. `source_fingerprint` est propre à chaque passage :
+     quatre découvertes de la Croix-Rouge de Tourcoing avaient créé quatre lieux.
+     Puis la clé est devenue le SIRET — ce qui a déplacé l'écrasement de la
+     découverte vers l'ORGANISATION : un SIRET se répète sur tous les points de
+     service, donc une association à deux lieux n'en publiait qu'un.
+
+     La clé est celle du POINT : l'identifiant BAN de l'adresse, qui EST un
+     endroit ; à défaut le nom normalisé et les coordonnées. Voir
+     `docs/organisation-et-point-de-service.md`. */
+  assert.match(sql, /'ban:' \|\| c\.ban_id/);
+  assert.doesNotMatch(sql, /coalesce\(c\.siret, c\.ban_id/,
+    "le SIRET ne doit plus être la clé du lieu");
 });
 
 test("une structure publiée n'est plus servie deux fois", () => {
@@ -123,9 +131,11 @@ test("deux antennes distinctes gardent deux identités", () => {
   /* Le rayon de rapprochement reste court : deux antennes d'un même réseau
      peuvent être à deux rues l'une de l'autre. */
   assert.match(sql, /120\) p;/);
-  /* Et la règle de fond est inchangée côté découverte : jamais le téléphone
-     seul, jamais le domaine seul, jamais le réseau seul. */
-  assert.match(discovery, /Le téléphone seul,\s*\n?\s*.{0,30}ne dit que « même association »/s);
+  /* Et la règle de fond vit désormais dans la doctrine partagée, lue par les
+     sept consommateurs : jamais le SIRET seul, jamais le téléphone seul,
+     jamais le domaine seul, jamais le réseau seul. */
+  assert.match(discovery, /memePointDeService/,
+    "le dédoublonnage de la découverte doit passer par la règle partagée");
 });
 
 test("la fonction de lecture reste accordée au navigateur", () => {

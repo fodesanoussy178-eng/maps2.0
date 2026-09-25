@@ -374,10 +374,33 @@
     }));
   }
 
+  /* LES IDENTIFIANTS QUI DÉSIGNENT UNE PERSONNE MORALE, ET NON UN ENDROIT.
+
+     Un SIREN était déjà exclu du rapprochement. Un SIRET ne l'était pas — et
+     il se répète sur TOUS les points de service d'une organisation. Mesuré le
+     25/09/2026 : les Restaurants du Cœur n'ont que deux établissements au
+     registre à Tourcoing pour cinq centres de distribution réels. Deux points
+     partageant le SIRET de leur association se rapprochaient donc sans qu'on
+     ait regardé leur adresse.
+
+     Ces identifiants servent à VÉRIFIER l'identité et la provenance ; ils ne
+     disent jamais « c'est le même endroit ». Voir
+     `supabase/functions/shared/points-de-service.mjs`, qui porte la même liste
+     pour la découverte et les agents. */
+  const IDENTIFIANTS_D_ORGANISATION = Object.freeze(["siren", "siret", "finessPm", "institutionalId"]);
+
   function sourceKeys(structure) {
     const ids = structure && (structure.identifiers || structure.sourceRefs) || {};
-    return Object.entries(ids).filter(([key, value]) => value && key !== "siren")
+    return Object.entries(ids)
+      .filter(([key, value]) => value && !IDENTIFIANTS_D_ORGANISATION.includes(key))
       .map(([key, value]) => key + ":" + normaliserIdentifiant(value));
+  }
+
+  function organisationKey(structure) {
+    const ids = structure && (structure.identifiers || structure.sourceRefs) || {};
+    for (const key of IDENTIFIANTS_D_ORGANISATION)
+      if (ids[key]) return key + ":" + normaliserIdentifiant(ids[key]);
+    return null;
   }
 
   function finessKeys(structure) {
@@ -412,6 +435,14 @@
        donc distincts, même si leur SIRET est identique. */
     if (fa.length && fb.length && !fa.some((key) => fb.includes(key))) return false;
     if (ka.some((key) => kb.includes(key))) return true;
+    /* UN IDENTIFIANT D'ORGANISATION CORROBORE, IL NE DÉCIDE PAS — mais il
+       corrobore AVANT qu'on renonce. Deux fiches du même CCAS, à la même
+       adresse, vues par deux annuaires différents (donc sans identifiant de
+       source commun) partagent le SIRET de leur personne morale : c'est bien le
+       même guichet. Deux points de service du même SIRET à deux adresses, non.
+       C'est l'emplacement qui tranche, dans les deux sens. */
+    const orgA = organisationKey(a), orgB = organisationKey(b);
+    if (orgA && orgA === orgB) return distanceM(a, b) <= 120;
     /* Deux identifiants officiels différents ne sont jamais rapprochés par
        le nom : un site administratif peut héberger plusieurs structures. */
     if (ka.length && kb.length) return false;
