@@ -45,9 +45,12 @@ test("les résultats sont rendus avant la demande de précision",()=>{
   const standard = html.indexOf('corps.innerHTML = blocResultats()+\'<p class="fb-section">Préciser mon besoin');
   assert.ok(standard>0,"ordre des intentions");
   assert.match(html,/data-testid="primary-results"/);
-  // l'aide, elle, fait exactement l'inverse et c'est voulu : on ne commence
-  // pas par des structures, on commence par la question
-  assert.match(html,/: sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
+  /* L'aide, elle, fait exactement l'inverse et c'est voulu : on ne commence
+     pas par des structures, on commence par la question. La condition qui
+     décide s'appelle maintenant `phraseAideCourante` (on répond quand il y a
+     une demande à laquelle répondre) et un registre d'urgences la précède ;
+     l'alternative, elle, est inchangée — et c'est elle que ce test garde. */
+  assert.match(html,/\? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
 });
 
 test("les couches et actions tactiles essentielles ont un contrat central",()=>{
@@ -220,7 +223,11 @@ test("le bottom sheet propose au lieu de poser une question",()=>{
   // Maintenant est volontairement court : onglets, trois résultats réels,
   // puis l'accès discret à Aide.
   assert.match(html,/function blocMaintenantAccueil\(\)\{/);
-  assert.match(html,/corps\.innerHTML = ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+blocAideAccueil\(\);/);
+  /* La composition a gagné les besoins rapides en tête et la capsule
+     « ça pourrait te plaire » après les propositions. L'ordre protégé ici est
+     le même : les onglets, puis les trois résultats réels, et l'accès à Aide
+     en dernier — jamais une question à la place d'un résultat. */
+  assert.match(html,/corps\.innerHTML = besoinsRapidesPanneauHTML\(\)\+\s*\n?\s*ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+\s*\n?\s*blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\);/);
   assert.match(html,/function blocAideAccueil\(\)\{/);
   // La carte est le premier écran : le panneau ne s'ouvre qu'après un geste.
   assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose\)\{\s*\n\s*majEnteteLieu\(\);\s*\n\s*majAccueil\(\);/);
@@ -977,8 +984,11 @@ test("la recherche est un bouton loupe, pas une barre permanente",()=>{
   assert.match(html,/function ouvrirRecherche/);
   assert.match(html,/function fermerRecherche/);
   assert.match(html,/<div id="rechercheOverlay" hidden/);
-  // les catégories vivent dans l'overlay : l'écran de départ reste nu
-  assert.match(html,/<div id="rechercheOverlay"[\s\S]{0,1600}id="raccourcis" class="pills"/);
+  /* Les catégories vivent dans l'overlay : l'écran de départ reste nu. La
+     fenêtre s'est allongée parce que l'overlay porte aussi, depuis, la
+     recherche de situation (ses exemples et sa note) — `#raccourcis` est
+     toujours dedans, simplement plus bas. */
+  assert.match(html,/<div id="rechercheOverlay"[\s\S]{0,3200}id="raccourcis" class="pills"/);
 });
 
 test("la touche Retour du clavier lance réellement la recherche",()=>{
@@ -989,7 +999,10 @@ test("la touche Retour du clavier lance réellement la recherche",()=>{
   assert.match(html,/\$\("#formRech"\)\.addEventListener\("submit", e=>\{ e\.preventDefault\(\); lancerRecherche\(\); \}\)/);
   // le clavier se referme avant que la carte ne bouge, sinon il la masque
   assert.match(html,/champ\.blur\(\);\s+\/\/ referme le clavier/);
-  assert.match(html,/fermerRecherche\(\);/);
+  /* `fermerRecherche` prend désormais une option (`{force:…}`) : la fermeture
+     doit pouvoir être imposée quand l'aide change de mode. On vérifie donc
+     qu'elle est bien appelée, pas la forme exacte de ses parenthèses. */
+  assert.match(html,/fermerRecherche\((?:\{[^}]*\})?\);/);
   // les boutons de la barre ne soumettent pas le formulaire
   assert.match(html,/id="btnFermerRech" type="button"/);
   assert.match(html,/id="btnFiltres" type="button"/);
@@ -1678,10 +1691,16 @@ test("Aide est une entrée principale, nommée et distincte du cœur",()=>{
 });
 
 test("Aide commence par la question, jamais par des structures",()=>{
-  assert.match(html,/: sousAide \? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
+  assert.match(html,/\? ecranSolutionsAide\(\) : ecranBesoinsAide\(\);/);
   assert.match(html,/<p class="ab-titre">De quoi as-tu besoin&nbsp;\?<\/p>/);
-  // entrer dans l'aide repart toujours de la question
-  assert.match(html,/if\(!modeAide\) basculerAide\(\); else \{ sousAide = null; besoinsExprimesAide = \[\]; besoinsAide = \[\]; besoinsSecondairesAide = \[\]; intentionsSanteAide = \[\]; \}/);
+  /* Entrer dans l'aide repart toujours de la question. La remise à zéro était
+     recopiée sur chaque appelant ; elle vit maintenant DANS `basculerAide()`,
+     ce qui la rend impossible à oublier. Le contrat est le même, tenu à un
+     seul endroit — c'est cet endroit que le test vérifie. */
+  const bascule = html.slice(html.indexOf("function basculerAide()"),
+    html.indexOf("function basculerAide()") + 700);
+  for(const remise of ["sousAide = null", "besoinsExprimesAide = []", "besoinsAide = []"])
+    assert.ok(bascule.includes(remise), "basculerAide doit remettre à zéro : " + remise);
   assert.match(html,/\/\/ on repart toujours de la question/);
   // dix besoins, dans les mots de tout le monde, plus l'urgence à part
   assert.match(html,/const AIDE_URGENCE = \{id:"urgence"/);
@@ -1710,7 +1729,7 @@ test("Aide garde uniquement les solutions liées au besoin et offre une fiche ex
   assert.match(html,/function photoAutoriseeAide\(l\)\{/);
   // la liste des origines autorisées vient du résolveur unique — elle n'est
   // plus recopiée ici, et les anciennes étiquettes restent acceptées
-  assert.match(html,/if\(IMAGES && IMAGES\.SOURCES\.includes\(origine\)\) return l\.image;/);
+  assert.match(html,/if\(IMAGES && IMAGES\.SOURCES\.includes\(origine\)\) return image;/);
   assert.match(html,/\["datatourisme_licence", "autour_verifie"\]\.includes\(origine\)/);
   assert.match(html,/function couvertureAide\(l, c\)\{/);
   for(const action of ["Itinéraire","Appeler","Site web","Partager","Favori"])
@@ -1782,16 +1801,27 @@ test("dans Aide, l'urgence passe avant tout le reste",()=>{
   const corps = html.slice(html.indexOf("function ecranBesoinsAide()"),
                            html.indexOf("function ecranSolutionsAide()"));
   const rang = (motif)=>corps.search(motif);
+  /* L'ÉCRAN A ÉTÉ REDESSINÉ, L'ORDRE EST LE MÊME. La grille de catégories
+     (`ab-grille`), la case « Autre besoin » et le champ libre ont laissé la
+     place à des filtres et à des aides prioritaires affichées tout de suite.
+     Ce que ce test protège n'a pas changé : l'urgence d'abord, la question
+     ensuite, les structures après — jamais l'inverse. */
   const urgence  = rang(/data-testid="aide-urgence"/);
   const question = rang(/class="ab-titre">De quoi as-tu besoin/);
-  const grille   = rang(/class="ab-grille"/);
-  const autre    = rang(/class="ab-autre"/);
-  const champ    = rang(/id="formBesoin"/);
+  const intro    = rang(/class="ab-intro"/);
+  const filtres  = rang(/class="aide-filtres"/);
+  /* Les aides elles-mêmes sont composées en tête de fonction et INSÉRÉES ici :
+     c'est la place d'insertion qui dit l'ordre à l'écran, pas la ligne où la
+     chaîne a été construite. */
+  const listes   = rang(/^\s*contenu\+$/m);
+  const toutes   = rang(/data-aide-toutes="1"/);
+  assert.ok(corps.includes('data-testid="aide-priorites"'),
+    "les aides prioritaires doivent exister");
   assert.ok(urgence > 0, "le bloc urgence existe");
-  assert.ok(question < grille, "question avant les catégories");
   assert.ok(urgence < question, "urgence avant la question");
-  assert.ok(grille < autre, "grille avant Autre besoin");
-  assert.ok(autre < champ, "Autre besoin avant le champ libre");
+  assert.ok(question < intro && intro < filtres, "la question précède ses filtres");
+  assert.ok(filtres < listes, "les filtres précèdent les structures");
+  assert.ok(listes < toutes, "les aides prioritaires avant « voir toutes »");
   // et il se comprend en une seconde
   assert.match(html,/<b>Besoin d’aide urgente&nbsp;\?<\/b>/);
   assert.match(html,/112/);
@@ -1802,7 +1832,9 @@ test("dans Aide, l'urgence passe avant tout le reste",()=>{
 });
 
 test("Aide explique la recherche avant de poser ses cases",()=>{
-  assert.match(html,/Choisis un besoin ou décris-le avec tes mots\./);
+  /* La phrase dit désormais où l'on décrit sa situation — la recherche — au
+     lieu de « avec tes mots » : le champ libre a quitté cet écran. */
+  assert.match(html,/Choisis un besoin ou ouvre la recherche de situation\./);
   assert.match(html,/De quoi as-tu besoin/);
   assert.match(html,/const SOUS_AIDE = .*filter\(b=>b\.id !== "autre"\)/);
 });
@@ -1867,8 +1899,10 @@ test("sélectionner un lieu concentre la carte sur lui",()=>{
   assert.match(html,/document\.body\.classList\.toggle\("focus-lieu", !!lieuEnAvant\);/);
   assert.match(html,/body\.focus-lieu \.leaflet-marker-icon\{opacity:\.35/);
   assert.match(html,/body\.focus-lieu \.leaflet-marker-icon\.en-avant\{opacity:1/);
-  // la mise en avant survit à un redessin
-  assert.match(html,/if\(lieuEnAvant\) mettreEnAvant\(lieuEnAvant\);/);
+  /* La mise en avant survit à un redessin. Le rendu sait maintenant ne
+     redessiner QU'UN marqueur (`o.lot`) : dans ce cas il ne touche pas à la
+     mise en avant des autres, d'où la condition supplémentaire. */
+  assert.match(html,/if\(lieuEnAvant && !o\.lot\) mettreEnAvant\(lieuEnAvant\);/);
   // et se relâche quand on referme la fiche
   assert.match(html,/if\(f\)\{ f\.hidden = true; f\.innerHTML = ""; \}\s*\n\s*mettreEnAvant\(null\);/);
 });

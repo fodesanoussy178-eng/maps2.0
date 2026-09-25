@@ -667,10 +667,22 @@ test("rien cherché et rien trouvé sont deux pannes différentes", () => {
   const construit = fond.indexOf("construireFait(");
   assert.ok(sansRecherche > 0 && construit > sansRecherche && sansFait > construit,
     "le garde-fou « aucune recherche » passe avant même de lire la réponse");
-  /* Et ni l'une ni l'autre n'écrit quoi que ce soit. */
-  const avantEcriture = fond.slice(0, fond.indexOf("await ecrire("));
-  assert.equal((avantEcriture.match(/return;/g) || []).length, 2,
-    "deux sorties sèches avant l'écriture, et aucune ligne posée");
+  /* Et ni l'une ni l'autre n'écrit quoi que ce soit. Compter les `return;`
+     mesurait le nombre de sorties, pas le contrat : une troisième garde
+     légitime (`cascade.termine`) l'a fait passer de deux à trois sans rien
+     changer à ce qui est promis ici. On regarde donc CE QUE FONT les deux
+     gardes nommées, jusqu'à leur sortie. */
+  const corpsDeLaGarde = (garde) => {
+    const debut = fond.indexOf(garde);
+    assert.ok(debut > 0, "garde introuvable : " + garde);
+    return fond.slice(debut, fond.indexOf("return;", debut));
+  };
+  for (const garde of ["if (!appels && !requetes.length)", "if (!fait)"]) {
+    assert.ok(!corpsDeLaGarde(garde).includes("await ecrire("),
+      garde + " ne doit poser aucune ligne d'enrichissement");
+  }
+  assert.ok(fond.indexOf("await ecrire(") > fond.indexOf("if (!fait)"),
+    "l'écriture vient après les deux gardes");
 });
 
 test("chaque étape porte de quoi relier les lignes entre elles", () => {

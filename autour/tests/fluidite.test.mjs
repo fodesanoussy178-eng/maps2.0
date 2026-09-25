@@ -170,11 +170,17 @@ test("la redirection ne survit pas à une sortie d'Aide", () => {
 });
 
 test("le champ Aide propose des exemples et une recherche explicite", () => {
-  assert.match(html, /placeholder="Je dois trouver où manger ce soir…"/);
-  assert.match(html, /class="ab-exemples"/);
+  /* L'écran Aide a été redessiné : les exemples ne sont plus une liste
+     `ab-exemples` sous un champ, et le texte d'invite n'est plus un attribut
+     `placeholder=` du document — il est posé par le code, parce qu'il change
+     selon qu'on cherche une aide ou un lieu. Ce que le test vérifie n'a pas
+     changé : le champ dit par l'exemple ce qu'on peut écrire, et des exemples
+     sont cliquables. */
+  assert.match(html, /"Ex\. je dors dehors ce soir, j’ai besoin de manger, mission locale…"/);
   assert.match(html, /je dors dehors/);
   assert.match(html, /Trouver de l’aide/);
   assert.match(html, /data-aide-exemple/);
+  assert.match(html, /data-aide-recherche="Mission Locale"/);
 });
 
 /* ======================================================================== */
@@ -496,7 +502,12 @@ test("un événement en cours n'est jamais affiché deux fois dans la feuille", 
   /* Maintenant rend son échantillon sélectionné directement. Le panneau ne
      compose donc plus une deuxième liste générique susceptible de recopier un
      événement déjà affiché. */
-  assert.match(html, /corps\.innerHTML = ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+blocAideAccueil\(\);/);
+  /* La composition de l'accueil a gagné deux blocs depuis (les besoins
+     rapides en tête, la capsule « ça pourrait te plaire » après les
+     propositions). Ce qui compte ici n'a pas bougé : `blocMaintenantAccueil`
+     rend l'échantillon sélectionné, et AUCUNE deuxième liste générique ne
+     vient derrière — c'est elle qui recopiait un événement déjà affiché. */
+  assert.match(html, /corps\.innerHTML = besoinsRapidesPanneauHTML\(\)\+\s*\n?\s*ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+/);
   assert.doesNotMatch(html, /corps\.innerHTML = ongletsTemps\(\)\+besoinsRapidesHTML/);
 });
 
@@ -661,8 +672,12 @@ test("l'empilement ne touche QUE les événements", () => {
 test("le regroupement général n'a pas été étendu au zoom 16", () => {
   // `grouper` garde sa porte : au zoom 16 et au-delà, chacun son marqueur
   assert.match(html, /if\(map\.getZoom\(\) >= 16\) return liste\.map\(l=>\(\{seul:l\}\)\);/);
-  // et l'empilement est une passe SÉPARÉE, posée sur la sortie de grouper
-  assert.match(html, /empilerEvenements\(grouper\(choisis\)\)\.forEach\(item=>\{/);
+  /* Et l'empilement est une passe SÉPARÉE, posée sur la sortie de `grouper`.
+     Le rendu d'un seul marqueur (`o.lot`) court-circuite désormais la liste,
+     et le `forEach` s'est déplacé de deux lignes : la composition reste la
+     même. */
+  assert.match(html, /empilerEvenements\(grouper\(choisis\)\)/);
+  assert.match(html, /const items = o\.lot \? \[o\.item\] : empilerEvenements\(grouper\(choisis\)\);/);
 });
 
 test("le seuil est en pixels d'écran, pas en mètres", () => {
