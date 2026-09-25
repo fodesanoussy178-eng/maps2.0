@@ -160,13 +160,21 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
   const cibles = (vercel.rewrites || []).map((r) => r.source);
   assert.ok(cibles.includes("/l/:id"), "/l/:id doit être servi par l’application");
   assert.ok(cibles.includes("/e/:id"), "/e/:id doit être servi par l’application");
+  ["/event/:id", "/place/:id", "/explorer", "/solidarite"].forEach((route) =>
+    assert.ok(cibles.includes(route), route + " doit être servi par l’application"));
   /* LES DEUX FAMILLES DE RÉÉCRITURE, ET RIEN D'AUTRE.
 
      Un lien profond vers un lieu ou un événement est servi par l'application,
      qui le résout au rendu. Les pages de texte, elles, sont de vraies pages
      statiques : elles n'ont ni carte ni état, et les faire passer par
      `index.html` leur ferait charger tout le bundle pour afficher du texte. */
-  const versApplication = ["/l/:id", "/e/:id"];
+  /* LES LIENS PROFONDS DE L'INTÉGRATION CHATGPT s'ajoutent à cette famille :
+     `/event/<id>` et `/place/<id>` nomment une fiche, `/explorer` et
+     `/solidarite` nomment une vue avec ses paramètres. Tous sont résolus au
+     rendu par l'application — c'est elle qui a la carte, la position et les
+     données ; une page statique ne pourrait pas les ouvrir. */
+  const versApplication = ["/l/:id", "/e/:id", "/event/:id", "/event/:id/:titre",
+    "/place/:id", "/place/:id/:titre", "/explorer", "/solidarite"];
   const pagesStatiques = {
     "/mentions-legales": "/mentions-legales.html",
     "/confidentialite": "/confidentialite.html",
