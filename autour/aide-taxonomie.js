@@ -240,6 +240,59 @@
   const c = (id, preuve) => Object.freeze({ id, preuve });
 
   /* ===================================================================
+     1 bis. UN SERVICE DÉCLARÉ, ÉCRIT DANS LA LANGUE DE SA SOURCE
+
+     LE DÉFAUT QU'ELLE CORRIGE, MESURÉ.
+
+     La découverte locale et data·inclusion ne publient pas le même mot pour
+     le même service. Relevé en base le 25/09/2026 sur les candidats de
+     Tourcoing : `food_distribution`, `emergency_food`, `social_grocery`,
+     `social_support`, à côté de `food`, `food_bank`, `grocery`. Un CHRS peut
+     déclarer `emergency_housing` ou `night_shelter` là où Autour attend
+     `shelter`. Le moteur comparait ces chaînes à l'identique : une source qui
+     dit « foyer » quand Autour attend « hébergement » ne prouvait rien, et la
+     structure tombait en `nom_seul`.
+
+     CE QUE CE N'EST PAS. Une liste de synonymes à rallonge, à compléter à
+     chaque source nouvelle. Chaque service CANONIQUE — ceux déjà écrits dans
+     `services`, besoin par besoin — porte ici sa racine. Ajouter un service à
+     un besoin lui donne donc ses variantes du même coup, et un mot qu'aucune
+     racine ne reconnaît ne prouve rien : `social_support` reste muet, et c'est
+     voulu — « soutien social » ne dit ni un repas ni un lit.
+
+     La racine se lit sur le libellé NORMALISÉ (accents retirés, `_` devenu
+     espace), donc `emergency_food` se lit « emergency food » et tombe sous la
+     racine de `food`. Les bornes de mot sont là pour que `food` ne se
+     reconnaisse pas dans un mot qui le contient par hasard.
+     =================================================================== */
+  const RACINES_SERVICE = Object.freeze({
+    /* Manger */
+    food:            /(^|\s)(food|aliment\w*)(\s|$)/,
+    meals:           /(^|\s)(meals?|repas|cantine)(\s|$)/,
+    food_bank:       /(^|\s)(food\s*bank|banque\s*alimentaire|colis)(\s|$)/,
+    soup_kitchen:    /(^|\s)(soup\s*kitchen|soupe\w*)(\s|$)/,
+    grocery:         /(^|\s)(grocer\w*|epicerie)(\s|$)/,
+    /* Logement */
+    shelter:         /(^|\s)(shelter|abri)(\s|$)/,
+    housing:         /(^|\s)(housing|logement)(\s|$)/,
+    accommodation:   /(^|\s)(accommodation|hebergement)(\s|$)/,
+    night_shelter:   /(^|\s)(night\s*shelter|accueil\s*de\s*nuit|abri\s*de\s*nuit)(\s|$)/,
+    foyer:           /(^|\s)(foyer|chrs|residence\s*sociale)(\s|$)/,
+    /* Les autres besoins, pour que la règle ne soit pas un cas particulier
+       de Manger et Logement. */
+    clothing:        /(^|\s)(clothing|vestiaire|vetement\w*)(\s|$)/,
+    shower:          /(^|\s)(showers?|douche\w*)(\s|$)/,
+    laundry:         /(^|\s)(laundry|laverie|lave\s*linge)(\s|$)/,
+    employment:      /(^|\s)(employment|emploi|insertion\s*professionnelle)(\s|$)/,
+    medical_care:    /(^|\s)(medical\s*care|soins?|sante)(\s|$)/,
+  });
+
+  /* La racine d'un service canonique, ou `null` s'il n'en a pas. Un service
+     sans racine reste comparé à l'identique : c'est le comportement d'avant,
+     conservé pour tout ce que cette table ne couvre pas. */
+  const racineService = (service) => RACINES_SERVICE[service] || null;
+
+  /* ===================================================================
      2. LES BESOINS, DÉCRITS
 
      Les identifiants sont ceux d'`aide.js` : ce fichier décrit les mêmes
@@ -333,11 +386,20 @@
           "foyer, résidence, CHRS : un vrai hébergement, mais pas une place ce soir"),
         t("amenity", ["social_facility"], PREUVE.FAIBLE),
       ],
-      services: ["shelter", "housing", "accommodation", "night_shelter"],
+      services: ["shelter", "housing", "accommodation", "night_shelter", "foyer"],
+      /* « FOYER » MANQUAIT, ET C'EST LE MOT LE PLUS COURANT.
+         Une source qui écrit « Foyer de jeunes travailleurs », « centre
+         d'hébergement » ou « accueil de nuit » nommait un besoin que cette
+         liste ne connaissait pas. Ces libellés ne suffisent jamais seuls — le
+         nom pèse peu, et `nom_seul` reste un refus — mais leur absence
+         empêchait la corroboration de se faire. */
       synonymes: [/\bccas\b/i, /samu\s*social/i, /\b115\b/i, /\badil\b/i,
                   /action logement/i, /h[ée]bergement d['’\s]?urgence/i,
                   /\bchrs\b/i, /r[ée]sidence sociale/i, /maison relais/i,
-                  /pension de famille/i],
+                  /pension de famille/i, /\bfoyer\b/i,
+                  /foyer de jeunes travailleurs/i, /\bfjt\b/i,
+                  /centre d['’\s]?h[ée]bergement/i, /accueil de nuit/i,
+                  /abri de nuit/i, /mise [àa] l['’\s]?abri/i],
       exclusions: [
         x("amenity", ["shelter"],
           "dans OpenStreetMap, `amenity=shelter` est un abribus ou un abri de pique-nique"),
@@ -727,6 +789,7 @@
 
   root.AutourAideTaxonomie = Object.freeze({
     PREUVE, BESOINS, BESOIN_OUVERT, CATEGORIES_REQUISES, TYPES_LOGEMENT,
+    RACINES_SERVICE, racineService,
     besoin, parCapacite, capacites, capacitesVides, tagsARecolter,
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);

@@ -208,9 +208,14 @@ test("une image déclarée générée par un modèle ne représente jamais un li
 
 test("une source inconnue n'entre pas — `image_source` reste borné au vocabulaire connu", () => {
   const IMAGES = resolveur();
-  assert.deepEqual([...IMAGES.SOURCES], ["openagenda", "datatourisme", "structure", "autour",
-    "site_officiel", "wikimedia_commons", "artist_official", "organizer_official",
-    "venue_official", "institutional", "google_places"]);
+  /* Le vocabulaire a grandi de deux entrées, écrites par la cascade d'amont :
+     `event_page` (la page officielle de CET événement, lue par `pg_net` avant
+     tout affichage) et `places` (la photo de la salle, admise au quatrième
+     rang et étiquetée `venue`). La règle testée ici n'a pas bougé : ce qui
+     n'est pas dans la liste n'entre pas. */
+  assert.deepEqual([...IMAGES.SOURCES], ["openagenda", "datatourisme", "event_page",
+    "structure", "autour", "site_officiel", "wikimedia_commons", "artist_official",
+    "organizer_official", "venue_official", "places", "institutional", "google_places"]);
   assert.equal(IMAGES.visuel({ image_url: "https://x.test/a.jpg", image_source: "gemini" }), null);
   assert.equal(IMAGES.visuel({ image_url: "https://x.test/a.jpg", image_source: "" }), null);
 });

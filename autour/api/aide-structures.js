@@ -110,9 +110,21 @@ function localParCommune(source, code, lat, lng, rayon) {
   if (String(code) === "59599") {
     if (source === "dora") items = items.concat(doraSnapshot.filter((item) =>
       String(item.cityCode || item.city_code || "") === "59599"));
+    /* UN CODE CEDEX EST UN CODE DE LA MÊME VILLE.
+
+       Le second filtre exigeait `^59200`. Mesuré sur l'extrait FINESS du
+       30/08/2026 : le CENTRE D'HÉBERGEMENT ET DE RÉADAPTATION SOCIALE EVIE
+       TOURCOING, 50 boulevard Gambetta, commune « TOURCOING CEDEX », code
+       59331 — un vrai CHRS de Tourcoing — était écarté par son code postal, et
+       lui seul. Le CeGIDD du CH de Tourcoing (59208) tombait de la même façon.
+
+       C'est la COMMUNE qui borne l'extrait à la ville demandée ; le code
+       postal ne sert qu'à écarter une ligne d'un autre département. On garde
+       donc les deux conditions, mais la seconde dit ce qu'elle veut dire :
+       « un code postal du Nord », pas « exactement le code du centre-ville ». */
     if (source === "finess") items = items.concat(finessSnapshot.filter((item) =>
       /^tourcoing(?:\s|$)/i.test(String(item.commune || "")) &&
-      /^59200/.test(String(item.codePostal || item.code_postal || ""))));
+      /^59\d{3}$/.test(String(item.codePostal || item.code_postal || "").trim())));
   }
 
   return items.filter((item) => distanceDuCentre(item, lat, lng) <= rayon);
@@ -210,7 +222,24 @@ export default async function handler(request) {
     const key = String(item.id || item.slug || item.doraId || item.finessEge || item.finessPm || item.siret || JSON.stringify(item));
     if (seen.has(key)) return false;
     seen.add(key); return true;
-  });
+  })
+  /* UN PLAFOND DOIT COUPER LE PLUS LOIN, PAS LE DERNIER ARRIVÉ.
+
+     LE DÉFAUT QUE CETTE LIGNE CORRIGE, MESURÉ LE 25/09/2026.
+
+     Solidarité > Manger affichait « Aucune structure fiable trouvée dans cette
+     zone pour le moment » à Tourcoing. La cause n'était ni la taxonomie, ni la
+     distance, ni la découverte : 75 fiches du pré-calcul national tombent dans
+     les 5 km demandés, le plafond en rend 60, et l'unique structure d'aide
+     ALIMENTAIRE de la commune — SECOURS POPULAIRE - COMITE DE TOURCOING, à
+     1 549 m — occupait la position 61 dans l'ordre de l'extrait. Elle était
+     coupée d'une place, par un plafond qui gardait l'ordre du fichier.
+
+     Trier par distance avant de couper ne réduit rien et ne coûte rien : la
+     liste est déjà en mémoire, déjà filtrée sur le rayon. Et « le plafond garde
+     les plus proches » est la seule règle qu'on puisse expliquer à quelqu'un
+     qui cherche à manger ce soir. */
+  .sort((a, b) => distanceDuCentre(a, lat, lng) - distanceDuCentre(b, lat, lng));
   return reponse({items: uniques.slice(0, limite), source, centre: {lat, lng}, rayon,
     cityCode: commune && commune.code || null,
     snapshot: items.some((item) => item && item.source === "data_inclusion"),

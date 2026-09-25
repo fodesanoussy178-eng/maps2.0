@@ -9613,6 +9613,43 @@ async function lieuxAideAutour(lat, lng, contexte, signal){
   }catch(e){ return []; }
 }
 
+/* LA DÉCOUVERTE LOCALE, LUE COMME `lieux_explorer` L'EST DÉJÀ.
+
+   `local_discovery_nearby` est une fonction publique, accordée à `anon`, qui
+   ne rend que les candidats VÉRIFIÉS OU PROBABLES déjà rattachés à un lieu.
+   Autrement dit : elle ne sert que ce qui a passé la validation, jamais un
+   candidat douteux. Le filtre est côté base — rayon borné à 20 km, statut
+   `inactive` exclu — et le classement métier reste côté client.
+
+   Rien de tout cela n'était appelé. Mesuré le 25/09/2026 : un candidat
+   vérifié en base (CCAS de Tourcoing, services `food` et `meals`), rendu
+   correctement par la fonction, et invisible à l'écran faute d'appelant. */
+const AIDE_DECOUVERTE_MAX = 80;
+async function lieuxAideDecouverte(lat, lng, contexte, signal){
+  const fournisseur = window.AutourProviders && AutourProviders.aideDecouverte;
+  if(!fournisseur || !sbLecture) return [];
+  const fini = PERF.requete("supabase_local_discovery");
+  try{
+    const { data, error } = await sbLecture.rpc("local_discovery_nearby", {
+      p_lat:Number(lat), p_lng:Number(lng),
+      p_radius_m:AIDE_RAYON_INITIAL, p_limit:AIDE_DECOUVERTE_MAX,
+    });
+    if(error){
+      /* Une couche indisponible ne vide pas Solidarité : les autres sources
+         restent. Mais elle se dit, parce qu'un écran vide sans raison est
+         exactement le défaut qu'on vient de corriger. */
+      console.error("Lecture de la découverte locale :", error.message);
+      return [];
+    }
+    const structures = await fournisseur.nearby(lat, lng, {
+      needs:contexte && contexte.besoins || [], radius:AIDE_RAYON_INITIAL,
+      records:data || [], signal,
+    });
+    return structures.map(p=>AutourProviders.versInterne(p)).filter(Boolean);
+  }catch(e){ return []; }
+  finally { fini(); }
+}
+
 function publierAideSource(items, source) {
   const retenus = resultatsAideDansTerritoire(items || []);
   if (!retenus.length) return false;
@@ -9695,6 +9732,13 @@ async function chargerAideVraiment(lat,lng,generation,contexte){
          restent une source à part, puis sont corroborés par les référentiels. */
       charger:()=>lieuxAideAutour(lat, lng, contexte, generation.signal),
       publier:(locaux)=>publierAideSource(locaux, "autour"),
+    },
+    {
+      /* Ce que la découverte locale a VÉRIFIÉ et PUBLIÉ. Trouver n'est pas
+         publier : cette source ne sert que les candidats rattachés à un lieu
+         et validés, jamais un candidat en attente de preuve. */
+      charger:()=>lieuxAideDecouverte(lat, lng, contexte, generation.signal),
+      publier:(locaux)=>publierAideSource(locaux, "local_discovery"),
     },
     {
       /* L'annuaire public d'abord : il donne le type normalisé et l'identité
@@ -11645,7 +11689,8 @@ function ecranBesoinsAide(){
       ? '<div class="aide-priorites" data-testid="aide-priorites">'+liste.map(carteAidePrioritaire).join("")+'</div>'
       : (aideEnCours
         ? squeletteHTML(3)
-        : '<p class="aide-vide-court">Aucune structure fiable trouvée dans cette zone pour le moment.</p>'));
+        : '<p class="aide-vide-court">Aucune structure fiable trouvée dans cette zone pour le moment.</p>'+
+          phraseHorsRayonAide(besoinsSelectionnesAide())));
   return '<section class="ab aide-accueil" data-testid="aide-besoins">'+
     '<button class="ab-urgence" data-aide-urgence-registre="1" data-testid="aide-urgence">'+
       '<span class="abu-haut"><em>🆘</em><b>Besoin d’aide urgente&nbsp;?</b></span>'+
@@ -11839,6 +11884,48 @@ function demanderOrdreAide(candidats){
 
 /* Le classement de l'aide : les mêmes règles que partout — moteur temporel,
    contraintes dures, distance — plus la pertinence du besoin. */
+/* POURQUOI L'ÉCRAN EST VIDE ALORS QUE LA STRUCTURE EXISTE.
+
+   Les sources sociales cherchent à `AIDE_RAYON_INITIAL` (5 km) et OSM monte
+   par paliers jusqu'à 20 km, mais l'AFFICHAGE, lui, coupe à
+   `max(rayonRecherche, 6000)`. Une structure vérifiée à 7 km disparaissait
+   donc sans un mot : ni dans la liste, ni dans le message.
+
+   Ce compte ne change RIEN à ce qui est montré. Il dit seulement ce qui a été
+   écarté, et par quoi : « trois structures vérifiées, la plus proche à 7,2 km ».
+   C'est la différence entre « il n'y a rien » et « il n'y a rien ICI », et
+   c'est ce qui rend le bouton « Chercher plus loin » honnête. */
+function aideHorsRayon(besoins){
+  const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+  if(!centre || !AIDE) return {nombre:0, plusProcheM:null};
+  const limite = Math.max(rayonRecherche, 6000);
+  let nombre = 0, plusProche = Infinity;
+  candidatsAideZone().forEach((l)=>{
+    if(!nomExploitable(l) || !estSolutionAideLiee(l) ||
+       !aideSuffisammentFiable(l, besoins)) return;
+    const d = distanceM(centre[0], centre[1], l.lat, l.lng);
+    if(!(d > limite)) return;
+    nombre += 1;
+    if(d < plusProche) plusProche = d;
+  });
+  return {nombre, plusProcheM:nombre ? Math.round(plusProche) : null};
+}
+
+/* La phrase, ou rien. Une distance ronde en kilomètres au-delà de 1 km : à
+   « 7 234 m » personne ne sait s'il faut y aller à pied. */
+function phraseHorsRayonAide(besoins){
+  const hors = aideHorsRayon(besoins);
+  if(!hors.nombre) return "";
+  const km = hors.plusProcheM >= 1000
+    ? (hors.plusProcheM / 1000).toFixed(1).replace(".", ",") + " km"
+    : hors.plusProcheM + " m";
+  return '<p class="aide-hors-rayon" data-testid="aide-hors-rayon">'+
+    (hors.nombre === 1
+      ? 'Une structure vérifiée existe, à '+esc(km)+' — au-delà du rayon affiché.'
+      : esc(String(hors.nombre))+' structures vérifiées existent, la plus proche à '+
+        esc(km)+' — au-delà du rayon affiché.')+'</p>';
+}
+
 function solutionsAide(limite, options){
   const centre = centreZoneActive() || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
   if(!centre || !AIDE) return [];
@@ -12067,6 +12154,7 @@ function aucuneSolutionHTML(){
       : 'Je n’ai pas trouvé de solution suffisamment fiable autour de cette zone.')+
       '</p>'+
     '<p class="as-vide-sous">Ça ne veut pas dire qu’il n’y en a pas.</p>'+
+    phraseHorsRayonAide(besoinsSelectionnesAide())+
     '<div class="as-vide-actions">'+
       '<button class="pdep-btn pdep-fort" data-as-plus="1">Chercher plus loin</button>'+
       '<button class="pdep-btn" data-as="ville">Changer de ville</button>'+

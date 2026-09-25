@@ -1,5 +1,6 @@
 import {
   buildQueries, confidenceFor, coverageAssessment, deduplicate, normalizeText,
+  urlDeriveeDunCourriel,
   preuveDansPage, publishable, sourceFingerprint, sourceType, texteDePage,
   verificationStatus,
 } from "./discovery.mjs";
@@ -258,11 +259,16 @@ async function normalizeCandidate(raw:any, city:string, category:string, citatio
   /* LA PREUVE EST LUE, PLUS SEULEMENT DÉCLARÉE. Voir `preuveDansPage` : le
      fournisseur ne rend aucune liste d'URL consultées, donc « cité par
      l'outil » ne peut pas servir de garde. On va lire la page. */
-  const page = url ? await lirePage(url) : {ok:false, statut:0, texte:"", url:""};
+  /* Une URL recomposée depuis un courriel ne se lit pas : elle se refuse, et
+     le motif le dit. Voir `urlDeriveeDunCourriel` — trois Restos du Cœur de
+     Tourcoing ont été perdus sous un « page injoignable » trompeur. */
+  const courriel = url ? urlDeriveeDunCourriel(url) : false;
+  const page = url && !courriel ? await lirePage(url) : {ok:false, statut:0, texte:"", url:""};
   const preuve = page.ok
     ? preuveDansPage(page.texte, {nom:raw?.name, codePostal:raw?.postal_code,
         ville:raw?.city || city, categorie:category})
-    : {identite:0, service:0, raison:page.statut ? `page_http_${page.statut}` : "page_injoignable"};
+    : {identite:0, service:0, raison:courriel ? "url_derivee_d_un_courriel"
+        : page.statut ? `page_http_${page.statut}` : "page_injoignable"};
   const cited = preuve.identite > 0;
   let claimedOfficialDomain = "";
   try {

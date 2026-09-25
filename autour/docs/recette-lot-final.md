@@ -191,8 +191,12 @@ partout, zéro erreur JS.
 
 ## 3. FAIL / RESTE — connu, non corrigé, et pourquoi
 
-1. **`sync-datatourisme` n'est pas déployé.** Voir la section 7 : l'audit du
-   drift, la conséquence mesurée, et la commande exacte à lancer.
+1. ~~**`sync-datatourisme` n'est pas déployé.**~~ **Corrigé et déployé le
+   25/09/2026 : version 18 en production**, vérifiée par diff du bundle après
+   normalisation des échappements, puis fonctionnellement (sonde 200 / 67
+   champs / 200 POI, une partition réelle en `success`, téléphones écrits,
+   21 → 31). L'audit du drift et sa conséquence mesurée restent en section 7
+   comme trace.
 2. **Découverte : 6 rejets sur 8 à Lille pour `page_http_403`.** Les pages
    refusent notre lecteur (anti-robot). Ce n'est pas une erreur de
    classification : c'est la preuve qui devient inaccessible. Piste écrite dans

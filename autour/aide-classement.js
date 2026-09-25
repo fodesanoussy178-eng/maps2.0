@@ -616,12 +616,36 @@
       ajouter("categorie", poidsDeCategorie(k.preuve), k.id);
     });
 
-    /* 4. les services explicitement déclarés. */
+    /* 4. les services explicitement déclarés.
+
+       DEUX LECTURES, ET LA SECONDE NE VAUT QUE FAUTE DE LA PREMIÈRE.
+
+       La lecture exacte d'abord : la source a écrit le mot d'Autour. Puis, et
+       seulement si aucun service canonique n'a répondu, la lecture par RACINE
+       (`TAXO.racineService`) : `food_distribution`, `emergency_food`,
+       `social_grocery`, `emergency_housing` disent le même service dans la
+       langue de leur source. Le poids est le même — un service déclaré est un
+       service déclaré — mais l'écho dit laquelle des deux lectures a répondu,
+       pour que l'explication reste vraie. */
+    let serviceExact = false;
     b.services.forEach((s) => {
       if (!services.has(texteSansAccents(s))) return;
+      serviceExact = true;
       certaine = true;
       ajouter("service", POIDS.service, s);
     });
+    if (!serviceExact) {
+      const declares = [...services];
+      for (const canonique of b.services) {
+        const racine = TAXO.racineService ? TAXO.racineService(canonique) : null;
+        if (!racine) continue;
+        const variante = declares.find((declare) => racine.test(declare));
+        if (!variante) continue;
+        certaine = true;
+        ajouter("service", POIDS.service, variante + " → " + canonique);
+        break;
+      }
+    }
 
     /* 6. la source institutionnelle — elle ne vaut que si quelque chose
        d'autre rattache déjà le lieu au besoin. Une source officielle ne rend
