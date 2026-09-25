@@ -205,10 +205,30 @@ function texteDeFiche(ligne, moteurs) {
     ...(ligne.music_genres || [])].filter(Boolean).join(" "));
 }
 
+/* UN MOT N'EST PAS UNE SUITE DE LETTRES.
+
+   LE DÉFAUT, MESURÉ EN PRODUCTION LE 25/09/2026. « Quels concerts rap cette
+   semaine ? » a rendu trois résultats, dont « Eternelle Notre-Dame (de Paris)
+   — Expérience en réalité virtuelle ». La recherche testait
+   `texte.includes("rap")` : « rap » est dans « g-rap-hique », dans « thé-rap-ie
+   », dans « -rap-ide ». Trois mots de description suffisaient à faire passer
+   n'importe quoi pour un concert de rap.
+
+   On compare donc des MOTS. Le texte est déjà normalisé en mots séparés par
+   des espaces ; un mot de la demande doit être l'un d'eux. Le préfixe reste
+   admis à partir de cinq lettres, pour que « brocante » trouve « brocantes »
+   sans que « rap » trouve « rapide ». */
+function motPresent(texte, mot) {
+  if (!texte || !mot) return false;
+  const mots = texte.split(" ");
+  if (mots.includes(mot)) return true;
+  return mot.length >= 5 && mots.some((autre) => autre.startsWith(mot));
+}
+
 function correspondALaDemande(ligne, demande, moteurs) {
   if (!demande.analyse) return { retenu: true, par: "aucun filtre" };
   const texte = texteDeFiche(ligne, moteurs);
-  if (demande.mots.length && demande.mots.every((mot) => texte.includes(mot)))
+  if (demande.mots.length && demande.mots.every((mot) => motPresent(texte, mot)))
     return { retenu: true, par: "mots de la demande" };
   if (demande.famille) {
     const fiche = taxonomieOuverte.rattacher(ligne.title,
@@ -430,7 +450,7 @@ async function searchNearby(args, contexte) {
       if (!demande.mots.length) return true;
       const texte = moteurs.CORE.normalizeText([l.name, l.description, l.famille_label,
         l.family].filter(Boolean).join(" "));
-      return demande.mots.every((mot) => texte.includes(mot));
+      return demande.mots.every((mot) => motPresent(texte, mot));
     })
     .map((l) => itemLieu(l, t, moteurs));
 

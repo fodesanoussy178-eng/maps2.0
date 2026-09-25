@@ -93,9 +93,8 @@ function ligneResultat(item) {
   } else {
     if (item.type_label || item.type) bouts.push(item.type_label || item.type);
     if (item.date_label) bouts.push(item.date_label);
-    if (item.sessions && item.sessions.length > 1)
-      bouts.push("séances : " + item.sessions.slice(0, 6)
-        .map((s) => String(s.start).slice(11, 16)).join(", "));
+    const seances = seancesLisibles(item.sessions);
+    if (seances) bouts.push("séances : " + seances);
     if (item.opening_label) bouts.push(item.opening_label);
     if (item.venue || item.address) bouts.push(item.venue || item.address);
     if (item.price_text) bouts.push(item.price_text);
@@ -108,6 +107,25 @@ function ligneResultat(item) {
   const ligne = "- " + bouts.filter(Boolean).join(" · ");
   return item.deep_link ? ligne + "\n  " + (item.cta || "Ouvrir dans Autour") + " : " + item.deep_link
     : ligne;
+}
+
+/* LES SÉANCES, LISIBLES. Rendre « 08:00, 09:00, 10:00, 08:00, 09:00, 08:00 »
+   — mesuré en production le 25/09/2026 — ne dit ni quel jour, ni pourquoi une
+   heure revient trois fois : ce sont des jours différents. On dédoublonne, et
+   on date dès que les séances ne tiennent pas dans une seule journée. */
+function seancesLisibles(sessions) {
+  const liste = (sessions || []).map((s) => String(s.start)).filter(Boolean);
+  if (liste.length < 2) return null;
+  const jours = new Set(liste.map((debut) => debut.slice(0, 10)));
+  const vues = [];
+  for (const debut of liste) {
+    const libelle = jours.size > 1
+      ? debut.slice(8, 10) + "/" + debut.slice(5, 7) + " " + debut.slice(11, 16)
+      : debut.slice(11, 16);
+    if (!vues.includes(libelle)) vues.push(libelle);
+  }
+  if (vues.length < 2) return null;
+  return vues.slice(0, 6).join(", ") + (vues.length > 6 ? "…" : "");
 }
 
 function resume(sortie) {

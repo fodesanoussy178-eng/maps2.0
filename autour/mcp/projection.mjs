@@ -109,9 +109,7 @@ export function projeterEvenement(item, contexte = {}) {
     type,
     type_label: libelleType(type, moteurs),
     summary: texte(ligne.description, 200),
-    date_label: T && typeof T.libelleDate === "function"
-      ? texte(T.libelleDate(Object.assign({}, ligne, { start_at: ligne.start_at, end_at: ligne.end_at }),
-          now == null ? Date.now() : now), 80) : null,
+    date_label: libelleDeDate(ligne, T, now),
     start: ligne.start_at || null,
     end: ligne.end_at || null,
     timezone: ligne.timezone || "Europe/Paris",
@@ -148,6 +146,43 @@ export function projeterEvenement(item, contexte = {}) {
    la catégorie de la source quand elle existe, un tag d'annonce qui décrit la
    nature (jamais « local », qui décrit la portée), et sinon rien du tout. */
 const TYPES_VIDES = new Set(["event", "evenement", "événement", "autre", "", "local"]);
+
+/* LE LIBELLÉ DE DATE PASSE PAR L'ÉTAT TEMPOREL, COMME DANS L'APPLICATION.
+
+   LE DÉFAUT, MESURÉ EN PRODUCTION LE 25/09/2026. « Que faire à Lille ce
+   soir ? » rendait « Halles de Wazemmes · Marché · JEUDI 1 JANVIER ·
+   08h00–20h00 ». Le marché est bien ouvert ce soir : sa ligne couvre l'année
+   entière, et sa date de début est le 1er janvier. Annoncer cette date-là à
+   quelqu'un qui demande ce qui se passe maintenant n'est pas faux, c'est
+   inutilisable.
+
+   `annonces-classement.js` appelle `libelleDate` avec l'ÉTAT temporel et
+   `ignoreStatus` ; c'est ce qui lui fait dire « en ce moment » plutôt que de
+   réciter une borne. On fait pareil — le même appel, le même module. */
+function libelleDeDate(ligne, T, now) {
+  if (!T || typeof T.libelleDate !== "function") return null;
+  const instant = now == null ? Date.now() : now;
+  try {
+    const etat = typeof T.etatTemporalEvenement === "function"
+      ? T.etatTemporalEvenement(ligne, instant) : null;
+    /* UNE PÉRIODE LONGUE SANS HORAIRES N'EST PAS UNE DATE INCONNUE.
+
+       Le marché des Halles couvre l'année entière ; faute d'horaires publiés,
+       `availability.js` répond « je ne sais pas », le statut retombe sur
+       `unknown`, et le libellé récite alors la borne de début — le 1er janvier.
+       La base, elle, a tranché : `temporal_status = now`. On transmet donc ce
+       verdict-là au module, qui possède déjà la bonne phrase pour « en cours ».
+       On ne fabrique aucun libellé : on cesse d'en demander un mauvais. */
+    const canonique = etat && (etat.canonique || etat.canonicalStatus);
+    /* Une période longue en cours n'a pas de date à annoncer : elle a un ÉTAT.
+       C'est le mot que l'application affiche déjà sur ces fiches — « En cours »
+       (`app.js`, badge du bandeau temporel) — et c'est le seul qui soit vrai
+       pour un marché ouvert de janvier à décembre. */
+    if (etat && etat.periodeLongue && canonique === "now") return "En cours";
+    return texte(T.libelleDate(ligne, instant,
+      etat ? { statut: etat, ignoreStatus: true } : undefined), 80);
+  } catch (e) { return null; }
+}
 
 function typeDEvenement(ligne, item, canonique) {
   const candidats = [ligne.event_kind, ligne.category,
@@ -223,7 +258,10 @@ export function projeterPointDeService(structure, contexte = {}) {
   const statut = String(structure.verificationStatus || "").toLowerCase();
   const confiance = Number(structure.sourceConfidence);
   const services = [...new Set([...(structure.services || [])])].slice(0, 8);
-  const servicesLisibles = libellesDeServices(services, moteurs);
+  /* Le service qui répond à la QUESTION passe devant. Sans cela, un point
+     d'hébergement s'annonçait « Travail / argent » à quelqu'un qui cherche où
+     dormir — mesuré en production le 25/09/2026. */
+  const servicesLisibles = libellesDeServices(services, moteurs, besoin);
   const sortie = {
     id: structure.autourId || structure.id,
     kind: "service_point",
@@ -266,20 +304,21 @@ export function projeterPointDeService(structure, contexte = {}) {
   return auditer(sortie, "service_point");
 }
 
-function libellesDeServices(services, moteurs) {
+function libellesDeServices(services, moteurs, besoinDemande) {
   const TAXO = moteurs && moteurs.AIDE_TAXONOMIE;
   const AIDE = moteurs && moteurs.AIDE;
   if (!TAXO || !AIDE) return [];
   const vus = new Set();
-  const libelles = [];
+  const trouves = [];
   for (const service of services) {
     const besoin = (TAXO.BESOINS || []).find((b) => (b.services || []).includes(service));
     if (!besoin || vus.has(besoin.id)) continue;
     vus.add(besoin.id);
     const libelle = (AIDE.BESOINS || []).find((b) => b.id === besoin.id);
-    if (libelle && libelle.label) libelles.push(libelle.label);
+    if (libelle && libelle.label) trouves.push({ id: besoin.id, label: libelle.label });
   }
-  return libelles;
+  trouves.sort((a, b) => (b.id === besoinDemande ? 1 : 0) - (a.id === besoinDemande ? 1 : 0));
+  return trouves.map((t2) => t2.label);
 }
 
 function organisationDe(structure, moteurs) {
