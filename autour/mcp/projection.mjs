@@ -272,6 +272,7 @@ export function projeterPointDeService(structure, contexte = {}) {
        fusionner deux adresses. */
     organisation: organisationDe(structure, moteurs),
     need: besoin || null,
+    need_label: libelleDuBesoin(besoin, moteurs),
     services,
     /* `food_bank` ou `administrative_assistance` sont les mots des SOURCES.
        Ce qu'une personne lit doit être le mot d'Autour — « Manger »,
@@ -304,6 +305,27 @@ export function projeterPointDeService(structure, contexte = {}) {
   return auditer(sortie, "service_point");
 }
 
+function libelleDuBesoin(besoin, moteurs) {
+  const AIDE = moteurs && moteurs.AIDE;
+  if (!AIDE || !besoin) return null;
+  const trouve = (AIDE.BESOINS || []).find((b) => b.id === besoin);
+  return trouve && trouve.label ? trouve.label : null;
+}
+
+/* LE BESOIN DEMANDÉ FIGURE TOUJOURS EN TÊTE, ET CE N'EST PAS UNE FAVEUR.
+
+   LE DÉFAUT, MESURÉ EN PRODUCTION LE 25/09/2026. « Je cherche un foyer ou un
+   hébergement » rendait « RELAIS SOLEIL TOURQUENNOIS · Travail / argent ». La
+   structure est pourtant un CHRS — c'est écrit dans ses `types` — et c'est à ce
+   titre qu'`estSolution` l'a retenue pour « logement ». Mais ses SERVICES
+   déclarés, tels que la source les écrit, sont `social_welfare` et `chrs` : le
+   premier se traduit « Travail / argent », le second ne se traduit pas. La
+   liste affichée disait donc le contraire de la question posée.
+
+   Or tout point rendu ici a passé `estSolution(structure, [besoin])` : Autour
+   affirme qu'il répond à ce besoin-là. Le libellé du besoin ouvre donc la
+   liste, suivi des autres services déclarés. On n'invente aucun service — on
+   cesse de cacher celui pour lequel la personne est venue. */
 function libellesDeServices(services, moteurs, besoinDemande) {
   const TAXO = moteurs && moteurs.AIDE_TAXONOMIE;
   const AIDE = moteurs && moteurs.AIDE;
@@ -318,7 +340,10 @@ function libellesDeServices(services, moteurs, besoinDemande) {
     if (libelle && libelle.label) trouves.push({ id: besoin.id, label: libelle.label });
   }
   trouves.sort((a, b) => (b.id === besoinDemande ? 1 : 0) - (a.id === besoinDemande ? 1 : 0));
-  return trouves.map((t2) => t2.label);
+  const libelles = trouves.map((t2) => t2.label);
+  const besoin = libelleDuBesoin(besoinDemande, moteurs);
+  if (besoin && !libelles.includes(besoin)) libelles.unshift(besoin);
+  return libelles;
 }
 
 function organisationDe(structure, moteurs) {

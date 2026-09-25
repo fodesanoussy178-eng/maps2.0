@@ -714,3 +714,27 @@ test("les séances répétées sont dédoublonnées et datées", async () => {
   const repetitions = (texte.match(/26\/09 10:00/g) || []).length;
   assert.ok(repetitions <= 1, "aucune heure répétée à l'identique");
 });
+
+test("le besoin demandé figure toujours en tête des services affichés", async () => {
+  const moteurs = await moteursVerifies();
+  /* Le cas réel de production : un CHRS dont les services déclarés par la
+     source sont `social_welfare` et `chrs`. Le premier se traduit
+     « Travail / argent », le second ne se traduit pas — et la réponse à
+     « je cherche un hébergement » annonçait donc « Travail / argent ». */
+  const chrs = moteurs.PROVIDERS.aideDora.normaliser({
+    id: "data-inclusion:relais", name: "RELAIS SOLEIL TOURQUENNOIS",
+    lat: 50.714923, lng: 3.164357, address: "27 Rue de Roubaix", commune: "Tourcoing",
+    services: ["social_welfare", "chrs"], service_types: ["social_welfare", "chrs"],
+    types: ["structure_insertion", "chrs"], type_structure: "chrs",
+    phone: "+33320369950", source: "data_inclusion",
+    description: "Accueil de jour CHRS Accompagnement Logement",
+  });
+  const logement = projection.projeterPointDeService(chrs, { besoin: "logement", moteurs });
+  assert.equal(logement.service_labels[0], "Logement");
+  assert.equal(logement.need_label, "Logement");
+  /* Et on n'invente rien : demandé pour le travail, le point n'annonce pas
+     « Logement ». */
+  const travail = projection.projeterPointDeService(chrs, { besoin: "travail", moteurs });
+  assert.equal(travail.service_labels[0], "Travail / argent");
+  assert.ok(!travail.service_labels.includes("Logement"));
+});
