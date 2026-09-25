@@ -20,6 +20,23 @@
 
    Voir `sync-datatourisme/index.ts`, qui porte le même relevé sous
    `mode=sonde` une fois déployé.
+
+   ---- À SUPPRIMER, ET LE MOMENT EST ÉCRIT ---------------------------------
+
+   Cette fonction n'a d'utilité que jusqu'au redéploiement de
+   `sync-datatourisme`, qui porte désormais le même relevé. Après ce
+   déploiement, elle ne sert plus à rien et doit partir — code ET déploiement,
+   dans cet ordre inverse : on supprime d'abord ce qui tourne, ensuite la
+   source, jamais l'inverse (une fonction déployée sans source dans le dépôt
+   est exactement ce qui a coûté une journée de récupération à `local-discovery`).
+
+     npx supabase functions delete sonde-datatourisme \
+       --project-ref sxnzyvcgwbwnpjnqmpkp
+     git rm -r autour/supabase/functions/sonde-datatourisme
+     # puis retirer [functions.sonde-datatourisme] de supabase/config.toml
+
+   Elle reste en place tant que `sync-datatourisme` n'est pas à jour : sans
+   elle, plus aucun moyen de mesurer ce que la source sert réellement.
 --------------------------------------------------------------------------- */
 
 const CATALOGUE = Deno.env.get("DATATOURISME_BASE_URL")

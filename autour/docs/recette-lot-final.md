@@ -191,16 +191,8 @@ partout, zéro erreur JS.
 
 ## 3. FAIL / RESTE — connu, non corrigé, et pourquoi
 
-1. **`sync-datatourisme` n'est pas déployé.** La correction de la requête (le
-   téléphone de l'organisateur, disponible pour l'essentiel du catalogue) est
-   dans la branche et testée, mais la production tourne encore sur la version
-   d'avant. Le canal de déploiement disponible depuis cette session exige le
-   contenu du paquet EN LIGNE (78 ko minifiés) ; recopier à la main un bundle
-   minifié par-dessus une synchronisation qui fonctionne est un risque que je
-   refuse de prendre. Commande attendue :
-   `supabase functions deploy sync-datatourisme`.
-   Note au passage : la production était déjà en retard de deux commits sur le
-   dépôt (dont un correctif de filtre PostgREST de septembre).
+1. **`sync-datatourisme` n'est pas déployé.** Voir la section 7 : l'audit du
+   drift, la conséquence mesurée, et la commande exacte à lancer.
 2. **Découverte : 6 rejets sur 8 à Lille pour `page_http_403`.** Les pages
    refusent notre lecteur (anti-robot). Ce n'est pas une erreur de
    classification : c'est la preuve qui devient inaccessible. Piste écrite dans
@@ -289,3 +281,123 @@ Quatorze commits, `bea5857` → `20ec782`. Les fichiers qui portent l'essentiel 
   l'outillage disponible. Sa source est dans le dépôt, elle est fermée par
   secret et en lecture seule. À supprimer d'un `supabase functions delete` si
   elle n'a plus d'usage.
+
+---
+
+## 7. Audit du drift production (sync-datatourisme)
+
+Fait avant toute action, sur la version réellement déployée (v17, 03/09/2026),
+récupérée telle quelle et comparée fichier par fichier.
+
+| fichier | production ↔ `main` | production ↔ PR #116 |
+|---|---|---|
+| `sync-datatourisme/index.ts` | **1 ligne** | 121 lignes |
+| `sync-datatourisme/normalisation.mjs` | identique | 79 lignes |
+| `shared/annonces.mjs` | identique | identique |
+| `shared/announcement-tags.mjs` | identique | identique |
+| `shared/evenements-canoniques.mjs` | identique | 15 lignes |
+
+**Rien n'existe uniquement en production.** Aucune retouche faite au tableau de
+bord, aucun fichier que le dépôt ignorerait : les quatre autres fichiers sont
+identiques au caractère près, et l'unique écart avec `main` est une ligne que
+le dépôt a CORRIGÉE et que la production n'a jamais reçue :
+
+```
+- const path = "events?id="     + encodeURIComponent(eventId) + …
++ const path = "events?id=eq."  + encodeURIComponent(eventId) + …
+```
+
+### Pourquoi les deux ont divergé
+
+Le correctif est le commit `249fd79` (18/09), postérieur au dernier déploiement
+(03/09). Rien ne déploie les fonctions automatiquement : le seul workflow qui
+les touche les APPELLE (`evenements-sync.yml`, quatre fois par jour). Un
+correctif de fonction ne part donc en production que si quelqu'un lance la
+commande — et personne ne l'a lancée depuis le 3 septembre.
+
+### Conséquence, mesurée
+
+`?id=<uuid>` sans opérateur n'est pas un filtre pour PostgREST. Vérifié en
+appelant l'API avec la clé publiable : **HTTP 400, `PGRST100`, « failed to
+parse filter »**. Donc en production, `lireAnnonceCanonique()` échoue à chaque
+appel, rend `{}` par sa garde, et la fusion des faits travaille sans passé :
+le PATCH qui suit réécrit avec les nulls de DATAtourisme ce qu'une autre source
+avait rempli.
+
+Ce n'est pas une hypothèse. Sur les 3 848 événements rattachés à une source :
+
+| provenance | événements | avec `venue_name` | avec `source_url` | avec `price_text` |
+|---|---|---|---|---|
+| openagenda seul | 2 108 | 585 | **2 108 (100 %)** | 421 |
+| datatourisme seul | 1 466 | 0 | 0 | 81 |
+| **les deux** | **142** | **0** | **6 (4 %)** | 30 |
+
+OpenAgenda seul garde son `source_url` dans 100 % des cas. Dès que DATAtourisme
+touche le même événement, il n'en reste que 6 sur 142, et plus aucun
+`venue_name`. **La production efface**, à chaque passage, ce que la branche
+l'empêche d'effacer. Le déploiement n'est donc pas un confort : c'est l'arrêt
+d'une perte de données silencieuse.
+
+### La commande, exactement
+
+Le dépôt a tout ce qu'il faut : `supabase/config.toml` déclare la fonction avec
+`verify_jwt = false` et son point d'entrée, et la CLI 2.117 est disponible. Ce
+qui manque ici est un jeton — vérifié :
+
+```
+$ npx supabase functions deploy sync-datatourisme --project-ref sxnzyvcgwbwnpjnqmpkp
+{"error":{"code":"LegacyPlatformAuthRequiredError","message":"Access token not
+provided. Supply an access token by running `supabase login` or setting the
+SUPABASE_ACCESS_TOKEN environment variable."}}
+```
+
+Ni `SUPABASE_ACCESS_TOKEN`, ni session `supabase login` dans cet
+environnement ; le serveur MCP a ses propres accès mais n'expose pas de jeton
+CLI. À lancer depuis une machine qui en a un :
+
+```
+cd autour
+export SUPABASE_ACCESS_TOKEN=<jeton personnel Supabase>   # ou : npx supabase login
+npx supabase functions deploy sync-datatourisme --project-ref sxnzyvcgwbwnpjnqmpkp
+```
+
+Puis vérifier, sans rien écrire en base, que la version déployée est bien la
+nouvelle (le mode n'existe que dans celle-ci) :
+
+```
+curl -s -H "x-sync-secret: <event_sync_secret>" \
+  "https://sxnzyvcgwbwnpjnqmpkp.supabase.co/functions/v1/sync-datatourisme?mode=sonde&area=mel" \
+  | head -c 300
+```
+
+Une réponse JSON avec `champs_demandes` et `formes` = la nouvelle version est
+en place. Un 404/`{}` = c'est encore l'ancienne.
+
+## 8. Parité dépôt ↔ production, au-delà de cette fonction
+
+Vérifié pour tout ce que la production exécute :
+
+- **Les 9 fonctions déployées ont leur source dans le dépôt** (`local-discovery`
+  et `sonde-datatourisme` l'ont reçue dans cette branche). Le bundle déployé de
+  `local-discovery` v9 correspond à cette source ; `sync-openagenda` v16 porte
+  déjà tout le travail sur les coordonnées (vérifié par marqueurs :
+  `contactsOpenAgenda`, `telephoneE164`, la regex de prix corrigée). Seule la
+  réorganisation des primitives dans `shared/contacts.mjs` est plus récente que
+  le déploiement, à comportement identique et couverte par 16 tests.
+- **`config.toml` ne déclarait que 3 fonctions sur 9.** Ce n'est pas cosmétique :
+  `functions deploy` applique `verify_jwt = true` par défaut pour une fonction
+  non déclarée, donc redéployer `local-discovery` ou `agent-acquisition` depuis
+  le dépôt les aurait fermées au cron, qui ne présente qu'un `x-sync-secret`.
+  Les six manquantes sont déclarées, avec les valeurs RELEVÉES en production.
+- **Deux migrations appliquées en production n'avaient aucun fichier ici** :
+  `20260924141304_local_discovery` (les trois tables, la fonction d'invocation
+  privée, la surface publique `local_discovery_nearby`) et
+  `20260924141809_local_discovery_indexes`. Elles sont récupérées depuis le
+  registre et ajoutées à l'identique — **empreintes MD5 vérifiées**
+  (`60d13057…` et `e7a5bb4b…`, mêmes longueurs) : une base reconstruite depuis
+  ce dépôt aura enfin de quoi faire tourner la fonction qui écrit dedans.
+- Les 5 migrations de ce lot **n'en modifient aucune existante** et sont toutes
+  ré-appliquables (`if not exists`, `create or replace`, `drop … if exists`) :
+  leurs numéros de version sont antérieurs à ceux enregistrés en production, ce
+  qui fait qu'un futur `db push` les rejouera — sans conséquence, donc, mais
+  c'est dit.

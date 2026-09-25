@@ -95,3 +95,44 @@ entrypoint = "./functions/sync-datatourisme/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/sync-openagenda/index.ts"
+
+# ---- LES SIX AUTRES FONCTIONS DÉPLOYÉES, ENFIN DÉCLARÉES -------------------
+# Elles tournent en production depuis des semaines sans figurer ici. Ce n'est
+# pas cosmétique : `supabase functions deploy <nom>` applique `verify_jwt = true`
+# PAR DÉFAUT quand la fonction n'est pas déclarée. Redéployer `local-discovery`
+# ou `agent-acquisition` depuis ce dépôt aurait donc exigé un JWT là où le cron
+# ne présente qu'un `x-sync-secret` — un 401 silencieux à la première
+# exécution suivante. Les valeurs ci-dessous sont celles RELEVÉES en production
+# le 25/09/2026, pas des valeurs souhaitées.
+[functions.sync-lille-official]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/sync-lille-official/index.ts"
+
+[functions.agent-acquisition]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/agent-acquisition/index.ts"
+
+[functions.local-discovery]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/local-discovery/index.ts"
+
+# Diagnostic temporaire : à supprimer une fois `sync-datatourisme` redéployé
+# (il porte le même relevé sous `mode=sonde`). Voir docs/recette-lot-final.md.
+[functions.sonde-datatourisme]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/sonde-datatourisme/index.ts"
+
+# ---- Appelées depuis le navigateur ou l'atelier ----------------------------
+[functions.canary-gemini]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/canary-gemini/index.ts"
+
+[functions.agora-assistant]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/agora-assistant/index.ts"

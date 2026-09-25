@@ -14,4 +14,5 @@ coverage
 autour/livraison
 
 # Le dossier de travail de la CLI Supabase : rien à archiver.
+supabase/.temp/
 autour/supabase/.temp/
