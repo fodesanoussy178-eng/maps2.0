@@ -533,6 +533,10 @@ input{font-family:inherit;font-size:16px}
 .aide-toutes span{font-size:18px;line-height:1}
 .aide-vide-court{margin:14px 0;padding:14px;border-radius:11px;background:var(--paper);
   font-size:13px;line-height:1.4;color:var(--ink2)}
+/* La raison d'un écran vide. Elle suit le message, en plus petit : c'est une
+   explication, pas une deuxième annonce. */
+.aide-hors-rayon{margin:-6px 0 12px;padding:0 4px;font-size:12px;line-height:1.4;
+  color:var(--ink2)}
 .aide-urgence-ligne-compacte{display:flex;align-items:center;gap:9px;width:100%;
   min-height:42px;margin-top:9px;padding:9px 11px;border:1px solid var(--bord);
   border-radius:11px;background:#fff;color:var(--ink);font-size:13px;text-align:left}

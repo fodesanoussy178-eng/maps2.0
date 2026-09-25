@@ -110,9 +110,21 @@ function localParCommune(source, code, lat, lng, rayon) {
   if (String(code) === "59599") {
     if (source === "dora") items = items.concat(doraSnapshot.filter((item) =>
       String(item.cityCode || item.city_code || "") === "59599"));
+    /* UN CODE CEDEX EST UN CODE DE LA MÊME VILLE.
+
+       Le second filtre exigeait `^59200`. Mesuré sur l'extrait FINESS du
+       30/08/2026 : le CENTRE D'HÉBERGEMENT ET DE RÉADAPTATION SOCIALE EVIE
+       TOURCOING, 50 boulevard Gambetta, commune « TOURCOING CEDEX », code
+       59331 — un vrai CHRS de Tourcoing — était écarté par son code postal, et
+       lui seul. Le CeGIDD du CH de Tourcoing (59208) tombait de la même façon.
+
+       C'est la COMMUNE qui borne l'extrait à la ville demandée ; le code
+       postal ne sert qu'à écarter une ligne d'un autre département. On garde
+       donc les deux conditions, mais la seconde dit ce qu'elle veut dire :
+       « un code postal du Nord », pas « exactement le code du centre-ville ». */
     if (source === "finess") items = items.concat(finessSnapshot.filter((item) =>
       /^tourcoing(?:\s|$)/i.test(String(item.commune || "")) &&
-      /^59200/.test(String(item.codePostal || item.code_postal || ""))));
+      /^59\d{3}$/.test(String(item.codePostal || item.code_postal || "").trim())));
   }
 
   return items.filter((item) => distanceDuCentre(item, lat, lng) <= rayon);

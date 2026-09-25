@@ -22,7 +22,16 @@ export const SOLIDARITY_NETWORKS = Object.freeze([
 
 const WORDINGS = Object.freeze({
   food: ["aide alimentaire", "distribution alimentaire", "repas gratuit", "épicerie solidaire", "accueil de jour"],
-  housing: ["hébergement urgence", "centre hébergement", "accueil de jour", "mise à l'abri"],
+  /* « FOYER » EST LE MOT LE PLUS COURANT, ET IL MANQUAIT.
+     Les structures réelles de la zone testée s'appellent « CHRS », « foyer de
+     jeunes travailleurs », « résidence sociale », « pension de famille » ou
+     « accueil de nuit ». Aucune de ces requêtes n'était posée : la découverte
+     cherchait « hébergement urgence » et ne voyait donc pas le parc social.
+     Aucune exécution `housing` n'avait d'ailleurs jamais été lancée au
+     25/09/2026 — toutes portaient sur `food`. */
+  housing: ["hébergement urgence", "centre hébergement", "accueil de jour", "mise à l'abri",
+            "foyer hébergement", "foyer jeunes travailleurs", "CHRS",
+            "résidence sociale", "pension de famille", "accueil de nuit"],
   health: ["centre de santé solidaire", "soins gratuits", "permanence santé"],
   admin: ["aide démarches administratives", "accès aux droits", "permanence sociale"],
   clothing: ["vestiaire solidaire", "don vêtements", "aide vêtements"],
@@ -45,6 +54,47 @@ export function buildQueries(city, category = "food", networks = SOLIDARITY_NETW
     ...generic.map((term) => `${term} ${place}`),
     ...networks.map((network) => `${network} ${place}`),
   ])].slice(0, 24);
+}
+
+/* ---------------------------------------------------------------------------
+   UNE ADRESSE DE COURRIEL N'EST PAS UNE ADRESSE DE PAGE
+
+   Mesuré le 25/09/2026. Trois candidats Restos du Cœur de Tourcoing ont été
+   rejetés pour `page_injoignable`, avec ces source_url :
+
+     https://ad59a.centre.tourcoing-virolois.restosducoeur.org
+     https://ad59a.centre.tourcoing-epideme.restosducoeur.org
+     https://ad59a.centre.tourcoing-orions.restosducoeur.org
+
+   Ces hôtes n'existent pas. Les VRAIES adresses publiées par l'association
+   départementale sont des COURRIELS de la même forme :
+
+     ad59a.centre.tourcoing-virolois@restosducoeur.org
+
+   Le modèle avait remplacé l'arobase par un point. La garde de lecture de page
+   a fait son travail — rien de faux n'a été publié — mais le rejet disait
+   « page injoignable », ce qui laissait croire à un site en panne plutôt qu'à
+   une URL fabriquée. On reconnaît donc la forme, on refuse sans dépenser une
+   lecture, et le motif dit la vérité.
+
+   La règle est étroite à dessein : un sous-domaine qui contient à la fois un
+   séparateur de boîte (`.centre.`, `.contact.`, `.accueil.`) et un tiret dans
+   son dernier label est le motif d'un courriel, pas d'un hôte. On ne refuse
+   jamais un sous-domaine ordinaire — `n-lille.secours-catholique.org` et
+   `lillemetropole.croix-rouge.fr` passent, et ils sont réels.
+--------------------------------------------------------------------------- */
+const BOITES = /^(centre|contact|accueil|secretariat|info|infos|bureau|siege)$/;
+
+export function urlDeriveeDunCourriel(url) {
+  let host = "";
+  try { host = new URL(String(url)).hostname.replace(/^www\./, "").toLowerCase(); }
+  catch { return false; }
+  const labels = host.split(".");
+  /* Un hôte de courriel recomposé porte au moins quatre labels : la boîte, son
+     suffixe, puis le domaine et son extension. */
+  if (labels.length < 4) return false;
+  return labels.slice(0, -2).some((label, index, sous) =>
+    BOITES.test(label) && index + 1 < sous.length && sous[index + 1].includes("-"));
 }
 
 export function sourceType(url, officialDomain, city) {

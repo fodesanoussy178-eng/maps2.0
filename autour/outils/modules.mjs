@@ -35,6 +35,7 @@ export const MODULES = [
   "providers/normaliser.js", "providers/googlePlaces.js", "providers/datatourisme.js",
   "providers/osm.js", "providers/decouvertes.js", "providers/aideInstitutionnelle.js",
   "providers/aideAutour.js", "providers/aideDora.js", "providers/aideFiness.js",
+  "providers/aideDecouverte.js",
   "mapProviders/googleMaps.js", "app.js",
 ];
 

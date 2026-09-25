@@ -11,6 +11,10 @@
 
   const SOURCES = Object.freeze({
     autour: 0.82,
+    /* La découverte locale lit une page officielle et garde la preuve. Sa
+       confiance de SOURCE reste sous celle d'un annuaire public : chaque
+       fiche porte en plus sa propre confiance mesurée, qui prime ici. */
+    local_discovery: 0.80,
     dora: 0.90,
     data_inclusion: 0.88,
     finess: 0.96,
