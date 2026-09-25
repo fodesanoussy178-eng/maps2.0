@@ -69,7 +69,7 @@ retenu pour provoquer un clic.
 
 | | |
 |---|---|
-| Endpoint | `https://autour.eu/api/mcp` |
+| Endpoint | `https://autour.eu/api/mcp` — **en ligne depuis le 25/09/2026** |
 | Transport | HTTP JSON-RPC (POST). `GET` rend une fiche de service, sans donnée. |
 | Version de protocole | `2025-06-18` |
 | Écriture | **aucune** — six outils, tous en lecture (`readOnlyHint: true`) |
@@ -184,6 +184,30 @@ curl -s -X POST https://autour.eu/api/mcp \
   -H 'authorization: Bearer <jeton>' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
+
+---
+
+## 8 bis. Recette de production du 25/09/2026
+
+Les dix scénarios ont été rejoués contre le serveur **déployé**, depuis
+Postgres (pg_net), sur les vraies données. Résultat : dix réponses `200`, et
+**quatre défauts que les lignes de test ne montraient pas**.
+
+| Ce que la production a rendu | Diagnostic | Correction |
+|---|---|---|
+| « Quels concerts rap ? » → *expérience en réalité virtuelle* | `includes("rap")` trouve « rap » dans **g·rap·hique**, **thé·rap·ie**, **·rap·ide** | on compare des mots, préfixe admis à partir de 5 lettres |
+| « Que faire ce soir ? » → *Halles de Wazemmes · **Jeudi 1 janvier*** | période longue sans horaires → statut inconnu → le libellé récitait la borne de début | « En cours », le mot que l'application affiche déjà |
+| « Je cherche un hébergement » → *RELAIS SOLEIL · **Travail / argent*** | services listés dans l'ordre de la source | le service qui répond à la question passe devant |
+| *séances : 08:00, 09:00, **08:00, 09:00*** | trois jours rendus comme des heures nues | dédoublonnées et datées |
+
+Quatre tests de régression citent ces sorties. Les routes profondes ont été
+vérifiées dans un navigateur (`outils/sonde-liens.mjs`) : `/solidarite?besoin=manger`
+ouvre bien la feuille sur « 🍴 Manger ». `/explorer` a révélé un cinquième
+défaut — la recherche regéocodait la ville déjà placée et n'appliquait jamais
+l'intention — corrigé également.
+
+Les six routes profondes répondent `200` en production, y compris les deux
+formes titrées qui rendaient `404` avant ce chantier.
 
 ---
 
