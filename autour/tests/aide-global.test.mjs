@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 
 const lire = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const app = lire("../app.js");
-const index = lire("../index.html");
+/* Les règles de style vivent dans `autour.css` : la question posée ici est
+   « la source porte-t-elle cette règle ? », pas « dans quel fichier ». */
+const index = lire("../index.html") + "\n" + lire("../autour.css");
 
 test("le bassin Aide est séparé, borné par la zone et chargé à la demande", () => {
   assert.match(app, /const AIDE_CACHE_PREFIX = "autour:bassin-aide:v3:"/);

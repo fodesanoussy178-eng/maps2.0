@@ -26,6 +26,9 @@ import { readFileSync } from "node:fs";
 const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const ecrans = readFileSync(new URL("../differe/ecrans.js", import.meta.url), "utf8");
 const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+/* Les règles de style ont quitté le document pour `autour.css` ; le poids du
+   document, lui, se mesure toujours sur le document. */
+const feuilleDeStyle = readFileSync(new URL("../autour.css", import.meta.url), "utf8");
 const geo = readFileSync(
   new URL("../supabase/migrations/20260920110000_offres_geocodage_ban.sql", import.meta.url), "utf8");
 
@@ -117,9 +120,11 @@ test("l'écran de choix réutilise les classes existantes du panneau itinéraire
   const choix = ecrans.slice(ecrans.indexOf("function ouvrirChoixItineraire"));
   assert.match(choix, /class="itin-externes"/);
   assert.match(choix, /class="itin-lien"/);
-  /* Le budget de la feuille de style en ligne est à quelques caractères de
-     son plafond : aucune classe nouvelle n'y tiendrait. */
-  assert.match(index, /\.of-carte \.itin-liens\{margin-top:9px\}/);
+  /* La règle a été écrite quand la feuille de style vivait dans `index.html`
+     et frôlait son plafond ; elle réutilise donc des classes existantes plutôt
+     que d'en créer. La feuille est sortie depuis (`autour.css`), la règle n'a
+     pas changé, et le document reste léger. */
+  assert.match(feuilleDeStyle, /\.of-carte \.itin-liens\{margin-top:9px\}/);
   assert.ok(index.length < 200000, "index.html : " + index.length + " caractères");
 });
 

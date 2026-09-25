@@ -27,7 +27,10 @@ const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
    nulle part de `is_student` ». Une interdiction se vérifie sur le code, sinon
    la phrase qui la documente la fait échouer. */
 const appCode = app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+/* Le document ET sa feuille de style : les règles ont quitté `index.html`
+   pour `autour.css`, la question posée par ces tests n'a pas changé. */
+const html = await readFile(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  await readFile(new URL("../autour.css", import.meta.url), "utf8");
 
 /* ---- A · Explorer lit l'inventaire ------------------------------------- */
 

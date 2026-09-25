@@ -27,7 +27,10 @@ const sql = (await Promise.all(
 const code = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
 const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const appCode = app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+/* Le document ET sa feuille de style : les règles ont quitté `index.html`
+   pour `autour.css`, la question posée par ces tests n'a pas changé. */
+const html = await readFile(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  await readFile(new URL("../autour.css", import.meta.url), "utf8");
 const route = await readFile(new URL("../api/datatourisme.js", import.meta.url), "utf8");
 
 /* ---- 1 · Parité mobile / desktop ---------------------------------------- */

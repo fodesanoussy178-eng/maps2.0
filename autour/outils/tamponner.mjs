@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { MODULES, MODULES_DIFFERES } from "./modules.mjs";
+import { MODULES, MODULES_DIFFERES, FEUILLES } from "./modules.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHEMIN = join(RACINE, "index.html");
@@ -51,6 +51,27 @@ for (const module of MODULES) {
   const motif = new RegExp('(<script src="' + echappe + ')(\\?v=[a-f0-9]{8})?(")');
   if (!motif.test(html)) {
     console.error("✗ " + module + " n'est pas chargé par index.html");
+    process.exitCode = 1;
+    continue;
+  }
+  const avant = html;
+  html = html.replace(motif, '$1?v=' + empreinte + '$3');
+  if (html !== avant) changes += 1;
+}
+
+/* ---- LA FEUILLE DE STYLE AUSSI -----------------------------------------
+   `autour.css` est servi avec la même promesse que les scripts : immuable
+   pendant un an, remplacé par le changement de son empreinte. Sans cette
+   réécriture, une correction de style resterait invisible pour qui a déjà
+   visité le site — le pire des deux mondes, puisque la règle serait juste
+   dans le dépôt et fausse dans le navigateur. */
+for (const feuille of FEUILLES) {
+  const contenu = await readFile(join(RACINE, feuille), "utf8");
+  const empreinte = createHash("sha256").update(contenu).digest("hex").slice(0, 8);
+  const echappe = feuille.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const motif = new RegExp('(<link rel="stylesheet" href="' + echappe + ')(\\?v=[a-f0-9]{8})?(")');
+  if (!motif.test(html)) {
+    console.error("✗ " + feuille + " n'est pas liée par index.html");
     process.exitCode = 1;
     continue;
   }

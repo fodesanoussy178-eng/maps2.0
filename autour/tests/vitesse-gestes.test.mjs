@@ -5,6 +5,12 @@ import { sourceApplication } from "./source.mjs";
 
 const src = await sourceApplication(import.meta.url);
 const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
+/* La feuille de style a quitté le document (voir `autour.css`). Les règles se
+   vérifient donc sur les deux réunis, mais le POIDS du document se mesure sur
+   le document seul — sinon ce test mesurerait la feuille en croyant peser la
+   page. La feuille a son propre plafond, plus bas. */
+const feuille = await readFile(new URL("../autour.css", import.meta.url), "utf8");
+const documentEtFeuille = index + "\n" + feuille;
 const appSeul = await readFile(new URL("../app.js", import.meta.url), "utf8");
 /* Le corps de l'application se lit désormais en deux fichiers : `app.js`
    pour le chemin critique, `differe/ecrans.js` pour les écrans qu'un
@@ -27,6 +33,14 @@ test("le corps du programme est un fichier archivable, pas un bloc en ligne", ()
   // et il reste petit : c'est ce qui arrive en premier sur le réseau
   assert.ok(index.length < 200000,
     "index.html doit rester léger, vu : " + Math.round(index.length / 1024) + " ko");
+  /* ---- LE BUDGET NE S'ÉVAPORE PAS AVEC LE DÉPLACEMENT ------------------
+     Sortir 172 000 caractères de style dans `autour.css` a libéré la page,
+     pas le poids : la feuille bloque la première peinture comme le faisait le
+     `<style>`. Elle garde donc un plafond, et il est bas exprès — la marge
+     restante est là pour la mise en page ordinateur, pas pour une deuxième
+     décennie de règles. */
+  assert.ok(feuille.length < 200000,
+    "autour.css doit rester léger, vu : " + Math.round(feuille.length / 1024) + " ko");
   assert.ok(appSeul.length > 400000, "app.js porte bien le corps du programme");
 });
 
@@ -179,12 +193,12 @@ test("stale-while-revalidate reste le comportement du cache de zone", () => {
 
 test("l'emplacement d'une vignette existe et ne peut pas déplacer la mise en page", () => {
   // la tuile de repli occupe déjà la place finale ; l'image se pose dessus
-  assert.match(index, /\.rc-photo\{display:block;height:74px/);
-  assert.match(index, /\.rc-photo img\{position:absolute;inset:0/);
-  assert.match(index, /\.ac-photo\{position:relative;[^}]*width:46px;height:46px/);
-  assert.match(index, /\.ac-photo img\{position:absolute;inset:0/);
+  assert.match(documentEtFeuille, /\.rc-photo\{display:block;height:74px/);
+  assert.match(documentEtFeuille, /\.rc-photo img\{position:absolute;inset:0/);
+  assert.match(documentEtFeuille, /\.ac-photo\{position:relative;[^}]*width:46px;height:46px/);
+  assert.match(documentEtFeuille, /\.ac-photo img\{position:absolute;inset:0/);
   // et rien de tout cela ne touche le fond de carte
-  assert.doesNotMatch(index, /#map[^{]*\{[^}]*background-image/);
+  assert.doesNotMatch(documentEtFeuille, /#map[^{]*\{[^}]*background-image/);
 });
 
 test("aucune image n'est sur le chemin critique", () => {

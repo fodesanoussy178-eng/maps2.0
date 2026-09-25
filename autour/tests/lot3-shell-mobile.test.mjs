@@ -22,7 +22,10 @@ import { readFile } from "node:fs/promises";
 import { sourceApplication } from "./source.mjs";
 
 const source = await sourceApplication(import.meta.url);
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+/* Le document ET sa feuille de style : les règles ont quitté `index.html`
+   pour `autour.css`, la question posée par ces tests n'a pas changé. */
+const html = await readFile(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  await readFile(new URL("../autour.css", import.meta.url), "utf8");
 const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const ecrans = await readFile(new URL("../differe/ecrans.js", import.meta.url), "utf8");
 

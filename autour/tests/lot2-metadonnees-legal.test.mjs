@@ -19,7 +19,10 @@ import { readFile, stat } from "node:fs/promises";
 
 const lire = (f) => readFile(new URL("../" + f, import.meta.url), "utf8");
 
-const html = await lire("index.html");
+/* Les couleurs de l'application sont dans `autour.css` depuis qu'elles ont
+   quitté `index.html` ; les métadonnées, elles, sont toujours dans le
+   document. Ce test parle des deux, il lit donc les deux. */
+const html = await lire("index.html") + "\n" + await lire("autour.css");
 const legales = await lire("mentions-legales.html");
 const confid = await lire("confidentialite.html");
 const legalCss = await lire("legal.css");

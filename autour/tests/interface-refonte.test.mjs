@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+/* `autour.css` porte les règles de style depuis qu'elles ont quitté
+   `index.html` : la source lue ici reste « le document et sa feuille ». */
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  readFileSync(new URL("../autour.css", import.meta.url), "utf8");
 const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
 test("la navigation basse respecte le contrat Autour", () => {

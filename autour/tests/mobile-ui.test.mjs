@@ -1556,9 +1556,12 @@ test("l'attribution cartographique est lisible sur la carte",()=>{
   assert.match(html,/#attribution\{position:absolute/);
 });
 
-test("plus aucun texte sous 11 px, et les cibles font 44 px",()=>{
+test("plus aucun texte sous 11 px, et les cibles font 44 px",async ()=>{
   // on relève toutes les tailles de police déclarées dans la feuille de style
-  const styles = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  /* La feuille de style n'est plus un `<style>` du document : elle vit dans
+     `autour.css`, et c'est elle qu'on relève ici. La règle — aucune taille
+     sous 11 px, une seule exception — n'a pas bougé d'un caractère. */
+  const styles = await readFile(new URL("../autour.css", import.meta.url), "utf8");
   const tailles = [...styles.matchAll(/font-size:([\d.]+)px/g)].map(m=>parseFloat(m[1]));
   // seule exception : la pastille de comptage d'un marqueur, qui est un chiffre
   // dans un rond de 15 px et non un texte à lire
