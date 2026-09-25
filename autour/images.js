@@ -68,6 +68,7 @@
   const SOURCES = Object.freeze([
     "openagenda",          // affiche officielle d'un événement
     "datatourisme",        // catalogue public, licence ouverte explicite
+    "event_page",          // la page officielle de CET événement, lue en amont
     "structure",           // déposée par la structure qui tient le lieu
     "autour",              // publiée dans Autour par quelqu'un du quartier
     "site_officiel",       // tag OSM `image` pointant le site du lieu lui-même
@@ -75,6 +76,7 @@
     "artist_official",     // visuel officiel lié explicitement à l'artiste
     "organizer_official",  // visuel officiel lié explicitement à l'organisateur
     "venue_official",      // visuel officiel lié explicitement au lieu
+    "places",              // photo du LIEU de l'événement, reprise de `places`
     "institutional",       // source institutionnelle déclarée
     "google_places",       // repli, affiché selon les règles Google
   ]);
@@ -84,13 +86,53 @@
      bâtiment ne doit jamais se faire passer pour l'affiche. */
   const PORTEES = Object.freeze({LIEU: "lieu", EVENEMENT: "evenement"});
 
-  /* Une image d'événement n'est pas une image de lieu. Ce vocabulaire reste
-     côté rendu tant que la base ne porte pas de colonne `image_type` : on ne
-     crée pas de migration pour déduire après coup une information que la
-     source n'a pas fournie. */
+  /* Une image d'événement n'est pas une image de lieu. Ce vocabulaire vit
+     maintenant AUSSI en base : `events.image_type` porte les mêmes valeurs,
+     écrites par la cascade d'amont (`evenements_verser_page`,
+     `evenements_images_depuis_places`). Les deux listes doivent rester
+     identiques — c'est ce que vérifie `tests/images-cascade.test.mjs`. */
   const TYPES_EVENEMENT = Object.freeze([
     "event_poster", "artist", "organizer", "venue", "institutional", "fallback",
   ]);
+
+  /* LE DROIT D'USAGE, DIT PLUTÔT QUE SUPPOSÉ.
+
+     `remote_only` : la source autorise l'affichage à distance, pas la
+     réutilisation du fichier. C'est le cas de toute affiche publiée par un
+     organisateur. Autour ne recopie de toute façon AUCUN fichier — mais la
+     valeur rend la règle lisible au lieu de la laisser reposer sur une
+     habitude, et un jour où quelqu'un voudra mettre un cache d'images en
+     place, elle sera là pour l'en empêcher.
+
+     `reusable` : une licence libre explicite a été lue chez la source.
+     `unknown` : on ne sait pas, donc on ne réutilise pas. */
+  const USAGES = Object.freeze(["remote_only", "reusable", "unknown"]);
+
+  /* La confiance arrive sous deux formes : un niveau, écrit par le rendu
+     depuis toujours, et un nombre de 0 à 1, écrit par la cascade en base. On
+     accepte les deux et on garde les deux — perdre le nombre reviendrait à
+     jeter la mesure, et perdre le niveau casserait les écrans. */
+  function niveauConfiance(valeur, source) {
+    const n = Number(valeur);
+    if (Number.isFinite(n) && n >= 0 && n <= 1)
+      return n >= 0.8 ? "high" : n >= 0.5 ? "medium" : "low";
+    const mot = texte(valeur).trim();
+    if (["high", "medium", "low"].indexOf(mot) >= 0) return mot;
+    return source === "autour" ? "medium" : "high";
+  }
+
+  function scoreConfiance(valeur) {
+    const n = Number(valeur);
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+  }
+
+  /* Un droit d'usage inconnu reste inconnu. On ne promeut jamais une image en
+     « réutilisable » parce qu'elle vient d'une source qu'on aime bien. */
+  function usageDe(valeur, licence) {
+    const mot = texte(valeur).trim();
+    if (USAGES.indexOf(mot) >= 0) return mot;
+    return licenceLibre(licence) ? "reusable" : "remote_only";
+  }
   const TYPES_LIEU = Object.freeze(["place_photo", "institutional", "wikimedia", "fallback"]);
 
   /* Fallbacks graphiques Autour. Ils sont volontairement déterminés par la
@@ -257,14 +299,43 @@
       image_author: auteur || "",
       image_license: licence || "",
       image_updated_at: texte(e.image_updated_at || e.updatedAt) || new Date().toISOString(),
-      image_confidence: texte(e.image_confidence || e.imageConfidence) ||
-        (source === "autour" ? "medium" : "high"),
+      image_confidence: niveauConfiance(
+        e.image_confidence != null ? e.image_confidence : e.imageConfidence, source),
+      image_confidence_score: scoreConfiance(
+        e.image_confidence != null ? e.image_confidence : e.imageConfidence),
+      /* Quand ce LIEN a été vérifié, ce qui n'est pas la date du fichier. */
+      image_checked_at: texte(e.image_checked_at || e.imageCheckedAt) || null,
+      image_usage_status: usageDe(
+        e.image_usage_status != null ? e.image_usage_status : e.imageUsageStatus, licence),
+      /* Le NOM de la source, lisible, à côté de son identifiant technique :
+         c'est ce qu'une fiche affiche sous une image. */
+      image_source_name: texte(e.image_source_name || e.imageSourceName) || nomDeSource(source),
       image_width: Number.isFinite(Number(e.image_width || e.width)) ? Number(e.image_width || e.width) : null,
       image_height: Number.isFinite(Number(e.image_height || e.height)) ? Number(e.image_height || e.height) : null,
       image_fallback_reason: texte(e.image_fallback_reason || e.fallbackReason) || null,
       image_scope: e.image_scope === PORTEES.EVENEMENT ? PORTEES.EVENEMENT : PORTEES.LIEU,
     };
   }
+
+  /* Le nom lisible d'une provenance. Court, en français, et jamais inventé :
+     une source absente de la table garde son identifiant technique plutôt
+     qu'un nom inexact. */
+  const NOMS_DE_SOURCE = Object.freeze({
+    openagenda: "OpenAgenda",
+    datatourisme: "DATAtourisme",
+    event_page: "Page officielle de l’événement",
+    structure: "La structure elle-même",
+    autour: "Publié dans Autour",
+    site_officiel: "Site officiel du lieu",
+    wikimedia_commons: "Wikimedia Commons",
+    artist_official: "Source officielle de l’artiste",
+    organizer_official: "Organisateur officiel",
+    venue_official: "Salle officielle",
+    places: "Photo du lieu",
+    institutional: "Source institutionnelle",
+    google_places: "Google Places",
+  });
+  const nomDeSource = (source) => NOMS_DE_SOURCE[source] || texte(source);
 
   /* QUI DOIT VOIR SON CRÉDIT À CÔTÉ DE LA PHOTO ?
 
@@ -366,6 +437,14 @@
     if (source === "institutional") return "institutional";
     if (source === "datatourisme") return "institutional";
     if (source === "wikimedia_commons") return "institutional";
+    /* `places` est la PHOTO DU LIEU, jamais l'affiche de la soirée. Le type
+       doit le dire pour que la fiche puisse l'annoncer comme telle — la même
+       honnêteté que « Affiche d'un événement ici » côté Explorer, dans l'autre
+       sens. */
+    if (source === "places") return "venue";
+    /* La page officielle de l'événement publie son affiche : c'est le seul
+       cas où `event_poster` est établi, pas supposé. */
+    if (source === "event_page") return "event_poster";
     return "event_poster";
   }
 
@@ -386,8 +465,8 @@
     return {
       ...v,
       image_type: typeImageEvenement(source, e.image_type || e.imageType),
-      image_confidence: texte(e.image_confidence || e.imageConfidence) ||
-        (source === "autour" ? "medium" : "high"),
+      image_confidence: niveauConfiance(
+        e.image_confidence != null ? e.image_confidence : e.imageConfidence, source),
       image_width: Number.isFinite(Number(e.image_width || e.width)) ? Number(e.image_width || e.width) : null,
       image_height: Number.isFinite(Number(e.image_height || e.height)) ? Number(e.image_height || e.height) : null,
       image_fallback_reason: texte(e.image_fallback_reason || e.fallbackReason) || null,
@@ -402,7 +481,11 @@
     const declaredSource = texte(l.image_source || l.imageSource).trim();
     const declaredType = texte(l.image_type || l.imageType).trim();
     const sourcePublieeCommeMediaEvenement = ["openagenda", "datatourisme", "structure",
-      "artist_official", "organizer_official", "institutional"].includes(declaredSource) ||
+      "artist_official", "organizer_official", "institutional",
+      /* `event_page` est la page de CET événement : son affiche lui appartient.
+         `places` est la photo de sa salle, admise au quatrième rang et
+         étiquetée `venue` — jamais présentée comme l'affiche. */
+      "event_page", "places"].includes(declaredSource) ||
       (declaredSource === "venue_official" && declaredType === "event_poster");
     const mediaEvenementExplicite = l.image_scope !== PORTEES.LIEU &&
       l.image_scope !== "place" && !!(l.event_image_url || l.eventImageUrl || l.event_image_source ||

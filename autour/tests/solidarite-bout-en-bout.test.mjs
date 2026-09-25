@@ -200,6 +200,40 @@ test("le CHRS de Tourcoing dont le code est un CEDEX entre dans Logement", () =>
   assert.equal(evie.type_structure, "chrs");
 });
 
+test("le plafond de résultats coupe le plus loin, pas le dernier arrivé", async () => {
+  /* LE DÉFAUT QUI VIDAIT « MANGER », MESURÉ.
+
+     75 fiches du pré-calcul national tombent dans les 5 km demandés autour de
+     Tourcoing ; le plafond en rend 60. L'unique structure d'aide ALIMENTAIRE de
+     la commune — SECOURS POPULAIRE - COMITE DE TOURCOING, à 1 549 m —
+     occupait la position 61 dans l'ordre de l'extrait. Elle était coupée d'une
+     place par un plafond qui gardait l'ordre du fichier. */
+  const handler = (await import("../api/aide-structures.js")).default;
+  const reponse = await handler(new Request(
+    "https://autour.test/api/aide-structures?lat=50.72360&lng=3.16100&radius=5000&source=dora"));
+  const corps = await reponse.json();
+  const noms = (corps.items || []).map((item) => String(item.name || item.nom || ""));
+  assert.ok(noms.length > 0, "la route doit répondre hors réseau, par le centre pré-calculé");
+  assert.ok(noms.some((nom) => /secours populaire/i.test(nom)),
+    "la seule aide alimentaire de la commune doit être dans la réponse");
+
+  /* Et la règle elle-même : la liste rendue est croissante en distance. */
+  const distance = (a, b) => {
+    const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const h = Math.sin(dLat / 2) ** 2 +
+      Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+    return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  };
+  const centre = {lat: 50.7236, lng: 3.1610};
+  const distances = (corps.items || []).map((item) => {
+    const lat = Number(item.latitude ?? item.lat), lng = Number(item.longitude ?? item.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? distance(centre, {lat, lng}) : Infinity;
+  });
+  for (let i = 1; i < distances.length; i += 1)
+    assert.ok(distances[i] >= distances[i - 1] - 1,
+      "la fiche " + i + " est plus proche que la précédente : le tri par distance a sauté");
+});
+
 test("une structure écartée par le rayon dit qu'elle existe et à quelle distance", () => {
   assert.match(source, /function aideHorsRayon\(/);
   assert.match(source, /aide-hors-rayon/);

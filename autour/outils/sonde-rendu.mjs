@@ -115,6 +115,29 @@ async function ouvrir({largeur, panne = null, fixtures = false}) {
       }
       if (fixtures && /\/api\/commune/.test(url))
         return route.fulfill({status: 200, contentType: "application/json", body: '{"commune":"Tourcoing"}'});
+      /* SOLIDARITÉ EST MESURÉE AVEC SON VRAI CODE.
+
+         Répondre `[]` à `/api/aide-structures` faisait de l'écran vide une
+         fixture : la sonde mesurait alors sa propre réponse. On appelle donc le
+         HANDLER RÉEL de la route — le même fichier que Vercel exécute — avec
+         les extraits versionnés du dépôt. Aucune donnée n'est inventée : les
+         lignes viennent de `data/aide-finess-tourcoing.js`, `aide-dora-*` et du
+         pré-calcul national, tels qu'ils sont livrés.
+
+         La route essaie d'abord `geo.api.gouv.fr` pour nommer la commune ; hors
+         réseau elle retombe sur le centre pré-calculé le plus proche, ce qui est
+         exactement le chemin documenté. */
+      if (fixtures && /\/api\/aide-structures/.test(url)) {
+        try {
+          const handler = (await import("../api/aide-structures.js")).default;
+          const reponse = await handler(new Request(url, {method: "GET"}));
+          return route.fulfill({status: reponse.status, contentType: "application/json",
+            body: await reponse.text()});
+        } catch (erreur) {
+          return route.fulfill({status: 500, contentType: "application/json",
+            body: JSON.stringify({items: [], erreur: String(erreur && erreur.message)})});
+        }
+      }
       if (fixtures && /\/api\//.test(url))
         return route.fulfill({status: 200, contentType: "application/json", body: "[]"});
       return route.continue();
@@ -294,6 +317,141 @@ const MESURES = {
           "  cartes:" + m.cartes + "  texte:" + m.lettres +
           "  débordement:" + m.debordement + "  erreurs:" + erreurs.length +
           "\n        … " + m.extrait +
+          (erreurs.length ? "\n        ⚠ " + erreurs.join(" | ") : ""));
+        await contexte.close();
+      }
+    }
+  },
+  /* SOLIDARITÉ, BESOIN PAR BESOIN.
+
+     Le défaut rapporté : « Manger » affiche « Aucune structure fiable trouvée
+     dans cette zone pour le moment ». Cette mesure ouvre Solidarité, clique le
+     besoin, et dit ce qui est RÉELLEMENT à l'écran : le nombre de cartes, le
+     nom des trois premières, et — quand l'écran est vide — la raison affichée.
+     Puis elle ouvre la première structure et vérifie ses trois actions. */
+  async solidarite() {
+    for (const largeur of [390, 1440]) {
+      for (const besoin of ["manger", "logement"]) {
+        const {contexte, page, erreurs} = await ouvrir({largeur, fixtures: true});
+        let ouverte = false;
+        for (const porte of ["[data-nb='aide']", "#btnAide"]) {
+          if (ouverte) break;
+          ouverte = await page.locator(porte).first().click({timeout: 4000})
+            .then(() => true).catch(() => false);
+        }
+        if (!ouverte) erreurs.push("Solidarité : aucune porte cliquable");
+        await page.waitForTimeout(1200);
+        /* DEUX FAÇONS DE CLIQUER, ET ELLES NE MESURENT PAS LA MÊME CHOSE.
+
+           Le clic de Playwright vérifie l'ATTEIGNABILITÉ : la cible est-elle
+           visible, stable, et au-dessus à son centre ? Le clic DOM vérifie le
+           GESTIONNAIRE : l'application réagit-elle ? Un filtre atteignable mais
+           muet et un filtre vivant mais recouvert sont deux défauts différents,
+           et les confondre a déjà coûté un diagnostic. On mesure donc les deux,
+           et c'est le clic DOM qui fait avancer l'écran. */
+        const atteignable = await page.locator("[data-aide-filter='" + besoin + "']").first()
+          .click({timeout: 3000}).then(() => true).catch(() => false);
+        const clique = atteignable || await page.evaluate((id) => {
+          const b = document.querySelector("[data-aide-filter='" + id + "']");
+          if (!b) return false;
+          b.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, view: window}));
+          return true;
+        }, besoin);
+        if (!atteignable && clique) {
+          /* UN CLIC REFUSÉ PENDANT QUE L'ÉCRAN SE REMPLIT N'EST PAS UN CLIC
+             REFUSÉ. Les sources sociales arrivent par paliers et le panneau se
+             redessine à chaque arrivée : Playwright attend deux images stables
+             et abandonne. On réessaie donc APRÈS que la liste se soit posée, ce
+             qui sépare « la cible bouge » de « la cible est inatteignable ». */
+          await page.waitForTimeout(3000);
+          const apresRepos = await page.locator("[data-aide-filter='" + besoin + "']").first()
+            .click({timeout: 5000}).then(() => true).catch(() => false);
+          if (apresRepos) {
+            erreurs.push("filtre « " + besoin + " » : clic réel refusé pendant le remplissage, " +
+              "accepté une fois la liste posée — le panneau se redessine, la cible est atteignable");
+          }
+        }
+        if (!clique) {
+          /* UN SÉLECTEUR INTROUVABLE N'EST PAS UN VERDICT. Dire « filtre
+             absent » sans dire ce qui EST là laisserait choisir entre « le
+             bouton n'existe pas », « il porte un autre attribut » et « l'écran
+             n'est pas celui-là ». On imprime donc ce que le panneau offre. */
+          const offert = await page.evaluate(() => {
+            const p = document.querySelector("#feuilleBesoins");
+            if (!p || p.hidden) return {panneau: "absent ou caché"};
+            return {
+              panneau: p.id,
+              testids: [...p.querySelectorAll("[data-testid]")]
+                .map((el) => el.getAttribute("data-testid")).slice(0, 12),
+              filtres: [...p.querySelectorAll("[data-aide-filter]")]
+                .map((el) => el.getAttribute("data-aide-filter")),
+              boutons: [...p.querySelectorAll("button")]
+                .map((b) => (b.textContent || "").replace(/\s+/g, " ").trim())
+                .filter(Boolean).slice(0, 16),
+            };
+          });
+          erreurs.push("filtre « " + besoin + " » introuvable — offert : " + JSON.stringify(offert));
+        }
+        /* Les sources sociales sont asynchrones et montent par paliers de
+           rayon : on leur laisse le temps de répondre avant de conclure. */
+        await page.waitForTimeout(6000);
+        const m = await page.evaluate(() => {
+          const cartes = [...document.querySelectorAll("[data-ac]")];
+          const titre = (el) => {
+            const t = el.querySelector("b,strong,.ac-titre,h3,h4");
+            return ((t || el).textContent || "").replace(/\s+/g, " ").trim().slice(0, 52);
+          };
+          const vide = document.querySelector(".aide-vide-court,[data-testid='aide-vide']");
+          const raison = document.querySelector("[data-testid='aide-hors-rayon']");
+          return {
+            cartes: cartes.length,
+            noms: cartes.slice(0, 3).map(titre),
+            vide: vide ? (vide.textContent || "").replace(/\s+/g, " ").trim().slice(0, 96) : null,
+            raison: raison ? (raison.textContent || "").replace(/\s+/g, " ").trim() : null,
+            debordement: Math.max(document.documentElement.scrollWidth,
+              document.body.scrollWidth) - window.innerWidth,
+          };
+        });
+        /* La fiche, et ses trois actions. « Y aller », « Appeler », « Site
+           web » : on regarde ce qui EST là, pas ce qui devrait y être. */
+        /* DEUX ÉCRANS, ET « APPELER » N'EST PAS SUR LE PREMIER. Cliquer une
+           carte ouvre la fiche COMPACTE — un titre, « Y aller », « Voir ». Les
+           actions complètes sont derrière « Voir ». Mesurer la compacte et
+           conclure « pas de bouton Appeler » serait une erreur de lecture :
+           on suit donc le parcours jusqu'au bout. */
+        let fiche = null;
+        if (m.cartes) {
+          await page.locator("[data-ac]").first().click({timeout: 4000}).catch(() => {});
+          await page.waitForTimeout(1500);
+          await page.evaluate(() => {
+            const fc = document.querySelector("#ficheCompacte");
+            const voir = fc && !fc.hidden
+              ? [...fc.querySelectorAll("button")].find((b) => /^Voir$/.test((b.textContent || "").trim()))
+              : null;
+            if (voir) voir.click();
+          });
+          await page.waitForTimeout(2500);
+          fiche = await page.evaluate(() => {
+            const f = document.querySelector("#ficheLieu") ||
+              document.querySelector("#feuille") || document.querySelector("#ficheCompacte");
+            if (!f || f.hidden) return {ouverte: false};
+            const liens = [...f.querySelectorAll("a[href]")].map((a) => a.getAttribute("href"));
+            const boutons = [...f.querySelectorAll("button,a")]
+              .map((b) => (b.textContent || "").replace(/\s+/g, " ").trim())
+              .filter(Boolean).slice(0, 16);
+            return {ecran: f.id, ouverte: true, boutons,
+              tel: liens.filter((h) => /^tel:/.test(h)),
+              siteWeb: liens.filter((h) => /^https?:/.test(h)).slice(0, 2),
+              itineraire: liens.filter((h) => /maps|itineraire|geo:/.test(h)).length};
+          });
+        }
+        console.log(String(largeur).padStart(5) + "px  " + besoin.padEnd(9) +
+          " cartes:" + String(m.cartes).padStart(3) +
+          "  débordement:" + m.debordement + "  erreursJS:" + erreurs.length +
+          (m.noms.length ? "\n        " + m.noms.map((n) => "· " + n).join("\n        ") : "") +
+          (m.vide ? "\n        VIDE « " + m.vide + " »" : "") +
+          (m.raison ? "\n        RAISON « " + m.raison + " »" : "") +
+          (fiche ? "\n        fiche:" + JSON.stringify(fiche) : "") +
           (erreurs.length ? "\n        ⚠ " + erreurs.join(" | ") : ""));
         await contexte.close();
       }

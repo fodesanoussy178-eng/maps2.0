@@ -222,7 +222,24 @@ export default async function handler(request) {
     const key = String(item.id || item.slug || item.doraId || item.finessEge || item.finessPm || item.siret || JSON.stringify(item));
     if (seen.has(key)) return false;
     seen.add(key); return true;
-  });
+  })
+  /* UN PLAFOND DOIT COUPER LE PLUS LOIN, PAS LE DERNIER ARRIVÉ.
+
+     LE DÉFAUT QUE CETTE LIGNE CORRIGE, MESURÉ LE 25/09/2026.
+
+     Solidarité > Manger affichait « Aucune structure fiable trouvée dans cette
+     zone pour le moment » à Tourcoing. La cause n'était ni la taxonomie, ni la
+     distance, ni la découverte : 75 fiches du pré-calcul national tombent dans
+     les 5 km demandés, le plafond en rend 60, et l'unique structure d'aide
+     ALIMENTAIRE de la commune — SECOURS POPULAIRE - COMITE DE TOURCOING, à
+     1 549 m — occupait la position 61 dans l'ordre de l'extrait. Elle était
+     coupée d'une place, par un plafond qui gardait l'ordre du fichier.
+
+     Trier par distance avant de couper ne réduit rien et ne coûte rien : la
+     liste est déjà en mémoire, déjà filtrée sur le rayon. Et « le plafond garde
+     les plus proches » est la seule règle qu'on puisse expliquer à quelqu'un
+     qui cherche à manger ce soir. */
+  .sort((a, b) => distanceDuCentre(a, lat, lng) - distanceDuCentre(b, lat, lng));
   return reponse({items: uniques.slice(0, limite), source, centre: {lat, lng}, rayon,
     cityCode: commune && commune.code || null,
     snapshot: items.some((item) => item && item.source === "data_inclusion"),
