@@ -160,13 +160,34 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
   const cibles = (vercel.rewrites || []).map((r) => r.source);
   assert.ok(cibles.includes("/l/:id"), "/l/:id doit être servi par l’application");
   assert.ok(cibles.includes("/e/:id"), "/e/:id doit être servi par l’application");
+  /* LA FORME TITRÉE EST CELLE QUE `lienVers()` PRODUIT, et elle rendait 404.
+     Mesuré en production le 25/09/2026 :
+
+       GET /e/3957e0d9-…                       200
+       GET /e/3957e0d9-…/grande-braderie       404
+       GET /l/50.72995,3.180786/salle-…        404
+
+     Autrement dit : TOUT lien partagé depuis Autour était cassé, puisque le
+     partage ajoute toujours le slug du titre quand il y en a un. Une
+     réécriture ne capture qu'un segment ; il en fallait une par forme. */
+  ["/l/:id/:titre", "/e/:id/:titre"].forEach((route) =>
+    assert.ok(cibles.includes(route), route + " : la forme titrée rendait 404 en production"));
+  ["/event/:id", "/place/:id", "/explorer", "/solidarite"].forEach((route) =>
+    assert.ok(cibles.includes(route), route + " doit être servi par l’application"));
   /* LES DEUX FAMILLES DE RÉÉCRITURE, ET RIEN D'AUTRE.
 
      Un lien profond vers un lieu ou un événement est servi par l'application,
      qui le résout au rendu. Les pages de texte, elles, sont de vraies pages
      statiques : elles n'ont ni carte ni état, et les faire passer par
      `index.html` leur ferait charger tout le bundle pour afficher du texte. */
-  const versApplication = ["/l/:id", "/e/:id"];
+  /* LES LIENS PROFONDS DE L'INTÉGRATION CHATGPT s'ajoutent à cette famille :
+     `/event/<id>` et `/place/<id>` nomment une fiche, `/explorer` et
+     `/solidarite` nomment une vue avec ses paramètres. Tous sont résolus au
+     rendu par l'application — c'est elle qui a la carte, la position et les
+     données ; une page statique ne pourrait pas les ouvrir. */
+  const versApplication = ["/l/:id", "/l/:id/:titre", "/e/:id", "/e/:id/:titre",
+    "/event/:id", "/event/:id/:titre", "/place/:id", "/place/:id/:titre",
+    "/explorer", "/solidarite"];
   const pagesStatiques = {
     "/mentions-legales": "/mentions-legales.html",
     "/confidentialite": "/confidentialite.html",

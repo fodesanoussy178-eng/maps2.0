@@ -52,6 +52,14 @@
     { "source": "/control/taches", "destination": "/control.html" },
     { "source": "/control/operateur", "destination": "/control.html" },
     { "source": "/l/:id", "destination": "/index.html" },
-    { "source": "/e/:id", "destination": "/index.html" }
+    { "source": "/l/:id/:titre", "destination": "/index.html" },
+    { "source": "/e/:id", "destination": "/index.html" },
+    { "source": "/e/:id/:titre", "destination": "/index.html" },
+    { "source": "/event/:id", "destination": "/index.html" },
+    { "source": "/event/:id/:titre", "destination": "/index.html" },
+    { "source": "/place/:id", "destination": "/index.html" },
+    { "source": "/place/:id/:titre", "destination": "/index.html" },
+    { "source": "/explorer", "destination": "/index.html" },
+    { "source": "/solidarite", "destination": "/index.html" }
   ]
 }

@@ -1556,7 +1556,7 @@ test("les liens partagés ont une adresse propre, sans casser les anciens",()=>{
   assert.match(html,/u\.pathname = "\/e\/"\+encodeURIComponent\(l\.dbId\)/);
   assert.match(html,/u\.pathname = "\/l\/"\+l\.lat\.toFixed\(5\)\+","\+l\.lng\.toFixed\(5\)\+/);
   // la lecture accepte les deux formes : des liens sont déjà partagés
-  assert.match(html,/const chemin = \/\^\\\/\(l\|e\)\\\//);
+  assert.match(html,/const chemin = \/\^\\\/\(l\|e\|event\|place\)\\\//);
   assert.match(html,/forme historique : #l=lat,lng\|titre/);
   assert.match(html,/const m = \/\^#l=/);
 });

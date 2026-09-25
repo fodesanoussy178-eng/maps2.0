@@ -188,6 +188,29 @@ Rien n'est envoyé tant que tu ne les utilises pas.</p>
 service-public.fr — sont interrogées par nos serveurs, pas par ton navigateur :
 elles ne reçoivent ni ton adresse IP, ni ta position.</p>
 
+<h3>Quand tu interroges Autour depuis ChatGPT</h3>
+
+<p>Autour peut être interrogé depuis ChatGPT, par une intégration en
+<strong>lecture seule</strong>. Le sens de circulation est celui-ci : ChatGPT
+envoie à Autour la <strong>ville ou les coordonnées</strong> que tu as données
+dans ta question, et éventuellement ce que tu cherches (« brocante », « aide
+alimentaire »). Autour renvoie des résultats publics — événements, lieux,
+points de service d'aide — et un lien pour continuer ici.</p>
+
+<p>Ce qu'Autour <strong>ne reçoit pas</strong> : ton identité, ton compte
+OpenAI, l'historique de ta conversation, ton adresse e-mail. Autour ne peut ni
+créer, ni modifier, ni supprimer quoi que ce soit depuis ChatGPT.</p>
+
+<p>Ce qu'Autour <strong>conserve</strong> de ces appels : un compteur d'appels
+par empreinte technique (une suite de caractères calculée, ni jeton ni adresse
+IP), gardé une heure pour faire respecter un plafond, et des compteurs
+agrégés par jour, par zone et par type de recherche. Aucun de ces compteurs ne
+permet de remonter à une personne ni à une conversation.</p>
+
+<p>Les liens qu'Autour renvoie à ChatGPT portent <code>utm_source=chatgpt</code>
+et le type de recherche d'où ils viennent. C'est ce qui nous permet de savoir
+combien de visites arrivent de là, et pour chercher quoi — jamais qui.</p>
+
 <h2>6. Durées de conservation</h2>
 <ul>
   <li><strong>Cookie de localisation approximative</strong> : 1 heure.</li>

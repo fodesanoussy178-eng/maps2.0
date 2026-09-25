@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Autour">
+  <!-- L'identité du produit, telle qu'elle est déjà déclarée dans manifest.json :
+       fond #F7F8F5, teinte #141E19. Le repère est dessiné, pas emprunté à une
+       police d'emoji — une icône d'application doit rendre le même dessin sur
+       tous les appareils. -->
+  <rect width="512" height="512" rx="112" fill="#F7F8F5"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#141E19" stroke-width="10" opacity=".18"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#141E19" stroke-width="6" opacity=".09"/>
+  <path d="M256 104c-52 0-94 42-94 94 0 66 74 138 90 176 2 4 6 4 8 0 16-38 90-110 90-176 0-52-42-94-94-94Z"
+        fill="#0F7A5A"/>
+  <circle cx="256" cy="196" r="34" fill="#F7F8F5"/>
+</svg>

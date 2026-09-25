@@ -6278,6 +6278,12 @@ async function demarrer(coords){
       if(majContexteTerritorial() || boutonTerritorial()) planifierRendu({accueil:true, feuille:true});
     }).catch(()=>{});
   });
+
+  /* ÉTAPE 6 — l'entrée profonde, s'il y en a une. Elle arrive après la
+     première peinture parce qu'elle DÉPLACE la carte et ouvre un écran : le
+     faire avant reviendrait à montrer un mouvement à quelqu'un qui n'a pas
+     encore vu l'application. Sans lien profond, cette étape ne fait rien. */
+  apresPeinture(()=>ouvrirEntreeProfonde());
 }
 
 /* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
@@ -8248,12 +8254,23 @@ function lienVers(l){
 }
 
 function lieuPartage(){
-  // forme actuelle : /l/<lat>,<lng>[/<titre>] ou /e/<id>[/<titre>]
-  const chemin = /^\/(l|e)\/([^/]+)(?:\/([^/]*))?\/?$/.exec(location.pathname||"");
+  /* Formes acceptées :
+       /l/<lat>,<lng>[/<titre>]   un lieu par ses coordonnées (partage historique)
+       /e/<id>[/<titre>]          un événement publié
+       /event/<id>[/<titre>]      le même, sous le nom que portent les liens
+                                  profonds (ChatGPT, e-mail, réseaux)
+       /place/<id>[/<titre>]      un lieu de l'inventaire, par son identifiant
+     Les deux dernières sont nouvelles ; les deux premières n'ont pas bougé,
+     parce que des liens déjà partagés vivent dehors et doivent continuer
+     d'ouvrir exactement le même endroit. */
+  const chemin = /^\/(l|e|event|place)\/([^/]+)(?:\/([^/]*))?\/?$/.exec(location.pathname||"");
   if(chemin){
     const [, type, cle, titre] = chemin;
-    if(type === "e") return { dbId:decodeURIComponent(cle), lat:null, lng:null,
-                              titre: titre ? decodeURIComponent(titre) : "" };
+    if(type === "place") return { placeId:decodeURIComponent(cle), lat:null, lng:null,
+                                  titre: titre ? decodeURIComponent(titre) : "" };
+    if(type === "e" || type === "event")
+      return { dbId:decodeURIComponent(cle), lat:null, lng:null,
+               titre: titre ? decodeURIComponent(titre) : "" };
     const c = /^(-?[\d.]+),(-?[\d.]+)$/.exec(decodeURIComponent(cle));
     if(c) return { lat:parseFloat(c[1]), lng:parseFloat(c[2]),
                    titre: titre ? decodeURIComponent(titre) : "" };
@@ -8271,6 +8288,10 @@ function ouvrirLieuPartage(){
   if(partageOuvert) return;
   const p = lieuPartage();
   if(!p) return;
+  /* Un `/place/<id>` n'est pas cherché ici : l'inventaire `places` et les lieux
+     du runtime sont deux collections distinctes, et c'est l'entrée profonde qui
+     va lire la fiche puis la faire entrer. */
+  if(p.placeId != null) return;
   const cible = p.dbId != null
     ? lieux.find(l=>String(l.dbId) === String(p.dbId))
     : lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
@@ -8278,6 +8299,129 @@ function ouvrirLieuPartage(){
   partageOuvert = true;
   allerVers([cible.lat,cible.lng], 17, {duration:.8});
   setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
+}
+
+/* ---- LES ENTRÉES PROFONDES ----------------------------------------------
+   UN LIEN DOIT OUVRIR CE QU'IL PROMET.
+
+   L'intégration ChatGPT n'envoie jamais vers la page d'accueil : quelqu'un qui
+   a demandé « une brocante à Tourcoing dimanche » et atterrit sur la carte de
+   sa ville doit refaire tout le travail, et c'est le moment où il s'en va.
+   Quatre destinations existent donc :
+
+     /explorer?q=…      la recherche d'Autour, déjà écrite dans le champ
+     /solidarite?besoin=…  l'écran Solidarité, déjà ouvert sur le bon besoin
+     /event/<id>        la fiche d'un événement
+     /place/<id>        la fiche d'un lieu de l'inventaire
+
+   AUCUN NOUVEAU MOTEUR ICI. Chaque destination emprunte le chemin que
+   l'application utilise déjà : `poserZoneGeographique` pour se placer,
+   `lancerRecherche` pour chercher, `ouvrirFeuille2` pour ouvrir un besoin,
+   `ouvrirLieuDepuisExplorer` et `ouvrirFicheCompacte` pour les fiches. Les
+   paramètres `utm_*` sont ignorés par l'application : ils ne servent qu'à la
+   mesure, côté hébergeur. */
+function entreeProfonde(){
+  const chemin = location.pathname || "";
+  const params = new URLSearchParams(location.search || "");
+  const point = ()=>{
+    const lat = Number(params.get("lat")), lng = Number(params.get("lng"));
+    return coordonneesValides(lat,lng) ? [lat,lng] : null;
+  };
+  const ville = String(params.get("ville") || "").slice(0,80);
+  if(/^\/explorer\/?$/.test(chemin))
+    return {type:"explorer", q:String(params.get("q")||"").slice(0,120), ville, point:point()};
+  if(/^\/solidarite\/?$/.test(chemin))
+    return {type:"solidarite", besoin:String(params.get("besoin")||"aide").slice(0,20),
+            ville, point:point()};
+  const fiche = /^\/(event|place)\/([^/]+)/.exec(chemin);
+  if(fiche) return {type:fiche[1], id:decodeURIComponent(fiche[2]), ville, point:point()};
+  return null;
+}
+
+let entreeProfondeOuverte = false;
+async function ouvrirEntreeProfonde(){
+  if(entreeProfondeOuverte) return;
+  const e = entreeProfonde();
+  if(!e) return;
+  entreeProfondeOuverte = true;
+  try{
+    /* Se placer AVANT de chercher : la zone active borne les données, et une
+       fiche de Tourcoing n'entre pas dans la collection tant que la zone est
+       celle de Paris. */
+    if(e.point) await poserZoneGeographique(e.ville || "", {lat:e.point[0], lng:e.point[1]},
+                                            null, {zoom:14});
+    else if(e.ville) await rechercheGeographique(e.ville, null);
+
+    if(e.type === "explorer"){
+      const q = e.q || e.ville;
+      const champ = $("#rech");
+      if(!q || !champ) return;
+      champ.value = q;
+      await lancerRecherche();
+      return;
+    }
+    if(e.type === "solidarite"){
+      const besoin = BESOIN_DE && BESOIN_DE(e.besoin) ? e.besoin : "aide";
+      ouvrirFeuille2(besoin);
+      return;
+    }
+    if(e.type === "place") return await ouvrirLieuProfond(e.id);
+    if(e.type === "event") return await ouvrirEvenementProfond(e.id);
+  }catch(err){
+    /* Un lien qui ne s'ouvre pas laisse l'application dans son état normal :
+       la carte, la position, les données. Jamais un écran d'erreur — et le
+       diagnostic passe par le journal, qui ne parle que si on l'a demandé. */
+    journal.warn("Entrée profonde ignorée :", err && err.message);
+  }
+}
+
+/* Un lieu de l'inventaire par son identifiant. `places` est en lecture
+   publique ; on lit les colonnes de la fiche, rien d'autre, puis on emprunte
+   l'ouverture d'Explorer — qui sait déjà faire entrer un lieu de l'inventaire
+   dans le runtime sans en créer une copie. */
+async function ouvrirLieuProfond(id){
+  if(!sbLecture || !id) return;
+  const colonnes = "id,name,family,lat,lng,address,commune,description,official_url," +
+    "image_url,image_source,image_author,image_license,image_type,opening_hours";
+  const requete = /^[0-9a-f-]{36}$/i.test(id)
+    ? sbLecture.from("places").select(colonnes).eq("id", id)
+    : sbLecture.from("places").select(colonnes).eq("slug", id);
+  const {data, error} = await requete.limit(1);
+  const ligne = !error && data && data[0];
+  if(!ligne) return;
+  if(!entreeProfonde().point)
+    await poserZoneGeographique("", {lat:Number(ligne.lat), lng:Number(ligne.lng)},
+                                null, {zoom:15});
+  ouvrirLieuDepuisExplorer(Object.assign({}, ligne, {
+    horaires_fiables: !!ligne.opening_hours,
+  }));
+}
+
+/* Un événement par son identifiant. Il peut ne pas être dans le jeu chargé —
+   un lien de Lille ouvert depuis Paris. On lit donc la ligne, on se place sur
+   elle, et on la fait entrer par le même chemin que la couche canonique. */
+async function ouvrirEvenementProfond(id){
+  if(!sbLecture || !id) return;
+  const dejaLa = lieux.find(l=>l && String(l.dbId) === String(id));
+  if(dejaLa){ allerVers([dejaLa.lat, dejaLa.lng], 16, {duration:.6});
+              ouvrirFicheCompacte(dejaLa); return; }
+  const {data, error} = await sbLecture.from("events")
+    .select("id,title,description,category,start_at,end_at,timezone,temporal_status," +
+      "date_confidence,place_name,venue_name,address,city,insee_code,lat,lng,primary_source," +
+      "source_url,event_source,event_source_url,image_url,image_source,image_source_url," +
+      "image_author,image_license,cancelled,last_source_update,last_synced_at,price_text," +
+      "is_free,booking_url,website,phone,zone_id,artist_names,music_genres,event_kind," +
+      "announcement_tags,importance_level,organizer_name,ticket_url,audience,min_age")
+    .eq("id", id).limit(1);
+  const ligne = !error && data && data[0];
+  if(!ligne || !coordonneesValides(Number(ligne.lat), Number(ligne.lng))) return;
+  await poserZoneGeographique(ligne.city || "", {lat:Number(ligne.lat), lng:Number(ligne.lng)},
+                              null, {zoom:16});
+  const item = versEvenementCanonique(ligne);
+  if(!item) return;
+  fusionner([item], "external");
+  const pose = lieux.find(l=>l && String(l.dbId) === String(ligne.id));
+  if(pose) ouvrirFicheCompacte(pose);
 }
 
 async function partagerLieu(l){

@@ -16,7 +16,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   FAMILLES, questionsOuvertes, rattacher,
-} from "../supabase/functions/local-discovery/taxonomie.mjs";
+} from "../taxonomie-ouverte.mjs";
 
 /* ==========================================================================
    1. LE CAS QUI MOTIVE TOUT LE MODULE

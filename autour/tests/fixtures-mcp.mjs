@@ -1,0 +1,183 @@
+/* Des lignes RÉELLES, relevées en base le 25/09/2026, telles que les fonctions
+   publiques les rendent. Elles ne sont pas inventées et ne sont pas retouchées :
+   c'est la seule façon de tester la chaîne MCP depuis un environnement qui n'a
+   pas le droit de sortir sur le réseau (le proxy refuse `*.supabase.co`).
+
+   Ce que ces lignes portent d'important pour les tests :
+     · une catégorie ABSENTE sur trois événements OpenAgenda (`category: null`) —
+       c'est le cas majoritaire, et `qualiteProposition` est stricte ;
+     · une braderie réelle, datée de demain, à Roubaix — donc dans la zone
+       `mel` mais pas dans la commune demandée ;
+     · quatre lieux sans horaires publiés (`etat_horaire: "inconnu"`) : le cas
+       où « Maintenant » doit refuser plutôt que promettre ;
+     · trois points de service VÉRIFIÉS de Tourcoing, dont deux réseaux
+       nationaux (Croix-Rouge, Emmaüs) et un CCAS. */
+
+export const EVENEMENTS_LILLE_EN_COURS = [
+  {id:"b3ad2b80-2f74-49cf-97e3-dd7a35c4ee84", title:"Foire aux manèges de Lille",
+   description:"C’est un rendez-vous que petits et grands attendent chaque année avec impatience : la plus grande fête foraine du Nord s’installe à nouveau sur l’Esplanade du C",
+   category:"marche", start_at:"2026-09-25T14:00:00+00:00", end_at:"2026-09-25T21:59:00+00:00",
+   timezone:"Europe/Paris", temporal_status:"now", date_confidence:"exact", price_text:null, is_free:null,
+   booking_url:null, website:null, phone:null, place_name:null, venue_name:null,
+   address:"Champ de Mars Lille, 59013, Lille", city:"Lille", lat:50.637752, lng:3.050767,
+   primary_source:"datatourisme", source_url:null, event_source:"datatourisme", event_source_url:null,
+   image_url:null, image_source:null, image_author:null, image_license:null, cancelled:false,
+   last_synced_at:"2026-09-25T09:34:37.937+00:00", artist_names:[], music_genres:[],
+   event_kind:"festival", importance_level:"local", organizer_name:null, ticket_url:null,
+   announcement_tags:["festival","local"], zone_id:"mel", duplicate_of:null, audience:null, min_age:null},
+  {id:"22ea5d9f-6023-47c8-b777-84526d682d88", title:"JOUR DE SORTIE / Valentin Ravard",
+   description:"Venu s’installer dans le quartier des Bois Blancs avec sa famille en 2022, Valentin Ravard est architecte et peintre.",
+   category:null, start_at:"2026-09-25T12:30:00+00:00", end_at:"2026-09-25T15:30:00+00:00",
+   timezone:"Europe/Paris", temporal_status:"now", date_confidence:"exact", price_text:"Entrée libre",
+   is_free:true, booking_url:null, website:"https://valentinravard.com/", phone:null,
+   place_name:"Espace Edouard Pignon", venue_name:"Espace Edouard Pignon",
+   address:"11, rue Guillaume Tell, 59000 Lille, 59130, Lille", city:"Lille",
+   lat:50.632243, lng:3.027632, primary_source:"openagenda",
+   source_url:"https://openagenda.com/ville-de-lille/events/58270809", event_source:"openagenda",
+   event_source_url:"https://openagenda.com/ville-de-lille/events/58270809",
+   image_url:"https://img.openagenda.com/main/3975d961dca149ff91f45eb5d9356e56.full.image.jpg",
+   image_source:"openagenda", image_author:"CABB", image_license:"affiche fournie par l’organisateur",
+   cancelled:false, last_synced_at:"2026-09-25T12:00:13.812+00:00", artist_names:[], music_genres:[],
+   event_kind:null, importance_level:"local", organizer_name:null, ticket_url:null,
+   announcement_tags:[], zone_id:"mel", duplicate_of:null, audience:"Enfants et familles", min_age:null},
+  {id:"0c746b6d-7e8e-4c50-bb75-f9f1f4ea19a6", title:"Un pied, cent toises - par Marin Martinie",
+   description:"Venez découvrir l'exposition de Marin Martinie, suite à sa résidence au CAPV.",
+   category:null, start_at:"2026-09-25T12:30:00+00:00", end_at:"2026-09-25T16:30:00+00:00",
+   timezone:"Europe/Paris", temporal_status:"now", date_confidence:"exact", price_text:"Entrée libre",
+   is_free:true, booking_url:null, website:null, phone:"+33320547184",
+   place_name:"Centre d'Arts Plastiques et Visuels", venue_name:"Centre d'Arts Plastiques et Visuels",
+   address:"4 rue des Sarrazins à Lille, 59000, Lille", city:"Lille", lat:50.62563, lng:3.051274,
+   primary_source:"openagenda", source_url:"https://openagenda.com/ville-de-lille/events/10735136",
+   event_source:"openagenda", event_source_url:"https://openagenda.com/ville-de-lille/events/10735136",
+   image_url:"https://img.openagenda.com/main/437806b1e95a480ba5bc5eb118191fe2.full.image.jpg",
+   image_source:"openagenda", image_author:"Marin Martinie - 2026",
+   image_license:"affiche fournie par l’organisateur", cancelled:false,
+   last_synced_at:"2026-09-25T12:00:13.53+00:00", artist_names:[], music_genres:[], event_kind:null,
+   importance_level:"local", organizer_name:null, ticket_url:null, announcement_tags:["exhibition"],
+   zone_id:"mel", duplicate_of:null, audience:null, min_age:null},
+  {id:"fa675588-fc15-4767-842f-f0bffdc0ad67", title:"Enfances, enfances ? Une exposition de Souleymane Balde",
+   description:"L'exposition Enfances, enfances ? est construite comme un dyptique.",
+   category:null, start_at:"2026-09-25T12:00:00+00:00", end_at:"2026-09-25T16:00:00+00:00",
+   timezone:"Europe/Paris", temporal_status:"now", date_confidence:"exact", price_text:"Entrée libre",
+   is_free:true, booking_url:"https://bm-lille.fr/bml/doc/CALENDAR/12430/enfances-enfances-par-souleymane-balde",
+   website:null, phone:null, place_name:"Médiathèque Vieux-Lille", venue_name:"Médiathèque Vieux-Lille",
+   address:"/27  place Louise de Bettignies, 59800, Lille", city:"Lille", lat:50.640918, lng:3.064621,
+   primary_source:"openagenda", source_url:"https://openagenda.com/ville-de-lille/events/3762264",
+   event_source:"openagenda", event_source_url:"https://openagenda.com/ville-de-lille/events/3762264",
+   image_url:"https://img.openagenda.com/main/191d68c9a4ee4acb99a0145420c2bbeb.full.image.jpg",
+   image_source:"openagenda", image_author:"Souleymane Baldé_2026",
+   image_license:"affiche fournie par l’organisateur", cancelled:false,
+   last_synced_at:"2026-09-25T12:00:13.242+00:00", artist_names:[], music_genres:[], event_kind:null,
+   importance_level:"important", organizer_name:null,
+   ticket_url:"https://bm-lille.fr/bml/doc/CALENDAR/12430/enfances-enfances-par-souleymane-balde",
+   announcement_tags:["exhibition"], zone_id:"mel", duplicate_of:null, audience:null, min_age:null},
+];
+
+export const EVENEMENTS_TOURCOING_A_VENIR = [
+  {id:"3957e0d9-da67-4376-a9d2-0ebf1f7bbff3", title:"Grande Braderie d'Automne à Tissel",
+   description:"La Braderie continue chez Tissel ! 🎉 À l’occasion de la rentrée, Tissel ouvre les portes de la Manufacture du Nouveau Monde.",
+   category:"Braderie", start_at:"2026-09-26T08:00:00+00:00", end_at:"2026-09-26T15:00:00+00:00",
+   timezone:"Europe/Paris", temporal_status:"soon", date_confidence:"exact", price_text:"Entrée libre",
+   is_free:true, booking_url:null, website:null, place_name:"TISSEL", venue_name:"TISSEL",
+   address:"17 rue du Nouveau Monde, 59100 Roubaix, 59100, Roubaix", city:"Roubaix",
+   lat:50.697789, lng:3.17596, primary_source:"openagenda",
+   source_url:"https://openagenda.com/roubaix/events/52612740", event_source:"openagenda",
+   event_source_url:"https://openagenda.com/roubaix/events/52612740",
+   image_url:"https://img.openagenda.com/main/72b446b951aa45d29922d4ffc77ed1eb.full.image.jpg",
+   image_source:"openagenda", image_author:"Tissel", image_license:"affiche fournie par l’organisateur",
+   cancelled:false, last_synced_at:"2026-09-25T12:00:47.785+00:00", event_kind:"braderie",
+   importance_level:"local", announcement_tags:["braderie","local"], zone_id:"mel", audience:"132"},
+  {id:"95489cbe-bd2e-41cf-8c92-a42c9af0333e",
+   title:"Marche pour le climat - le vivant - la paix - la justice sociale",
+   description:"Dénoncer l'inaction : sécheresse, méga feux, surmortalité, tempêtes…",
+   category:"vivant", start_at:"2026-09-26T08:30:00+00:00", end_at:"2026-09-26T12:00:00+00:00",
+   timezone:"Europe/Paris", temporal_status:"soon", date_confidence:"exact", price_text:null,
+   is_free:null, booking_url:null, website:null, place_name:"Grand place", venue_name:"Grand place",
+   address:"Roubaix, 59100, Roubaix", city:"Roubaix", lat:50.691589, lng:3.174173,
+   primary_source:"openagenda", source_url:"https://openagenda.com/roubaix/events/74190899",
+   event_source:"openagenda", event_source_url:"https://openagenda.com/roubaix/events/74190899",
+   image_url:"https://img.openagenda.com/main/81962affae9642b8a28da2b00a389b67.full.image.jpg",
+   image_source:"openagenda", image_author:"libre de droits",
+   image_license:"affiche fournie par l’organisateur", cancelled:false,
+   last_synced_at:"2026-09-25T12:00:48.916+00:00", event_kind:null, importance_level:"local",
+   announcement_tags:[], zone_id:"mel", audience:"132"},
+];
+
+export const LIEUX_TOURCOING = [
+  {id:"bf23d8b1-2804-432a-9435-2a99e5cf6f4a", slug:"jardin-botanique-tourcoing-tourcoing-cdefa4",
+   name:"Jardin Botanique de Tourcoing", family:"nature", famille_label:"Parcs et nature",
+   lat:50.72467, lng:3.16656, address:"32 Rue du Moulin Fagot, 59200, Tourcoing", commune:"Tourcoing",
+   description:"Le Jardin botanique de Tourcoing constitue un véritable îlot de nature au cœur de la ville.",
+   official_url:null,
+   image_url:"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3f/Tourcoing_jardin_botanique.JPG/1280px-Tourcoing_jardin_botanique.JPG",
+   image_type:"place_photo", opening_hours:null, horaires_fiables:false, etat_horaire:"inconnu",
+   distance_m:422.83091463},
+  {id:"5334656d-da0a-4636-8bd1-b23286b784a1", slug:"grand-mix-tourcoing-acadd8", name:"Le Grand Mix",
+   family:"sport", famille_label:"Sport", lat:50.724832, lng:3.154945,
+   address:"5 Place Notre Dame, 59200, Tourcoing", commune:"Tourcoing",
+   description:"Lieu incontournable de la scène musicale de la métropole lilloise.",
+   official_url:null,
+   image_url:"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f8/Tourcoing_le_grand_mix.jpg/1280px-Tourcoing_le_grand_mix.jpg",
+   image_type:"place_photo", opening_hours:null, horaires_fiables:false, etat_horaire:"inconnu",
+   distance_m:428.3878663},
+  {id:"e5ae6679-d388-4dfb-b54f-ef26a297a942", slug:"eglise-saint-christophe-tourcoing-7d7990",
+   name:"Eglise Saint-Christophe", family:"patrimoine", famille_label:"Patrimoine",
+   lat:50.721945, lng:3.159315, address:"Place de la République Tourcoing, 59200, Tourcoing",
+   commune:"Tourcoing", description:"", official_url:null,
+   image_url:"https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/Tourcoing_st_christophe.JPG/1280px-Tourcoing_st_christophe.JPG",
+   image_type:"place_photo", opening_hours:null, horaires_fiables:false, etat_horaire:"inconnu",
+   distance_m:223.18744388},
+];
+
+export const POINTS_TOURCOING = [
+  {id:"9072d1c4-f65c-42d8-bdf8-93e650498647", name:"CCAS de Tourcoing", lat:50.7231, lng:3.1604,
+   address:"26 Rue de la Bienveillance", postal_code:"59200", city:"Tourcoing", category:"mairie",
+   service_categories:["administrative_assistance","food","meals"], phone:"03 20 11 34 34",
+   official_url:"https://www.tourcoing.fr/Ma-vie-pratique/Solidarite-social/Le-CCAS-Centre-communal-d-action-sociale",
+   verification_status:"verified", confidence:0.88, last_verified_at:"2026-09-24T21:59:33.498+00:00",
+   entity_status:"unknown", next_distribution_at:null, distance_m:74.50308648},
+  {id:"48ad1cae-a0fa-4cb7-b8b4-3f4b67fe3916", name:"Communauté Emmaüs de Tourcoing",
+   lat:50.719661, lng:3.174403, address:"172 Rue Winoc Chocqueel 59200 Tourcoing",
+   postal_code:"59200", city:"Tourcoing", category:"asso",
+   service_categories:["housing","shelter","clothing"], phone:"03 20 70 90 00",
+   official_url:"https://emmaus-france.org/", verification_status:"verified", confidence:0.85,
+   last_verified_at:"2026-09-25T09:19:13.227226+00:00", entity_status:"active",
+   next_distribution_at:null, distance_m:1064.58879885},
+  {id:"3391a002-ceda-4706-b85b-f98ecd635986", name:"Croix-Rouge française - Unité Locale de Tourcoing",
+   lat:50.719745, lng:3.141904, address:"2 Rue de la Vigne 59200 Tourcoing", postal_code:"59200",
+   city:"Tourcoing", category:"alimentaire",
+   service_categories:["food","food_bank","grocery","clothing","medical_care"], phone:"03 20 46 39 00",
+   official_url:"https://www.croix-rouge.fr", verification_status:"verified", confidence:0.85,
+   last_verified_at:"2026-09-25T12:35:00.16868+00:00", entity_status:"unknown",
+   next_distribution_at:null, distance_m:1403.2690768},
+];
+
+/* Les trois points de service des Restos du Cœur de Tourcoing : même
+   organisation, trois adresses, tous `candidate` — la preuve de page manque.
+   Ils servent à tester le cas « candidats uniquement ». */
+export const RESTOS_TOURCOING = [
+  {id:"7c2733a1-4bf0-45dc-9d8c-7c4451b6ea73", name:"Les Restos du Cœur - Centre Tourcoing Orions",
+   lat:50.73652, lng:3.145871, address:"8 Rue de l'Europe 59200 Tourcoing", postal_code:"59200",
+   city:"Tourcoing", category:"alimentaire", service_categories:["food","meals"],
+   phone:"09 73 89 49 02", official_url:"https://ad59a.centre.tourcoing-orions.restosducoeur.org",
+   verification_status:"candidate", confidence:0.45, last_verified_at:null, entity_status:"unknown",
+   next_distribution_at:null, distance_m:1600},
+  {id:"c512fcbe-2e8e-4eb1-bc78-0337c289bcdf", name:"Les Restos du Cœur - Centre Tourcoing Epidème",
+   lat:50.712071, lng:3.168555, address:"2 Rue de Seclin 59200 Tourcoing", postal_code:"59200",
+   city:"Tourcoing", category:"alimentaire", service_categories:["food","meals"],
+   phone:"09 83 59 15 25", official_url:"https://ad59a.centre.tourcoing-epideme.restosducoeur.org",
+   verification_status:"candidate", confidence:0.45, last_verified_at:null, entity_status:"unknown",
+   next_distribution_at:null, distance_m:1500},
+  {id:"b42c5664-f87f-4af8-9af3-a5ad28744205", name:"Les Restos du Cœur - Centre Tourcoing Virolois",
+   lat:50.72995, lng:3.180786, address:"Rue Bonne Nouvelle 59200 Tourcoing", postal_code:"59200",
+   city:"Tourcoing", category:"alimentaire", service_categories:["food","meals"],
+   phone:"09 74 30 06 81", official_url:"https://ad59a.centre.tourcoing-virolois.restosducoeur.org",
+   verification_status:"candidate", confidence:0.45, last_verified_at:null, entity_status:"unknown",
+   next_distribution_at:null, distance_m:1500},
+];
+
+export const COUVERTURE_TOURCOING_FOOD = [
+  {territory:"Tourcoing", universe:"solidarity", category:"food", coverage_status:"incomplete",
+   coverage_score:0.417, known_count:61, verified_count:0,
+   last_checked_at:"2026-09-25T13:06:49.909+00:00"},
+];
