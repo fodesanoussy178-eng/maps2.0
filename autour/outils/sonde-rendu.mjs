@@ -253,6 +253,52 @@ const MESURES = {
       }
     }
   },
+  /* LES QUATRE SURFACES, OUVERTES UNE PAR UNE. Aucune ne doit rendre une page
+     blanche ni lever une erreur : quand le catalogue est muet, chacune doit
+     dire ce qu'elle n'a pas, et rester utilisable. */
+  async surfaces() {
+    /* UNE PAGE NEUVE PAR SURFACE. Sur téléphone, la capsule « Solidarité »
+       s'efface sous un panneau ouvert (c'est la règle du produit) : enchaîner
+       les clics dans la même page mesurerait cette règle au lieu de la
+       surface. Et la barre basse ne porte que trois destinations là-bas — les
+       deux autres s'atteignent par la cloche et par la capsule. */
+    for (const largeur of [390, 1440]) {
+      for (const [nom, ...portes] of [["Maintenant", "[data-nb='maintenant']"],
+        ["Explorer", "[data-nb='explorer']"],
+        /* Deux portes possibles : la barre basse quand elle porte la
+           destination, la cloche sinon. On essaie, on ne suppose pas — la
+           barre ne montre pas les mêmes entrées selon la largeur. */
+        ["Pour toi", "[data-nb='pourtoi']", "#btnNotifs"],
+        ["Solidarité", "[data-nb='aide']", "#btnAide"]]) {
+        const {contexte, page, erreurs} = await ouvrir({largeur, fixtures: true});
+        let ouverte = false;
+        for (const porte of portes) {
+          if (ouverte) break;
+          ouverte = await page.locator(porte).first().click({timeout: 4000})
+            .then(() => true).catch(() => false);
+        }
+        if (!ouverte) erreurs.push(nom + " : aucune porte cliquable (" + portes.join(", ") + ")");
+        await page.waitForTimeout(2500);
+        const m = await page.evaluate(() => {
+          const ouvert = [...document.querySelectorAll("#feuilleBesoins,#pourToi,#explorerDecouverte")]
+            .filter((el) => el && !el.hidden && el.getBoundingClientRect().height > 0);
+          const texte = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+          return {panneaux: ouvert.map((el) => el.id),
+            cartes: document.querySelectorAll("[data-ac],[data-pt],.pt-carte").length,
+            lettres: texte.length, extrait: texte.slice(-140),
+            debordement: Math.max(document.documentElement.scrollWidth,
+              document.body.scrollWidth) - window.innerWidth};
+        });
+        console.log(String(largeur).padStart(5) + "px  " + nom.padEnd(11) +
+          " panneau:" + (m.panneaux.join("+") || "AUCUN") +
+          "  cartes:" + m.cartes + "  texte:" + m.lettres +
+          "  débordement:" + m.debordement + "  erreurs:" + erreurs.length +
+          "\n        … " + m.extrait +
+          (erreurs.length ? "\n        ⚠ " + erreurs.join(" | ") : ""));
+        await contexte.close();
+      }
+    }
+  },
   /* Le trajet : un marqueur, la fiche compacte, le volet de détail. */
   async parcours() {
     for (const largeur of [390, 1440]) {
