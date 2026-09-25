@@ -4,7 +4,12 @@ import {
   preuveDansPage, publishable, sourceFingerprint, sourceType, texteDePage,
   verificationStatus,
 } from "./discovery.mjs";
-import { questionsOuvertes, rattacher } from "./taxonomie.mjs";
+/* La taxonomie ouverte est partagée avec le serveur MCP, qui vit sous
+   `mcp/` et n'a pas le droit de lire `supabase/` : ce dossier n'est jamais
+   téléversé chez l'hébergeur (il porte le schéma, les politiques RLS et le
+   protocole de synchronisation). Le fichier vit donc à la racine, et les deux
+   consommateurs lisent le même. */
+import { questionsOuvertes, rattacher } from "../../../taxonomie-ouverte.mjs";
 import { DOCTRINE_POINT_DE_SERVICE } from "../shared/points-de-service.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -172,7 +177,7 @@ evidence est une liste courte de faits paraphrasés, chacun avec source_url.`;
 
    Le modèle rend donc ce que la ville produit, avec le nom que la ville lui
    donne — « Nuit des ateliers », « Ducasse de la Bourgogne ». Le rangement
-   vient après, dans `taxonomie.mjs`, à partir du libellé et de la page.
+   vient après, dans `taxonomie-ouverte.mjs`, à partir du libellé et de la page.
 
    ET L'URL N'EST PLUS UNE PROMESSE. Le rapport précédent a montré que cinq
    URL sur huit étaient inventées (404, domaines injoignables). On demande donc

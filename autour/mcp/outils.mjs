@@ -38,8 +38,14 @@ import { resoudre } from "./lieux.mjs";
 /* La taxonomie ouverte de l'agent de découverte : elle sait que brocante,
    vide-grenier, puces et braderie désignent la même chose. C'est le SEUL
    endroit du produit qui porte ces synonymes, et le réécrire ici en créerait
-   un second, condamné à divergerpour rien. */
-import * as taxonomieOuverte from "../supabase/functions/local-discovery/taxonomie.mjs";
+   un second, condamné à diverger pour rien.
+
+   ELLE VIT À LA RACINE, ET CE N'EST PAS UN CAPRICE DE RANGEMENT. Le premier
+   déploiement a échoué là-dessus : `supabase/` n'est jamais téléversé chez
+   l'hébergeur — il porte le schéma, les politiques RLS et le protocole de
+   synchronisation, qui furent publiquement lisibles une fois — et une fonction
+   qui importe depuis ce dossier référence donc un module absent. */
+import * as taxonomieOuverte from "../taxonomie-ouverte.mjs";
 
 const MAX_RESULTATS = 3;
 const MAX_RESULTATS_ETENDU = 5;

@@ -31,15 +31,29 @@
    même centaine de mètres, ce qui ne change rien à « c'est à 1,4 km ».
    ======================================================================== */
 
-import precalcule from "../data/aide-precalcule-villes.js";
 import { moteurs } from "./moteurs.mjs";
 
 const BAN = "https://api-adresse.data.gouv.fr/search/";
 const cacheBan = new Map();
 
-const COMMUNES = Object.freeze(Object.entries(precalcule).map(([insee, zone]) => Object.freeze({
-  nom: String(zone.nom || ""), insee, lat: Number(zone.lat), lng: Number(zone.lng),
-})).filter((c) => c.nom && Number.isFinite(c.lat) && Number.isFinite(c.lng)));
+/* LE CENTRE DES COMMUNES SERVIES, RECOPIÉ — ET GARDÉ PAR UN TEST.
+
+   `data/aide-precalcule-villes.js` pèse cinq mégaoctets : il porte les 2 700
+   structures du référentiel d'insertion, et il n'a rien à faire dans une
+   fonction de bord, où il coûterait sa taille et son analyse à chaque
+   démarrage à froid. Ce dont ce fichier a besoin tient en quatre nombres par
+   ville.
+
+   La recopie est donc assumée, et elle est SURVEILLÉE : un test compare cette
+   table à la source et échoue à la première divergence. Sans lui, la recopie
+   deviendrait une seconde vérité — exactement ce que ce chantier interdit. */
+const COMMUNES = Object.freeze([
+  Object.freeze({ insee: "35238", nom: "Rennes", lat: 48.11198, lng: -1.67429 }),
+  Object.freeze({ insee: "49007", nom: "Angers", lat: 47.47842, lng: -0.56316 }),
+  Object.freeze({ insee: "59350", nom: "Lille", lat: 50.62925, lng: 3.05726 }),
+  Object.freeze({ insee: "59599", nom: "Tourcoing", lat: 50.72373, lng: 3.160758 }),
+  Object.freeze({ insee: "75056", nom: "Paris", lat: 48.85661, lng: 2.35222 }),
+]);
 
 function sansAccents(valeur) {
   return String(valeur || "").normalize("NFD").replace(/[̀-ͯ]/g, "")

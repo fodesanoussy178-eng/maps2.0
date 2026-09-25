@@ -605,6 +605,36 @@ test("la liste des moteurs chargés par le serveur ne s'écarte pas du manifeste
     /globalThis\.window = globalThis/);
 });
 
+test("la table des communes du serveur ne s'écarte pas du référentiel", async () => {
+  const { VILLES_PRECALCULEES } = await import("../mcp/lieux.mjs");
+  const source = (await import("../data/aide-precalcule-villes.js")).default;
+  const attendues = Object.entries(source).map(([insee, zone]) => ({
+    insee, nom: String(zone.nom), lat: Number(zone.lat), lng: Number(zone.lng) }))
+    .sort((a, b) => a.insee.localeCompare(b.insee));
+  assert.deepEqual([...VILLES_PRECALCULEES].sort((a, b) => a.insee.localeCompare(b.insee)),
+    attendues, "la recopie doit suivre le référentiel — sinon elle devient une seconde vérité");
+  /* Et le référentiel lui-même ne doit pas entrer dans la fonction de bord :
+     cinq mégaoctets analysés à chaque démarrage à froid. */
+  const serveur = readFileSync(new URL("../mcp/lieux.mjs", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(serveur, /aide-precalcule-villes/,
+    "cinq mégaoctets analysés à chaque démarrage à froid");
+});
+
+test("aucun module du serveur MCP ne lit le dossier supabase", () => {
+  /* `supabase/` n'est jamais téléversé chez l'hébergeur : il porte le schéma,
+     les politiques RLS et le protocole de synchronisation. Un import vers ce
+     dossier fait échouer le déploiement — c'est arrivé le 25/09/2026. */
+  for (const fichier of ["base.mjs", "outils.mjs", "serveur.mjs", "garde.mjs", "projection.mjs",
+    "liens.mjs", "items.mjs", "lieux.mjs", "widget.mjs", "moteurs.mjs", "fenetre.mjs"]) {
+    const source = readFileSync(new URL("../mcp/" + fichier, import.meta.url), "utf8");
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "");
+    assert.doesNotMatch(code, /from "[^"]*supabase\//, fichier + " importe depuis supabase/");
+  }
+  const api = readFileSync(new URL("../api/mcp.js", import.meta.url), "utf8");
+  assert.doesNotMatch(api.replace(/\/\*[\s\S]*?\*\//g, ""), /from "[^"]*supabase\//);
+});
+
 test("la fenêtre est posée avant les modules qui en dépendent", () => {
   const source = readFileSync(new URL("../mcp/moteurs.mjs", import.meta.url), "utf8");
   assert.ok(source.indexOf('import "./fenetre.mjs"') < source.indexOf('import "../providers/'),
