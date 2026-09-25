@@ -321,15 +321,211 @@ function matchesAlias(source, alias) {
   return new RegExp(`(?:^| )${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= |$)`, "i").test(value);
 }
 
+/* --------------------------------------------------------------------------
+   LE TITRE COMME NOM DE SCÈNE — ET TOUT CE QUI L'EN EMPÊCHE
+
+   CE QUI MANQUAIT, MESURÉ LE 25/09/2026
+
+   `artist_names` était lu par `core.js`, `entites-canoniques.js` et trois RPC
+   — et écrit par personne. Sur 1 903 événements à venir : ZÉRO nom d'artiste.
+   Deux causes, pas une :
+
+     · les champs structurés existent dans le contrat (`performers`,
+       `artists`, `lineup`) mais ni OpenAgenda ni DATAtourisme ne les servent ;
+     · le repli par le titre était un ANNUAIRE FERMÉ de seize noms. « NES »,
+       « Jazzy Bazz » et « Nono La Grinta » n'y étaient pas, et n'y seraient
+       jamais : un annuaire de célébrités ne couvre pas la scène locale, qui
+       est précisément ce qu'Autour montre.
+
+   LA RÈGLE, ET POURQUOI ELLE REFUSE PLUS QU'ELLE N'ACCEPTE
+
+   Un titre de concert EST le plus souvent le nom de l'affiche : « NES »,
+   « Jazzy Bazz », « Nono La Grinta ». Mais « Marché du Vieux-Lille »,
+   « Exposition Panorama 28 » et « Mentions légales » sont aussi des titres, et
+   deux d'entre eux sont rangés en `concert` par leur collecteur. Accepter le
+   titre sans le filtrer remplirait `artist_names` de noms d'événements — et
+   `artist_names` sert ensuite à chercher une PHOTO DE PERSONNE.
+
+   On exige donc, et dans cet ordre :
+
+     1. un CONTEXTE MUSICAL venu de la SOURCE, jamais du titre seul : le type
+        canonique, un genre structuré, ou un mot-clé musical publié par la
+        source. Un titre qui contient « concert » ne prouve rien : la page
+        « Politique de confidentialité » du Zénith est rangée en `concert`.
+     2. le titre n'est PAS le lieu. Ni égal au nom de la salle ou du lieu, ni
+        contenu dedans, ni le contenant : « La Condition Publique » n'est pas
+        un artiste. C'est le refus que le lot demande explicitement — pas de
+        nom d'artiste pour un lieu, une salle ou une catégorie.
+     3. le titre ne NOMME PAS un événement. `NOMS_D_EVENEMENT` liste ce qui
+        désigne une manifestation ou une page de site. Un seul de ces mots
+        suffit à refuser : mieux vaut un artiste manquant qu'une exposition
+        prise pour une personne.
+     4. le titre n'est pas un GENRE seul (« rap », « jazz ») ni une date ni un
+        numéro.
+     5. la forme d'un nom de scène : de un à cinq mots, deux caractères au
+        moins, et pas de ponctuation de titre d'œuvre (`:`, guillemets).
+     6. la SOURCE elle-même en reparle : le titre normalisé apparaît dans sa
+        description. C'est la confirmation textuelle que le lot exige — la
+        source dit « NeS sublime sa passion du rap », donc « NES » est bien le
+        sujet, pas l'intitulé d'une soirée.
+
+   HOMONYMES. Ce producteur rend un NOM, jamais une identité. « NES » peut
+   désigner le rappeur, une console de jeu ou un homonyme : c'est pourquoi
+   l'extraction porte son RANG (`artist_name_source`) — `structured` quand la
+   source l'a déclaré, `profile` quand un référentiel l'a reconnu, `title`
+   quand c'est le titre qui parle. La résolution d'image ne peut pas confirmer
+   une identité sur un rang `title` seul, et le placeholder reste.
+
+   DÉTERMINISME. Aucune date, aucun hasard, aucun appel réseau : les mêmes
+   champs rendent toujours la même liste, dans le même ordre, sans doublon.
+-------------------------------------------------------------------------- */
+
+/* Ce qui désigne une manifestation, un lieu ou une page — donc jamais une
+   personne. Liste bornée à ce qui a été RENCONTRÉ en base, pas imaginée. */
+const NOMS_D_EVENEMENT = Object.freeze([
+  "concert", "concerts", "festival", "exposition", "expo", "visite", "visites",
+  "atelier", "ateliers", "soiree", "bal", "spectacle", "projection", "conference",
+  "rencontre", "rencontres", "marche", "braderie", "brocante", "vide grenier",
+  "stage", "tournoi", "match", "seance", "cine", "cinema", "nuit", "nuits",
+  "salon", "forum", "repas", "permanence", "saison", "cycle", "tremplin",
+  "scene ouverte", "jam", "karaoke", "apero", "after", "reveillon", "carnaval",
+  "kermesse", "guinguette", "feu d artifice", "fete", "journees", "journee",
+  "parcours", "balade", "randonnee", "lecture", "dedicace", "vernissage",
+  "portes ouvertes", "assemblee", "reunion", "formation", "initiation",
+  "competition", "championnat", "trail", "course", "loto", "thé dansant",
+  /* Et les pages de site qu'un collecteur a rangées parmi les concerts. */
+  "mentions legales", "politique de confidentialite", "declaration",
+  "a propos", "notre mission", "mecenat", "accessibilite", "contact",
+  "billetterie", "programme", "programmation", "agenda", "newsletter",
+  "recrutement", "partenaires", "location", "privatisation",
+]);
+
+/* Les séparateurs d'une affiche à plusieurs noms. « + », « & », « x »,
+   « feat. », « avec », « / », « • », « · » : ce sont ceux qu'on lit sur les
+   affiches, et ils sont tous non ambigus. La virgule aussi, mais seulement
+   entre deux fragments qui passent chacun les refus. */
+const SEPARATEURS_AFFICHE =
+  /\s*(?:\+|&|·|•|\/|\bx\b|\bfeat\.?\b|\bft\.?\b|\bavec\b|\binvite\b|,)\s*/i;
+
+function contexteMusicalSource(record, {eventKind = null, genres = []} = {}) {
+  if (["concert", "showcase", "dj_set", "festival", "open_air", "fete_de_la_musique"]
+    .includes(eventKind)) return true;
+  if (list(genres).length) return true;
+  /* Les mots-clés publiés PAR la source. `announcement_tags` déjà écrits, ou
+     les `keywords` / `tags` bruts : ce sont des métadonnées, pas du texte
+     libre, donc elles prouvent le contexte. */
+  const mots = ["announcement_tags", "announcementTags", "keywords", "tags", "themes",
+    "genre", "genres", "music_genres", "musicGenres"]
+    .flatMap((champ) => list(record?.[champ]).map((valeur) =>
+      normalizeText(valeur && typeof valeur === "object"
+        ? (valeur.name ?? valeur.label ?? valeur.value ?? "") : valeur)));
+  return mots.some((mot) => ["concert", "musique", "music", "rap", "jazz", "rock", "pop",
+    "electro", "techno", "house", "rnb", "soul", "funk", "reggae", "metal", "punk",
+    "blues", "chanson", "hip hop", "hiphop", "drill", "afro", "classique", "showcase",
+    "dj set", "dj", "live"].includes(mot));
+}
+
+/* Un nom de scène est refusé DÈS QU'UN doute apparaît. La fonction rend la
+   raison plutôt qu'un booléen : c'est ce qui rend le refus lisible en test. */
+function refusNomDeScene(fragment, record) {
+  const nom = text(fragment);
+  const normalise = normalizeText(nom);
+  if (!normalise || normalise.length < 2) return "trop court";
+  if (/^[\d\s.\/-]+$/.test(normalise)) return "date ou numéro";
+  if (/[:"«»]/.test(nom)) return "ponctuation de titre d’œuvre";
+  const mots = normalise.split(" ").filter(Boolean);
+  if (mots.length > 5) return "plus de cinq mots";
+  if (MUSIC_GENRES.includes(normalise) || GENRE_ALIASES[normalise]) return "genre musical, pas un nom";
+  if (NOMS_D_EVENEMENT.some((terme) => matchesAlias(normalise, terme)))
+    return "le titre nomme un événement ou une page";
+
+  /* LE LIEU N'EST PAS UN ARTISTE. On compare aux deux sens : « Le Splendid »
+     ne doit pas devenir un artiste parce qu'il est aussi le titre, et
+     « La Condition Publique - Roubaix » ne doit pas l'être non plus. */
+  for (const champ of ["venue_name", "venueName", "place_name", "placeName",
+    "location_name", "locationName", "organizer_name", "organizerName", "organizer",
+    "category", "event_kind", "eventKind"]) {
+    const autre = normalizeText(firstValue(record || {}, [champ]));
+    if (!autre) continue;
+    if (autre === normalise) return "le titre est le nom du lieu, de l’organisateur ou de la catégorie";
+    if (normalise.length >= 4 && autre.includes(normalise)) return "le titre est contenu dans le nom du lieu";
+    if (autre.length >= 4 && normalise.includes(autre)) return "le titre contient le nom du lieu";
+  }
+  return null;
+}
+
+/* La source reparle-t-elle de ce nom ? Le titre normalisé doit apparaître dans
+   la description publiée par la source. C'est la confirmation TEXTUELLE
+   exigée : sans elle, on accepterait « Aura Invalides » comme un artiste. */
+function nomCorroboreParLaSource(fragment, record) {
+  const normalise = normalizeText(fragment);
+  if (!normalise) return false;
+  const texteSource = normalizeText([
+    firstValue(record || {}, ["description", "description_long", "descriptionLong",
+      "longDescription", "description_short", "descriptionShort"]),
+  ].filter(Boolean).join(" "));
+  if (!texteSource) return false;
+  return matchesAlias(texteSource, normalise);
+}
+
 function artistNamesFromTitle(record, {eventKind = null, genres = []} = {}) {
   const title = [record?.title, record?.name, record?.headline].map(text).find(Boolean) || "";
   if (!title) return [];
-  const musicalContext = eventKind === "concert" || eventKind === "showcase" || eventKind === "dj_set" ||
-    eventKind === "festival" || eventKind === "open_air" || genres.length ||
-    /\b(?:concert|showcase|festival|live|tournee|tour|dj)\b/i.test(normalizeText(title));
-  if (!musicalContext) return [];
-  return ARTIST_PROFILES.filter((profile) => profile.aliases.some((alias) => matchesAlias(title, alias)))
+  if (!contexteMusicalSource(record, {eventKind, genres})) return [];
+
+  /* Le référentiel d'abord : il canonise l'orthographe d'un nom connu et
+     reste la lecture la plus précise. */
+  const connus = ARTIST_PROFILES
+    .filter((profile) => profile.aliases.some((alias) => matchesAlias(title, alias)))
     .map((profile) => profile.name);
+  if (connus.length) return connus;
+
+  /* Puis le titre lui-même, découpé sur les séparateurs d'affiche. Chaque
+     fragment passe les mêmes refus : une affiche « A + Marché de Noël » ne
+     garde que « A ». */
+  const fragments = title.split(SEPARATEURS_AFFICHE).map(text).filter(Boolean);
+  const retenus = fragments.filter((fragment) =>
+    !refusNomDeScene(fragment, record) && nomCorroboreParLaSource(fragment, record));
+  /* Un titre découpé qui ne garde qu'une partie de lui-même est suspect : si
+     l'affiche portait deux noms et qu'un seul passe, on garde ce seul nom ;
+     mais si le titre ENTIER a été refusé et qu'aucun fragment ne passe, on ne
+     rend rien plutôt que d'inventer. */
+  return unique(retenus.map((fragment) => profileFor(fragment)?.name || fragment.trim()));
+}
+
+/* Le RANG de l'extraction, pour que la suite sache ce qu'elle lit. Une image
+   d'artiste ne peut pas être confirmée sur un rang `title` seul. */
+export function rangExtractionArtiste(record, {eventKind = null, musicGenres = []} = {}) {
+  if (artistNamesFromStructured(record).length) return "structured";
+  const title = [record?.title, record?.name, record?.headline].map(text).find(Boolean) || "";
+  /* Appelée seule, la fonction doit tenir debout seule : sans type fourni,
+     elle le déduit comme le fait la normalisation complète. Sinon un appel
+     direct rendrait « aucun contexte » là où l'import en trouve un. */
+  const kind = eventKind || normaliserTypeEvenement(record);
+  const genres = list(musicGenres).length ? musicGenres : genreValuesFromStructured(record);
+  if (!title || !contexteMusicalSource(record, {eventKind: kind, genres})) return null;
+  if (ARTIST_PROFILES.some((profile) => profile.aliases.some((alias) => matchesAlias(title, alias))))
+    return "profile";
+  return artistNamesFromTitle(record, {eventKind: kind, genres}).length ? "title" : null;
+}
+
+/* La raison d'un refus, pour le journal et pour les tests. Rendue seulement
+   quand rien n'a été retenu : un refus muet se répète sans qu'on le voie. */
+export function refusArtisteDepuisTitre(record, {eventKind = null, musicGenres = []} = {}) {
+  const title = [record?.title, record?.name, record?.headline].map(text).find(Boolean) || "";
+  if (!title) return "aucun titre";
+  const kind = eventKind || normaliserTypeEvenement(record);
+  const genres = list(musicGenres).length ? musicGenres : genreValuesFromStructured(record);
+  if (!contexteMusicalSource(record, {eventKind: kind, genres}))
+    return "aucun contexte musical dans les métadonnées de la source";
+  const fragments = title.split(SEPARATEURS_AFFICHE).map(text).filter(Boolean);
+  for (const fragment of fragments) {
+    const refus = refusNomDeScene(fragment, record);
+    if (refus) return refus;
+    if (!nomCorroboreParLaSource(fragment, record))
+      return "la description de la source ne reparle pas de ce nom";
+  }
+  return null;
 }
 
 function genreValuesFromStructured(record) {
@@ -443,6 +639,11 @@ export function normaliserEvenementCanonique(record, {
     image_source: text(firstValue(input, ["image_source", "imageSource"])) || null,
     image_source_url: text(firstValue(input, ["image_source_url", "imageSourceUrl"])) || null,
     artist_names: artistNames,
+    /* D'où vient ce nom : `structured` (la source l'a déclaré), `profile` (un
+       référentiel l'a reconnu) ou `title` (c'est le titre qui parle). La
+       résolution d'image lit ce rang avant de chercher un portrait. */
+    artist_name_source: artistNames.length
+      ? rangExtractionArtiste(input, {eventKind, musicGenres: genresFromSource}) : null,
     music_genres: musicGenres,
     announcement_tags: announcementTags,
   };

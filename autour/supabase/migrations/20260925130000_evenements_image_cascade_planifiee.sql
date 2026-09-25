@@ -149,6 +149,17 @@ begin
       continue;
     end if;
 
+    /* UNE VRAIE AFFICHE NE SE FAIT JAMAIS ÉCRASER.
+
+       Le candidat n'a été créé que pour un événement SANS image — mais la
+       lecture de page et l'écriture sont séparées de quinze minutes, et une
+       synchronisation passe entre les deux. Mesuré sur l'événement NeS : la
+       fusion OpenAgenda de 06:00:56 lui a apporté son affiche alors que la
+       cascade le tenait pour dépourvu. Sans cette garde, l'image `og:image`
+       d'une page de salle aurait remplacé l'affiche de l'artiste.
+
+       La condition est donc REVÉRIFIÉE à l'écriture, et le candidat garde la
+       trace de ce qui s'est passé au lieu de disparaître en « versée ». */
     update public.events ev set
       image_url          = v_img,
       image_source       = 'event_page',
@@ -158,7 +169,18 @@ begin
       image_confidence   = 0.85,
       image_checked_at   = now(),
       image_updated_at   = now()
-     where ev.id = c.ev_id;
+     where ev.id = c.ev_id
+       and ev.image_url is null;
+
+    if not found then
+      update public.event_image_candidats
+         set statut = 'rejetee', recu_le = now(), url = v_img,
+             titre_source = coalesce(v_og_titre, v_titre),
+             motif = 'la source a fourni sa propre image entre-temps : on ne l''écrase pas'
+       where id = c.id;
+      v_rej := v_rej + 1;
+      continue;
+    end if;
 
     update public.event_image_candidats
        set statut = 'versee', recu_le = now(), url = v_img, url_page = c.url_demandee,

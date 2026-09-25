@@ -53,6 +53,41 @@ const TYPES = {".html":"text/html", ".js":"text/javascript", ".mjs":"text/javasc
 const LIEUX = {elements: [{type:"node", id:101, lat:50.7240, lon:3.1615,
   tags:{name:"Le Grand Mix", amenity:"bar", "addr:city":"Tourcoing", opening_hours:"24/7"}}]};
 
+/* CE QUE `local_discovery_nearby` REND VRAIMENT, recopié de la base le
+   25/09/2026 après vérification officielle. Ce ne sont pas des structures
+   inventées : leurs adresses sont confirmées par la Base Adresse Nationale et
+   leurs identités par le registre des entreprises (SIRET). Le réseau vers
+   Supabase est fermé depuis ce conteneur ; la fonction est donc servie ici avec
+   sa sortie RÉELLE, pour que la sonde mesure le rendu et non le réseau. */
+const DECOUVERTE = [
+  {id: "9072d1c4-f65c-42d8-bdf8-93e650498647", name: "CCAS de Tourcoing",
+   lat: 50.7231, lng: 3.1604, address: "26 Rue de la Bienveillance",
+   postal_code: "59200", city: "Tourcoing", category: "mairie",
+   service_categories: ["administrative_assistance", "food", "meals"],
+   phone: "03 20 11 34 34",
+   official_url: "https://www.tourcoing.fr/Ma-vie-pratique/Solidarite-social/Le-CCAS-Centre-communal-d-action-sociale",
+   verification_status: "verified", confidence: "0.880",
+   last_verified_at: "2026-09-24T21:59:33.498Z", entity_status: "unknown",
+   reopens_at: null, closure_reason: null, next_distribution_at: null, distance_m: 70},
+  {id: "2578aed1-0d56-486d-9236-5bbf9962ab43", name: "Communauté Emmaüs de Tourcoing",
+   lat: 50.719661, lng: 3.174403, address: "172 Rue Winoc Chocqueel 59200 Tourcoing",
+   postal_code: "59200", city: "Tourcoing", category: "asso",
+   service_categories: ["housing", "shelter", "clothing"],
+   phone: "03 20 70 90 00", official_url: "https://emmaus-france.org/",
+   verification_status: "verified", confidence: "0.850",
+   last_verified_at: "2026-09-25T09:19:04.212Z", entity_status: "unknown",
+   reopens_at: null, closure_reason: null, next_distribution_at: null, distance_m: 1043},
+  {id: "da65f783-2269-4873-a99b-35890d14725a",
+   name: "Croix-Rouge française - Unité Locale de Tourcoing",
+   lat: 50.719745, lng: 3.141904, address: "2 Rue de la Vigne 59200 Tourcoing",
+   postal_code: "59200", city: "Tourcoing", category: "alimentaire",
+   service_categories: ["food", "grocery", "clothing", "administrative_assistance"],
+   phone: "03 20 46 39 00", official_url: "https://lillemetropole.croix-rouge.fr/",
+   verification_status: "verified", confidence: "0.850",
+   last_verified_at: "2026-09-25T09:19:04.212Z", entity_status: "unknown",
+   reopens_at: null, closure_reason: null, next_distribution_at: null, distance_m: 1415},
+];
+
 async function cheminChromium() {
   const candidats = [process.env.AUTOUR_CHROME,
     "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
@@ -154,6 +189,10 @@ async function ouvrir({largeur, panne = null, fixtures = false}) {
     if (/\.png|tile|basemaps/.test(url))
       return route.fulfill({status: 200, contentType: "image/png", body: PNG});
     const supabase = /supabase\.co/.test(url);
+    /* La découverte locale vérifiée, servie avec sa sortie réelle. */
+    if (fixtures && supabase && /rpc\/local_discovery_nearby/.test(url) && !panne)
+      return route.fulfill({status: 200, contentType: "application/json",
+        body: JSON.stringify(DECOUVERTE)});
     if (panne === "503" && supabase)
       return route.fulfill({status: 503, contentType: "application/json", body: '{"message":"indisponible"}'});
     if (panne === "pend" && supabase) return;                       // la requête pend
