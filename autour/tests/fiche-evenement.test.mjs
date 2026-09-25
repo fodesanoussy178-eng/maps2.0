@@ -25,8 +25,8 @@ const source = sourceApplicationSync(import.meta.url);
    `index.html` : la source lue ici reste « le document et sa feuille ». */
 const index = readFileSync(new URL("../index.html", import.meta.url), "utf8") + "\n" +
   readFileSync(new URL("../autour.css", import.meta.url), "utf8");
-const migration = readFileSync(
-  new URL("../supabase/migrations/20260920100000_evenements_locaux_contacts.sql", import.meta.url), "utf8");
+const lire = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
+const migration = lire("supabase/migrations/20260920100000_evenements_locaux_contacts.sql");
 
 function charger(fichier) {
   const racine = {};
@@ -207,31 +207,42 @@ test("la croix de fermeture a sa colonne, et le titre ne passe plus dessous", ()
 /* ==========================================================================
    4. CE QUI SORT DE LA BASE
    ======================================================================== */
-test("evenements_locaux transporte les quatre moyens de joindre l'organisateur", () => {
-  /* LE CHOIX A ÉTÉ RETOURNÉ, ET C'EST DÉLIBÉRÉ. `email` était gardée hors du
-     chemin public tant que la fiche ne proposait pas d'écrire. La ligne
-     « Réservation » le propose maintenant, en dernier recours, quand il n'y a
-     ni lien ni numéro. Le principe ne bouge pas — on expose ce qui est
-     AFFICHÉ — c'est l'affichage qui a changé. */
-  assert.match(migration, /e\.reservation_text, e\.booking_url, e\.phone, e\.email, e\.website,/);
-  for (const colonne of ["booking_url", "phone", "email", "website"])
-    assert.match(migration, new RegExp("(^|\\s)" + colonne + " text,"), colonne);
+test("evenements_locaux transporte les moyens de joindre, SANS l'adresse", () => {
+  /* LE CHOIX A ÉTÉ RETOURNÉ DEUX FOIS, ET LA MESURE A TRANCHÉ. `email` avait
+     été exposée au nom de « on expose ce qui est AFFICHÉ » : la ligne
+     « Réservation » propose d'écrire quand il n'y a ni lien ni numéro.
+     Chiffré ensuite, sur 3 871 événements : 184 portent une adresse, et DEUX
+     n'ont que ça pour tout contact. Mesuré aussi côté API, avec la clé
+     publiable : `GET /rest/v1/events?select=email` rendait la liste à un
+     anonyme. Deux fiches y gagnaient un `mailto:`, cent quatre-vingt-quatre
+     organisateurs y perdaient le fait que leur adresse ne se récolte pas en
+     une requête. La RPC ne la transporte plus (voir la migration
+     20260925010000, qui porte la mesure). */
+  const rpc = lire("supabase/migrations/20260925010000_evenements_email_hors_chemin_public.sql");
+  assert.match(rpc, /e\.reservation_text, e\.booking_url, e\.phone, e\.website,/);
+  assert.ok(!/e\.email/.test(rpc), "l'adresse ne descend plus dans le navigateur");
+  for (const colonne of ["booking_url", "phone", "website"])
+    assert.match(rpc, new RegExp("(^|\\s)" + colonne + " text,"), colonne);
+  /* La colonne reste en base : elle documente la provenance, et c'est elle que
+     l'exception de la garde e-mail nomme. */
+  assert.match(migration, /(^|\s)email text,/);
 });
 
 test("la liste de colonnes et la liste de valeurs ont la même longueur", () => {
   /* Un décalage d'une seule colonne ne se voit qu'à l'exécution, sur une RPC
      que toute la carte appelle. */
-  const entete = migration.slice(migration.indexOf("returns table ("), migration.indexOf("language sql"));
+  const rpc = lire("supabase/migrations/20260925010000_evenements_email_hors_chemin_public.sql");
+  const entete = rpc.slice(rpc.indexOf("returns table ("), rpc.indexOf("language sql"));
   const colonnes = (entete.match(/^\s+\w+ [a-z]/gm) || []).length;
-  const corps = migration.slice(migration.indexOf("as $function$"), migration.indexOf("from public.events e"));
+  const corps = rpc.slice(rpc.indexOf("as $function$"), rpc.indexOf("from public.events e"));
   /* Les virgules d'un appel — `event_temporal_status(a, b, c, d, now())` — ne
      séparent pas des colonnes. On réduit donc chaque parenthèse à un jeton
      avant de compter, sinon le compteur accuse la RPC de son propre défaut. */
   let sansAppels = corps.split("select")[1];
   for (let passe = 0; passe < 8; passe += 1) sansAppels = sansAppels.replace(/\([^()]*\)/g, "");
   const valeurs = sansAppels.split(",").length;
-  assert.equal(colonnes, 60, "60 colonnes déclarées");
-  assert.equal(valeurs, 60, "60 valeurs sélectionnées");
+  assert.equal(colonnes, 59, "59 colonnes déclarées — 60 moins l'adresse");
+  assert.equal(valeurs, 59, "59 valeurs sélectionnées");
 });
 
 /* ==========================================================================
