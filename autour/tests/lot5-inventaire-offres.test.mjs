@@ -27,7 +27,10 @@ const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
    nulle part de `is_student` ». Une interdiction se vérifie sur le code, sinon
    la phrase qui la documente la fait échouer. */
 const appCode = app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+/* Le document ET sa feuille de style : les règles ont quitté `index.html`
+   pour `autour.css`, la question posée par ces tests n'a pas changé. */
+const html = await readFile(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  await readFile(new URL("../autour.css", import.meta.url), "utf8");
 
 /* ---- A · Explorer lit l'inventaire ------------------------------------- */
 
@@ -156,7 +159,13 @@ test("aucun modèle n'est la source canonique d'une offre", () => {
   /* L'offre renvoie toujours vers la vraie page de l'organisme. */
   const pub = sql.slice(sql.indexOf("function public.offres_publiques"));
   assert.match(pub, /and o\.source_url is not null/);
-  assert.match(app, /'<span class="of-source">↗ '\+esc\(o\.source_name\)\+'<\/span>'/);
+  /* La source est passée du `<span>` à l'`<a>` : la carte n'est plus un seul
+     lien vers le jeu de données, elle porte trois gestes distincts (voir où
+     c'est, y aller, lire la source) et un lien ne peut pas en contenir un
+     autre. Le lien vers l'organisme, lui, reste obligatoire — c'est ce qui
+     rend l'offre vérifiable au lieu d'affirmée. */
+  assert.match(app, /'<a class="of-source" href="'\+esc\(o\.source_url\)\+'" target="_blank" rel="noopener">'/);
+  assert.match(app, /'↗ '\+esc\(o\.source_name\)\+'<\/a>'/);
 });
 
 test("les offres expirées ne sont pas montrées, et ne sont pas effacées", () => {

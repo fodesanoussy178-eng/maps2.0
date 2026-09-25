@@ -417,6 +417,14 @@
       min_age: normalized.min_age == null ? null : normalized.min_age,
       reservation_required: normalized.reservation_required == null ? null : normalized.reservation_required,
       reservation_text: normalized.reservation_text || null,
+      /* Les trois champs qui décident si « Appeler », « Site web » et
+         « Réserver » sont cliquables. Ils traversent cette couche sans
+         transformation : la validation a eu lieu à l'import, et la base la
+         garantit encore pour le téléphone. */
+      booking_url: normalized.booking_url || null,
+      phone: normalized.phone || null,
+      email: normalized.email || null,
+      website: normalized.website || null,
       venue_name: normalized.venue_name || null,
       organizer_name: normalized.organizer_name || null,
       description: clean(normalized.description || first(raw, ["description", "description_long"])) || null,

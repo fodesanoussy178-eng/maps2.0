@@ -203,7 +203,7 @@ const ECRANS_DIFFERES = [
   "ouvrirFicheCompacte", "ouvrirDetail", "faitsAide",
   /* l'itinéraire */
   "afficherTrajet", "entrerNav", "itineraireOSRM", "dessinerSegments",
-  "urlItineraireExterne", "liensItinerairesExternes",
+  "urlItineraireExterne", "liensItinerairesExternes", "ouvrirChoixItineraire",
   /* publier */
   "ouvrirChoixLieu", "dessinerFormulaire", "publier",
   "reessayerPublication", "annulerPublication", "continuerPublication",
@@ -214,7 +214,7 @@ const ECRANS_DIFFERES = [
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=6bc8206e"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=20b68f7b"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -2881,6 +2881,7 @@ function signatureCoucheSupabase(entree){
     l && l.temporalStatus, l && l.temporal_status,
     l && l.price_amount, l && l.price_text, l && l.is_free, l && l.audience,
     l && l.min_age, l && l.reservation_required, l && l.reservation_text,
+    l && l.booking_url, l && l.phone, l && l.email, l && l.website,
     l && l.event_source, l && l.event_source_url, l && l.place_source,
     l && l.description,
     l && l.status, l && l.annule, l && l.cancelled,
@@ -3077,6 +3078,13 @@ function versEvenementCanonique(e){
     min_age:e.min_age,
     reservation_required:e.reservation_required,
     reservation_text:e.reservation_text,
+    /* Ce que la source a publié pour être joint. Rien n'est reconstruit ici :
+       `evenements_locaux` les rend déjà validés, et une absence reste une
+       absence — c'est elle qui grise le bouton. */
+    booking_url:e.booking_url || null,
+    phone:e.phone || null,
+    email:e.email || null,
+    website:e.website || null,
     venue_name:e.venue_name || e.place_name || null,
     organizer_name:e.organizer_name || e.organizer || null,
     event_source:e.event_source || e.primary_source || null,
@@ -4865,6 +4873,10 @@ const CHAMPS_RAPIDE = ["id","autourId","entity_type","cat","categories","titre",
   "event_kind","eventKind","start_at","end_at","timezone","temporal_status","temporalStatus",
   "date_confidence","dateConfidence","price_amount","price_text","is_free","price_confidence",
   "audience","min_age","reservation_required","reservation_text","venue_name","organizer_name",
+  /* Une fiche relue depuis le cache doit pouvoir rappeler et rouvrir le site :
+     sans ces trois champs, la réouverture regrisait des boutons qui venaient
+     d'être cliquables. */
+  "booking_url","phone","email","website",
   "event_source","event_source_url","place_source","place_source_url","entity_type"];
 
 function estContenuGoogle(l){
@@ -6752,6 +6764,86 @@ function mettreEnAvant(id){
     const el = m && m.getElement && m.getElement();
     if(el) el.classList.toggle("en-avant", !!lieuEnAvant && cle === lieuEnAvant);
   });
+}
+
+/* ---- CE QU'ON VIENT D'OUVRIR DOIT ÊTRE VISIBLE SUR LA CARTE --------------
+
+   Ouvrir une fiche depuis la LISTE mettait la carte hors du circuit : le lieu
+   choisi restait une pastille comme les autres, souvent derrière un panneau.
+   Le lien liste → marqueur manquait, alors qu'il existait déjà dans l'autre
+   sens (un clic sur un marqueur ouvre la fiche compacte, qui met le lieu en
+   avant). Trois volets côte à côte n'ont d'intérêt que s'ils se répondent.
+
+   L'ENCOMBREMENT EST MESURÉ, PAS DEVINÉ. Les panneaux ne sont pas aux mêmes
+   endroits selon la largeur : feuille du bas sur téléphone, colonnes à gauche
+   et à droite sur ordinateur, et la barre d'envies en haut. On relève donc les
+   rectangles réellement à l'écran et on en déduit de quel côté la carte est
+   rognée — la même discipline que `mesurerHeader()`, pour la même raison : une
+   hauteur écrite en dur devient fausse au premier changement de maquette.
+
+   `panInside` de Leaflet ne déplace la carte QUE si le point est hors de la
+   zone utile. Un lieu déjà visible au milieu ne bouge donc pas : on ne
+   réanime pas une carte pour rien, et on ne vole pas le cadrage que la
+   personne vient de choisir. */
+const PANNEAUX_CARTE = Object.freeze(["#appHeader", "#navBas", "#feuilleBesoins",
+  "#explorerDecouverte", "#pourToi", "#feuille", "#ficheCompacte"]);
+
+function encombrementCarte(){
+  const conteneur = map && map.getContainer ? map.getContainer() : null;
+  if(!conteneur) return null;
+  const b = conteneur.getBoundingClientRect();
+  if(!(b.width > 0 && b.height > 0)) return null;
+  const m = {gauche:0, droite:0, haut:0, bas:0};
+  PANNEAUX_CARTE.forEach((selecteur)=>{
+    const el = $(selecteur);
+    if(!el || el.hidden) return;
+    const style = getComputedStyle(el);
+    if(style.display === "none" || style.visibility === "hidden" ||
+       style.pointerEvents === "none") return;
+    /* L'OPACITÉ NE DIT PAS SI UN PANNEAU GÊNE. Mesuré dans Chromium : la fiche
+       est appelée à la frame où son animation d'entrée commence, donc à
+       `opacity:0`. L'écarter pour cette raison revenait à ne jamais compter le
+       volet de droite — exactement le panneau pour lequel cette fonction
+       existe. Un panneau qui va apparaître occupe déjà la place. */
+    const r = el.getBoundingClientRect();
+    if(!(r.width > 0 && r.height > 0)) return;
+    /* COLONNE OU BANDE : C'EST LA FORME QUI LE DIT, pas une liste
+       d'identifiants tenue à jour à la main. On compare la part de hauteur à
+       la part de largeur : plus haut que large relativement au conteneur, donc
+       une colonne ; sinon une bande. Écrit autrement — « touche le bord
+       gauche » — la pastille de navigation flottante, large de 1 120 px et
+       centrée, passait pour une colonne de gauche et volait 40 % de la carte. */
+    const partHaute = r.height / b.height, partLarge = r.width / b.width;
+    if(partHaute > partLarge){
+      const versGauche = (r.left - b.left) <= (b.right - r.right);
+      if(versGauche) m.gauche = Math.max(m.gauche, r.right - b.left);
+      else m.droite = Math.max(m.droite, b.right - r.left);
+      return;
+    }
+    const centre = r.top + r.height / 2;
+    if(centre <= b.top + b.height / 2) m.haut = Math.max(m.haut, r.bottom - b.top);
+    else m.bas = Math.max(m.bas, b.bottom - r.top);
+  });
+  /* Deux volets peuvent, ensemble, ne rien laisser : on borne chaque côté pour
+     que la zone utile existe toujours, quitte à ce qu'elle soit étroite. */
+  const borne = (valeur, total)=> Math.max(0,
+    Math.min(Math.round(valeur) + 14, Math.round(total * .4)));
+  return {
+    paddingTopLeft: [borne(m.gauche, b.width), borne(m.haut, b.height)],
+    paddingBottomRight: [borne(m.droite, b.width), borne(m.bas, b.height)],
+  };
+}
+
+function revelerSurCarte(l){
+  mettreEnAvant(l && l.id != null ? l.id : null);
+  const lat = Number(l && l.lat), lng = Number(l && l.lng);
+  if(!map || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  if(typeof map.panInside !== "function") return;
+  const marges = encombrementCarte();
+  if(!marges) return;
+  try{
+    map.panInside([lat, lng], Object.assign({animate:true, duration:.4}, marges));
+  }catch(e){}
 }
 
 /* La liste des événements posés au même endroit. Elle réutilise la fiche
@@ -13231,7 +13323,17 @@ function groupesInteretsPourToi(propositions){
       groupes.get(id).propositions.push(proposition);
     });
   });
-  return ordre.map((item)=> groupes.get(item.id)).filter(Boolean);
+  const parEnvie = ordre.map((item)=> groupes.get(item.id)).filter(Boolean);
+  /* ---- LE GROUPE QUI N'EST DANS AUCUNE ENVIE ---------------------------
+     Les propositions d'exploration n'ont, par construction, aucune envie à
+     rejoindre : sans ce groupe elles seraient classées puis silencieusement
+     perdues à l'affichage. Il vient EN DERNIER et porte son nom, pour que la
+     personne voie d'un coup d'œil où s'arrête ce qu'elle a demandé et où
+     commence ce qu'Autour propose en plus. */
+  const decouvertes = propositions.filter((x)=> x && x.exploration === true);
+  return decouvertes.length
+    ? parEnvie.concat([{id:"exploration", label:"\xC0 d\xE9couvrir", propositions:decouvertes}])
+    : parEnvie;
 }
 
 function propositionsPourToi(limite = POURTOI_MAX){
@@ -13268,6 +13370,7 @@ function propositionsPourToi(limite = POURTOI_MAX){
     vu: classe.seen,
     score: classe.score,
     matchedInterests: Array.isArray(classe.matched_interests) ? classe.matched_interests : [],
+    exploration: classe.exploration === true,
     temporal: classe.temporal || null,
     temporalStatus: classe.temporal_status || null,
     pool: classe.pool || "local",
@@ -13636,6 +13739,10 @@ function nouveautesPourToi(propositions){
      lors d'un changement de goûts. */
   return (propositions||[]).filter((x)=>{
     if(!x || !x.l || x.l.id == null) return false;
+    /* Une proposition d'exploration est un appoint, pas une nouvelle qui
+       concerne la personne : la compter ferait clignoter la cloche pour un
+       événement dont Autour dit lui-même qu'il sort de ses goûts. */
+    if(x.exploration === true) return false;
     const id = String(x.l.id);
     return !annoncees.has(id) && !vues.has(id);
   });
@@ -14329,11 +14436,83 @@ function fuseauZoneActive(){
   return def.timezone;
 }
 
+/* ---------------------------------------------------------------------------
+   CE QUE LA VITRINE A BESOIN DE SAVOIR, EN PLUS DE L'HEURE
+
+   Trois états vivent côté application et non côté moteur, parce qu'ils
+   concernent CETTE personne sur CET appareil : ce qu'elle a mis en favori, ce
+   qu'on lui a déjà montré, et combien d'habitants compte Autour.
+--------------------------------------------------------------------------- */
+
+/* Le compte des habitants confirmés, lu une fois et gardé. `null` tant qu'on
+   ne l'a pas : le moteur refuse alors la faveur de démarrage plutôt que de
+   l'accorder sur une valeur inventée. */
+let habitantsConnus = null;
+let habitantsDemandes = false;
+
+function chargerHabitants(){
+  if(habitantsDemandes || typeof sbLecture === "undefined" || !sbLecture) return;
+  habitantsDemandes = true;
+  Promise.resolve(sbLecture.rpc("autour_habitants")).then(({data, error})=>{
+    if(error || !Number.isFinite(Number(data))) return;
+    habitantsConnus = Number(data);
+  }).catch(()=>{});
+}
+
+/* COMBIEN DE FOIS ON A MONTRÉ QUOI.
+   Un compteur par identifiant, gardé pour la session et relu du stockage
+   local. Il ne sert qu'à départager deux contenus de pertinence égale : il
+   n'a donc besoin ni d'être exact, ni de survivre à un effacement. */
+const CLE_VUES_MAINTENANT = "autour.maintenant.vues";
+let vuesMaintenant = null;
+
+function registreVues(){
+  if(vuesMaintenant) return vuesMaintenant;
+  vuesMaintenant = new Map();
+  try{
+    const brut = JSON.parse(localStorage.getItem(CLE_VUES_MAINTENANT) || "{}");
+    for(const [id, n] of Object.entries(brut)) if(Number(n) > 0) vuesMaintenant.set(id, Number(n));
+  }catch(e){}
+  return vuesMaintenant;
+}
+
+function noterVuesMaintenant(liste){
+  const registre = registreVues();
+  for(const item of liste || []){
+    if(!item || item.id == null) continue;
+    registre.set(String(item.id), (registre.get(String(item.id)) || 0) + 1);
+  }
+  /* Deux cents entrées suffisent à faire tourner trois places ; au-delà on
+     garderait la mémoire d'un quartier qu'on a quitté. */
+  if(registre.size > 200){
+    const ordonne = [...registre.entries()].sort((a, b)=>b[1] - a[1]).slice(0, 200);
+    vuesMaintenant = new Map(ordonne);
+  }
+  try{ localStorage.setItem(CLE_VUES_MAINTENANT, JSON.stringify(Object.fromEntries(vuesMaintenant))); }
+  catch(e){}
+}
+
+/* Les favoris encore en mémoire, sous la forme d'identifiants de propositions.
+   Le moteur ne lit que des identifiants : il n'a pas à connaître la forme
+   d'un favori, ni où ils sont rangés. */
+function favorisVerrouilles(){
+  const verrous = new Set();
+  for(const l of favorisEnMemoire.values()) if(l && l.id != null) verrous.add(String(l.id));
+  return verrous;
+}
+
 function contexteMaintenant(){
   const ref = pointDeReference();
+  chargerHabitants();
   return {
     rayonMax: rayonRegarde(),
     maintenant: Date.now(),
+    /* La phase de démarrage : le moteur décide, l'application fournit le
+       nombre. `null` veut dire « je ne sais pas », et le moteur en tire la
+       conséquence prudente. */
+    utilisateurs: habitantsConnus,
+    favorisVerrouilles: favorisVerrouilles(),
+    vues: registreVues(),
     timeZone: fuseauZoneActive(),
     /* Y A-T-IL UN TERRITOIRE DONT PARLER ? Hors des zones supportées, il n'y
        a ni données territoriales, ni programmation, ni fuseau déclaré : parler
@@ -14682,6 +14861,10 @@ function blocMaintenantAccueil(){
      c'est exactement ce qu'on veut, et c'est ce qu'il faut pouvoir prouver. */
   if(liste.length >= 1) PERF.jalon("maintenant_premier");
   if(liste.length >= MAINTENANT_APERCU) PERF.jalon("maintenant_complet");
+  /* Ce qu'on vient de montrer est noté ICI, au rendu, et nulle part ailleurs :
+     c'est le seul endroit où l'on sait ce qui est réellement passé sous les
+     yeux. C'est ce compteur qui fera tourner la vitrine au prochain passage. */
+  if(etat === M.ETATS.READY) noterVuesMaintenant(liste);
   const mots = M.textes(etat, ctx);
 
   /* Le compteur est celui de la sélection effectivement rendue. Il ne peut
@@ -18216,6 +18399,52 @@ async function chargerOffres(audience){
   finally { fini(); }
 }
 
+/* ---------------------------------------------------------------------------
+   « Y ALLER » DEPUIS UNE OFFRE, ET L'APPLICATION QU'ON PRÉFÈRE
+
+   Autour ne route pas la voiture : les applications qui le font pour de vrai
+   le font mieux. Le bouton les ouvre donc, avec les coordonnées de l'offre.
+
+   POURQUOI MÉMORISER. Quelqu'un qui a Waze a Waze à chaque fois. Lui redemander
+   à chaque offre, c'est un choix par offre pour une réponse qui ne change
+   jamais. Le choix est donc retenu, et le bouton porte le nom de l'application
+   retenue — « Y aller · Waze » — pour que la mémoire soit VISIBLE plutôt que
+   surprenante. L'écran des offres porte une ligne pour l'oublier.
+
+   Ces trois fonctions vivent dans `app.js` et non dans l'écran différé, parce
+   que la carte d'offre a besoin de lire le choix pour écrire son libellé,
+   avant que le module des écrans ne soit demandé.
+--------------------------------------------------------------------------- */
+const CLE_APPLI_ITINERAIRE = "autour.appli.itineraire";
+
+/* Les quatre applications, et rien d'autre. Chacune a une URL PUBLIQUE et
+   documentée : aucune n'est appelée par un SDK, aucune n'est pistée. Les logos
+   ne sont pas reproduits — le dépôt n'en porte aucun, et un logo redessiné à la
+   main serait un faux logo. */
+const APPLIS_ITINERAIRE = Object.freeze([
+  {cle:"google", nom:"Google Maps"},
+  {cle:"apple", nom:"Apple Plans"},
+  {cle:"waze", nom:"Waze"},
+  {cle:"citymapper", nom:"Citymapper"},
+]);
+
+function appliItineraireMemorisee(){
+  try{
+    const cle = localStorage.getItem(CLE_APPLI_ITINERAIRE);
+    return APPLIS_ITINERAIRE.find(a=>a.cle === cle) || null;
+  }catch(e){ return null; }        // navigation privée, stockage refusé
+}
+
+function memoriserAppliItineraire(cle){
+  if(!APPLIS_ITINERAIRE.some(a=>a.cle === cle)) return false;
+  try{ localStorage.setItem(CLE_APPLI_ITINERAIRE, cle); return true; }
+  catch(e){ return false; }        // le choix vaut pour cette fois, pas plus
+}
+
+function oublierAppliItineraire(){
+  try{ localStorage.removeItem(CLE_APPLI_ITINERAIRE); }catch(e){}
+}
+
 const NATURE_OFFRE = Object.freeze({
   gratuite:"Gratuit", reduction:"Réduction", tarif_reduit:"Tarif réduit",
   avantage:"Avantage", operation:"Opération", pass:"Pass",
@@ -18258,8 +18487,34 @@ function carteOffre(o){
       ? '<span class="of-ferme">Fermé'+
         (o.ouvre_a ? ' · ouvre '+esc(heureCourte(o.ouvre_a)) : '')+'</span>'
     : '';
-  return '<a class="of-carte" href="'+esc(o.source_url)+'" target="_blank" rel="noopener"'+
-    ' data-offre="'+esc(o.id)+'">'+
+  /* LA CARTE N'EST PLUS UN SEUL LIEN, ET C'EST CE QUI LA REND UTILE.
+
+     Elle était un `<a>` vers le jeu de données source. Un tap ouvrait donc un
+     onglet sur data.enseignementsup-recherche.gouv.fr — informatif, mais ce
+     n'est pas ce qu'on veut savoir devant une cafétéria à 800 m. Les trois
+     gestes possibles sont maintenant distincts et nommés : voir où c'est,
+     y aller, et lire la source. Un `<a>` ne pouvait en contenir aucun autre :
+     un lien dans un lien n'est pas du HTML valide.
+
+     Les coordonnées voyagent dans les attributs plutôt que dans une clôture :
+     la liste est rendue en une chaîne, et un gestionnaire délégué unique lit
+     `data-lat`/`data-lng` au moment du geste. Une offre sans position n'écrit
+     donc aucun bouton — il n'y a rien à centrer ni à ouvrir. */
+  const lat = Number(o.lat), lng = Number(o.lng);
+  const situee = Number.isFinite(lat) && Number.isFinite(lng);
+  const ou_ = situee ? esc(lat.toFixed(6)+","+lng.toFixed(6)) : "";
+  const appli = appliItineraireMemorisee();
+  const gestes = situee
+    ? '<span class="itin-liens">'+
+        '<button type="button" class="act" data-of-centrer="'+ou_+'"'+
+          ' data-of-nom="'+esc(o.title)+'">Sur la carte</button>'+
+        '<button type="button" class="act" data-of-yaller="'+ou_+'"'+
+          ' data-of-nom="'+esc(o.title)+'">'+
+          (appli ? 'Y aller · '+esc(appli.nom) : 'Y aller')+'</button>'+
+      '</span>'
+    : '';
+  return '<div class="of-carte" data-offre="'+esc(o.id)+'"'+
+    (situee ? ' data-of-lat="'+esc(String(lat))+'" data-of-lng="'+esc(String(lng))+'"' : '')+'>'+
     '<span class="of-tete"><span class="of-titre">'+esc(o.title)+'</span>'+
       '<span class="of-nature">'+esc(NATURE_OFFRE[o.offer_type] || "Avantage")+'</span></span>'+
     (ou ? '<span class="of-lieu">'+esc(ou)+'</span>' : '')+
@@ -18267,8 +18522,12 @@ function carteOffre(o){
     (pour ? '<span class="of-public">'+esc(pour)+'</span>' : '')+
     (o.eligibility ? '<span class="of-condition">'+esc(o.eligibility)+'</span>' : '')+
     (fin ? '<span class="of-fin">Jusqu’au '+esc(fin.toLocaleDateString("fr-FR"))+'</span>' : '')+
-    '<span class="of-source">↗ '+esc(o.source_name)+'</span>'+
-  '</a>';
+    /* La source reste un lien, et reste obligatoire : c'est elle qui fait que
+       l'offre est vérifiable plutôt que affirmée. */
+    '<a class="of-source" href="'+esc(o.source_url)+'" target="_blank" rel="noopener">'+
+      '↗ '+esc(o.source_name)+'</a>'+
+    gestes+
+  '</div>';
 }
 
 /* « ferme à 18:00 » aujourd'hui, « ouvre lundi 09:00 » un autre jour. */
@@ -18304,9 +18563,57 @@ async function ouvrirBonsPlansEtudiants(){
       'ce qui s’affiche ici vient toujours d’un organisme identifié.</p>');
     return;
   }
+  const appli = appliItineraireMemorisee();
   hote.insertAdjacentHTML("beforeend",
     '<div class="of-liste">'+
-      vivantes.map(carteOffre).join("")+'</div>');
+      vivantes.map(carteOffre).join("")+'</div>'+
+    /* LA MÉMOIRE DOIT ÊTRE ANNULABLE À L'ENDROIT OÙ ELLE SE VOIT.
+       Un réglage retenu sans moyen visible de le défaire n'est plus un choix,
+       c'est une contrainte. Cette ligne n'existe que quand il y a quelque chose
+       à oublier, et elle dit laquelle. */
+    (appli
+      ? '<p class="of-vide" data-testid="offres-appli">Les itinéraires s’ouvrent dans '+
+        esc(appli.nom)+'. <button type="button" class="act" data-of-oublier="1">'+
+        'Changer d’application</button></p>'
+      : ''));
+
+  /* UN SEUL GESTIONNAIRE POUR TOUTE LA LISTE. Trente cartes ne posent pas
+     quatre-vingt-dix écouteurs : la délégation lit l'attribut du bouton
+     touché. C'est aussi ce qui fait que la liste peut être réécrite sans
+     avoir à recâbler quoi que ce soit. */
+  hote.addEventListener("click", (e)=>{
+    const cible = e.target instanceof Element ? e.target : null;
+    if(!cible) return;
+    const oublier = cible.closest("[data-of-oublier]");
+    if(oublier){
+      oublierAppliItineraire();
+      toast("Autour redemandera l’application au prochain itinéraire");
+      const ligne = hote.querySelector("[data-testid='offres-appli']");
+      if(ligne) ligne.remove();
+      /* Les libellés « Y aller · Waze » deviennent faux à la seconde où le
+         choix est oublié : on les remet au nom générique plutôt que de
+         laisser l'écran mentir jusqu'au prochain rendu. */
+      hote.querySelectorAll("[data-of-yaller]").forEach(b=>{ b.textContent = "Y aller"; });
+      return;
+    }
+    const centrer = cible.closest("[data-of-centrer]");
+    if(centrer){
+      const point = String(centrer.getAttribute("data-of-centrer") || "").split(",").map(Number);
+      if(!allerVers(point, (m)=>Math.max(m.getZoom(), 17))) return;
+      /* La feuille couvre la carte : la laisser ouverte reviendrait à centrer
+         sur un lieu que personne ne voit. On la ferme, et le toast dit sur
+         quoi on vient d'atterrir. */
+      fermerFeuille();
+      toast(centrer.getAttribute("data-of-nom") || "Lieu situé sur la carte");
+      return;
+    }
+    const yaller = cible.closest("[data-of-yaller]");
+    if(yaller){
+      const point = String(yaller.getAttribute("data-of-yaller") || "").split(",").map(Number);
+      if(point.length !== 2 || !point.every(Number.isFinite)) return;
+      ouvrirChoixItineraire(point, yaller.getAttribute("data-of-nom") || "");
+    }
+  });
 }
 
 

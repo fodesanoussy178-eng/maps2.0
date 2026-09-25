@@ -143,8 +143,14 @@ test("le code de vérification fait six chiffres", () => {
    ======================================================================== */
 
 test("aucune table publique ne porte d'adresse e-mail", () => {
-  // la migration le vérifie elle-même, et échoue si quelqu'un en ajoute une
-  assert.match(migration, /Une adresse e-mail est exposée dans le schéma public/);
+  /* La migration le vérifie elle-même, et échoue si quelqu'un en ajoute une.
+     Le message y est écrit SANS ACCENTS ; l'assertion les portait, donc elle
+     ne pouvait pas correspondre. On compare la phrase, pas sa typographie —
+     et la garde est bien là, dans cette migration comme dans celle qui ajoute
+     `events.email` avec son exception justifiée. */
+  const sansAccents = (texte) => texte.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  assert.match(sansAccents(migration),
+    /Une adresse e-mail est exposee dans le schema public/);
   assert.match(migration, /attname ~\* '\(\^\|_\)\(e\?mail\|courriel\)\(\$\|_\)'/);
   // et `profiles` ne porte QUE le pseudo et la préférence de notifications
   const table = migration.slice(migration.indexOf("create table if not exists public.profiles"),

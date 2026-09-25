@@ -603,7 +603,10 @@ test("une photo Places ne se glisse pas dans le cache local", () => {
 });
 
 test("l'affiche est rendue entière, sans toucher aux dimensions du cadre", () => {
-  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  /* `autour.css` porte les règles de style depuis qu'elles ont quitté
+   `index.html` : la source lue ici reste « le document et sa feuille ». */
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  readFileSync(new URL("../autour.css", import.meta.url), "utf8");
   /* La règle vient APRÈS celle du paysage — même spécificité, c'est l'ordre
      qui tranche — et ne touche QUE l'ajustement. */
   const paysage = html.indexOf(".event-couverture.event-couverture-paysage img");

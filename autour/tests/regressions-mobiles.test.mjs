@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import { sourceApplicationSync } from "./source.mjs";
 
 const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+/* `autour.css` porte les règles de style depuis qu'elles ont quitté
+   `index.html` : la source lue ici reste « le document et sa feuille ». */
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8") + "\n" +
+  readFileSync(new URL("../autour.css", import.meta.url), "utf8");
 const source = sourceApplicationSync(import.meta.url);
 
 test("Maintenant n'a plus de chemin d'affichage long", () => {

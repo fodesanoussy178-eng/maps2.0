@@ -324,7 +324,7 @@ async function readCanonicalAnnouncement(eventId: string): Promise<Json> {
       "ticket_url,announcement_tags,performers,artist_names,music_genres,event_kind," +
       "organizer,announcement_provenance,venue_name,organizer_name,price_amount,price_text,is_free," +
       "price_confidence,audience,min_age,reservation_required,reservation_text,event_source,event_source_url," +
-      "place_source&limit=1";
+      "place_source,booking_url,phone,email,website&limit=1";
     const rows = await readRows(path);
     return rows[0] ?? {};
   } catch {

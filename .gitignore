@@ -12,3 +12,7 @@ coverage
 
 # la copie allégée produite par autour/outils/alleger.mjs : elle se régénère
 autour/livraison
+
+# Le dossier de travail de la CLI Supabase : rien à archiver.
+supabase/.temp/
+autour/supabase/.temp/

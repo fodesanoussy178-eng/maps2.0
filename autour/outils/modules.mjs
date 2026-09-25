@@ -44,3 +44,9 @@ export const MODULES = [
    `index.html`, qui ne les mentionne jamais. Elle vit dans
    `VERSIONS_DIFFEREES`, dans `app.js`. */
 export const MODULES_DIFFERES = ["differe/ecrans.js"];
+
+/* ---- LES FEUILLES DE STYLE ---------------------------------------------
+   `autour.css` est liée par `index.html` et tamponnée comme un module : même
+   promesse de cache, même façon de la rompre. `legal.css` n'est pas ici — les
+   pages légales ne sont pas servies par `index.html`. */
+export const FEUILLES = ["autour.css"];

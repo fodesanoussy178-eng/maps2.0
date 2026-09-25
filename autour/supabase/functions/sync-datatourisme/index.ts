@@ -219,16 +219,46 @@ async function zones(
    La pagination commence à 1. On suit `meta.next` quand l'API le fournit —
    c'est elle qui sait où elle en est — et on ne retombe sur l'incrément que
    lorsqu'elle ne dit rien. */
-function pageDeLaZone(zone: Zone, page: number): string {
-  const params = new URLSearchParams({
-    // haut-gauche → bas-droit, dans cet ordre et pas un autre
-    geo_bounding: `${zone.max_lat},${zone.min_lng},${zone.min_lat},${zone.max_lng}`,
-    page_size: String(PAGE),
-    page: String(page),
-    lang: "fr",
-    fields: [
+const CHAMPS = [
       "uuid", "label", "type", "hasDescription", "lastUpdate",
       "isLocatedAt", "takesPlaceAt", "url", "sameAs",
+      /* ---- CE QUE `fields` AVAIT FAIT DISPARAÎTRE ----------------------
+         Passer `fields` REMPLACE la sélection par défaut de l'API. Celle-ci
+         contenait `hasContact` — l'agent à joindre, avec son site, son
+         téléphone et son adresse électronique. En énumérant les champs pour
+         les images, on avait cessé de le demander : mesuré en base, 1 572
+         événements DATAtourisme sur 1 572 sans lien, et 1 566 sans site.
+
+         Le nom du lieu, lui, n'a jamais été dans la sélection par défaut
+         (`isLocatedAt.geo` et `isLocatedAt.address` seulement) : il se
+         demande explicitement, sans quoi la fiche dit « à cette adresse »
+         sans jamais pouvoir dire OÙ.
+
+         Les deux graphies — préfixée et nue — sont demandées côte à côte :
+         un nom de champ inconnu est ignoré par l'API, pas refusé, donc
+         demander les deux ne coûte rien et couvre les deux dialectes.
+
+         MESURÉ, PAS SUPPOSÉ. Le 25/09/2026, `sonde-datatourisme` a interrogé
+         cet endpoint sur 100 POI du rectangle lillois en demandant tous les
+         noms plausibles. Ce qui revient :
+
+           · `hasContact[0].telephone[0]`        → présent
+           · `hasBookingContact[0].telephone[0]` → présent
+           · `uri`                               → l'URI RDF de la fiche
+           · homepage, email, nom du lieu, représentation → JAMAIS
+
+         Le nom du lieu n'est donc pas une erreur de notre côté : cet endpoint
+         ne le sert pas, sous aucun nom. `place_name` restera NULL pour cette
+         source, et c'est l'adresse qui porte l'information. On continue de le
+         demander — le jour où DATAtourisme le sert, il arrivera sans qu'on
+         touche à ce fichier — mais on ne le remplace par rien. */
+      "isLocatedAt.rdfs:label", "isLocatedAt.label", "isLocatedAt.schema:name",
+      "hasContact", "hasContact.foaf:homepage", "hasContact.schema:telephone",
+      "hasContact.schema:email", "hasContact.rdfs:label",
+      "hasCommunicationContact", "hasCommunicationContact.foaf:homepage",
+      "hasCommunicationContact.schema:telephone", "hasCommunicationContact.schema:email",
+      "hasBookingContact", "hasBookingContact.foaf:homepage",
+      "hasBookingContact.schema:telephone", "hasBookingContact.schema:email",
       /* DATAtourisme n'a pas une forme unique : on demande explicitement les
          deux emplacements documentés, sans wildcard. Le normaliseur vérifie
          ensuite l'URL et la licence avant de produire un visuel. */
@@ -254,9 +284,72 @@ function pageDeLaZone(zone: Zone, page: number): string {
       "hasRelatedResource.format",
       "hasRelatedResource.credit", "hasRelatedResource.author",
       "hasRelatedResource.creator",
-    ].join(","),
+].join(",");
+
+function pageDeLaZone(zone: Zone, page: number, champs: string = CHAMPS): string {
+  const params = new URLSearchParams({
+    // haut-gauche → bas-droit, dans cet ordre et pas un autre
+    geo_bounding: `${zone.max_lat},${zone.min_lng},${zone.min_lat},${zone.max_lng}`,
+    page_size: String(PAGE),
+    page: String(page),
+    lang: "fr",
+    fields: champs,
   });
   return `${CATALOGUE}?${params}`;
+}
+
+/* ---- LA SONDE : MESURER LA FORME AVANT DE LA SUPPOSER --------------------
+
+   Un champ demandé et absent de la réponse ne se distingue pas d'un champ mal
+   nommé : dans les deux cas la colonne reste vide en base, sans erreur, sans
+   rejet, sans trace. C'est exactement ce qui est arrivé au nom du lieu et aux
+   coordonnées de contact — mille cinq cents événements sans lieu nommé et
+   sans lien, alors que le normaliseur les cherchait consciencieusement.
+
+   `mode=sonde` demande UNE page, n'écrit rien, et ne rend que les CHEMINS de
+   clés rencontrés avec leur type. Aucune valeur ne sort : on cherche la forme
+   du contrat, pas le contenu d'une fiche. `fields=` permet d'essayer une
+   liste de champs candidats sans toucher à celle que la synchronisation
+   utilise en production. */
+function formeDe(
+  valeur: unknown, prefixe: string, dans: Record<string, string>, profondeur = 0,
+): void {
+  if (valeur == null || profondeur > 3) return;
+  if (Array.isArray(valeur)) {
+    dans[prefixe] = `tableau(${valeur.length})`;
+    if (valeur.length) formeDe(valeur[0], `${prefixe}[0]`, dans, profondeur + 1);
+    return;
+  }
+  if (typeof valeur !== "object") {
+    dans[prefixe] = typeof valeur === "string"
+      ? (/^https?:\/\//.test(valeur) ? "url" : "texte") : typeof valeur;
+    return;
+  }
+  for (const [cle, v] of Object.entries(valeur as Record<string, unknown>)) {
+    const chemin = prefixe ? `${prefixe}.${cle}` : cle;
+    if (v === null) { dans[chemin] = "null"; continue; }
+    formeDe(v, chemin, dans, profondeur + 1);
+  }
+}
+
+async function sonder(zone: Zone, champs: string | null): Promise<Json> {
+  const reponse = await fetchAvecReprise(pageDeLaZone(zone, 1, champs || CHAMPS));
+  let charge: unknown = null;
+  try { charge = await reponse.json(); } catch { charge = null; }
+  const c = charge as Record<string, unknown> | null;
+  const lot = Array.isArray(c?.objects) ? c!.objects as unknown[]
+    : (Array.isArray(c?.["@graph"]) ? c!["@graph"] as unknown[]
+      : (Array.isArray(c?.data) ? c!.data as unknown[]
+        : (Array.isArray(charge) ? charge as unknown[] : [])));
+  /* La forme est relevée sur plusieurs objets : un champ optionnel absent du
+     premier POI ne doit pas être déclaré inexistant. */
+  const formes: Record<string, string> = {};
+  for (const poi of lot.slice(0, 25)) formeDe(poi, "", formes);
+  return {
+    zone: zone.code, httpStatus: reponse.status, retourne: lot.length,
+    champs_demandes: (champs || CHAMPS).split(","),
+    formes,
+  } as unknown as Json;
 }
 
 /* `meta.next` peut être une URL complète, un chemin, ou un simple numéro.
@@ -565,6 +658,24 @@ Deno.serve(async (requete: Request) => {
   const url = new URL(requete.url);
   const demandee = url.searchParams.get("area");
   const partitionDemandee = demandee ? url.searchParams.get("partition") : null;
+  /* La sonde passe AVANT `ouvrirCourse` : un diagnostic n'ouvre pas une
+     course de synchronisation et ne laisse aucune ligne derrière lui. */
+  if (url.searchParams.get("mode") === "sonde") {
+    const liste = await zones(demandee, partitionDemandee);
+    if (!liste.length) {
+      return new Response(JSON.stringify({error: `aucune zone active : ${demandee ?? "toutes"}`}),
+        {status: 404, headers: {"Content-Type": "application/json"}});
+    }
+    try {
+      const releve = await sonder(liste[0], url.searchParams.get("fields"));
+      return new Response(JSON.stringify(releve),
+        {status: 200, headers: {"Content-Type": "application/json"}});
+    } catch (erreur) {
+      return new Response(JSON.stringify({
+        error: erreur instanceof Error ? erreur.message : String(erreur),
+      }), {status: 502, headers: {"Content-Type": "application/json"}});
+    }
+  }
   const debut = Date.now();
   const scope = demandee ?? "toutes";
   const course = await ouvrirCourse(scope);

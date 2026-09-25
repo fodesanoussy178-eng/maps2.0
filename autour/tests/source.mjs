@@ -16,7 +16,12 @@ import { readFileSync } from "node:fs";
    fiche d'un lieu, l'itinéraire, la publication, le compte. La frontière a
    bougé une deuxième fois ; le contrat, lui, n'a pas changé — les tests
    posent toujours la question à la source entière. */
-const MORCEAUX = ["index.html", "evenements-canoniques.js", "entites-canoniques.js", "app.js", "differe/ecrans.js"];
+/* `autour.css` a suivi le même chemin qu'`app.js` : les règles de style
+   vivaient dans un `<style>` d'`index.html`, elles vivent maintenant dans un
+   fichier mis en cache à part. La question posée par les tests — « la source
+   contient-elle cette règle ? » — ne dépend pas du fichier où elle est rangée. */
+const MORCEAUX = ["index.html", "autour.css", "evenements-canoniques.js",
+  "entites-canoniques.js", "app.js", "differe/ecrans.js"];
 
 export function sourceApplicationSync(base) {
   return MORCEAUX.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");
@@ -33,6 +38,25 @@ export async function sourceApplication(base) {
    n'a de sens que si l'on ne vient pas de coller le document qui en porte
    une, légitimement, pour Leaflet. */
 const CORPS = ["evenements-canoniques.js", "entites-canoniques.js", "app.js", "differe/ecrans.js"];
+
+/* ---- LE DOCUMENT ET SA FEUILLE ------------------------------------------
+   Une règle de style ne vit plus dans `index.html` mais dans `autour.css`. Un
+   test qui demandait « le document porte-t-il cette règle ? » pose la même
+   question aux deux, réunis. Ceux qui parlent du DOCUMENT lui-même — son
+   poids, ses balises, ses métadonnées — continuent de lire `index.html` seul :
+   c'est pour cela que les deux lectures existent, et mélanger les deux ferait
+   passer un test de poids en mesurant la feuille de style. */
+const DOCUMENT = ["index.html", "autour.css"];
+
+export function documentEtStylesSync(base) {
+  return DOCUMENT.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");
+}
+
+export async function documentEtStyles(base) {
+  const parts = [];
+  for (const f of DOCUMENT) parts.push(await readFile(new URL("../" + f, base), "utf8"));
+  return parts.join("\n");
+}
 
 export function corpsApplicationSync(base) {
   return CORPS.map((f) => readFileSync(new URL("../" + f, base), "utf8")).join("\n");

@@ -27,6 +27,7 @@
 
 import {normaliserAnnonce, fusionnerAnnonceFields} from "../shared/annonces.mjs";
 import {normaliserEvenementCanonique} from "../shared/evenements-canoniques.mjs";
+import {telephoneE164, urlPropre, courrielPropre} from "../shared/contacts.mjs";
 
 /* ---- Lecture défensive du JSON-LD ---------------------------------------
    DATAtourisme rend du JSON-LD : une même information s'y présente comme
@@ -430,6 +431,86 @@ function arrondi(x, decimales) {
   return n.toFixed(decimales);
 }
 
+/* ---- LES COORDONNÉES QUE DATAtourisme PUBLIAIT DÉJÀ ---------------------
+
+   MILLE CINQ CENTS ÉVÉNEMENTS SANS UN SEUL LIEN, ET LA CAUSE EN UNE LIGNE.
+
+   Mesuré en base avant d'écrire une ligne de ce module : sur 1 572 événements
+   DATAtourisme, `place_name` était NULL 1 572 fois, `source_url` 1 572 fois,
+   `website` 1 566 fois. Le normaliseur cherchait pourtant le nom du lieu et
+   une URL — mais la réponse de l'API ne les contenait pas.
+
+   La raison n'est pas dans ce fichier : elle est dans la REQUÊTE. Passer un
+   paramètre `fields` remplace la sélection par défaut de l'API, et cette
+   sélection par défaut contenait `hasContact` — l'agent à joindre. En
+   énumérant les champs pour les images, on avait cessé de le demander.
+
+   CE QUE LA SOURCE DONNE VRAIMENT, mesuré le 25/09/2026 par
+   `sonde-datatourisme` sur 100 POI du rectangle lillois, tous les noms de
+   champs plausibles demandés :
+
+     · `hasContact[0].telephone[0]`        présent  → « Appeler » devient possible
+     · `hasBookingContact[0].telephone[0]` présent
+     · homepage, email                    absents  → aucun site à afficher
+     · nom du lieu, sous tout nom          absent   → `place_name` reste NULL
+
+   Le nom du lieu n'est donc pas un oubli de lecture : cet endpoint ne le sert
+   pas. On ne le remplace par rien — l'adresse dit déjà où c'est, et inventer
+   « Salle municipale » serait mentir. Les lectures de site et de courriel
+   restent en place : elles ne coûtent rien et serviront le jour où un
+   producteur les publie.
+
+   Ce module lit ces agents, une fois qu'on les demande à nouveau. Il
+   distingue DEUX PROMESSES, comme pour OpenAgenda :
+
+     · `hasBookingContact` dit « c'est ici qu'on réserve » → `booking_url`,
+       et la fiche peut proposer « Réserver ».
+     · `hasContact` et `hasCommunicationContact` disent seulement « voici
+       comment nous joindre » → `website`, sans promesse de réservation.
+
+   Rien n'est deviné : un numéro que `telephoneE164` ne ramène pas à la forme
+   exigée par la contrainte de la colonne n'est pas écrit, et aucune URL n'est
+   fabriquée à partir de l'identifiant du POI — `https://data.datatourisme.fr/…`
+   est une ressource RDF, pas une page pour une personne. */
+const AGENTS_RESERVATION = ["hasBookingContact", "hasBookingWebsite"];
+const AGENTS_CONTACT = ["hasContact", "hasCommunicationContact", "contact"];
+const CLES_SITE = ["foaf:homepage", "homepage", "schema:url", "url", "website",
+  "schema:sameAs", "sameAs", "foaf:page", "page"];
+const CLES_TELEPHONE = ["schema:telephone", "telephone", "phone", "tel", "schema:phone"];
+const CLES_COURRIEL = ["schema:email", "email", "mail", "schema:mail"];
+
+function agents(poi, cles) {
+  return cles.flatMap((cle) => liste(lire(poi, [cle])))
+    .filter((agent) => agent && typeof agent === "object");
+}
+
+function premier(agents, cles, normaliser) {
+  for (const agent of agents) {
+    for (const cle of cles) {
+      if (agent[cle] == null) continue;
+      for (const candidat of liste(agent[cle])) {
+        const valeurPropre = normaliser(candidat);
+        if (valeurPropre) return valeurPropre;
+      }
+    }
+  }
+  return null;
+}
+
+export function contactsDatatourisme(poi) {
+  const reservation = agents(poi, AGENTS_RESERVATION);
+  const contact = agents(poi, AGENTS_CONTACT);
+  /* L'ordre dit la priorité : pour joindre, le contact général d'abord ; pour
+     réserver, seulement l'agent de réservation. */
+  const tous = [...contact, ...reservation];
+  return {
+    booking_url: premier(reservation, CLES_SITE, urlPropre),
+    website: premier(contact, CLES_SITE, urlPropre),
+    phone: premier(tous, CLES_TELEPHONE, telephoneE164),
+    email: premier(tous, CLES_COURRIEL, courrielPropre),
+  };
+}
+
 /* ===========================================================================
    Normalisation d'un POI complet
    ======================================================================== */
@@ -449,7 +530,9 @@ export function normaliserEvenement(poi, options = {}) {
   const periode = analyserPeriode(poi, { ...options, timeZone });
   const description = texte(lire(poi, ["hasDescription", "description", "shortDescription"]));
   const ou = analyserAdresse(position.lieu || {});
-  const placeName = texte(lire(position.lieu || {}, ["label", "name", "schema:name"]));
+  const placeName = texte(lire(position.lieu || {},
+    ["label", "rdfs:label", "name", "schema:name", "schema:legalName", "legalName"]));
+  const contacts = contactsDatatourisme(poi);
   const sourceUrl = texte(lire(poi, ["url", "sameAs", "source"]));
   const lastSourceUpdate = analyserDate(
     lire(poi, ["lastUpdate", "lastUpdateDatatourisme", "dc:modified"]),
@@ -504,6 +587,13 @@ export function normaliserEvenement(poi, options = {}) {
       lng: position.lng,
       primary_source: "datatourisme",
       source_url: sourceUrl || null,
+      /* Quatre champs qui décident de ce que la fiche peut proposer. Ils
+         restent NULL quand la source ne dit rien : une fiche sans bouton est
+         préférable à un bouton qui ne mène nulle part. */
+      booking_url: contacts.booking_url,
+      website: contacts.website,
+      phone: contacts.phone,
+      email: contacts.email,
       image_url: image?.image_url || null,
       image_source: image?.image_source || null,
       image_source_url: image?.image_source_url || null,

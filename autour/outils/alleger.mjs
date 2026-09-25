@@ -37,7 +37,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { transform } from "esbuild";
 
-import { MODULES, MODULES_DIFFERES } from "./modules.mjs";
+import { MODULES, MODULES_DIFFERES, FEUILLES } from "./modules.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -217,6 +217,32 @@ for (const entree of await readdir(RACINE)) {
 await cp(join(RACINE, entree), join(SORTIE, entree), { recursive: true });
 }
 for (const [module, code] of alleges) await writeFile(join(SORTIE, module), code);
+
+/* ---- LA FEUILLE DE STYLE, ALLÉGÉE COMME LE RESTE ------------------------
+
+   `autour.css` bloque la première peinture : c'est le seul fichier dont le
+   navigateur attend l'arrivée complète avant d'afficher quoi que ce soit. Il
+   partait tel qu'écrit — commentaires, indentation et tout — soit 43,3 ko
+   gzip. Réimprimé par esbuild : 21,1 ko. La moitié du chemin critique de
+   style, pour cinq lignes ici et aucune règle changée dans le dépôt, où la
+   prose reste la source de vérité.
+
+   L'empreinte de l'URL, elle, est calculée par `outils/tamponner.mjs` sur le
+   fichier DU DÉPÔT : elle change dès qu'une règle change, ce qui est tout ce
+   qu'on lui demande. */
+const feuillesLivrees = [];
+for (const feuille of FEUILLES) {
+  const source = await readFile(join(RACINE, feuille), "utf8");
+  const { code } = await transform(source, {
+    loader: "css", minify: true, legalComments: "none",
+  });
+  await writeFile(join(SORTIE, feuille), code);
+  feuillesLivrees.push({
+    nom: feuille,
+    avant: gzipSync(Buffer.from(source), { level: 9 }).length,
+    apres: gzipSync(Buffer.from(code), { level: 9 }).length,
+  });
+}
 await writeFile(join(SORTIE, "autour.js"), bundle);
 const urlMoteur = "autour.js?v=" + empreinte;
 const shellAvecLien = SHELL_SOURCE.replaceAll("__AUTOUR_MOTEUR_URL__", urlMoteur);
@@ -249,6 +275,9 @@ await writeFile(join(SORTIE, "index.html"), indexLivre);
 console.log("  chemin critique : " + modulesCritiques.length + " scripts → autour.js?v=" + empreinte +
   " (" + (Buffer.byteLength(bundle) / 1024).toFixed(1) + " ko brut, " +
   (gzipSync(bundle, { level: 9 }).length / 1024).toFixed(1) + " ko gzip)");
+feuillesLivrees.forEach(({nom, avant, apres}) => console.log(
+  "  style critique  : " + nom + " " + (apres / 1024).toFixed(1) + " ko gzip" +
+  " (au lieu de " + (avant / 1024).toFixed(1) + " ko)"));
 console.log("  shell critique  : autour-shell.js?v=" + empreinteShell +
   " (" + (Buffer.byteLength(shell) / 1024).toFixed(1) + " ko brut, " +
   (gzipSync(shell, { level: 9 }).length / 1024).toFixed(1) + " ko gzip)");
