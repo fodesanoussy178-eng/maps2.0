@@ -56,14 +56,24 @@ function texte(valeur, max = 240) {
   return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t;
 }
 
-function coord(valeur) {
+/* `Number(null)` vaut ZÉRO, et zéro est un nombre fini. Sans ce contrôle, une
+   distance inconnue sortait en « 0 m » — c'est-à-dire « vous y êtes » — et une
+   coordonnée absente en « 0, 0 », au large du golfe de Guinée. Trouvé sur
+   `get_event` appelé sans position : la fiche annonçait « 0 m ». */
+function nombreOuRien(valeur) {
+  if (valeur == null || valeur === "") return null;
   const n = Number(valeur);
-  return Number.isFinite(n) ? Math.round(n * 1e6) / 1e6 : null;
+  return Number.isFinite(n) ? n : null;
+}
+
+function coord(valeur) {
+  const n = nombreOuRien(valeur);
+  return n == null ? null : Math.round(n * 1e6) / 1e6;
 }
 
 function metres(valeur) {
-  const n = Number(valeur);
-  return Number.isFinite(n) ? Math.round(n) : null;
+  const n = nombreOuRien(valeur);
+  return n == null ? null : Math.round(n);
 }
 
 /* ---- LA FIABILITÉ, DITE EN TROIS MOTS ----------------------------------

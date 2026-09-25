@@ -468,6 +468,19 @@ test("les besoins de Solidarité sont ceux d'Autour, avec leurs alias anglais", 
   }
 });
 
+test("une distance inconnue n'est jamais « 0 m »", async () => {
+  const evenement = F.EVENEMENTS_TOURCOING_A_VENIR[0];
+  brancher(Object.assign({}, TOURCOING, { ["event:" + evenement.id]: [evenement],
+    "rpc:evenement_seances": [] }));
+  /* Sans position dans la demande, il n'y a pas de distance — et « 0 m »
+     voudrait dire « vous y êtes ». */
+  const fiche = await PAR_NOM.get_event.executer({ id: evenement.id, time: QUAND });
+  assert.equal(fiche.result.distance_m, null);
+  assert.equal(projection.projeterEvenement({ ligne: { id: "x", lat: null, lng: null },
+    canonical: {} }, { moteurs: await moteursVerifies(), distance: null }).lat, null,
+    "une coordonnée absente ne devient pas 0");
+});
+
 test("get_event et get_place rendent une fiche, sans colonne interne", async () => {
   const evenement = F.EVENEMENTS_TOURCOING_A_VENIR[0];
   const lieu = F.LIEUX_TOURCOING[0];

@@ -177,9 +177,16 @@ function lireDemande(query, moteurs) {
      famille d'une « Grande Braderie d'Automne ». Sans cette étape, une demande
      de brocante ne trouve jamais une braderie — mesuré sur l'événement réel du
      26/09/2026 à Tissel. */
+  /* La famille se déduit de CE QUI RESTE, pas de la phrase entière. La
+     différence n'est pas théorique : « concert rap » laisse « rap », qui ne
+     désigne aucune famille — et c'est la bonne réponse, parce que « rap » est
+     justement le mot qui discrimine. Déduire la famille de la phrase entière
+     donnait `projection_spectacle`, donc deux expositions en réponse à une
+     demande de concerts de rap. Mesuré sur les lignes réelles du 25/09/2026. */
+  const texteFamille = reste || String(query || "");
   let famille = null;
-  if (query) {
-    const rattachee = taxonomieOuverte.rattacher(String(query), "");
+  if (texteFamille) {
+    const rattachee = taxonomieOuverte.rattacher(texteFamille, "");
     famille = rattachee && rattachee.subcategory ? rattachee.subcategory : null;
   }
   return { analyse, mots, famille };
@@ -203,11 +210,38 @@ function correspondALaDemande(ligne, demande, moteurs) {
     if (fiche && fiche.subcategory === demande.famille)
       return { retenu: true, par: "famille « " + demande.famille + " » de la taxonomie Autour" };
   }
+  /* LE PUBLIC VISÉ EST UNE DEMANDE, PAS UN MOT À CHERCHER. « Que faire en
+     famille dimanche ? » ne contient aucun mot qu'un événement écrirait ; ce
+     que la personne a dit, c'est POUR QUI. `comprendre.js` l'a déjà extrait
+     (`groupe`), et les fiches le portent — dans `audience`, dans leurs tags
+     d'annonce, ou dans la taxonomie ouverte qui range « fête de quartier » et
+     « atelier » comme des sorties familiales. */
+  if (demande.analyse && demande.analyse.groupe) {
+    const groupe = moteurs.CORE.normalizeText(demande.analyse.groupe);
+    const public_ = moteurs.CORE.normalizeText(ligne.audience || "");
+    if (public_ && (public_.includes(groupe) ||
+        (groupe === "famille" && /famille|enfant|tout public|jeune public/.test(public_))))
+      return { retenu: true, par: "public visé (" + groupe + ")" };
+    try {
+      const correspondances = moteurs.ANNONCES_TAXONOMIE.correspondances(ligne, [groupe]);
+      if (Array.isArray(correspondances) && correspondances.length)
+        return { retenu: true, par: "intérêt « " + groupe + " » reconnu par Autour" };
+    } catch (e) { /* le matcher refuse une fiche qu'il ne sait pas lire */ }
+    const fiche = taxonomieOuverte.rattacher(ligne.title,
+      [ligne.description, ligne.event_kind, ligne.category].filter(Boolean).join(" "));
+    if (fiche && (fiche.audiences || []).includes(groupe))
+      return { retenu: true, par: "public « " + groupe + " » de la taxonomie Autour" };
+  }
+  /* LES ÉTAPES SUIVANTES NE RATTRAPENT PAS UN MOT REFUSÉ. Quand la personne a
+     écrit un terme précis que ni le texte ni la famille ne portent — « rap » —,
+     élargir à la catégorie ou au public reviendrait à répondre à côté avec
+     assurance. On préfère rendre moins. */
+  if (demande.mots.length) return { retenu: false, par: null };
   const cats = (demande.analyse.categories || []).map((c) => moteurs.CORE.normalizeText(c));
   const categorie = moteurs.CORE.normalizeText(ligne.category || ligne.event_kind || "");
   if (cats.length && categorie && cats.includes(categorie))
     return { retenu: true, par: "catégorie d'Autour" };
-  if (!demande.mots.length && !cats.length) return { retenu: true, par: "demande sans critère" };
+  if (!cats.length) return { retenu: true, par: "demande sans critère" };
   return { retenu: false, par: null };
 }
 
