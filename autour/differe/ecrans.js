@@ -863,7 +863,11 @@ async function chargerSeances(l){
   bloc.innerHTML =
     '<p class="fb-section">Prochaines séances</p>'+
     '<ul class="seances">'+
-      rendu.jours.map(j=>'<li><b>'+esc(j.jour)+'</b> '+esc(j.creneaux.join(", "))+'</li>').join("")+
+      /* « 14h00 / 16h30 / 20h30 », jamais « 14h00–20h30 » : chaque séance est
+         une porte d'entrée, pas un segment d'une longue plage. Quand le jour a
+         une fermeture commune, elle est dite une fois, à la fin. */
+      rendu.jours.map(j=>'<li><b>'+esc(j.jour)+'</b> '+esc(j.creneaux.join(" / "))+
+        (j.fin ? ' <span class="g">jusqu\u2019\u00E0 '+esc(j.fin)+'</span>' : '')+'</li>').join("")+
       (rendu.restantes
         ? '<li><b>'+esc("+ "+rendu.restantes+
             (rendu.restantes > 1 ? " autres jours" : " autre jour"))+'</b></li>'

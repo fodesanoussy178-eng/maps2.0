@@ -784,11 +784,11 @@
         jours.push(entree);
       }
       const entree = parJour.get(cle);
-      const creneau = heureLocale(seance.debut, seance.zone).replace(":", "h") +
-        (seance.fin ? "–" + heureLocale(seance.fin, seance.zone).replace(":", "h") : "");
       /* Deux sources qui décrivent le même créneau ne doivent pas le faire
          apparaître deux fois : la liste aurait l'air précise en étant fausse. */
-      if (!entree.creneaux.includes(creneau)) entree.creneaux.push(creneau);
+      if (!entree.creneaux.some((c) => c.debut === seance.debut && c.fin === seance.fin)) {
+        entree.creneaux.push({debut: seance.debut, fin: seance.fin});
+      }
     }
 
     const retenus = jours.slice(0, maximum);
@@ -800,9 +800,30 @@
         const date = formateur("seance:" + entree.zone, () => new Intl.DateTimeFormat("fr-FR", {
           weekday: "long", day: "numeric", month: "long", timeZone: entree.zone,
         })).format(new Date(entree.debut));
+        /* ---- TROIS SÉANCES NE SONT PAS TROIS PLAGES ---------------------
+
+           Mesuré sur une vraie fiche (« Eternelle Notre-Dame », 116
+           occurrences) : chaque occurrence porte son heure de début et, comme
+           fin, L'HEURE DE FERMETURE DU LIEU. Rendre chaque créneau comme une
+           plage donnait « 14h00–20h00 / 16h00–20h00 / 20h00 » — trois séances
+           qui semblent durer six heures et se chevaucher, alors que la
+           fermeture est une seule information, commune à la journée.
+
+           Quand plusieurs créneaux d'un même jour partagent la même fin, on
+           n'écrit donc que les HEURES DE DÉBUT — « 14h00 / 16h00 / 20h00 » —
+           et la fermeture voyage à part, une fois, pour la surface qui veut
+           la dire. Un seul créneau garde sa plage : là, elle décrit bien la
+           séance. Des fins différentes aussi : elles distinguent réellement
+           les créneaux. */
+        const h = (instant) => heureLocale(instant, entree.zone).replace(":", "h");
+        const fins = new Set(entree.creneaux.map((c) => c.fin));
+        const finCommune = entree.creneaux.length > 1 && fins.size === 1
+          ? entree.creneaux[0].fin : null;
         return {
           jour: date.charAt(0).toUpperCase() + date.slice(1),
-          creneaux: entree.creneaux.slice(),
+          creneaux: entree.creneaux.map((c) => finCommune != null || c.fin == null
+            ? h(c.debut) : h(c.debut) + "–" + h(c.fin)),
+          fin: finCommune != null ? h(finCommune) : null,
           debut: entree.debut,
         };
       }),

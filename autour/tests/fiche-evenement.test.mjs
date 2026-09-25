@@ -99,8 +99,44 @@ test("les séances sont groupées par jour et leurs créneaux listés", () => {
   ]);
   assert.equal(rendu.jours.length, 2);
   assert.equal(rendu.jours[0].jour, "Dimanche 20 septembre");
+  /* Un seul créneau ce jour-là : la plage le décrit bien. */
   assert.deepEqual(rendu.jours[0].creneaux, ["10h00–18h00"]);
-  assert.deepEqual(rendu.jours[1].creneaux, ["08h00–18h00", "09h00–18h00"]);
+  /* DEUX SÉANCES NE SONT PAS DEUX PLAGES. Mesuré sur une vraie fiche
+     (« Eternelle Notre-Dame », 116 occurrences) : chaque occurrence porte son
+     heure de début et, comme fin, l'heure de FERMETURE DU LIEU. Écrire
+     « 08h00–18h00 / 09h00–18h00 » donnait deux séances de dix heures qui se
+     chevauchent. On n'écrit donc que les débuts, et la fermeture une fois. */
+  assert.deepEqual(rendu.jours[1].creneaux, ["08h00", "09h00"]);
+  assert.equal(rendu.jours[1].fin, "18h00");
+  assert.equal(rendu.jours[0].fin, null, "une séance seule n'a pas de fermeture à part");
+});
+
+test("trois séances d'un même jour s'écrivent « 14h00 / 16h30 / 20h30 »", () => {
+  const rendu = TEMPS.libelleSeances([
+    seance("2026-10-02T12:00:00Z", "2026-10-02T21:00:00Z"),
+    seance("2026-10-02T14:30:00Z", "2026-10-02T21:00:00Z"),
+    seance("2026-10-02T18:30:00Z", "2026-10-02T21:00:00Z"),
+  ]);
+  assert.deepEqual(rendu.jours[0].creneaux, ["14h00", "16h30", "20h30"]);
+  assert.equal(rendu.jours[0].fin, "23h00");
+});
+
+test("des fins réellement différentes restent des plages distinctes", () => {
+  const rendu = TEMPS.libelleSeances([
+    seance("2026-10-02T12:00:00Z", "2026-10-02T14:00:00Z"),
+    seance("2026-10-02T16:00:00Z", "2026-10-02T18:00:00Z"),
+  ]);
+  assert.deepEqual(rendu.jours[0].creneaux, ["14h00–16h00", "18h00–20h00"]);
+  assert.equal(rendu.jours[0].fin, null);
+});
+
+test("la fiche sépare les séances par « / » et ne dit la fermeture qu'une fois", () => {
+  const ecrans = readFileSync(new URL("../differe/ecrans.js", import.meta.url), "utf8");
+  const bloc = ecrans.slice(ecrans.indexOf("async function chargerSeances"),
+    ecrans.indexOf("async function chargerCanal"));
+  assert.match(bloc, /creneaux\.join\(" \/ "\)/,
+    "le séparateur des séances est « / », jamais un tiret de plage");
+  assert.match(bloc, /j\.fin \?/, "la fermeture commune est dite à part");
 });
 
 test("le même créneau vu par deux sources n'apparaît qu'une fois", () => {
