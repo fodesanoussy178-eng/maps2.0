@@ -317,7 +317,12 @@ input{font-family:inherit;font-size:16px}
   letter-spacing:.08em;text-transform:uppercase}
 #onboardingTxt{flex:1;min-width:0}
 #onboardingAvatars{display:flex;flex:1 0 100%;align-items:center;justify-content:center;gap:4px}
-#onboardingAvatars button{width:36px;min-height:36px;padding:0;border:1px solid var(--bord);border-radius:50%;
+/* 44 px, PARCE QUE C'EST LA RÈGLE ET QUE ÇA TIENT. Mesuré dans Chromium :
+   ces cinq boutons étaient les seules cibles sous 44 px de toute l'interface,
+   à toutes les largeurs, avec les deux liens d'attribution de la carte (eux
+   imposés par la licence). Cinq fois 44 plus quatre écarts de 4 font 236 px :
+   ça entre dans les 288 px utiles d'un écran de 320. */
+#onboardingAvatars button{width:44px;min-height:44px;padding:0;border:1px solid var(--bord);border-radius:50%;
   background:#fff;color:var(--ink);font-family:inherit;font-size:22px;line-height:1;letter-spacing:normal;
   text-transform:none;cursor:pointer}
 #onboardingAvatars button[aria-pressed="true"]{border-color:var(--signal);box-shadow:0 0 0 2px rgba(255,74,23,.16)}
