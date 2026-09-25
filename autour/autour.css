@@ -2850,3 +2850,80 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
       16px - var(--maquette-nav-h-mobile) - var(--maquette-ecart-mobile) - 16px);
   }
 }
+
+/* ===========================================================================
+   LE TROISIÈME VOLET : LE DÉTAIL À DROITE, ET LA CARTE QUI RESTE VIVANTE
+
+   Sur ordinateur, la géométrie était déjà à deux volets : les recommandations
+   (ou Explorer) à gauche, la carte en fond, la barre d'envies en haut. Le
+   détail d'un lieu, lui, montait encore du BAS sur toute la largeur, avec un
+   voile par-dessus la carte — le geste du pouce transposé à une fenêtre de
+   1 440 px. Conséquence : pendant qu'on lit une fiche, la carte est couverte
+   aux deux tiers ET inerte, alors que c'est exactement le moment où l'on veut
+   voir où est le lieu par rapport au reste.
+
+   La fiche prend donc la colonne de droite, celle que « Pour toi » occupe
+   déjà : même bord, même largeur, même hauteur. Elle la recouvre quand les
+   deux sont ouverts (z-index 901 contre 900), ce qui est le comportement
+   attendu — on a demandé un détail, il passe devant.
+
+   AUCUNE LOGIQUE N'EST DUPLIQUÉE ICI. C'est la même fiche, rendue par le même
+   `ouvrirDetail`, avec le même contenu et les mêmes boutons : seules la
+   position et l'animation changent. Les sélecteurs ciblent ce que le DOM dit
+   déjà — `#ficheLieu` pour une fiche, `#ficheItineraire` pour le panneau
+   « Y aller » — donc la publication et l'éditeur de goûts, eux, restent
+   modaux : ils demandent une décision, pas une lecture.
+
+   À PARTIR DE 1 280 px SEULEMENT, et la raison est arithmétique : le panneau
+   de gauche fait 530 px, celui de droite 420, les marges 3 × 28. À 1 100 px il
+   resterait 66 px de carte entre les deux — soit le contraire de ce qu'on
+   cherche. Entre 1 100 et 1 279 px la fiche garde donc la feuille du bas, qui
+   fonctionne. La largeur du volet se contracte pour laisser 300 px de carte au
+   minimum.
+   ======================================================================== */
+@media (min-width:1280px){
+  :root{
+    --detail:min(var(--pourtoi),
+      calc(100vw - var(--panneau) - (var(--marge-desktop) * 3) - 300px));
+  }
+  #feuille:has(#ficheLieu),
+  #feuille:has(#ficheItineraire),
+  #feuille:has(#ficheItineraire:not([hidden])){
+    left:auto;right:var(--marge-desktop);
+    top:calc(var(--safe-t) + var(--marge-desktop) + 74px);
+    bottom:var(--marge-desktop);
+    width:var(--detail);max-height:none;
+    padding:14px 20px 22px;
+    border:1px solid var(--bord);border-top:1px solid var(--bord);
+    border-radius:28px;
+    box-shadow:0 8px 34px rgba(20,30,25,.18);
+    animation:glisseDroite .26s cubic-bezier(.2,.9,.3,1);
+  }
+  @keyframes glisseDroite{
+    from{transform:translateX(18px);opacity:0}
+    to{transform:none;opacity:1}
+  }
+  /* La poignée est un geste de pouce : sur un volet latéral elle ne veut rien
+     dire, et la croix ferme déjà. Elle disparaît sans être retirée du DOM —
+     `ouvrirFeuille` lui attache un gestionnaire, et une règle de style n'a
+     pas à connaître ce contrat. */
+  #feuille:has(#ficheLieu) .poignee,
+  #feuille:has(#ficheItineraire) .poignee{display:none}
+
+  /* LA CARTE RESTE CLIQUABLE. Le voile avait un sens quand la fiche couvrait
+     l'écran : il disait « lis ça d'abord ». Ici il annulerait tout le bénéfice
+     des trois volets. Il s'efface donc, et cliquer un autre marqueur remplace
+     le contenu du volet au lieu de le fermer — c'est le geste qu'on attend
+     d'une carte à côté d'une fiche. La croix et Échap ferment, comme avant.
+
+     UN `:has()` NE S'IMBRIQUE PAS DANS UN `:has()` : la première écriture de
+     cette règle — `body:has(#feuille:not([hidden]):has(#ficheLieu))` — est
+     invalide, donc silencieusement ignorée. Mesuré dans Chromium : le voile
+     restait cliquable et la carte morte, alors que le fichier semblait dire le
+     contraire. C'est un descendant à l'intérieur du `:has`, pas un `:has`
+     imbriqué. */
+  body:has(#feuille:not([hidden]) #ficheLieu) #voile,
+  body:has(#feuille:not([hidden]) #ficheItineraire) #voile{
+    opacity:0;pointer-events:none;animation:none;
+  }
+}

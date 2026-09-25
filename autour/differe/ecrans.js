@@ -408,6 +408,10 @@ function ouvrirDetail(id){
   if($("#btnSignal")) $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
   if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
   completerExplication(l);
+  /* La carte répond à la liste : le lieu ouvert est mis en avant et ramené
+     dans la partie visible si un panneau le cachait. Une seule fonction, la
+     même à toutes les largeurs — c'est elle qui sait où sont les volets. */
+  if(typeof revelerSurCarte === "function") revelerSurCarte(l);
   if(l.dbId) chargerCanal(l);
   if(evenement && l.dbId) chargerSeances(l);
 

@@ -214,7 +214,7 @@ const ECRANS_DIFFERES = [
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=22fc0ba9"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=20b68f7b"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -6764,6 +6764,86 @@ function mettreEnAvant(id){
     const el = m && m.getElement && m.getElement();
     if(el) el.classList.toggle("en-avant", !!lieuEnAvant && cle === lieuEnAvant);
   });
+}
+
+/* ---- CE QU'ON VIENT D'OUVRIR DOIT ÊTRE VISIBLE SUR LA CARTE --------------
+
+   Ouvrir une fiche depuis la LISTE mettait la carte hors du circuit : le lieu
+   choisi restait une pastille comme les autres, souvent derrière un panneau.
+   Le lien liste → marqueur manquait, alors qu'il existait déjà dans l'autre
+   sens (un clic sur un marqueur ouvre la fiche compacte, qui met le lieu en
+   avant). Trois volets côte à côte n'ont d'intérêt que s'ils se répondent.
+
+   L'ENCOMBREMENT EST MESURÉ, PAS DEVINÉ. Les panneaux ne sont pas aux mêmes
+   endroits selon la largeur : feuille du bas sur téléphone, colonnes à gauche
+   et à droite sur ordinateur, et la barre d'envies en haut. On relève donc les
+   rectangles réellement à l'écran et on en déduit de quel côté la carte est
+   rognée — la même discipline que `mesurerHeader()`, pour la même raison : une
+   hauteur écrite en dur devient fausse au premier changement de maquette.
+
+   `panInside` de Leaflet ne déplace la carte QUE si le point est hors de la
+   zone utile. Un lieu déjà visible au milieu ne bouge donc pas : on ne
+   réanime pas une carte pour rien, et on ne vole pas le cadrage que la
+   personne vient de choisir. */
+const PANNEAUX_CARTE = Object.freeze(["#appHeader", "#navBas", "#feuilleBesoins",
+  "#explorerDecouverte", "#pourToi", "#feuille", "#ficheCompacte"]);
+
+function encombrementCarte(){
+  const conteneur = map && map.getContainer ? map.getContainer() : null;
+  if(!conteneur) return null;
+  const b = conteneur.getBoundingClientRect();
+  if(!(b.width > 0 && b.height > 0)) return null;
+  const m = {gauche:0, droite:0, haut:0, bas:0};
+  PANNEAUX_CARTE.forEach((selecteur)=>{
+    const el = $(selecteur);
+    if(!el || el.hidden) return;
+    const style = getComputedStyle(el);
+    if(style.display === "none" || style.visibility === "hidden" ||
+       style.pointerEvents === "none") return;
+    /* L'OPACITÉ NE DIT PAS SI UN PANNEAU GÊNE. Mesuré dans Chromium : la fiche
+       est appelée à la frame où son animation d'entrée commence, donc à
+       `opacity:0`. L'écarter pour cette raison revenait à ne jamais compter le
+       volet de droite — exactement le panneau pour lequel cette fonction
+       existe. Un panneau qui va apparaître occupe déjà la place. */
+    const r = el.getBoundingClientRect();
+    if(!(r.width > 0 && r.height > 0)) return;
+    /* COLONNE OU BANDE : C'EST LA FORME QUI LE DIT, pas une liste
+       d'identifiants tenue à jour à la main. On compare la part de hauteur à
+       la part de largeur : plus haut que large relativement au conteneur, donc
+       une colonne ; sinon une bande. Écrit autrement — « touche le bord
+       gauche » — la pastille de navigation flottante, large de 1 120 px et
+       centrée, passait pour une colonne de gauche et volait 40 % de la carte. */
+    const partHaute = r.height / b.height, partLarge = r.width / b.width;
+    if(partHaute > partLarge){
+      const versGauche = (r.left - b.left) <= (b.right - r.right);
+      if(versGauche) m.gauche = Math.max(m.gauche, r.right - b.left);
+      else m.droite = Math.max(m.droite, b.right - r.left);
+      return;
+    }
+    const centre = r.top + r.height / 2;
+    if(centre <= b.top + b.height / 2) m.haut = Math.max(m.haut, r.bottom - b.top);
+    else m.bas = Math.max(m.bas, b.bottom - r.top);
+  });
+  /* Deux volets peuvent, ensemble, ne rien laisser : on borne chaque côté pour
+     que la zone utile existe toujours, quitte à ce qu'elle soit étroite. */
+  const borne = (valeur, total)=> Math.max(0,
+    Math.min(Math.round(valeur) + 14, Math.round(total * .4)));
+  return {
+    paddingTopLeft: [borne(m.gauche, b.width), borne(m.haut, b.height)],
+    paddingBottomRight: [borne(m.droite, b.width), borne(m.bas, b.height)],
+  };
+}
+
+function revelerSurCarte(l){
+  mettreEnAvant(l && l.id != null ? l.id : null);
+  const lat = Number(l && l.lat), lng = Number(l && l.lng);
+  if(!map || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  if(typeof map.panInside !== "function") return;
+  const marges = encombrementCarte();
+  if(!marges) return;
+  try{
+    map.panInside([lat, lng], Object.assign({animate:true, duration:.4}, marges));
+  }catch(e){}
 }
 
 /* La liste des événements posés au même endroit. Elle réutilise la fiche
