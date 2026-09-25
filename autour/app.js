@@ -8353,10 +8353,24 @@ async function ouvrirEntreeProfonde(){
     else if(e.ville) await rechercheGeographique(e.ville, null);
 
     if(e.type === "explorer"){
-      const q = e.q || e.ville;
+      const brut = e.q || e.ville;
       const champ = $("#rech");
-      if(!q || !champ) return;
-      champ.value = q;
+      if(!brut || !champ) return;
+      /* LA CARTE EST DÉJÀ POSÉE : NE PAS REDEMANDER LA VILLE.
+
+         Mesuré à la sonde le 25/09/2026 : `/explorer?q=brocante+Tourcoing` avec
+         un point dans le lien laissait l'écran sur le panneau « Maintenant ».
+         `lancerRecherche` découpe « brocante Tourcoing » en intention +
+         destination, puis REGÉOCODE la destination — une seconde fois, alors
+         que `poserZoneGeographique` vient de placer la carte sur le point exact
+         que le lien portait. Quand ce géocodage tarde ou échoue, la recherche
+         s'arrête là et l'intention n'est jamais appliquée.
+
+         Avec un point, on ne garde donc que l'INTENTION, découpée par le
+         vocabulaire de l'application. Sans point, la phrase entière part au
+         chemin normal — c'est lui qui sait trouver la ville. */
+      const decoupe = e.point ? parseSearchQuery(brut, DECOUPAGE) : null;
+      champ.value = (decoupe && decoupe.intention) ? decoupe.intention : brut;
       await lancerRecherche();
       return;
     }
