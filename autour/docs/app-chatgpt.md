@@ -73,7 +73,7 @@ retenu pour provoquer un clic.
 | Transport | HTTP JSON-RPC (POST). `GET` rend une fiche de service, sans donnée. |
 | Version de protocole | `2025-06-18` |
 | Écriture | **aucune** — six outils, tous en lecture (`readOnlyHint: true`) |
-| Authentification | jeton `Bearer` tant que `MCP_AUTOUR_TOKEN` est défini (phase de recette). Sans cette variable : lecture publique, plafonnée. |
+| Authentification | **aucune** (« No authentication »), par choix : la V1 ne lit que des données publiques et n'accède à aucun compte. Le mode développeur de ChatGPT propose explicitement ce mode, et OAuth 2.1 est réservé aux apps qui accèdent aux données d'un utilisateur. La variable `MCP_AUTOUR_TOKEN` reste lue : la poser referme le serveur (recette, incident). |
 | Plafond | 60 appels/minute et par appelant, compté en base (`mcp_quota`), plus une garde anti-rafale de 12 appels/10 s par instance |
 | Délai maximal | 9 s par outil, puis une erreur explicite (« je n'ai pas pu vérifier ») |
 | Journalisation | une ligne par appel : outil, verdict, durée, zone, empreinte tronquée. Ni IP, ni jeton, ni requête. |
@@ -121,9 +121,15 @@ conditions d'accès.
 ## 5. Permissions demandées
 
 Aucune permission utilisateur. L'app ne lit aucun compte, n'écrit rien, ne
-demande ni fichier ni autorisation d'appareil. La seule donnée entrante est
-**le lieu de la question** (une ville, ou des coordonnées si l'utilisateur les
-donne) et, éventuellement, ce qu'il cherche.
+demande ni fichier ni autorisation d'appareil.
+
+La seule donnée entrante est **le lieu de la question** et, éventuellement, ce
+qu'on y cherche. Un **nom de ville suffit toujours** : aucun outil n'exige de
+coordonnées, et aucun ne demande une position GPS précise. Quand des
+coordonnées sont fournies malgré tout, elles sont **arrondies au millième de
+degré — une centaine de mètres** — dès l'entrée, avant tout usage, tout renvoi
+et toute journalisation. La description de chaque champ le dit à ChatGPT, pour
+qu'il ne réclame pas mieux.
 
 ---
 
@@ -163,9 +169,9 @@ donne) et, éventuellement, ce qu'il cherche.
 
 1. Paramètres → Connecteurs → Mode développeur → **Créer**.
 2. URL du serveur : `https://autour.eu/api/mcp`.
-3. Authentification : *Aucune* si `MCP_AUTOUR_TOKEN` a été retiré ; sinon
-   l'appel est refusé avec `401 authentification requise` (voulu tant que
-   l'ouverture publique n'est pas décidée).
+3. Authentification : **Aucune**. (Si `MCP_AUTOUR_TOKEN` est posé côté serveur,
+   les appels sont refusés avec `401 authentification requise` — c'est le
+   levier de fermeture, pas le mode nominal.)
 4. Vérifier que six outils apparaissent, tous en lecture seule.
 5. Dérouler les sept prompts de la section 6.
 
@@ -183,11 +189,12 @@ curl -s -X POST https://autour.eu/api/mcp \
 
 ## 9. Ce qui reste à faire avant de soumettre
 
-1. **Décider de l'ouverture du point d'entrée.** Une app publique ChatGPT
-   s'installe sans compte : il faudra retirer `MCP_AUTOUR_TOKEN` (le plafond et
-   la garde anti-rafale restent), ou mettre en place OAuth 2.1 si OpenAI l'exige
-   pour ce type d'app. Tant que le jeton est là, l'app ne peut pas être testée
-   par un tiers.
+1. ~~Décider de l'ouverture du point d'entrée.~~ **Fait le 25/09/2026** :
+   « No authentication » + plafond d'appels. Vérifié contre les exigences
+   d'OpenAI : le mode développeur propose ce mode explicitement, OAuth 2.1
+   couvre les apps qui accèdent aux données d'un utilisateur — ce n'est pas le
+   cas ici —, et le moindre privilège est un critère de revue. `MCP_AUTOUR_TOKEN`
+   a été retiré de l'hébergement.
 2. **Revérifier le contrat Apps SDK contre la documentation officielle.** Les
    clés `_meta` employées (`openai/outputTemplate`,
    `openai/toolInvocation/invoking`, `openai/toolInvocation/invoked`,
@@ -195,6 +202,8 @@ curl -s -X POST https://autour.eu/api/mcp \
    `text/html+skybridge` sont ceux de l'Apps SDK ; `developers.openai.com` est
    inaccessible depuis l'environnement de développement (proxy), la
    confrontation à la documentation du jour reste donc à faire.
-3. **Essayer l'app dans ChatGPT** (mode développeur) : aucun essai réel n'a été
-   fait depuis ChatGPT, seulement des appels réels au serveur.
+3. **Essayer l'app dans ChatGPT** (mode développeur) : cet essai demande un
+   compte ChatGPT, il ne peut pas être fait depuis l'environnement de
+   développement d'Autour. Les dix scénarios doivent y être rejoués avant toute
+   soumission.
 4. **Accord explicite** avant toute soumission.

@@ -3,12 +3,24 @@
 
    Trois décisions, prises ici une fois pour toutes.
 
-   1. L'AUTHENTIFICATION. Tant que `MCP_AUTOUR_TOKEN` est défini, un jeton est
-      EXIGÉ : c'est le mode de la phase de recette, où seul Autour appelle son
-      propre serveur. Sans cette variable, le serveur répond en lecture
-      publique — ce que ChatGPT exige d'une app sans compte — et le plafond
-      d'appels devient la seule protection. Le choix est donc explicite et
-      réversible par une variable d'environnement, jamais par du code.
+   1. L'AUTHENTIFICATION — ET LE CHOIX EST « AUCUNE », DÉLIBÉRÉMENT.
+
+      Cette V1 est en lecture seule sur des données PUBLIQUES : les mêmes
+      événements, lieux et points de service que n'importe qui voit sur
+      autour.eu sans compte. Il n'y a donc aucun compte à lier, aucune donnée
+      d'utilisateur à protéger, et rien qu'un jeton pourrait protéger — sinon
+      le serveur lui-même, ce qui est le travail du plafond d'appels.
+
+      C'est aussi ce que demande le moindre privilège : OAuth 2.1 sert à
+      accéder aux données d'un utilisateur, et le mode développeur de ChatGPT
+      propose explicitement « No authentication » pour un serveur qui n'en a
+      réellement aucune. Ajouter un jeton statique n'aurait rien sécurisé — un
+      secret partagé avec tous les appelants n'est plus un secret — et aurait
+      rendu l'app impossible à installer sans compte.
+
+      `MCP_AUTOUR_TOKEN` reste lu : il ferme le serveur quand on veut une phase
+      privée (recette, incident, coupure). Le jour où un outil touchera à des
+      données d'utilisateur, ce ne sera pas ce jeton qu'il faudra, mais OAuth.
 
       Ce qui n'arrive JAMAIS : une clé Supabase privilégiée ici. Le serveur lit
       avec la clé publiable, celle du navigateur, bornée par RLS.

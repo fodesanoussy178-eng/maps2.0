@@ -776,10 +776,15 @@ function horsZone(lieu) {
    d'ouvrir un lien : c'est l'utilité du résultat qui doit décider, pas une
    consigne glissée dans une description d'outil.
    ===================================================================== */
+/* CE QU'ON DEMANDE EST LE MINIMUM QUI PERMETTE DE RÉPONDRE : un nom de ville
+   suffit toujours. Les coordonnées restent acceptées — une conversation peut en
+   porter une —, mais elles sont facultatives, décrites comme APPROXIMATIVES, et
+   arrondies à une centaine de mètres dès l'entrée. Aucun outil ne demande, ni
+   n'exige, une position GPS précise. */
 const LIEU_SCHEMA = {
-  location: { type: "string", description: "Ville ou commune française (ex. « Lille », « Tourcoing »). Facultatif si lat et lng sont fournis." },
-  lat: { type: "number", description: "Latitude WGS84. Prioritaire sur location." },
-  lng: { type: "number", description: "Longitude WGS84. Prioritaire sur location." },
+  location: { type: "string", description: "Ville, commune ou quartier français (ex. « Lille », « Tourcoing »). Suffit à répondre : aucune position précise n'est nécessaire." },
+  lat: { type: "number", description: "Facultatif. Latitude APPROXIMATIVE (le quartier suffit) ; elle est arrondie à ~100 m avant usage. Ne pas demander de position GPS précise à l'utilisateur." },
+  lng: { type: "number", description: "Facultatif. Longitude APPROXIMATIVE (le quartier suffit) ; elle est arrondie à ~100 m avant usage." },
 };
 
 export const OUTILS = Object.freeze([

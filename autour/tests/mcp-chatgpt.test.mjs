@@ -297,6 +297,92 @@ test("aucune clé privilégiée nulle part dans le serveur MCP", () => {
 });
 
 /* ==========================================================================
+   4 bis. AUCUN OUTIL NE DEMANDE UNE POSITION PRÉCISE
+   ======================================================================== */
+
+test("une ville suffit : les coordonnées ne sont jamais obligatoires", () => {
+  for (const outil of OUTILS) {
+    const requis = outil.schema.required || [];
+    assert.ok(!requis.includes("lat") && !requis.includes("lng"),
+      outil.nom + " ne doit jamais exiger de coordonnées");
+    if (!outil.schema.properties.lat) continue;
+    assert.match(outil.schema.properties.lat.description, /facultatif/i);
+    assert.match(outil.schema.properties.lat.description, /approximative|arrondie/i,
+      outil.nom + " doit dire que la position demandée est approximative");
+    /* `get_event` et `get_place` partent d'un identifiant : ils n'ont pas de
+       `location`, et c'est normal — ils n'en ont pas besoin. */
+    if (outil.schema.properties.location)
+      assert.match(outil.schema.properties.location.description, /suffit/i);
+  }
+});
+
+test("une position reçue est arrondie à une centaine de mètres", async () => {
+  const { resoudre, arrondirPosition } = await import("../mcp/lieux.mjs");
+  assert.equal(arrondirPosition(50.7237312345), 50.724);
+  assert.equal(arrondirPosition(null), null, "une absence reste une absence, pas 0");
+  assert.equal(arrondirPosition(""), null);
+  const lieu = await resoudre({ lat: 50.7237312345, lng: 3.1607581234 });
+  assert.equal(lieu.lat, 50.724);
+  assert.equal(lieu.lng, 3.161);
+  assert.equal(lieu.source, "position_approximative");
+});
+
+test("la position précise ne ressort ni dans la réponse ni dans les liens", async () => {
+  brancher(TOURCOING);
+  const r = await PAR_NOM.search_help.executer({
+    lat: 50.7237312345, lng: 3.1607581234, need: "manger", time: QUAND });
+  const texte = JSON.stringify(r);
+  assert.doesNotMatch(texte, /50\.72373|3\.16075/,
+    "la position exacte de la personne ne doit apparaître nulle part");
+  assert.equal(r.query.lat, 50.724);
+  /* Les coordonnées présentes dans les liens sont celles des LIEUX, jamais
+     celles de la personne — et elles sont publiques. */
+  for (const point of r.results)
+    assert.doesNotMatch(String(point.deep_link), /50\.72373|3\.16075/);
+});
+
+/* ==========================================================================
+   4 ter. L'ACCÈS : AUCUNE AUTHENTIFICATION, MAIS UN PLAFOND
+   ======================================================================== */
+
+test("sans jeton configuré, le serveur répond — et compte quand même", async () => {
+  const garde = await import("../mcp/garde.mjs");
+  const jetonPrecedent = process.env.MCP_AUTOUR_TOKEN;
+  delete process.env.MCP_AUTOUR_TOKEN;
+  let appels = 0;
+  base.injecter((cle) => {
+    if (cle.startsWith("rpc:mcp_quota")) { appels += 1; return [{ autorise: appels <= 2,
+      restant: Math.max(0, 2 - appels), fenetre_fin: null }]; }
+    return undefined;
+  });
+  try {
+    const requete = () => new Request("https://autour.eu/api/mcp", { method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+    const premier = await garde.autoriser(requete());
+    assert.equal(premier.ok, true, "une app publique s'installe sans compte");
+    assert.ok(premier.cle && premier.cle.length >= 16, "l'appelant est compté par empreinte");
+    assert.doesNotMatch(premier.cle, /203\.0\.113/, "l'adresse IP ne sert jamais de clé en clair");
+    await garde.autoriser(requete());
+    const troisieme = await garde.autoriser(requete());
+    assert.equal(troisieme.ok, false);
+    assert.equal(troisieme.statut, 429, "le plafond reste la protection");
+  } finally {
+    if (jetonPrecedent) process.env.MCP_AUTOUR_TOKEN = jetonPrecedent;
+  }
+});
+
+test("le jeton reste disponible pour fermer le serveur si besoin", async () => {
+  const garde = await import("../mcp/garde.mjs");
+  process.env.MCP_AUTOUR_TOKEN = "jeton-de-fermeture";
+  try {
+    const sans = await garde.autoriser(new Request("https://autour.eu/api/mcp", { method: "POST" }));
+    assert.equal(sans.ok, false);
+    assert.equal(sans.statut, 401);
+  } finally { delete process.env.MCP_AUTOUR_TOKEN; }
+});
+
+/* ==========================================================================
    5. LES LIENS DE RETOUR ET LEUR MESURE
    ======================================================================== */
 

@@ -20,6 +20,15 @@
    quelle ville », pas « au 12 rue des Lilas » : une intégration conversationnelle
    qui géocoderait des adresses complètes collecterait une précision dont elle
    n'a aucun usage.
+
+   ET IL N'ACCEPTE PAS DE POSITION PRÉCISE NON PLUS. Une position GPS au
+   millionième de degré vaut quelques centimètres : c'est l'endroit exact où se
+   tient quelqu'un. Autour n'en a aucun besoin pour répondre « ce qui se passe
+   dans ton quartier », et une donnée qu'on ne réduit pas est une donnée qu'on
+   garde. Toute coordonnée reçue est donc ARRONDIE AU MILLIÈME DE DEGRÉ — une
+   centaine de mètres, la taille d'un pâté de maisons — avant d'être utilisée,
+   renvoyée ou journalisée. La distance affichée s'en trouve approchée de la
+   même centaine de mètres, ce qui ne change rien à « c'est à 1,4 km ».
    ======================================================================== */
 
 import precalcule from "../data/aide-precalcule-villes.js";
@@ -40,6 +49,18 @@ function sansAccents(valeur) {
 async function zoneDe(lat, lng) {
   const { ZONES } = await moteurs();
   return ZONES.zoneIdForPoint([lat, lng]);
+}
+
+/* Le millième de degré : environ 111 m en latitude, 70 m sous nos latitudes en
+   longitude. Assez pour choisir la bonne zone et classer par distance ; trop
+   grossier pour désigner un immeuble. */
+const PRECISION = 1000;
+export function arrondirPosition(valeur) {
+  /* `Number(null)` vaut zéro, et zéro est une coordonnée valide — au large du
+     golfe de Guinée. Une absence doit rester une absence. */
+  if (valeur == null || valeur === "") return null;
+  const n = Number(valeur);
+  return Number.isFinite(n) ? Math.round(n * PRECISION) / PRECISION : null;
 }
 
 async function point(nom, lat, lng, insee, source) {
@@ -95,10 +116,11 @@ async function parBan(texte) {
 /* `lat`/`lng` fournis gagnent toujours : ils viennent de l'appareil de la
    personne, et aucune recherche de nom ne peut être plus juste que cela. */
 export async function resoudre({ location, lat, lng } = {}) {
-  const latitude = Number(lat), longitude = Number(lng);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude) &&
+  const latitude = arrondirPosition(lat), longitude = arrondirPosition(lng);
+  if (latitude != null && longitude != null &&
       Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
-    const p = await point(String(location || "").trim() || null, latitude, longitude, null, "coordonnees");
+    const p = await point(String(location || "").trim() || null, latitude, longitude, null,
+      "position_approximative");
     if (!p.nom) p.nom = p.zoneLabel;
     return p;
   }
