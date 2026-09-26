@@ -213,7 +213,7 @@ test("le menu secondaire s'ouvre depuis le haut et porte les bonnes entrées", (
   assert.match(app, /ouvrirMenuPlus\(\);/);
   const menu = ecrans.slice(ecrans.indexOf("const MENU_PLUS_LIENS"),
                             ecrans.indexOf("function ouvrirAPropos"));
-  for (const entree of ["Mon compte", "Mes favoris", "Mes publications",
+  for (const entree of ["Mon compte", "Mes favoris", "Mes créations",
                         "Support", "Mentions légales", "Confidentialité",
                         "À propos d’Autour"])
     assert.ok(menu.includes(entree), "entrée manquante : " + entree);

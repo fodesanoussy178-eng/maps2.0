@@ -399,9 +399,24 @@
     const t = now == null ? Date.now() : Number(now);
     const item = source || {};
     if (item.annule || item.cancelled || item.status === "cancelled") return false;
-    return normaliserPeriodes(item).some((periode) =>
-      periode.debut != null && periode.fin != null && periode.fin > t &&
-      periode.debut < finFenetre && periode.fin > debutFenetre);
+    const jours = Array.isArray(item.joursRecurrence) && item.joursRecurrence.length
+      ? item.joursRecurrence : null;
+    const zone = f.timeZone || item.timezone || item.timeZone || DEFAULT_TIMEZONE;
+    return normaliserPeriodes(item).some((periode) => {
+      if (!(periode.debut != null && periode.fin != null && periode.fin > t &&
+          periode.debut < finFenetre && periode.fin > debutFenetre)) return false;
+      /* Une récurrence repliée en une seule longue plage (« tous les
+         mercredis », publiée du 1er janvier au 31 décembre) n'est dans la
+         fenêtre que si l'un de SES jours y tombe : un marché du mardi n'a
+         rien à faire dans « Ce week-end ». */
+      if (!jours || periode.fin - periode.debut <= SEUIL_PERIODE_LONGUE_MS) return true;
+      const debut = Math.max(debutFenetre, periode.debut, t);
+      const fin = Math.min(finFenetre, periode.fin);
+      for (let x = debut; x < fin; x += 6 * 3600 * 1000) {
+        if (jours.indexOf(jourSemaine(x, zone)) >= 0) return true;
+      }
+      return jours.indexOf(jourSemaine(fin - 1, zone)) >= 0;
+    });
   }
 
   function fenetreSurface(surface, epoch, timeZone) {

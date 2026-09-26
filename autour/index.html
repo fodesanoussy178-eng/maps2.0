@@ -2,6 +2,13 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
+<!-- LES LIENS PARTAGÉS OUVRENT UNE PAGE QUI FONCTIONNE.
+     `/e/<id>/<titre>`, `/l/…`, `/event/…`, `/place/…` servent cette page, mais
+     ses scripts et sa feuille sont en chemins relatifs : sous `/e/<id>/`, le
+     navigateur demandait `/e/<id>/app.js`, que la réécriture renvoyait… en
+     HTML. Le lien s'ouvrait sur une page sans JavaScript. Tout se résout
+     désormais depuis la racine, exactement comme sur `/`. -->
+<base href="/" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#141E19" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -72,7 +79,7 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
 <link rel="preconnect" href="https://basemaps.cartocdn.com" />
 
-<link rel="stylesheet" href="autour.css?v=89102397" />
+<link rel="stylesheet" href="autour.css?v=a91b8697" />
 </head>
 <body>
 
@@ -425,8 +432,8 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <script src="donnees.js?v=49ec48a8" defer></script>
 <script src="aide-intentions.js?v=a00115e8" defer></script>
 <script src="intentions.js?v=39e671d2" defer></script>
-<script src="comptes.js?v=9f5e8a5d" defer></script>
-<script src="maintenant.js?v=17fe6c29" defer></script>
+<script src="comptes.js?v=2035ef40" defer></script>
+<script src="maintenant.js?v=faf745d6" defer></script>
 <script src="ordonnanceur.js?v=ac58eaf0" defer></script>
 <script src="zones-autonomes.js?v=ef64fe67" defer></script>
 <script src="adresse.js?v=3e38153c" defer></script>
@@ -449,13 +456,13 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <script src="aide-contexte-ia.js?v=7b416377" defer></script>
 <script src="aide.js?v=86fea5f0" defer></script>
 <script src="signaux.js?v=319acaa9" defer></script>
-<script src="temporel.js?v=0b396540" defer></script>
-<script src="evenements-canoniques.js?v=87349b53" defer></script>
+<script src="temporel.js?v=73869b11" defer></script>
+<script src="evenements-canoniques.js?v=d55fa316" defer></script>
 <script src="entites-canoniques.js?v=c4511f60" defer></script>
 <script src="explications.js?v=ea344e6e" defer></script>
 <script src="events.js?v=68b5ce89" defer></script>
 <script src="images.js?v=574a166a" defer></script>
-<script src="core.js?v=962c5e9e" defer></script>
+<script src="core.js?v=335b7b33" defer></script>
 <script src="providers/normaliser.js?v=08b99c2e" defer></script>
 <script src="providers/googlePlaces.js?v=f5f5029d" defer></script>
 <script src="providers/datatourisme.js?v=6f242f4e" defer></script>
@@ -467,6 +474,6 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="providers/aideDecouverte.js?v=e024347d" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=396fcda8" defer></script>
+<script src="app.js?v=bf5536f0" defer></script>
 </body>
 </html>
