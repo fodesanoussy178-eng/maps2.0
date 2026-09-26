@@ -213,8 +213,10 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
+  /* Créer V1 : participer, signaler */
+  "participerPublication", "signalerPublication",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d070821e"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c8bf6b36"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -2752,9 +2754,12 @@ function versLieu(p){
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:p.id == null || p.id === "" ? "" : "pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    description:p.description || "", adresse:p.adresse || "",
+    description:p.description || "", aPrevoir:p.a_prevoir || p.aPrevoir || "",
+    adresse:p.adresse || "",
     cp:p.cp || (destinationActive() ? (activeLocationContext?.city || "") : commune),
-    quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
+    quand:p.quand || "Bientôt", gratuit:p.gratuit,
+    // gratuite, elle n'a pas de prix : un `prix` 0 résiduel s'affichait « 0 € »
+    prix:p.gratuit === true ? null : p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
     creatorId:createdBy, creatorName:p.creator_name || "",
     verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
@@ -3348,6 +3353,8 @@ const Store = {
       lat:l.lat, lng:l.lng,
       zone_id:idZoneActive() === "sans-zone" ? null : idZoneActive(),
       image_url:l.image || null,
+      description:(l.description || "").trim().slice(0, 500) || null,
+      a_prevoir:(l.aPrevoir || "").trim().slice(0, 200) || null,
       debut_le:l.debutLe ? new Date(l.debutLe).toISOString() : null,
       fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
     }).select().single();
@@ -3451,7 +3458,8 @@ const Store = {
   async modifierEvenement(dbId, champs){
     if(!sb || !dbId || !moiId) return false;
     const permis = new Set(["titre","adresse","cp","quand","gratuit","prix","places",
-                            "lat","lng","image_url","debut_le","fin_le"]);
+                            "lat","lng","image_url","debut_le","fin_le",
+                            "description","a_prevoir"]);
     const propres = Object.fromEntries(Object.entries(champs || {}).filter(([cle])=>permis.has(cle)));
     if(!Object.keys(propres).length) return false;
     const { data, error } = await sb.from("publications")
@@ -3479,6 +3487,60 @@ const Store = {
     if(error && !/duplicate|conflict/i.test(error.message)){
       console.error("Inscription refusée :", error.message); return false;
     }
+    return true;
+  },
+
+  /* ---- Une publication par son identifiant, d'où qu'on l'ouvre ---------
+     Un lien partagé arrive souvent de loin : la publication n'est pas dans les
+     lieux chargés autour de la personne. La lecture par identifiant écarte ce
+     qui a été masqué par signalements. */
+  async publication(dbId){
+    const client = sbLecture || sb;
+    if(!client || !dbId) return null;
+    const { data, error } = await client.rpc("publication_publique", {p_id:dbId});
+    if(error){ console.error("Publication introuvable :", error.message); return null; }
+    return data && data[0] ? versLieu(data[0]) : null;
+  },
+
+  /* ---- Participer ---------------------------------------------------------
+     Le nombre est public, la liste ne l'est pas : la base rend un compte, et
+     seulement si « moi » en fait partie — jamais qui d'autre. La capacité est
+     tenue en base : un refus « complet » vient de la base, pas de l'écran. */
+  async participation(ids){
+    const client = sb || sbLecture;
+    const liste = [...new Set((ids || []).filter(Boolean).map(String))].slice(0, 200);
+    if(!client || !liste.length) return [];
+    const { data, error } = await client.rpc("participation_publications", {p_ids:liste});
+    if(error){ console.error("Participation indisponible :", error.message); return []; }
+    return data || [];
+  },
+  async participer(dbId){
+    if(!sb || !dbId || !estConnecte()) return {ok:false, raison:"compte"};
+    const { data, error } = await sb.rpc("participer_publication", {p_publication:dbId});
+    if(error){
+      const raison = /complet/i.test(error.message) ? "complet"
+        : /terminée/i.test(error.message) ? "terminee"
+        : /annulée/i.test(error.message) ? "annulee"
+        : /compte/i.test(error.message) ? "compte" : "erreur";
+      if(raison === "erreur") console.error("Participation refusée :", error.message);
+      return {ok:false, raison};
+    }
+    return {ok:true, etat:data && data[0] || null};
+  },
+  async quitterParticipation(dbId){
+    if(!sb || !dbId || !estConnecte()) return {ok:false};
+    const { data, error } = await sb.rpc("ne_plus_participer_publication", {p_publication:dbId});
+    if(error){ console.error("Désinscription refusée :", error.message); return {ok:false}; }
+    return {ok:true, etat:data && data[0] || null};
+  },
+
+  /* Un signalement par compte et par publication ; à trois, la publication
+     disparaît des lectures publiques. Tout se décide en base. */
+  async signaler(dbId, motif){
+    if(!sb || !dbId || !estConnecte()) return false;
+    const { error } = await sb.rpc("signaler_publication",
+      {p_publication:dbId, p_motif:motif || null});
+    if(error){ console.error("Signalement refusé :", error.message); return false; }
     return true;
   },
 
@@ -6322,6 +6384,11 @@ async function demarrer(coords){
      faire avant reviendrait à montrer un mouvement à quelqu'un qui n'a pas
      encore vu l'application. Sans lien profond, cette étape ne fait rien. */
   apresPeinture(()=>ouvrirEntreeProfonde());
+  /* Un lien de publication s'ouvre normalement à l'arrivée des premiers
+     lieux, une fois la zone de départ posée — l'ouvrir avant, c'est se faire
+     recadrer aussitôt par elle. Mais là où rien n'arrive, il ne s'ouvrirait
+     jamais : ce filet l'ouvre quand même. */
+  if(partage && partage.dbId != null) setTimeout(()=>ouvrirLieuPartage(), 5000);
 }
 
 /* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
@@ -8322,6 +8389,7 @@ function lieuPartage(){
 
 /* Une fois les lieux chargés, on ouvre celui que le lien désignait. */
 let partageOuvert = false;
+let partageSansPublication = false;   // l'identifiant n'est pas une publication
 function ouvrirLieuPartage(){
   if(partageOuvert) return;
   const p = lieuPartage();
@@ -8330,13 +8398,73 @@ function ouvrirLieuPartage(){
      du runtime sont deux collections distinctes, et c'est l'entrée profonde qui
      va lire la fiche puis la faire entrer. */
   if(p.placeId != null) return;
-  const cible = p.dbId != null
-    ? lieux.find(l=>String(l.dbId) === String(p.dbId))
-    : lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
+  /* UNE PUBLICATION S'OUVRE PAR SON IDENTIFIANT, D'OÙ QU'ON VIENNE.
+     Elle n'était cherchée que parmi les lieux déjà chargés autour de la
+     personne : un lien reçu d'une autre ville n'ouvrait donc rien. */
+  if(p.dbId != null){
+    if(partageSansPublication){
+      const deja = lieux.find(l=>String(l.dbId) === String(p.dbId));
+      if(!deja) return;
+      partageOuvert = true;
+      noterMesure("shared_link_opened", deja);
+      allerVers([deja.lat,deja.lng], 17, {duration:.8});
+      setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(deja.id)); }, 850);
+      return;
+    }
+    partageOuvert = true;
+    /* Un `/e/<id>` peut aussi désigner un événement canonique : il n'est pas
+       une publication, il s'ouvre donc quand les lieux alentour arrivent —
+       le verrou est rendu pour que le prochain chargement réessaie. */
+    ouvrirPublicationParId(p.dbId, {silencieux:true}).then(ok=>{
+      if(ok) noterMesure("shared_link_opened", {id:"pub"+p.dbId, dbId:p.dbId});
+      else { partageOuvert = false; partageSansPublication = true; }
+    });
+    return;
+  }
+  const cible = lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
   if(!cible) return;                 // les lieux ne sont pas encore tous arrivés
   partageOuvert = true;
   allerVers([cible.lat,cible.lng], 17, {duration:.8});
   setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
+}
+
+/* Ouvrir UNE publication : celle qui est déjà chargée, sinon celle que la
+   base rend par son identifiant — qui entre alors dans la carte comme les
+   autres, par la même fusion. Sert au lien partagé et à « Mes créations ». */
+async function ouvrirPublicationParId(dbId, {silencieux=false}={}){
+  let cible = lieux.find(l=>String(l.dbId) === String(dbId));
+  if(!cible){
+    await connecter();
+    const lue = await Store.publication(dbId);
+    if(!lue){
+      if(!silencieux) toast("Cette publication n’est plus disponible");
+      return false;
+    }
+    fusionner([lue], "user");
+    cible = lieux.find(l=>String(l.dbId) === String(dbId));
+    /* Reçue d'une autre ville, elle est hors de la zone active et la fusion
+       l'écarte : on se place d'abord sur elle, comme l'entrée profonde d'un
+       événement, puis elle entre par le même chemin. */
+    if(!cible && Number.isFinite(lue.lat) && Number.isFinite(lue.lng)){
+      // au démarrage d'un lien, la carte peut ne pas être encore installée
+      await new Promise(pret=>surLaCarte(()=>pret(), "publication-partagee"));
+      /* Une emprise, et pas un simple point : sans elle, la zone prend le
+         centre d'une carte encore en plein vol — celui de la ville quittée. */
+      const d = 0.01;
+      await poserZoneGeographique("", {lat:lue.lat, lng:lue.lng,
+        emprise:[[lue.lat-d, lue.lng-d*1.5], [lue.lat+d, lue.lng+d*1.5]]}, null);
+      fusionner([lue], "user");
+      cible = lieux.find(l=>String(l.dbId) === String(dbId));
+    }
+    if(!cible){
+      if(!silencieux) toast("Cette publication n’est plus disponible");
+      return false;
+    }
+  }
+  if(Number.isFinite(cible.lat) && Number.isFinite(cible.lng))
+    allerVers([cible.lat,cible.lng], 17, {duration:.8});
+  setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
+  return true;
 }
 
 /* ---- LES ENTRÉES PROFONDES ----------------------------------------------
@@ -8565,6 +8693,7 @@ function nouveauBrouillon(){
   const c=pointCarte();
   // le type a déjà été choisi à l'étape précédente : on ne le redemande pas
   return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:typeAvantPose || "popup",
+          description:"", aPrevoir:"", lieuChoisi:false,
           date:isoDate(aujourdHui()), heure:prochaineHeure(), fin:"",
           gratuit:true, prix:5, limite:false, places:20, qr:false,
           imageFichier:null, imageApercu:""};
@@ -15347,7 +15476,8 @@ function idObjetMaintenant(l){
 
 function noterMesureMaintenant(nom, l, famille){
   const M = window.AutourMaintenant;
-  if(!M || !M.MESURES || M.MESURES.indexOf(nom) < 0) return;
+  if(!M || !M.MESURES) return;
+  if(M.MESURES.indexOf(nom) < 0 && (M.MESURES_CREER || []).indexOf(nom) < 0) return;
   const fam = famille || familleMaintenant(l);
   const c = M.creneauMesure({maintenant:Date.now(), timeZone:fuseauZoneActive(),
     zone:idZoneActive()}, fam);
@@ -15372,6 +15502,9 @@ function noterMesureMaintenant(nom, l, famille){
   try{ localStorage.setItem(CLE_MESURES_MAINTENANT, JSON.stringify(journal)); }catch(e){}
 }
 window.AutourMesuresMaintenant = ()=>journalMesuresMaintenant();
+/* Le même journal sert à la boucle Créer : mêmes créneaux, même identifiant
+   d'objet, liste fermée `MESURES_CREER`. */
+function noterMesure(nom, l, famille){ noterMesureMaintenant(nom, l, famille); }
 
 /* La famille d'un objet est celle que le moteur lui donne — la même qui sert à
    la diversité des trois places. La relire sur la fiche brute donnait
@@ -18023,25 +18156,76 @@ function remplirResultatsZone(nom, intention){
 }
 /* On pense d'abord à ce qu'on crée, ensuite à l'endroit. Demander « déplace
    la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
-   inversait l'ordre naturel. */
+   inversait l'ordre naturel.
+
+   CRÉER V1 : SIX CHOIX, PUIS DIRECTEMENT LE FORMULAIRE. Le passage obligé par
+   « déplace la carte » avant la première question coûtait un écran à chaque
+   création ; le lieu se choisit désormais DANS le formulaire (ma position,
+   une adresse, ou la carte), et part par défaut du point regardé. */
+const TYPES_CREATION = Object.freeze([
+  {id:"event",     label:"Événement", emoji:"🎉"},
+  {id:"sport",     label:"Activité",  emoji:"⚽"},
+  {id:"rencontre", label:"Rencontre", emoji:"👥"},
+  {id:"popup",     label:"Bon plan",  emoji:"✨"},
+  {id:"lieu",      label:"Lieu",      emoji:"📍", cat:"autre"},
+  {id:"autre",     label:"Autre",     emoji:"•••"},
+]);
 function ouvrirCreation(){
-  const eph = [
-    {id:"event", label:"Événement", emoji:"🎉"},
-    {id:"autre", label:"Lieu", emoji:"📍"},
-    {id:"sport", label:"Activité", emoji:"🏃"},
-    {id:"popup", label:"Bon plan", emoji:"✨"},
-    {id:"autre", label:"Autre", emoji:"…"},
-  ];
+  noterMesure("create_opened", null, "creer");
+  const repris = brouillonSauve();
   ouvrirFeuille(
     '<div class="liste-tete"><h2>Que veux-tu ajouter&nbsp;?</h2></div>'+
-    '<div class="creer-choix">'+eph.map(c=>
+    '<div class="creer-choix">'+TYPES_CREATION.map(c=>
       '<button class="creer-type" data-type="'+c.id+'">'+
-        '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>');
+        '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>'+
+    (repris && repris.titre
+      ? '<button class="creer-reprendre" data-reprendre="1">Reprendre le brouillon « '+
+          esc(repris.titre)+' »</button>' : ''));
   $("#feuille").querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{
-    typeAvantPose = b.dataset.type;
+    const type = TYPES_CREATION.find(t=>t.id === b.dataset.type) || TYPES_CREATION[0];
+    typeAvantPose = type.cat || type.id;
+    noterMesure("create_type_selected", null, type.id);
     fermerFeuille();
-    ouvrirModePose();
+    brouillon = nouveauBrouillon();
+    publicationModifiee = false;
+    retourFormulaire = false;
+    pileEcrans = [];
+    pousserEcran(dessinerFormulaire);
   });
+  const reprendre = $("#feuille").querySelector("[data-reprendre]");
+  if(reprendre) reprendre.onclick = ()=>reprendreBrouillon();
+}
+
+/* ---- LE BROUILLON, GARDÉ SUR L'APPAREIL ----------------------------------
+   Un seul, local : ce qu'on n'a pas fini de remplir n'a rien à faire sur un
+   serveur. L'image n'y est pas (un fichier ne se range pas dans le stockage
+   local) : on la rechoisit en reprenant. */
+const CLE_BROUILLON_CREATION = "autour:brouillon-creation:v1";
+function brouillonSauve(){
+  try{
+    const b = JSON.parse(localStorage.getItem(CLE_BROUILLON_CREATION) || "null");
+    return b && typeof b === "object" && Number.isFinite(b.lat) && Number.isFinite(b.lng) ? b : null;
+  }catch(e){ return null; }
+}
+function sauverBrouillon(b){
+  if(!b) return false;
+  const copie = Object.assign({}, b, {imageFichier:null, imageApercu:"", sauveLe:Date.now()});
+  try{ localStorage.setItem(CLE_BROUILLON_CREATION, JSON.stringify(copie)); return true; }
+  catch(e){ return false; }
+}
+function oublierBrouillon(){
+  try{ localStorage.removeItem(CLE_BROUILLON_CREATION); }catch(e){}
+}
+function reprendreBrouillon(){
+  const b = brouillonSauve();
+  if(!b) return;
+  fermerFeuille();
+  brouillon = Object.assign(nouveauBrouillon(), b, {imageFichier:null, imageApercu:""});
+  typeAvantPose = brouillon.cat;
+  publicationModifiee = false;
+  retourFormulaire = false;
+  pileEcrans = [];
+  pousserEcran(dessinerFormulaire);
 }
 let typeAvantPose = null;
 
@@ -18084,8 +18268,11 @@ $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
    propre geste : on écoute donc en capture et on arrête l'événement là, sinon
    les deux ouvertures se marcheraient dessus. Aucune recherche n'est lancée —
    `ouvrirDetail` lit ce qu'Autour a déjà. */
+/* La fiche détaillée porte elle aussi `data-lieu` (pour « Maintenant ») :
+   sans cette exclusion, TOUT appui dans la fiche — Y aller, Partager,
+   Favori, Je participe — était avalé ici et rouvrait la même fiche. */
 document.addEventListener("click", (e)=>{
-  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]");
+  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]:not(#ficheLieu)");
   if(!cible) return;
   const id = cible.getAttribute("data-lieu");
   if(!id) return;
@@ -18095,7 +18282,7 @@ document.addEventListener("click", (e)=>{
 }, true);
 document.addEventListener("keydown", (e)=>{
   if(e.key !== "Enter" && e.key !== " ") return;
-  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]");
+  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]:not(#ficheLieu)");
   if(!cible) return;
   e.preventDefault();
   pousserEcran(()=>ouvrirDetail(cible.getAttribute("data-lieu")));
@@ -19288,6 +19475,19 @@ enregistrerReprise("favori", async(charge)=>{
 });
 
 enregistrerReprise("mes-publications", ()=>ouvrirMesPublications());
+/* « Je participe » sans compte : l'intention est gardée, et rejouée telle
+   quelle une fois connecté — la participation ne compte qu'à la réponse de la
+   base. */
+enregistrerReprise("participer", async(charge)=>{
+  const dbId = charge && charge.dbId;
+  if(!dbId) return;
+  await ouvrirPublicationParId(dbId);
+  await participerPublication(dbId);
+});
+enregistrerReprise("signaler", async(charge)=>{
+  const dbId = charge && charge.dbId;
+  if(dbId) await signalerPublication(dbId);
+});
 enregistrerReprise("notifications", ()=>ouvrirProfil());
 enregistrerReprise("compte", ()=>ouvrirProfil());
 enregistrerReprise("modifier", (charge)=>{

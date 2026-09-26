@@ -3156,3 +3156,118 @@ body:has(#rechercheOverlay:not([hidden])) #badgeMaintenant{display:none}
   #badgeMaintenant{top:calc(var(--safe-t) + var(--maquette-panneau-top, 144px));
     bottom:auto;left:var(--maquette-bord, 32px);max-width:420px}
 }
+
+/* ===========================================================================
+   CRÉER V1 — CE QUE LA BOUCLE CRÉER → PARTAGER → PARTICIPER AJOUTE
+
+   Aucun composant n'est redessiné : le formulaire garde ses champs, ses
+   bascules et son bouton. S'ajoutent le récapitulatif, l'écran « C'est
+   publié », le bloc de participation d'une fiche et « Mes créations ».
+   ======================================================================== */
+
+/* Six choix : trois colonnes dès que la place le permet. */
+.creer-choix{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:380px){ .creer-choix{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.creer-type{min-height:88px;align-items:center;text-align:center;justify-content:center}
+.creer-reprendre{width:100%;min-height:44px;margin-top:12px;padding:12px;border:1px dashed var(--bord);
+  border-radius:14px;background:#fff;color:var(--ink);font-size:13.5px;font-weight:700;text-align:left}
+
+/* Le formulaire : ce qui est obligatoire se voit, ce qui manque se dit. */
+.champ .req{color:var(--signal);font-weight:800}
+.champ textarea{width:100%;padding:12px;border:1px solid var(--bord);border-radius:2px;
+  background:#fff;color:var(--ink);font-family:inherit;font-size:16px;line-height:1.4;resize:vertical}
+.champ-erreur{display:block;margin-top:6px;font-style:normal;font-size:12.5px;font-weight:600;
+  color:var(--signal)}
+.en-erreur input[type=text],.en-erreur input[type=date],.en-erreur input[type=time]{
+  border-color:var(--signal)}
+.ou-choix{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:9px}
+.ou-choix .ou-bouton{min-height:44px;padding:10px 13px;font-size:13px;font-weight:700}
+.ou-coord{display:block;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--ink2)}
+.note-prive{margin:8px 0 0;padding:9px 11px;border-radius:10px;background:#FFF4E5;
+  font-size:12.5px;line-height:1.45;color:#7A4A00}
+.apercu-quand .g{color:var(--ink2);font-weight:500}
+
+/* Le récapitulatif : la fiche telle qu'on la lira. */
+.recap{display:flex;flex-direction:column;border:1px solid var(--bord);border-radius:16px;
+  overflow:hidden;background:#fff}
+.recap-img{width:100%;height:150px;object-fit:cover;display:block}
+.recap-vide{display:grid;place-items:center;background:var(--paper);font-size:44px}
+.recap-txt{padding:14px 16px 16px}
+.recap-titre{display:block;margin-bottom:8px;font-size:18px;font-weight:800;line-height:1.25}
+.recap-l{display:flex;gap:8px;margin:4px 0;font-size:14px;line-height:1.4}
+.recap-desc{margin:10px 0 0;font-size:14px;line-height:1.5;color:var(--ink2)}
+.recap-maintenant,.publie-maintenant{margin:14px 0;padding:10px 12px;border-radius:12px;
+  background:#F1ECFF;color:#4A2BA6;font-size:13px;line-height:1.45}
+
+/* « C'est publié » */
+.publie{text-align:center;padding:6px 0 4px}
+.publie h2{margin:6px 0 6px;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.publie>p{margin:0 0 18px;font-size:15px;color:var(--ink2)}
+.publie-fete{font-size:52px;line-height:1}
+.publie-attente{width:36px;height:36px;margin:12px auto;border:3px solid var(--bord);
+  border-top-color:var(--signal);border-radius:50%;animation:publieTourne .8s linear infinite}
+@keyframes publieTourne{to{transform:rotate(360deg)}}
+.publie-part{width:100%;margin-top:10px;min-height:48px;padding:14px;border:1px solid var(--ink);
+  border-radius:2px;background:#fff;color:var(--ink);font-size:14px;font-weight:800}
+.publie-lien{display:flex;align-items:center;gap:8px;margin-top:16px;padding:10px 12px;
+  border:1px solid var(--bord);border-radius:12px;background:var(--paper);text-align:left}
+.publie-lien span{flex:0 0 auto;font-size:12px;color:var(--ink2)}
+.publie-lien code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12.5px}
+.publie-lien button{flex:0 0 auto;min-height:44px;padding:0 12px;border:1px solid var(--bord);
+  border-radius:10px;background:#fff;font-weight:700}
+
+/* Partage de repli */
+.partage-apercu{margin:0 0 14px;padding:12px;border-radius:12px;background:var(--paper);
+  font-size:13.5px;line-height:1.5;word-break:break-word}
+
+/* Participer, sur la fiche d'une publication d'habitant */
+.participation{margin:14px 0;padding:14px 16px;border:1px solid var(--bord);border-radius:16px;
+  background:#fff}
+.pa-compte{margin:0 0 10px;font-size:15px;font-weight:800}
+.pa-ok{margin:0 0 6px;font-size:14.5px;font-weight:800;color:#127A45}
+.pa-note{margin:0 0 6px;font-size:13.5px;color:var(--ink2)}
+.pa-quitter{min-height:44px;padding:8px 0;border:0;background:none;color:var(--ink2);
+  font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.pa-orga{margin:12px 0 0;font-size:13px;color:var(--ink2)}
+.pa-prevoir{margin:6px 0 0;font-size:13px}
+.participation .valider[disabled]{opacity:.55;box-shadow:none}
+
+/* Mes créations */
+.mc-onglets{display:flex;gap:6px;margin:0 0 12px}
+.mc-onglets button{flex:1;min-height:44px;border:1px solid var(--bord);border-radius:99px;
+  background:#fff;font-size:13.5px;font-weight:700;color:var(--ink2)}
+.mc-onglets button.actif{background:var(--ardoise);border-color:var(--ardoise);color:#fff}
+.mc-l{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bord)}
+.mc-img{flex:0 0 64px;width:64px;height:64px;border-radius:12px;object-fit:cover}
+.mc-vide{display:grid;place-items:center;background:var(--paper);font-size:26px}
+.mc-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--ink2)}
+.mc-txt b{font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-statut{font-style:normal;margin-left:6px;padding:1px 8px;border-radius:99px;font-size:11.5px;
+  font-weight:700;background:#E7F6EE;color:#127A45}
+.mc-masquee,.mc-annulee{background:#FDECEA;color:#A32A1B}
+.mc-terminee{background:#EEF0EE;color:var(--ink2)}
+.mc-brouillon{background:#FFF4E5;color:#7A4A00}
+.mc-actions{display:flex;gap:6px}
+.mc-actions button{min-width:44px;min-height:44px;padding:0 12px;border:1px solid var(--bord);
+  border-radius:10px;background:#fff;font-weight:700}
+.mc-creer{margin-top:16px}
+
+/* Tablette et ordinateur : le formulaire respire, sans devenir une autre
+   application. Même feuille, mêmes champs — une colonne plus large et les
+   bascules côte à côte. */
+@media (min-width:768px){
+  #feuille:has(h2.pub),#feuille:has(.publie),#feuille:has(.mc-onglets){
+    max-width:640px;margin-left:auto;margin-right:auto}
+  .recap{flex-direction:row}
+  .recap-img{width:44%;height:auto;min-height:190px}
+  .creer-choix{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (prefers-reduced-motion:reduce){ .publie-attente{animation:none} }
+/* La barre de navigation (z-index 910) passe AU-DESSUS de la feuille (901) :
+   sans réserve, le bas du formulaire — « À prévoir », « Vérifier et publier »,
+   « Je participe » — restait derrière elle. On réserve sa hauteur RÉELLE
+   (mesurée par mesurerHeader) plus son décalage flottant. */
+#feuille:has(h2.pub, .recap, .publie, .participation, .mc-onglets, .creer-choix){
+  padding-bottom:calc(var(--nav-flottante, 76px) + 40px + var(--safe-b))}

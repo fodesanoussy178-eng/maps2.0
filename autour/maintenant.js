@@ -214,7 +214,17 @@
      =================================================================== */
   const SEUIL_DEMARRAGE = 1000;
 
+  /* LA FAVEUR COMMUNAUTAIRE PEUT VENIR D'AILLEURS QUE DU COMPTE GLOBAL.
+
+     « Autour a moins de mille comptes » est une mesure de démarrage, pas une
+     règle durable : à terme, ce qui compte est la DENSITÉ LOCALE — un quartier
+     actif n'a pas besoin qu'on pousse ses créations, une zone vide si. Quand
+     l'application sait le dire, elle passe sa décision dans
+     `ctx.faveurCommunautaire` (vrai ou faux), et ce booléen l'emporte ; sans
+     lui, on retombe sur le seuil global. Rien d'autre ne change : la faveur
+     départage à pertinence égale, elle ne fait jamais entrer quoi que ce soit. */
   function phaseDemarrage(ctx) {
+    if (ctx && typeof ctx.faveurCommunautaire === "boolean") return ctx.faveurCommunautaire;
     const seuil = Number((ctx && ctx.seuilDemarrage) != null ? ctx.seuilDemarrage : SEUIL_DEMARRAGE);
     const brut = ctx ? ctx.utilisateurs : null;
     /* SANS MÉTRIQUE, PAS DE FAVEUR — et `null` n'est pas zéro.
@@ -1364,6 +1374,18 @@
     "impression", "detail", "favori_intention", "favori_ajout", "favori_retrait", "itineraire",
     "billetterie", "reservation", "contact", "ignoree", "fermeture", "categorie",
   ]);
+  /* LA BOUCLE « CRÉER », MESURÉE AU MÊME GRAIN.
+
+     Créer → publier → partager → ouvrir le lien → participer → repartager →
+     devenir créateur à son tour. Chaque étape a un nom, et rien d'autre n'est
+     compté ; l'objet est nommé par son identifiant de publication, jamais par
+     son titre. `share_completed` n'existe que si le système l'a confirmé (la
+     feuille de partage native s'est refermée sur un envoi). */
+  const MESURES_CREER = Object.freeze([
+    "create_opened", "create_type_selected", "create_started", "create_published",
+    "share_opened", "share_completed", "share_link_copied", "shared_link_opened",
+    "participation_intent", "participation_added", "participation_removed",
+  ]);
   const JOURS = Object.freeze(["dim", "lun", "mar", "mer", "jeu", "ven", "sam"]);
 
   function creneauMesure(contexte, famille) {
@@ -1394,7 +1416,7 @@
   }
 
   root.AutourMaintenant = Object.freeze({
-    CATEGORIES_EXPLORATION, explorerCategorie, MESURES, creneauMesure,
+    CATEGORIES_EXPLORATION, explorerCategorie, MESURES, MESURES_CREER, creneauMesure,
     ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES, SEUIL_DEMARRAGE,
     phaseDemarrage, estEvenementHabitant, estVerrouille,
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,
