@@ -1277,7 +1277,7 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
 /* Par défaut — donc sur desktop — rien de tout cela n'existe. */
 /* `#explorerDecouverte` a quitté cette liste : le code ouvre cette surface sur
    toutes les largeurs. Voir sa géométrie plus bas. */
-#selecteurSurface,#fabCreer{display:none}
+#fabCreer{display:none}
 
 /* ---- Explorer, surface de découverte ----
    Il monte du bas comme les autres panneaux, et laisse voir la carte
@@ -1373,10 +1373,6 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 @media (max-width:768px){
-  /* Le sélecteur de surface prend le créneau sous l'en-tête ; tout ce qui s'y
-     rangeait descend de sa hauteur, sans qu'aucune de ces règles ne le sache. */
-  :root{--sous-entete:calc(var(--header-bas) + 10px + 48px + 8px)}
-
   /* LES TROIS FENÊTRES DE TEMPS TIENNENT ENSEMBLE, SANS DÉFILEMENT.
      `Maintenant · À venir · Ce week-end` est une question, pas une liste :
      poussée hors de l'écran, la troisième réponse n'existe plus pour qui ne
@@ -1400,16 +1396,6 @@ body.nav #badgeMaintenant,body.pose #badgeMaintenant{display:none}
      gardent leurs gestionnaires : le desktop s'en sert toujours, et rien
      n'est à recâbler quand on passe d'une largeur à l'autre. */
   #navBas .nb-desktop{display:none}
-
-  /* ---- Le sélecteur de surface ---- */
-  #selecteurSurface{display:flex;gap:6px;position:absolute;z-index:606;
-    left:12px;right:12px;top:calc(var(--header-bas) + 10px);
-    padding:4px;border-radius:99px;background:#fff;
-    border:1px solid var(--bord);box-shadow:0 3px 14px rgba(20,30,25,.10)}
-  .sfc{flex:1 1 0;min-height:44px;border:0;border-radius:99px;background:none;
-    color:var(--ink2);font-size:14px;font-weight:700;letter-spacing:-.01em}
-  .sfc.actif{background:var(--ardoise);color:#fff}
-  .sfc:active{transform:scale(.98)}
 
   /* ---- Le bouton flottant « Créer » ----
      Au-dessus de la barre basse et de la safe-area, jamais dedans. Il recule
@@ -2655,30 +2641,7 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
      lorsqu’Aide est ouverte, le panneau principal devient l’unique surface
      de premier plan. Les deux règles sont visuelles et réversibles : dès que
      l’onboarding est terminé ou qu’Aide est fermée, rien ne reste masqué. */
-  #onboardingLocalisation:not([hidden]) ~ #badgeMaintenant{display:none}
   body.aide #onboardingLocalisation{display:none}
-}
-
-/* « Revenir autour de moi » partage EXACTEMENT le créneau de la capsule
-   Maintenant : deux pastilles centrées à dix pixels sous l'en-tête. La
-   capsule est posée par-dessus (z-index 670 contre 604) et se trouve être
-   plus haute, si bien qu'après un changement de zone le bouton était
-   intégralement recouvert : visible, mais impossible à toucher — c'est la
-   capsule qui recevait le doigt. Empiler n'était pas une option, la capsule
-   changeant de hauteur selon qu'elle tient sur une ou deux lignes.
-
-   Alors la même règle que celle de l'onboarding ci-dessus, pour la même
-   raison : la capsule est informative et revient d'elle-même, tandis que le
-   retour est le seul geste qui ramène chez soi. Elle s'efface le temps du
-   retour et reparaît dès qu'il disparaît — soit dès qu'on est revenu.
-
-   La borne est 1099 et non 767 : le partage de créneau dure aussi longtemps
-   que le bouton se pose sous l'en-tête. À partir de 1100, la capsule remonte
-   dans la bande de l'en-tête et les deux cessent de se rencontrer — sur une
-   tablette de 834 ou 1024, en revanche, ils se recouvraient exactement comme
-   sur un téléphone. */
-@media (max-width:1099px){
-  body:has(#btnAutourDeMoi:not([hidden])) #badgeMaintenant{display:none}
 }
 
 /* ---- Contrat géométrique de la maquette ---------------------------------
@@ -2935,4 +2898,261 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
   body:has(#feuille:not([hidden]) #ficheItineraire) #voile{
     opacity:0;pointer-events:none;animation:none;
   }
+}
+
+/* ===========================================================================
+   MAINTENANT, LE CŒUR D'AUTOUR
+
+   On ouvre Autour, et le panneau est déjà là : trois propositions, un cœur
+   sur chacune, une croix pour rendre la carte. Dessous, six envies pour aller
+   plus loin sans changer de question, puis la frise — À venir, Ce week-end.
+
+   UN SEUL MÉCANISME, TROIS DISPOSITIONS. Téléphone, tablette et ordinateur
+   montrent le même panneau, les mêmes trois propositions, la même croix et la
+   même capsule une fois refermé. Seule la géométrie change :
+
+     · téléphone        une feuille qui monte du bas, lignes empilées ;
+     · tablette debout  une carte flottante centrée, la carte visible autour,
+                        les trois propositions en grille ;
+     · tablette couchée un volet à gauche, la carte à droite ;
+     · ordinateur       le volet de gauche des trois volets, en grille.
+
+   Cette section vient EN DERNIER et ne dépend d'aucune règle antérieure :
+   la feuille en compte plusieurs couches, et c'est ici que se décide ce qui
+   touche au panneau Maintenant.
+   ======================================================================== */
+
+/* ---- L'en-tête : un titre, une ligne, une croix ------------------------ */
+#feuilleBesoins .fb-titres{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#feuilleBesoins .fb-titres .fb-titre{flex:none}
+/* Une règle d'ordinateur rendait ce titre invisible (réservé aux lecteurs
+   d'écran) quand les onglets de temps ouvraient le panneau. Ils ne l'ouvrent
+   plus : le titre redevient le titre. */
+#feuilleBesoins.accueil .fb-titres .fb-titre{display:block;position:static;width:auto;
+  height:auto;overflow:hidden;clip-path:none;clip:auto;white-space:nowrap;text-overflow:ellipsis}
+#feuilleBesoins .fb-sous{font-size:13px;font-weight:500;line-height:1.3;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#feuilleBesoins.accueil .fb-titre{font-size:20px;font-weight:800;letter-spacing:-.02em}
+/* La croix se voit tout de suite : un rond blanc cerné, pas un glyphe gris. */
+#feuilleBesoins.accueil .fb-x{display:grid;place-items:center;width:44px;height:44px;
+  margin-left:auto;border:1px solid var(--bord);background:#fff;color:var(--ink);
+  font-size:17px;box-shadow:0 2px 8px rgba(20,30,25,.10)}
+/* Le « ‹ » d'une envie ramène aux trois propositions. */
+#feuilleBesoins.accueil .fb-retour:not([hidden]){display:grid;place-items:center}
+/* À venir et Ce week-end : la frise sert de titre, on ne l'écrit pas deux
+   fois. L'en-tête se réduit à sa croix, posée sur la ligne des onglets. */
+#feuilleBesoins.fb-frise .fb-titres{display:none}
+#feuilleBesoins.fb-frise .fb-tete{position:absolute;z-index:3;right:12px;
+  top:calc(var(--fb-poignee-h, 26px));width:auto;min-height:0;padding:0;background:transparent}
+#feuilleBesoins.fb-frise .fb-corps{padding-top:10px}
+#feuilleBesoins.fb-frise .ong-temps{padding-right:56px}
+/* Trop étroit pour partager la ligne : la croix garde la sienne, au-dessus
+   des onglets, plutôt que de recouvrir « Ce week-end ». */
+@media (max-width:420px){
+  #feuilleBesoins.fb-frise .fb-tete{position:relative;top:auto;right:auto;
+    justify-content:flex-end;padding:0 12px}
+  #feuilleBesoins.fb-frise .fb-corps{padding-top:4px}
+  #feuilleBesoins.fb-frise .ong-temps{padding-right:0}
+}
+@media (min-width:1100px){
+  #feuilleBesoins.fb-frise .fb-tete{top:12px}
+}
+.mnc-plusloin{display:block;width:100%;margin:10px 0 4px;min-height:44px;padding:10px 12px;
+  border:0;background:none;color:var(--violet,#7C3AED);font-size:13.5px;font-weight:700;
+  text-align:left;cursor:pointer}
+
+/* ---- Les trois propositions ----------------------------------------------
+   Plus de cadre autour du bloc ni de titre dedans : chaque proposition est
+   une carte à part entière, avec son image, ce que c'est, où, quand — et son
+   cœur à portée de pouce. */
+#feuilleBesoins{--mn-ligne:82px;--mn-pied:16px;--mn-carte:206px}
+#feuilleBesoins .mn{margin:0 0 4px;padding:0;border:0;border-radius:0;
+  background:transparent;box-shadow:none;overflow:visible}
+#feuilleBesoins .mn-corps{gap:8px}
+#feuilleBesoins .mn-l{position:relative;display:flex;align-items:center;gap:0;
+  height:var(--mn-ligne);flex:0 0 var(--mn-ligne);padding:0 4px 0 0;
+  border:1px solid var(--bord);border-radius:18px;background:#fff;
+  box-shadow:0 1px 4px rgba(20,30,25,.05);cursor:default}
+#feuilleBesoins .mn-l:first-of-type{border-top:1px solid var(--bord)}
+#feuilleBesoins .mn-ouvrir{flex:1;min-width:0;height:100%;display:flex;align-items:center;
+  gap:12px;padding:8px 6px 8px 8px;border:0;border-radius:17px;background:none;
+  text-align:left;color:inherit;font:inherit;cursor:pointer}
+#feuilleBesoins .mn-ouvrir:active{background:var(--fond,#F7F8F5)}
+#feuilleBesoins .mn-visuel{width:64px;height:64px;flex:0 0 64px;border-radius:14px}
+#feuilleBesoins .mn-txt b{font-size:15px}
+#feuilleBesoins .mn-l .coeur{width:44px;height:44px;flex:0 0 44px;color:var(--ink2)}
+#feuilleBesoins .mn-l .coeur.actif{color:#E0334E}
+#feuilleBesoins .mn-attente{gap:8px}
+#feuilleBesoins .mn-attente i{border:0;border-radius:18px}
+#feuilleBesoins .mn-rien{border:1px solid var(--bord);border-radius:18px;background:#fff}
+/* Visible dès l'ouverture d'Autour, la sortie d'un état vide doit se toucher
+   aussi bien que le reste : 44 px, pas 40. */
+#feuilleBesoins .mn-sortie{min-height:44px}
+#feuilleBesoins .mn-couverture{padding:2px 4px 0}
+#feuilleBesoins .mn-tout{margin-top:8px;border:1px solid var(--bord);border-radius:14px}
+#feuilleBesoins .etat-vide-actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* ---- Explorer par envie ---------------------------------------------------- */
+.mnc{margin:18px 0 4px}
+.mnc-titre{margin:0 0 10px;font-size:16px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+.mnc-grille{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mnc-b{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:72px;padding:8px 4px;border:1px solid var(--bord);border-radius:16px;
+  background:#F7F8F5;background:color-mix(in srgb,var(--teinte,#5D6B63) 9%,#fff);
+  color:var(--ink);font-size:13.5px;font-weight:700;cursor:pointer}
+.mnc-b em{font-style:normal;font-size:24px;line-height:1}
+.mnc-b:active{transform:scale(.97)}
+.mnc-b:focus-visible,.mnt-b:focus-visible,#feuilleBesoins .mn-ouvrir:focus-visible,
+#badgeMaintenant:focus-visible{outline:3px solid var(--violet,#7C3AED);outline-offset:2px}
+
+/* ---- Plus tard : la frise, à côté des trois, jamais dedans ---------------- */
+.mnt{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0 12px}
+.mnt-b{display:flex;align-items:center;gap:10px;min-height:58px;padding:9px 10px 9px 12px;
+  border:1px solid var(--bord);border-radius:16px;background:#fff;color:var(--ink);
+  text-align:left;cursor:pointer}
+.mnt-b em{font-style:normal;font-size:20px;line-height:1}
+.mnt-b span{flex:1;min-width:0;display:flex;flex-direction:column}
+.mnt-b b{font-size:14px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mnt-b i{font-style:normal;font-size:12px;color:var(--ink2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.mnt-b u{text-decoration:none;font-size:19px;color:#B9C0BA;line-height:1}
+/* Sur téléphone le chevron coûte la fin du libellé : « Ce week-e… ». Le
+   bouton entier est la cible, le chevron n'était qu'un ornement. */
+@media (max-width:420px){
+  .mnt-b{gap:8px;padding:9px 8px 9px 10px}
+  .mnt-b u{display:none}
+}
+
+/* ---- La capsule : le panneau refermé ---------------------------------------
+   Elle vit là où le pouce rouvre, au-dessus de la navigation, à gauche du
+   bouton Créer et au-dessus de l'attribution. Une ligne de contexte, un
+   chevron : « ça se rouvre vers le haut ». */
+#badgeMaintenant{top:auto;left:8px;right:auto;transform:none;
+  bottom:calc(16px + 76px + 44px + var(--safe-b));
+  flex-direction:row;align-items:center;gap:12px;min-height:56px;
+  padding:8px 8px 8px 16px;border:1px solid var(--bord);border-radius:20px;
+  max-width:calc(100vw - 96px);box-shadow:0 6px 22px rgba(20,30,25,.16)}
+#badgeMaintenant .bm-texte{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+#badgeMaintenant .bm-sous{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#badgeMaintenant .bm-ouvrir{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;
+  border-radius:50%;background:#F4F3F0;color:var(--ink)}
+/* PENDANT UNE RECHERCHE, LA CAPSULE SE RETIRE. Elle est au-dessus de la
+   couche de recherche (670 contre 660) : elle restait posée sur les
+   suggestions, et sur iOS un élément fixé en bas remonte au-dessus du clavier
+   virtuel. On cherche, puis on revient : elle revient avec la carte. */
+body:has(#rechercheOverlay:not([hidden])) #badgeMaintenant{display:none}
+@media (max-width:1099px){
+  /* Un tiroir, une fiche ou un modal occupent le bas : la capsule se retire
+     le temps qu'ils soient là, et revient avec la carte. */
+  body.pourtoi-ouvert #badgeMaintenant,
+  body:has(#feuille:not([hidden])) #badgeMaintenant,
+  body:has(#ficheCompacte:not([hidden])) #badgeMaintenant{display:none}
+}
+
+/* ---- Téléphone -------------------------------------------------------------
+   La feuille ne mange jamais toute la carte : même sur un 320 × 568, une
+   bande de carte reste visible sous l'en-tête. */
+@media (max-width:767px){
+  #feuilleBesoins.accueil.fb-maintenant:not(.deplie):not(.reduite){
+    height:min(58dvh,calc(100dvh - var(--safe-t) - 250px - var(--safe-b)));
+    max-height:min(58dvh,calc(100dvh - var(--safe-t) - 250px - var(--safe-b)))}
+  #feuilleBesoins{--mn-ligne:78px}
+  #feuilleBesoins .mn-visuel{width:58px;height:58px;flex-basis:58px}
+}
+@media (max-width:360px){
+  .mnt{grid-template-columns:1fr}
+  #feuilleBesoins .mn-txt b{font-size:14px}
+  /* Sur un 320 × 568, trois lignes de 78 px ne tiennent pas sous l'en-tête :
+     on resserre la ligne, pas le nombre de propositions. */
+  #feuilleBesoins{--mn-ligne:70px}
+  #feuilleBesoins .mn-visuel{width:50px;height:50px;flex-basis:50px}
+}
+
+/* ---- La grille : quand le panneau a la largeur de trois cartes ------------
+   Tablette debout et ordinateur. Chaque carte a une hauteur FIXE — image et
+   texte compris — pour que l'arrivée des propositions ne pousse rien : les
+   trois emplacements gris ont exactement leur taille. */
+@media (min-width:768px) and (max-width:1099px) and (orientation:portrait),
+       (min-width:1100px){
+  #feuilleBesoins.fb-maintenant .mn-corps{display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  #feuilleBesoins.fb-maintenant .mn[data-mn-etat="loading"] .mn-corps{min-height:var(--mn-carte)}
+  #feuilleBesoins.fb-maintenant .mn-l{flex-direction:column;align-items:stretch;
+    height:var(--mn-carte);flex:none;padding:0;overflow:hidden}
+  #feuilleBesoins.fb-maintenant .mn-ouvrir{flex-direction:column;align-items:stretch;
+    gap:9px;padding:0 0 10px;border-radius:17px}
+  #feuilleBesoins.fb-maintenant .mn-visuel{width:100%;height:100px;flex:0 0 100px;
+    border-radius:17px 17px 0 0;font-size:30px}
+  #feuilleBesoins.fb-maintenant .mn-txt{padding:0 12px;gap:2px}
+  /* L'heure est l'information qui fait partir : elle passe à la ligne plutôt
+     que d'être coupée en « ouvert jusqu'à 00:… ». */
+  #feuilleBesoins.fb-maintenant .mn-txt u{white-space:normal;display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical}
+  #feuilleBesoins.fb-maintenant .mn-txt b{white-space:normal;display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.22}
+  /* Le cœur se pose sur l'image, comme sur la référence. */
+  #feuilleBesoins.fb-maintenant .mn-l .coeur{position:absolute;top:8px;right:8px;
+    background:rgba(255,255,255,.94);box-shadow:0 2px 8px rgba(20,30,25,.14)}
+  #feuilleBesoins.fb-maintenant .mn-attente{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;grid-column:1/-1}
+  #feuilleBesoins.fb-maintenant .mn-attente i{height:var(--mn-carte)}
+  #feuilleBesoins.fb-maintenant .mn-rien,
+  #feuilleBesoins.fb-maintenant .mn-couverture{grid-column:1/-1}
+  .mnc-grille{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .mnc-b{min-height:78px;font-size:13px}
+}
+
+/* ---- Tablette debout : une carte flottante, la carte visible autour ------- */
+@media (min-width:768px) and (max-width:1099px) and (orientation:portrait){
+  body:not(.aide) #feuilleBesoins,body:not(.aide) #feuilleBesoins.accueil,
+  body:not(.aide) #feuilleBesoins.deplie,body:not(.aide) #feuilleBesoins.reduite{
+    left:50%;right:auto;width:min(640px,calc(100% - 128px));transform:translateX(-50%);
+    bottom:calc(16px + 76px + 36px + var(--safe-b));
+    border:1px solid var(--bord);border-radius:26px;
+    box-shadow:0 10px 36px rgba(20,30,25,.18)}
+  /* L'attribution est due et doit rester lisible : elle se pose dans la bande
+     de carte entre la navigation et la carte flottante. */
+  #attribution{bottom:calc(16px + 76px + 6px + var(--safe-b))}
+  #credits{bottom:calc(16px + 76px + 38px + var(--safe-b))}
+  /* La carte flottante fait la taille de ce qu'elle montre, et jamais plus
+     que la moitié basse de l'écran : le haut reste à la carte. */
+  body:not(.aide) #feuilleBesoins.accueil:not(.deplie):not(.reduite){
+    height:auto;max-height:min(640px,calc(100dvh - var(--safe-t) - 330px))}
+  body:not(.aide) #feuilleBesoins.accueil .fb-corps{flex:1 1 auto;min-height:0}
+  #feuilleBesoins .fb-corps{padding-left:22px;padding-right:22px}
+}
+
+/* ---- Tablette couchée : un volet à gauche, la carte à droite -------------- */
+@media (min-width:768px) and (max-width:1099px) and (orientation:landscape){
+  body:not(.aide) #feuilleBesoins,body:not(.aide) #feuilleBesoins.accueil,
+  body:not(.aide) #feuilleBesoins.deplie,body:not(.aide) #feuilleBesoins.reduite{
+    left:calc(16px + env(safe-area-inset-left, 0px));right:auto;
+    width:min(440px,calc(50% - 16px - env(safe-area-inset-left, 0px)));transform:none;
+    top:calc(var(--header-bas) + 20px);height:auto;max-height:none;
+    border:1px solid var(--bord);border-radius:24px;
+    box-shadow:0 10px 36px rgba(20,30,25,.18)}
+  /* Un volet ancré ne se tire pas : la poignée serait un geste qui n'existe pas. */
+  body:not(.aide) #feuilleBesoins .fb-poignee{display:none}
+  body:not(.aide) #feuilleBesoins .fb-tete{padding-top:14px}
+  /* Sur un téléphone couché, le volet ne fait que quelques lignes de haut :
+     son corps doit défiler, et non déborder sous la navigation. */
+  body:not(.aide) #feuilleBesoins .fb-corps{flex:1 1 auto;min-height:0}
+  /* L'encoche d'un iPhone couché est à gauche : le volet et la capsule
+     commencent après elle (`viewport-fit=cover` est posé dans index.html). */
+  #badgeMaintenant{bottom:auto;top:calc(var(--header-bas) + 20px);
+    left:calc(16px + env(safe-area-inset-left, 0px))}
+  /* Le volet couvre la gauche : l'attribution passe à droite, au-dessus de
+     la navigation, là où la carte est dégagée. */
+  #attribution{left:auto;right:10px;bottom:calc(16px + 76px + 8px + var(--safe-b))}
+  #credits{left:auto;right:12px;bottom:calc(16px + 76px + 40px + var(--safe-b))}
+}
+
+/* ---- Ordinateur : le volet de gauche --------------------------------------
+   La croix existe ici aussi : refermer Maintenant rend toute la fenêtre à la
+   carte, et la capsule prend la place exacte du panneau, en haut à gauche. */
+@media (min-width:1100px){
+  #feuilleBesoins.accueil .fb-x{display:grid}
+  #feuilleBesoins .fb-corps{padding-left:22px;padding-right:22px}
+  #badgeMaintenant{top:calc(var(--safe-t) + var(--maquette-panneau-top, 144px));
+    bottom:auto;left:var(--maquette-bord, 32px);max-width:420px}
 }

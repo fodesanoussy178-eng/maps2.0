@@ -260,6 +260,7 @@
     PAS_OUVERT:       "pas_ouvert",
     HORAIRE_INCONNU:  "horaire_inconnu",
     FERME_TROP_TOT:   "ferme_trop_tot",
+    HORS_PLAGE_QUOTIDIENNE: "hors_plage_quotidienne",
     SEANCE_TROP_LOIN: "seance_trop_loin",
     SEANCE_TROP_PROCHE: "seance_trop_proche",
     SANS_NOM:         "sans_nom",
@@ -388,6 +389,31 @@
     if (debut > t) return refus(RAISONS.PAS_COMMENCE);
     if (fin < t) return refus(RAISONS.DEJA_FINI);
 
+    /* UNE RÉCURRENCE REPLIÉE EN UNE SEULE PLAGE N'EST PAS « EN COURS ».
+
+       Mesuré en production le 26/09/2026 à 16 h 22 : DATAtourisme publie
+       « Marché de Wazemmes » (le dimanche, jusqu'à 14 h) comme UN événement
+       du 1er janvier 8 h au 31 décembre 15 h. Les bornes l'encadrent, le
+       backend dit `now` toute l'année — et Maintenant le proposait un samedi
+       après-midi, « jusqu'à 14:00 ».
+
+       Au-delà d'une semaine, une plage dont les heures de début et de fin
+       dessinent une fenêtre dans la journée (8 h → 15 h) décrit un horaire
+       qui se répète, pas un moment continu. Hors de cette fenêtre, ce n'est
+       pas maintenant. Un festival de quatre jours, une nuit qui déborde sur
+       le lendemain ou une plage sans heure distincte ne sont pas concernés.
+       Les jours de la semaine, eux, ne sont pas dans la donnée : cette garde
+       ne les invente pas. */
+    if (fin - debut > PLAGE_RECURRENTE_MS) {
+      const fuseau = item.timezone || item.timeZone || ctx.timeZone || "Europe/Paris";
+      const hDebut = minutesDansJournee(debut, fuseau);
+      const hFin = minutesDansJournee(fin, fuseau);
+      const hNow = minutesDansJournee(t, fuseau);
+      if (hDebut !== null && hFin !== null && hNow !== null && hFin > hDebut &&
+          (hNow < hDebut || hNow > hFin))
+        return refus(RAISONS.HORS_PLAGE_QUOTIDIENNE);
+    }
+
     /* Le lieu fermé, QUAND l'information existe. La plupart des lieux
        OpenStreetMap n'ont aucun horaire : les écarter tous viderait le bloc
        pour rien. On n'écarte donc que ce qu'on sait fermé. */
@@ -405,6 +431,24 @@
   }
 
   function refus(raison) { return { retenu: false, raison, distance: null }; }
+
+  /* Une semaine : au-delà, une plage « de 8 h à 15 h » est un horaire qui se
+     répète, pas un événement qui dure. */
+  const PLAGE_RECURRENTE_MS = 7 * 24 * 3600e3;
+  const formateursHeure = new Map();
+  function minutesDansJournee(ms, fuseau) {
+    try {
+      let f = formateursHeure.get(fuseau);
+      if (!f) {
+        f = new Intl.DateTimeFormat("fr-FR", { timeZone: fuseau, hour: "2-digit",
+          minute: "2-digit", hourCycle: "h23" });
+        formateursHeure.set(fuseau, f);
+      }
+      const parts = {};
+      f.formatToParts(new Date(ms)).forEach((p) => { parts[p.type] = p.value; });
+      return (Number(parts.hour) % 24) * 60 + Number(parts.minute);
+    } catch (e) { return null; }
+  }
 
   /* Un horodatage utilisable, ou `null`. Volontairement strict : seul un
      nombre fini et strictement positif compte. `null`, `undefined`, `""` et
@@ -1240,7 +1284,117 @@
     return TEXTES[etatCourant] || TEXTES[ETATS.EMPTY];
   }
 
+  /* ===================================================================
+     5. LE SECOND NIVEAU : EXPLORER CE QUI EST POSSIBLE, PAR ENVIE
+
+     Les trois propositions sont le premier niveau, et elles restent rares.
+     Sous elles, six envies — Sortir, Manger, Culture, Sport, Nature,
+     Gratuit — permettent d'aller plus loin SANS CHANGER DE QUESTION : on
+     regarde toujours ce qui est faisable là, tout de suite.
+
+     C'EST LE MÊME BASSIN, PAS UN AUTRE MOTEUR. Une envie est un filtre posé
+     sur `candidats()` : un lieu fermé, un événement de demain ou une commodité
+     n'y entrent pas davantage que dans les trois places. Et l'ordre est celui
+     de la vitrine — nature, puis distance — sans la règle de diversité, qui
+     n'a plus d'objet une fois que la personne a choisi sa famille.
+
+     Gratuit ne se devine pas : il faut que la source l'ait écrit
+     (`gratuit === true`), ou que ce soit un parc — un jardin public est
+     gratuit par définition, pas par supposition.
+     =================================================================== */
+  const CATEGORIES_EXPLORATION = Object.freeze([
+    Object.freeze({ id: "sortir",  emoji: "🎉", label: "Sortir" }),
+    Object.freeze({ id: "manger",  emoji: "🍜", label: "Manger" }),
+    Object.freeze({ id: "culture", emoji: "🎭", label: "Culture" }),
+    Object.freeze({ id: "sport",   emoji: "⚽", label: "Sport" }),
+    Object.freeze({ id: "nature",  emoji: "🌳", label: "Nature" }),
+    Object.freeze({ id: "gratuit", emoji: "🆓", label: "Gratuit" }),
+  ]);
+
+  const categorieBrute = (item) =>
+    String((item && (item.canonicalCategory || item.categorie || item.category || item.cat)) || "")
+      .toLowerCase();
+
+  const APPARTIENT = Object.freeze({
+    sortir: (item, famille) => famille === "sortir" || famille === "boire" || famille === "ecran",
+    manger: (item, famille) => famille === "manger",
+    culture: (item, famille) => famille === "culture" || famille === "ecran" ||
+      categorieBrute(item) === "spectacle",
+    sport: (item) => ["sport", "terrain", "piscine"].indexOf(categorieBrute(item)) >= 0,
+    nature: (item) => categorieBrute(item) === "parc" ||
+      String((item && item.canonicalFamily) || "").toLowerCase() === "nature",
+    gratuit: (item) => !!item && (item.gratuit === true || item.is_free === true ||
+      categorieBrute(item) === "parc"),
+  });
+
+  function explorerCategorie(items, contexte, id) {
+    const test = APPARTIENT[id];
+    if (!test) return [];
+    const ctx = contexte || {};
+    if (ctx.zoneTerritoriale === false) return [];
+    return candidats(items, ctx)
+      .filter((c) => test(c.item, c.famille))
+      .map((c) => Object.assign({}, c.item, { nature: c.nature, motifMaintenant: "categorie_" + id }));
+  }
+
+  /* ===================================================================
+     6. CE QU'ON MESURERA, ET À QUEL GRAIN
+
+     La valeur d'une proposition ne se lit pas en minutes passées dans
+     l'application : elle se lit dans ce que la personne FAIT ensuite — ouvrir
+     la fiche, garder, partir, réserver. Ces noms sont la liste fermée des
+     gestes comptés ; un nom hors de cette liste n'est pas compté.
+
+     LE GRAIN EST UN CRÉNEAU, JAMAIS UNE PERSONNE. Une mesure porte une zone,
+     une envie, un jour de semaine et une tranche d'une heure — la maille à
+     laquelle une visibilité pourrait un jour avoir un prix (« Lille-centre ·
+     vendredi · 19–20 h · Sortir » ne vaut pas « mardi · 10–11 h »). Aucune
+     position ni aucun identifiant de personne n'y entre.
+
+     L'OBJET, lui, est nommé par son identifiant stable (publication,
+     événement canonique, lieu) — jamais par son titre : c'est ce qui relie
+     impression, fiche, favori et itinéraire au même lieu ou au même
+     événement. `favori_intention` est un cœur touché sans compte ;
+     `favori_ajout` n'est écrit qu'une fois l'enregistrement confirmé.
+
+     Rien ici n'achète ni ne classe quoi que ce soit : `selection()` ne lit
+     aucune de ces données, et un test le garantit.
+     =================================================================== */
+  const MESURES = Object.freeze([
+    "impression", "detail", "favori_intention", "favori_ajout", "favori_retrait", "itineraire",
+    "billetterie", "reservation", "contact", "ignoree", "fermeture", "categorie",
+  ]);
+  const JOURS = Object.freeze(["dim", "lun", "mar", "mer", "jeu", "ven", "sam"]);
+
+  function creneauMesure(contexte, famille) {
+    const ctx = contexte || {};
+    const t = Number.isFinite(Number(ctx.maintenant)) ? Number(ctx.maintenant) : Date.now();
+    let annee, mois, jourMois, heure, jour;
+    try {
+      const parts = {};
+      new Intl.DateTimeFormat("fr-FR", {
+        timeZone: ctx.timeZone || "Europe/Paris", year: "numeric", month: "2-digit",
+        day: "2-digit", hour: "2-digit", hourCycle: "h23", weekday: "short",
+      }).formatToParts(new Date(t)).forEach((p) => { parts[p.type] = p.value; });
+      annee = parts.year; mois = parts.month; jourMois = parts.day;
+      heure = Number(parts.hour) % 24;
+      jour = JOURS[new Date(Date.UTC(Number(annee), Number(mois) - 1, Number(jourMois))).getUTCDay()];
+    } catch (e) {
+      const d = new Date(t);
+      annee = String(d.getFullYear()); mois = String(d.getMonth() + 1).padStart(2, "0");
+      jourMois = String(d.getDate()).padStart(2, "0"); heure = d.getHours(); jour = JOURS[d.getDay()];
+    }
+    return {
+      zone: String(ctx.zone || "sans-zone"),
+      famille: String(famille || "autre"),
+      date: annee + "-" + mois + "-" + jourMois,
+      jour,
+      tranche: String(heure).padStart(2, "0") + "-" + String((heure + 1) % 24).padStart(2, "0"),
+    };
+  }
+
   root.AutourMaintenant = Object.freeze({
+    CATEGORIES_EXPLORATION, explorerCategorie, MESURES, creneauMesure,
     ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES, SEUIL_DEMARRAGE,
     phaseDemarrage, estEvenementHabitant, estVerrouille,
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,

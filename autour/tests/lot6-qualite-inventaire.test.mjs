@@ -302,7 +302,8 @@ test("le panneau Explorer existe sur toutes les largeurs", () => {
   assert.doesNotMatch(html, /#selecteurSurface,#fabCreer,#explorerDecouverte\{display:none\}/);
   /* Le sélecteur de surface et le bouton flottant, eux, restent mobiles : le
      desktop a ses six entrées de navigation, qui font le même travail. */
-  assert.match(html, /#selecteurSurface,#fabCreer\{display:none\}/);
+  assert.match(html, /#fabCreer\{display:none\}/);
+  assert.doesNotMatch(html, /#explorerDecouverte\{display:none\}/);
 });
 
 /* ---- Ce que le lot ne devait pas toucher -------------------------------- */

@@ -654,9 +654,13 @@ test("le module est chargé par la page, avec son empreinte", () => {
   assert.match(html, /<script src="territoire\.js\?v=[a-f0-9]{8}" defer><\/script>/);
 });
 
-test("le bouton se pose à côté de « ⚡ Maintenant », pas ailleurs", () => {
+test("le bouton se pose parmi les besoins rapides, avant Solidarité", () => {
+  /* Il se posait après « ⚡ Maintenant », qui a quitté les besoins rapides :
+     il prend désormais la place juste avant Solidarité, et reste la seule
+     pastille du panneau mobile pendant la période où il existe. */
   assert.match(html, /function besoinsDuMoment\(\)\{/);
-  assert.match(html, /const apresMaintenant = rapides\.findIndex\(x=>x\.id === "maintenant"\);/);
+  assert.match(html, /const avantAide = rapides\.findIndex\(x=>x\.id === "aide"\);/);
+  assert.match(html, /function capsuleTerritorialePanneau\(\)\{/);
   assert.match(html, /besoinsDuMoment\(\)\.map\(b=>\{/);
 });
 

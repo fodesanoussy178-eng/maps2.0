@@ -199,8 +199,9 @@ test("sans offre réelle, rien n'est inventé", () => {
 /* ---- F · La capsule ----------------------------------------------------- */
 
 test("la capsule vient APRÈS les trois résultats, jamais dedans", () => {
+  // les envies et la frise se glissent entre les résultats et la capsule
   assert.match(app,
-    /ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+\s*\n\s*blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\)/);
+    /capsuleTerritorialePanneau\(\)\+\s*\n\s*blocMaintenantAccueil\(\)\+blocCategoriesMaintenant\(\)\+\s*\n\s*blocPlusTardMaintenant\(\)\+blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\);/);
   /* Elle est un bloc à part : elle ne peut pas prendre la place d'un
      résultat, parce qu'elle n'est pas dans la même liste. */
   const cap = app.slice(app.indexOf("function blocCaPourraitTePlaire"),

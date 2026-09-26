@@ -57,8 +57,13 @@ test("Maintenant se limite à ses résultats puis à l'aide", () => {
      trois propositions ; `blocCaPourraitTePlaire` est un bloc distinct, posé
      entre elles et l'aide. L'ordre littéral EST la garantie : une capsule
      insérée avant, ou à l'intérieur, prendrait la place d'un résultat. */
+  /* Depuis que Maintenant est le cœur d'Autour, deux blocs se glissent entre
+     les résultats et la capsule — les envies, puis la frise — et les onglets
+     de temps ne précèdent plus le bloc. L'ordre protégé ne change pas : les
+     trois propositions d'abord, rien ne vient avant elles qu'un contexte
+     territorial temporaire, et l'aide en dernier. */
   assert.match(html,
-    /ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+\s*\n\s*blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\)/);
+    /capsuleTerritorialePanneau\(\)\+\s*\n\s*blocMaintenantAccueil\(\)\+blocCategoriesMaintenant\(\)\+\s*\n\s*blocPlusTardMaintenant\(\)\+blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\);/);
   const debut = html.indexOf('if(feuilleNiveau === "racine"){');
   const fin = html.indexOf('}else if(feuilleNiveau === "plus"){', debut);
   const racine = html.slice(debut, fin);

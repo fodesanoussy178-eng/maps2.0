@@ -227,18 +227,32 @@ test("le bottom sheet propose au lieu de poser une question",()=>{
      « ça pourrait te plaire » après les propositions. L'ordre protégé ici est
      le même : les onglets, puis les trois résultats réels, et l'accès à Aide
      en dernier — jamais une question à la place d'un résultat. */
-  assert.match(html,/corps\.innerHTML = besoinsRapidesPanneauHTML\(\)\+\s*\n?\s*ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+\s*\n?\s*blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\);/);
+  /* Maintenant est désormais le cœur d'Autour : les trois résultats réels
+     d'abord, puis les envies et la frise pour aller plus loin, la capsule, et
+     l'accès à Aide en dernier — jamais une question à la place d'un résultat. */
+  assert.match(html,/corps\.innerHTML = capsuleTerritorialePanneau\(\)\+\s*\n?\s*blocMaintenantAccueil\(\)\+blocCategoriesMaintenant\(\)\+\s*\n?\s*blocPlusTardMaintenant\(\)\+blocCaPourraitTePlaire\(\)\+blocAideAccueil\(\);/);
   assert.match(html,/function blocAideAccueil\(\)\{/);
-  // La carte est le premier écran : le panneau ne s'ouvre qu'après un geste.
+  /* OUVRIR AUTOUR, C'EST OBTENIR UNE RÉPONSE. Le panneau s'ouvre de lui-même,
+     par la même porte qu'un geste — sauf lien partagé, entrée profonde, ou
+     Maintenant refermé dans la session — et après la première peinture. */
   assert.match(html,/if\(feuilleNiveau === null && !modeNav && !modePose\)\{\s*\n\s*majEnteteLieu\(\);\s*\n\s*majAccueil\(\);/);
+  assert.match(html,/if\(!partage && !entreeProfonde\(\) && !maintenantFermeCetteSession\(\)\)\s*\n\s*apresPeinture\(/);
+  assert.match(html,/ouvrirSurfaceMaintenant\(\{auto:true\}\)/);
   assert.doesNotMatch(html,/if\(rapide\) ouvrirFeuille2\("racine"\)/);
   assert.doesNotMatch(html,/else ouvrirAccueilFeuille\(\);/);
 });
 
-test("« Pour toi, maintenant » peut se fermer sur mobile",()=>{
+test("Maintenant peut se fermer, sur toutes les largeurs, et le choix tient",()=>{
   assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:absolute/);
   assert.match(html,/#feuilleBesoins\.accueil \.fb-x\{box-shadow/);
-  assert.match(html,/\$\("#fbFermer"\)\.onclick = fermerFeuille2;/);
+  assert.match(html,/\$\("#fbFermer"\)\.onclick = fermerFeuilleVolontairement;/);
+  // la croix se voit : un rond cerné, sur téléphone comme sur ordinateur
+  assert.match(html,/#feuilleBesoins\.accueil \.fb-x\{display:grid;place-items:center;width:44px;height:44px;/);
+  assert.match(html,/@media \(min-width:1100px\)\{\s*\n\s*#feuilleBesoins\.accueil \.fb-x\{display:grid\}/);
+  // refermer volontairement est retenu pour la session
+  const fermer = /function fermerFeuilleVolontairement\(\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(fermer, /sessionStorage\.setItem\(CLE_MAINTENANT_FERME, "1"\)/);
+  assert.match(fermer, /fermerFeuille2\(\);/);
   // la règle mobile est réinitialisée dans le panneau desktop
   assert.match(html,/#feuilleBesoins\.accueil \.fb-tete\{position:relative;top:auto;right:auto/);
 });
@@ -278,7 +292,8 @@ test("la mise en page tient compte des safe areas et de la hauteur réelle",()=>
   assert.match(html,/function mesurerHeader/);
   // les bandeaux se posent sous le bord bas mesuré de l'en-tête, plus sous une
   // hauteur devinée — et plus sous sa seule hauteur, qui ignorait son décalage
-  assert.match(html,/top:calc\(var\(--header-bas\) \+ 10px\)/);
+  assert.match(html,/--sous-entete:calc\(var\(--header-bas\) \+ 10px\);/);
+  assert.match(html,/top:var\(--sous-entete\)/);
   assert.match(html,/setProperty\("--header-height", h\.offsetHeight\+"px"\)/);
 });
 
@@ -409,7 +424,9 @@ test("ce qui se range sous l'en-tête s'accroche à son bord bas, pas à sa haut
      bord bas de l'en-tête par défaut — donc la règle est intacte — et le
      mobile lui ajoute la hauteur du sélecteur. */
   assert.match(html,/--sous-entete:calc\(var\(--header-bas\) \+ 10px\);/);
-  assert.match(html,/:root\{--sous-entete:calc\(var\(--header-bas\) \+ 10px \+ 48px \+ 8px\)\}/);
+  /* Le sélecteur de surface a disparu avec la refonte de Maintenant : plus
+     rien n'occupe ce créneau sur mobile, la variable garde sa valeur de base. */
+  assert.doesNotMatch(html,/:root\{--sous-entete:calc\(var\(--header-bas\) \+ 10px \+ 48px \+ 8px\)\}/);
   for(const sel of ["#bandeauGeo,#bandeauVide,#onboardingLocalisation","#charge"])
     assert.ok(html.includes(sel+"{position:absolute;top:var(--sous-entete)") ||
               html.includes(sel+"{position:absolute;left:16px;right:16px;\n  top:var(--sous-entete)"),
@@ -1867,15 +1884,20 @@ test("pendant le chargement, un squelette — jamais « rien autour »",()=>{
   // le groupe temporel aussi : on ne parle pas de vide pendant qu'on charge,
   // et l'ignorance de la position passe avant l'ignorance des données
   assert.match(html,/if\(etatGroupe === ETATS_DONNEES\.LOCATION_LOADING \|\|\s*\n\s*etatGroupe === ETATS_DONNEES\.DATA_LOADING\) return squeletteHTML\(3\);/);
-  // et l'accueil reste disponible sans attendre Overpass lorsqu'on le demande
-  assert.match(html,/La carte reste le premier écran\./);
-  assert.match(html,/aucun panneau ne recouvre la carte au/);
+  /* Et Maintenant s'ouvre sans attendre Overpass : son bloc réserve sa place
+     et dit « on cherche » par ses barres grises, jamais « rien autour ». */
+  assert.match(html,/OUVRIR AUTOUR, C'EST OBTENIR UNE RÉPONSE\./);
+  assert.match(html,/Autour regarde ce qui est possible…/);
 });
 
-test("l'accueil propose quatre besoins rapides",()=>{
+test("l'accueil propose trois besoins rapides, sans répéter Maintenant",()=>{
   assert.match(html,/const BESOINS_RAPIDES = \[/);
-  for(const l of ["Manger","Sortir","Maintenant","Solidarité"])
-    assert.match(html,new RegExp('label:"'+l+'"'), l);
+  const rapides = html.slice(html.indexOf("const BESOINS_RAPIDES = ["),
+    html.indexOf("];", html.indexOf("const BESOINS_RAPIDES = [")));
+  for(const l of ["Manger","Sortir","Solidarité"])
+    assert.match(rapides,new RegExp('label:"'+l+'"'), l);
+  assert.doesNotMatch(rapides,/id:"maintenant"/,
+    "Maintenant est le panneau lui-même : pas une pastille de plus");
   assert.match(html,/data-testid="besoins-rapides"/);
   assert.match(html,/besoinsRapidesHTML\(\)\+\s*\n\s*ongletsTemps\(\)/);
 });

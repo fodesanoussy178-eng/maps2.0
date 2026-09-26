@@ -55,10 +55,16 @@ test("la capsule Aide annonce au plus trois recommandations et reste actionnable
   assert.ok(index.includes("#btnAide{z-index:950}"));
   assert.ok(index.includes("body.aide #feuilleBesoins"));
   assert.ok(app.includes('poserBesoinsRapides();') && app.includes('marquerNavigation(modeAide ? "aide" : "explorer");'));
-  assert.ok(app.includes('!modeTerritorial && !modeAide)'));
+  /* La capsule est le panneau refermé : jamais à côté du panneau ouvert. */
+  assert.ok(app.includes("badge.hidden = n === 0 || panneauOuvert || ailleurs;"));
 });
 
 test("l’onboarding ne recouvre pas la capsule ni le panneau Aide sur mobile", () => {
-  assert.match(index, /#onboardingLocalisation:not\(\[hidden\]\) ~ #badgeMaintenant\{display:none\}/);
+  /* La capsule a quitté la bande sous l'en-tête, qu'elle partageait avec
+     l'onboarding : elle vit désormais au-dessus de la navigation basse. Il
+     n'y a donc plus rien à masquer de ce côté-là — mais Aide reste la seule
+     surface de premier plan quand elle est ouverte. */
+  assert.doesNotMatch(index, /#onboardingLocalisation:not\(\[hidden\]\) ~ #badgeMaintenant\{display:none\}/);
+  assert.match(index, /#badgeMaintenant\{top:auto;left:8px;right:auto;transform:none;\s*bottom:calc\(16px \+ 76px \+ 44px/);
   assert.match(index, /body\.aide #onboardingLocalisation\{display:none\}/);
 });

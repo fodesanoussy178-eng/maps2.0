@@ -163,7 +163,7 @@ async function nouvelOnglet(navigateur, opts = {}) {
     if (opts.lent) await new Promise((r) => setTimeout(r, opts.lent));
 
     if (/\/api\/lieux|overpass/.test(url)) return json({ elements: lieux(opts.lieux ?? 12) });
-    if (/rpc\/evenements_proches/.test(url))
+    if (/rpc\/(evenements_proches|evenements_locaux)/.test(url))
       return json(evenements(opts.enCours ?? 5, opts.evenementsA));
     if (/rpc\/publications_proches/.test(url)) return json([]);
     if (/\/api\/commune/.test(url)) return json({ nom: "Ville d'essai" });
@@ -329,7 +329,11 @@ console.log("\n──── 2. aucune donnée ────");
     ok("aucun emplacement n'est rempli artificiellement", b.lignes === 0,
        b.titres.join(" | "));
     ok("il dit qu'il n'y a rien, plutôt que de rester vide", b.rien === true);
-    ok("il occupe toujours la même place", b.hauteur >= 200, b.hauteur + " px");
+    /* Présent et lisible, mais sans mimer trois lignes vides : une fois la
+       réponse connue, le bloc fait la taille de ce qu'il dit (règle gardée
+       par tests/fluidite.test.mjs, « .mn-rien » sans `flex:1`). */
+    ok("il reste à sa place, sans mimer une liste absente",
+       b.hauteur > 40 && b.hauteur < 200, b.hauteur + " px");
   }
   const texte = await page.evaluate(() =>
     (document.querySelector('[data-testid="maintenant-liste"]') || {}).textContent || "");
@@ -354,7 +358,11 @@ console.log("\n──── 3. géolocalisation refusée ────");
   ok("le bloc est toujours là", !!b);
   if (b) {
     ok("l'état n'est PAS « empty »", b.etat !== "empty", b.etat);
-    ok("il occupe toujours la même place", b.hauteur >= 200, b.hauteur + " px");
+    /* Présent et lisible, mais sans mimer trois lignes vides : une fois la
+       réponse connue, le bloc fait la taille de ce qu'il dit (règle gardée
+       par tests/fluidite.test.mjs, « .mn-rien » sans `flex:1`). */
+    ok("il reste à sa place, sans mimer une liste absente",
+       b.hauteur > 40 && b.hauteur < 200, b.hauteur + " px");
   }
   const texte = await page.evaluate(() =>
     (document.querySelector('[data-testid="maintenant-liste"]') || {}).textContent || "");
@@ -404,9 +412,12 @@ console.log("\n──── 5. beaucoup de données ────");
   const b = await etatBloc(page);
   ok("trois résultats au plus, même avec quarante", b && b.lignes === 3,
      b && String(b.lignes));
+  /* Le compte vit dans la ligne d'explication de l'en-tête du panneau
+     (« 3 recommandations près de toi ») : le bloc n'a plus de titre à lui,
+     qui répétait « ⚡ Maintenant » juste sous celui du panneau. */
   ok("le compteur dit la sélection effectivement rendue", await page.evaluate(() => {
-    const t = (document.querySelector(".mn-tete span") || {}).textContent || "";
-    return /\(3\)/.test(t);
+    const t = (document.querySelector("#fbSous") || {}).textContent || "";
+    return /^3 recommandations/.test(t);
   }));
   ok("aucun second niveau « Voir tout »", await page.evaluate(() =>
      !document.querySelector("[data-mn-tout]") && !document.querySelector(".mn-tout")));
