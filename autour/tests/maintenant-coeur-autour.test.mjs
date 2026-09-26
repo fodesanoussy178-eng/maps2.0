@@ -120,7 +120,7 @@ test("l'ordre d'une envie reste celui de la vitrine : ce qui se passe d'abord", 
    ======================================================================== */
 
 test("la liste des gestes comptés est fermée", () => {
-  for (const nom of ["impression", "detail", "favori_ajout", "favori_retrait", "itineraire",
+  for (const nom of ["impression", "detail", "favori_intention", "favori_ajout", "favori_retrait", "itineraire",
     "billetterie", "reservation", "contact", "ignoree", "fermeture", "categorie"])
     assert.ok(M.MESURES.includes(nom), nom);
   assert.ok(Object.isFrozen(M.MESURES));
@@ -150,6 +150,10 @@ test("le journal reste local, agrégé, et s'oublie", () => {
     "rien ne part sur le réseau");
   assert.doesNotMatch(bloc, /positionMoi|pointDeReference|moiId/,
     "aucune position, aucune personne dans la clé");
+  // l'objet entre dans la clé par son identifiant, jamais par son titre
+  assert.match(bloc, /const cle = \[nom, c\.zone, c\.famille, c\.date, c\.jour, c\.tranche, objet\]\.join\("\|"\);/);
+  assert.doesNotMatch(bloc, /\.titre|\.title|textContent\.trim\(\) !==/,
+    "aucune attribution par titre");
   // une impression par proposition et par session, pas une par rendu
   assert.match(bloc, /if\(impressionsSession\.has\(id\)\) return;/);
   // la page de confidentialité le dit
@@ -257,4 +261,116 @@ test("un seul mécanisme, trois dispositions", () => {
   assert.match(section, /height:var\(--mn-carte\)/);
   // ordinateur : la croix existe aussi
   assert.match(section, /@media \(min-width:1100px\)\{\s*\n\s*#feuilleBesoins\.accueil \.fb-x\{display:grid\}/);
+});
+
+/* ==========================================================================
+   5. LA FIABILITÉ DES MESURES
+   ======================================================================== */
+
+/* On exécute la VRAIE fonction d'app.js, extraite du fichier. */
+const idObjet = new Function("return " + /function idObjetMaintenant\(l\)\{[\s\S]*?\n\}/.exec(app)[0])();
+
+test("l'objet est nommé par son identifiant stable, jamais par son titre", () => {
+  assert.equal(idObjet({ id: "evt9f1c", dbId: "9f1c", titre: "Jazz" }), "event:9f1c");
+  assert.equal(idObjet({ id: "pub42", dbId: 42, titre: "Jazz" }), "publication:42");
+  assert.equal(idObjet({ id: "evt77", dbId: "77", publication_id: 12 }), "publication:12");
+  assert.equal(idObjet({ id: "place-abc", source: "places" }), "place:abc");
+  assert.equal(idObjet({ id: "n3000", source: "osm", titre: "Jazz" }), "osm:n3000");
+  assert.equal(idObjet({ id: "ChIJx", source: "google" }), "google:ChIJx");
+  // deux homonymes ne se confondent pas
+  assert.notEqual(idObjet({ id: "evt1", dbId: "1", titre: "Jazz" }),
+                  idObjet({ id: "evt2", dbId: "2", titre: "Jazz" }));
+  assert.equal(idObjet(null), "");
+});
+
+test("une action dans une fiche est attribuée par l'identifiant de la fiche", () => {
+  const ecrans = readFileSync(new URL("../differe/ecrans.js", import.meta.url), "utf8");
+  assert.match(ecrans, /<div class="d-lieu" id="ficheLieu" data-lieu="'\+esc\(l\.id\)\+'">/);
+  const garde = app.slice(app.indexOf("/* Ce qu'on fait DANS une fiche ouverte depuis Maintenant."),
+    app.indexOf("/* ---- Ce que dit l'en-tête de Maintenant"));
+  assert.match(garde, /fichesDepuisMaintenant\.has\(fiche\.dataset\.lieu\)/);
+  assert.match(garde, /lieux\.find\(x=>String\(x\.id\) === fiche\.dataset\.lieu\)/);
+  assert.doesNotMatch(garde, /\.titre|querySelector\("\.titre"\)/);
+  assert.doesNotMatch(app, /provenanceDetailMaintenant/);
+});
+
+test("favori_ajout n'est compté qu'une fois le favori réellement enregistré", () => {
+  const coeur = app.slice(app.indexOf('const bouton = e.target.closest && e.target.closest("[data-coeur]");'),
+    app.indexOf("const favorisEnMemoire = new Map();"));
+  // au toucher : une intention, et seulement sans compte
+  assert.match(coeur, /noterMesureMaintenant\("favori_intention", lieu\)/);
+  assert.doesNotMatch(coeur, /"favori_ajout"/);
+  // l'ajout est écrit APRÈS la réponse positive de la base, jamais avant
+  const bascule = /async function basculerFavori\(l\)\{[\s\S]*?\n\}/.exec(app)[0];
+  const ok = bascule.indexOf("if(!ok){");
+  const retourEchec = bascule.indexOf("return;", ok);
+  const compte = bascule.indexOf('noterMesureMaintenant(etait ? "favori_retrait" : "favori_ajout", l)');
+  const compteSansCompte = bascule.indexOf("await exigerCompte(");
+  assert.ok(ok > 0 && compte > retourEchec, "compté après le contrôle d'échec");
+  assert.ok(compteSansCompte > 0 && compteSansCompte < ok,
+    "le chemin sans compte sort avant l'enregistrement : rien n'y est compté");
+});
+
+/* ==========================================================================
+   6. UNE RÉCURRENCE REPLIÉE EN UNE SEULE PLAGE N'EST PAS « EN COURS »
+   Relevé en production le 26/09/2026 : « Marché de Wazemmes », publié par
+   DATAtourisme du 1er janvier 8 h au 31 décembre 15 h, proposé un samedi à
+   16 h 22 avec « jusqu'à 14:00 ».
+   ======================================================================== */
+
+const SAMEDI_16H22 = Date.parse("2026-09-26T14:22:00Z");
+const annee = (id, debutUtc, finUtc, extra) => evenement(id, Object.assign({
+  debutLe: Date.parse("2026-01-01T" + debutUtc + "Z"),
+  finLe: Date.parse("2026-12-31T" + finUtc + "Z"),
+  timezone: "Europe/Paris",
+}, extra || {}));
+const a16h22 = ctx({ maintenant: SAMEDI_16H22 });
+
+test("un marché « toute l'année, 8 h → 15 h » n'est pas en cours à 16 h 22", () => {
+  const marche = annee("marche-wazemmes", "06:00:00", "13:00:00");
+  const v = M.fiable(marche, a16h22);
+  assert.equal(v.retenu, false);
+  assert.equal(v.raison, M.RAISONS.HORS_PLAGE_QUOTIDIENNE);
+  assert.ok(!M.selection([marche], a16h22).some((x) => x.id === "marche-wazemmes"));
+  // et il ne devient pas une « séance » pour autant
+  assert.equal(M.disponible(marche, a16h22).retenu, false);
+});
+
+test("dans sa fenêtre quotidienne, la même plage reste en cours", () => {
+  const halles = annee("halles", "07:00:00", "19:00:00");      // 9 h → 21 h à Paris
+  assert.equal(M.fiable(halles, a16h22).retenu, true);
+});
+
+test("un festival de quelques jours n'est pas concerné, même hors de ses heures", () => {
+  const festival = evenement("sustain", {
+    debutLe: Date.parse("2026-09-23T18:00:00Z"), finLe: Date.parse("2026-09-27T18:00:00Z"),
+    timezone: "Europe/Paris" });
+  assert.equal(M.fiable(festival, a16h22).retenu, true);
+});
+
+test("une plage longue qui passe minuit, ou sans heure distincte, n'est pas filtrée", () => {
+  const nuit = annee("nuit", "20:00:00", "03:00:00");          // 22 h → 5 h
+  assert.equal(M.fiable(nuit, a16h22).retenu, true);
+  const continu = annee("continu", "10:00:00", "10:00:00");
+  assert.equal(M.fiable(continu, a16h22).retenu, true);
+});
+
+test("la famille d'une mesure est celle du moteur, pour tout l'objet", () => {
+  const f = /function familleMaintenant\(l\)\{[\s\S]*?\n\}/.exec(app)[0];
+  assert.match(f, /itemsMaintenant\(contexteMaintenant\(\)\)\.find\(i=>String\(i\.id\) === String\(l\.id\)\)/);
+  assert.match(app, /const fam = famille \|\| familleMaintenant\(l\);/);
+});
+
+test("« Gratuit » : sur un lieu OSM, seul le tag fee=no fait foi", () => {
+  const bloc = /function versItemMaintenant\(l, t\)\{[\s\S]*?\n\}/.exec(app)[0];
+  assert.match(bloc, /gratuit: l\.tags && typeof l\.tags === "object"\s*\n\s*\? l\.tags\.fee === "no"/);
+});
+
+test("Safari/iOS : la capsule se retire pendant la recherche, le volet évite l'encoche", () => {
+  const section = css.slice(css.indexOf("MAINTENANT, LE CŒUR D'AUTOUR"));
+  assert.match(section, /body:has\(#rechercheOverlay:not\(\[hidden\]\)\) #badgeMaintenant\{display:none\}/);
+  assert.match(section, /left:calc\(16px \+ env\(safe-area-inset-left, 0px\)\);right:auto;/);
+  assert.match(section, /body:not\(\.aide\) #feuilleBesoins \.fb-corps\{flex:1 1 auto;min-height:0\}/);
+  // color-mix a son repli pour les Safari qui ne le connaissent pas
+  assert.match(section, /background:#F7F8F5;background:color-mix\(/);
 });

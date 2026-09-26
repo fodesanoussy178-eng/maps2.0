@@ -300,7 +300,7 @@ function ouvrirDetail(id){
      garantit que la fiche revient EXACTEMENT dans l'état où on l'a quittée,
      défilement compris. */
   ouvrirFeuille(
-    '<div class="d-lieu" id="ficheLieu">'+
+    '<div class="d-lieu" id="ficheLieu" data-lieu="'+esc(l.id)+'">'+
     (ficheAide ? couvertureAide(l, c) : (estTemporaire(l)
       ? couvertureEvenement(l, c) : couvertureLieu(l, c)))+
     '<div class="d-haut"><span class="tag"><span>'+c.emoji+'</span>'+c.label+'</span>'+

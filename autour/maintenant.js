@@ -260,6 +260,7 @@
     PAS_OUVERT:       "pas_ouvert",
     HORAIRE_INCONNU:  "horaire_inconnu",
     FERME_TROP_TOT:   "ferme_trop_tot",
+    HORS_PLAGE_QUOTIDIENNE: "hors_plage_quotidienne",
     SEANCE_TROP_LOIN: "seance_trop_loin",
     SEANCE_TROP_PROCHE: "seance_trop_proche",
     SANS_NOM:         "sans_nom",
@@ -388,6 +389,31 @@
     if (debut > t) return refus(RAISONS.PAS_COMMENCE);
     if (fin < t) return refus(RAISONS.DEJA_FINI);
 
+    /* UNE RÉCURRENCE REPLIÉE EN UNE SEULE PLAGE N'EST PAS « EN COURS ».
+
+       Mesuré en production le 26/09/2026 à 16 h 22 : DATAtourisme publie
+       « Marché de Wazemmes » (le dimanche, jusqu'à 14 h) comme UN événement
+       du 1er janvier 8 h au 31 décembre 15 h. Les bornes l'encadrent, le
+       backend dit `now` toute l'année — et Maintenant le proposait un samedi
+       après-midi, « jusqu'à 14:00 ».
+
+       Au-delà d'une semaine, une plage dont les heures de début et de fin
+       dessinent une fenêtre dans la journée (8 h → 15 h) décrit un horaire
+       qui se répète, pas un moment continu. Hors de cette fenêtre, ce n'est
+       pas maintenant. Un festival de quatre jours, une nuit qui déborde sur
+       le lendemain ou une plage sans heure distincte ne sont pas concernés.
+       Les jours de la semaine, eux, ne sont pas dans la donnée : cette garde
+       ne les invente pas. */
+    if (fin - debut > PLAGE_RECURRENTE_MS) {
+      const fuseau = item.timezone || item.timeZone || ctx.timeZone || "Europe/Paris";
+      const hDebut = minutesDansJournee(debut, fuseau);
+      const hFin = minutesDansJournee(fin, fuseau);
+      const hNow = minutesDansJournee(t, fuseau);
+      if (hDebut !== null && hFin !== null && hNow !== null && hFin > hDebut &&
+          (hNow < hDebut || hNow > hFin))
+        return refus(RAISONS.HORS_PLAGE_QUOTIDIENNE);
+    }
+
     /* Le lieu fermé, QUAND l'information existe. La plupart des lieux
        OpenStreetMap n'ont aucun horaire : les écarter tous viderait le bloc
        pour rien. On n'écarte donc que ce qu'on sait fermé. */
@@ -405,6 +431,24 @@
   }
 
   function refus(raison) { return { retenu: false, raison, distance: null }; }
+
+  /* Une semaine : au-delà, une plage « de 8 h à 15 h » est un horaire qui se
+     répète, pas un événement qui dure. */
+  const PLAGE_RECURRENTE_MS = 7 * 24 * 3600e3;
+  const formateursHeure = new Map();
+  function minutesDansJournee(ms, fuseau) {
+    try {
+      let f = formateursHeure.get(fuseau);
+      if (!f) {
+        f = new Intl.DateTimeFormat("fr-FR", { timeZone: fuseau, hour: "2-digit",
+          minute: "2-digit", hourCycle: "h23" });
+        formateursHeure.set(fuseau, f);
+      }
+      const parts = {};
+      f.formatToParts(new Date(ms)).forEach((p) => { parts[p.type] = p.value; });
+      return (Number(parts.hour) % 24) * 60 + Number(parts.minute);
+    } catch (e) { return null; }
+  }
 
   /* Un horodatage utilisable, ou `null`. Volontairement strict : seul un
      nombre fini et strictement positif compte. `null`, `undefined`, `""` et
@@ -1305,13 +1349,19 @@
      une envie, un jour de semaine et une tranche d'une heure — la maille à
      laquelle une visibilité pourrait un jour avoir un prix (« Lille-centre ·
      vendredi · 19–20 h · Sortir » ne vaut pas « mardi · 10–11 h »). Aucune
-     position, aucun identifiant de personne, aucun lieu précis n'y entre.
+     position ni aucun identifiant de personne n'y entre.
+
+     L'OBJET, lui, est nommé par son identifiant stable (publication,
+     événement canonique, lieu) — jamais par son titre : c'est ce qui relie
+     impression, fiche, favori et itinéraire au même lieu ou au même
+     événement. `favori_intention` est un cœur touché sans compte ;
+     `favori_ajout` n'est écrit qu'une fois l'enregistrement confirmé.
 
      Rien ici n'achète ni ne classe quoi que ce soit : `selection()` ne lit
      aucune de ces données, et un test le garantit.
      =================================================================== */
   const MESURES = Object.freeze([
-    "impression", "detail", "favori_ajout", "favori_retrait", "itineraire",
+    "impression", "detail", "favori_intention", "favori_ajout", "favori_retrait", "itineraire",
     "billetterie", "reservation", "contact", "ignoree", "fermeture", "categorie",
   ]);
   const JOURS = Object.freeze(["dim", "lun", "mar", "mer", "jeu", "ven", "sam"]);

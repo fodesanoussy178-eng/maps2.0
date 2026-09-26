@@ -457,13 +457,45 @@ d'`autour.css`, « MAINTENANT, LE CŒUR D'AUTOUR ».
 
 ### Les mesures
 
-Liste fermée `AutourMaintenant.MESURES` : impression, détail, favori (ajout /
-retrait), itinéraire, billetterie, réservation, contact, ignorée, fermeture,
-envie consultée. Chaque geste incrémente un compteur **local** par
-`(geste, zone, famille, jour, tranche d'une heure)` — `creneauMesure()`.
-Aucune position, aucun identifiant, aucun lieu précis ; trente jours de
-rétention ; **rien n'est envoyé**. Lecture : `window.AutourMesuresMaintenant()`.
-La page de confidentialité le dit.
+Liste fermée `AutourMaintenant.MESURES` : impression, détail, favori
+(intention / ajout / retrait), itinéraire, billetterie, réservation, contact,
+ignorée, fermeture, envie consultée. Chaque geste incrémente un compteur
+**local** par `(geste, zone, famille, jour, tranche d'une heure, objet)`.
+Trente jours de rétention ; **rien n'est envoyé**. Lecture :
+`window.AutourMesuresMaintenant()`. La page de confidentialité le dit.
+
+- **L'objet est nommé par son identifiant stable, jamais par son titre**
+  (`idObjetMaintenant`) : `publication:<id>`, `event:<uuid>` (table
+  `evenements`), `place:<id>` (inventaire `places`), ou `<source>:<id>` pour un
+  lieu OSM / Google — la même référence que celle d'un favori. Deux homonymes
+  ne se confondent pas.
+- Une action dans une fiche (itinéraire, billetterie, réservation, contact,
+  « Favori ») est attribuée par l'identifiant que porte la fiche
+  (`#ficheLieu[data-lieu]`), et seulement si cette fiche a été ouverte depuis
+  Maintenant.
+- La **famille** d'une mesure est celle que le moteur donne à l'objet : la même
+  de l'impression à l'itinéraire.
+- **`favori_ajout` n'est écrit qu'après la confirmation de la base**
+  (`basculerFavori`, après `Store.ajouterFavori`). Un cœur touché sans compte
+  est un `favori_intention` ; si le compte est créé et l'enregistrement réussi,
+  le favori est alors — et alors seulement — compté.
+
+### Deux garde-fous posés après le test en données réelles
+
+Relevés le 26/09/2026 à 16 h 22 sur les réponses réelles de production (Lille) :
+
+- **Une récurrence repliée en une seule plage n'est pas « en cours ».**
+  DATAtourisme publie des marchés comme un seul événement du 1er janvier au
+  31 décembre ; le backend les dit `now` toute l'année. « Marché de Wazemmes »
+  (dimanche, jusqu'à 14 h) était proposé un samedi à 16 h 22. Au-delà de 7
+  jours, une plage dont les heures dessinent une fenêtre quotidienne est
+  refusée hors de cette fenêtre (`hors_plage_quotidienne`). Les jours de la
+  semaine ne sont pas dans la donnée : ce garde-fou ne les invente pas, et la
+  correction de fond est à la source (les occurrences).
+- **« Gratuit » sur un lieu OSM : seul `fee=no` fait foi.** Les tuiles
+  `zones/*.json` versionnées portent `gratuit:true` sur la quasi-totalité des
+  lieux (héritage d'un ancien générateur). Quand le lieu porte ses tags, ils
+  font autorité.
 
 La suite — faire de ces créneaux un inventaire — est décrite dans
 [`maintenant-marche.md`](./maintenant-marche.md). Rien de commercial n'est

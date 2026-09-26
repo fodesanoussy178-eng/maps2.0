@@ -3036,6 +3036,11 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 #badgeMaintenant .bm-sous{overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #badgeMaintenant .bm-ouvrir{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;
   border-radius:50%;background:#F4F3F0;color:var(--ink)}
+/* PENDANT UNE RECHERCHE, LA CAPSULE SE RETIRE. Elle est au-dessus de la
+   couche de recherche (670 contre 660) : elle restait posée sur les
+   suggestions, et sur iOS un élément fixé en bas remonte au-dessus du clavier
+   virtuel. On cherche, puis on revient : elle revient avec la carte. */
+body:has(#rechercheOverlay:not([hidden])) #badgeMaintenant{display:none}
 @media (max-width:1099px){
   /* Un tiroir, une fiche ou un modal occupent le bas : la capsule se retire
      le temps qu'ils soient là, et revient avec la carte. */
@@ -3121,14 +3126,21 @@ button:active, [role="button"]:active, summary:active{user-select:none;-webkit-u
 @media (min-width:768px) and (max-width:1099px) and (orientation:landscape){
   body:not(.aide) #feuilleBesoins,body:not(.aide) #feuilleBesoins.accueil,
   body:not(.aide) #feuilleBesoins.deplie,body:not(.aide) #feuilleBesoins.reduite{
-    left:16px;right:auto;width:min(440px,calc(50% - 16px));transform:none;
+    left:calc(16px + env(safe-area-inset-left, 0px));right:auto;
+    width:min(440px,calc(50% - 16px - env(safe-area-inset-left, 0px)));transform:none;
     top:calc(var(--header-bas) + 20px);height:auto;max-height:none;
     border:1px solid var(--bord);border-radius:24px;
     box-shadow:0 10px 36px rgba(20,30,25,.18)}
   /* Un volet ancré ne se tire pas : la poignée serait un geste qui n'existe pas. */
   body:not(.aide) #feuilleBesoins .fb-poignee{display:none}
   body:not(.aide) #feuilleBesoins .fb-tete{padding-top:14px}
-  #badgeMaintenant{bottom:auto;top:calc(var(--header-bas) + 20px);left:16px}
+  /* Sur un téléphone couché, le volet ne fait que quelques lignes de haut :
+     son corps doit défiler, et non déborder sous la navigation. */
+  body:not(.aide) #feuilleBesoins .fb-corps{flex:1 1 auto;min-height:0}
+  /* L'encoche d'un iPhone couché est à gauche : le volet et la capsule
+     commencent après elle (`viewport-fit=cover` est posé dans index.html). */
+  #badgeMaintenant{bottom:auto;top:calc(var(--header-bas) + 20px);
+    left:calc(16px + env(safe-area-inset-left, 0px))}
   /* Le volet couvre la gauche : l'attribution passe à droite, au-dessus de
      la navigation, là où la carte est dégagée. */
   #attribution{left:auto;right:10px;bottom:calc(16px + 76px + 8px + var(--safe-b))}

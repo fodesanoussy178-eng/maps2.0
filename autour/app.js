@@ -214,7 +214,7 @@ const ECRANS_DIFFERES = [
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=20b68f7b"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d070821e"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -817,6 +817,13 @@ async function basculerFavori(l){
     toast("Impossible d’enregistrer ce favori");
     return;
   }
+  /* LA BASE A DIT OUI : c'est maintenant, et seulement maintenant, qu'un
+     favori venu de Maintenant est compté. Un compte abandonné, un refus de la
+     base ou une coupure réseau n'arrivent jamais jusqu'ici. */
+  if(coeursDepuisMaintenant.has(cle)){
+    coeursDepuisMaintenant.delete(cle);
+    noterMesureMaintenant(etait ? "favori_retrait" : "favori_ajout", l);
+  }
   majNavBas();
 }
 
@@ -851,10 +858,14 @@ document.addEventListener("click", (e)=>{
   const cle = bouton.dataset.coeur;
   const lieu = lieux.find(x=>cleFavori(x) === cle) || favorisEnMemoire.get(cle);
   if(!lieu) return;
-  /* Le cœur de Maintenant est aussi un signal : il est compté, au grain d'un
-     créneau, comme les autres gestes de la vitrine. */
-  if(bouton.closest(".mn") && typeof noterMesureMaintenant === "function")
-    noterMesureMaintenant(favorisIds.has(cle) ? "favori_retrait" : "favori_ajout", lieu);
+  /* Le cœur de Maintenant est aussi un signal — mais un favori n'est compté
+     « ajouté » qu'une fois ENREGISTRÉ (voir `basculerFavori`). Sans compte,
+     l'appui n'est qu'une intention : il est noté comme telle, et le favori ne
+     sera compté que si le compte est créé et l'enregistrement réussi. */
+  if(bouton.closest(".mn") && typeof noterMesureMaintenant === "function"){
+    coeursDepuisMaintenant.add(cle);
+    if(!favorisIds.has(cle) && !estConnecte()) noterMesureMaintenant("favori_intention", lieu);
+  }
   basculerFavori(lieu);
 });
 const favorisEnMemoire = new Map();
@@ -14686,8 +14697,16 @@ function versItemMaintenant(l, t){
     programme_now:Array.isArray(l.programme_now) ? l.programme_now : null,
     /* « Gratuit », seulement quand une source l'a écrit : la fiche canonique
        (`is_free`) ou OpenStreetMap (`fee=no`). Il sert au second niveau de
-       Maintenant, jamais à la sélection des trois places. */
-    gratuit: gratuitDe(l) || l.gratuit === true,
+       Maintenant, jamais à la sélection des trois places.
+
+       QUAND LE LIEU PORTE SES TAGS OSM, ILS FONT AUTORITÉ. Relevé le 26/09/2026 :
+       les tuiles `zones/*.json` versionnées marquent `gratuit:true` sur 98 lieux
+       sur 99 à Lille — un Domino's compris —, héritage d'un ancien générateur
+       (l'actuel ne le pose que sur `fee=no`). Le drapeau recopié ne vaut donc
+       rien quand le tag, lui, est là. */
+    gratuit: l.tags && typeof l.tags === "object"
+      ? l.tags.fee === "no"
+      : (gratuitDe(l) || l.gratuit === true),
   };
 }
 
@@ -15284,11 +15303,16 @@ function blocMaintenantAccueil(){
    comme les compteurs territoriaux ; ce n'est pas le cas aujourd'hui. */
 const CLE_MESURES_MAINTENANT = "autour:maintenant-mesures:v1";
 const MESURES_RETENTION_J = 30;
-const MESURES_MAX = 600;
+const MESURES_MAX = 2000;
 const impressionsSession = new Set();
-let presentesMaintenant = new Map();     // id → famille, vus depuis l'ouverture
+let presentesMaintenant = new Map();     // id → lieu, montrés depuis l'ouverture
 const ouvertesMaintenant = new Set();    // id ouverts depuis l'ouverture
-let provenanceDetailMaintenant = null;   // {titre, famille} de la fiche ouverte
+/* Les fiches ouvertes depuis Maintenant pendant la session, par identifiant de
+   lieu : ce qu'on y fait ensuite (itinéraire, billetterie…) leur revient. */
+const fichesDepuisMaintenant = new Set();
+/* Les cœurs touchés dans Maintenant, par clé de favori : le geste n'est compté
+   « favori_ajout » qu'une fois l'enregistrement confirmé par la base. */
+const coeursDepuisMaintenant = new Set();
 
 function journalMesuresMaintenant(){
   try{
@@ -15297,14 +15321,40 @@ function journalMesuresMaintenant(){
   }catch(e){ return {}; }
 }
 
+/* L'OBJET, PAR SON IDENTIFIANT RÉEL — JAMAIS PAR SON TITRE.
+
+   Deux concerts peuvent s'appeler « Jazz au parc ». Pour relier impression,
+   fiche, favori, itinéraire et billetterie au même objet, on prend
+   l'identifiant stable que les données portent déjà, sans en fabriquer :
+
+     publication:<id>  une publication d'habitant (table `publications`)
+     event:<uuid>      un événement canonique (`evenements`)
+     place:<id>        un lieu de l'inventaire persistant (`places`)
+     <source>:<id>     un lieu d'une source externe (OSM, Google…) — la même
+                       référence que celle sous laquelle un favori est rangé.
+
+   C'est l'identifiant d'un lieu ou d'un événement public, jamais celui d'une
+   personne. */
+function idObjetMaintenant(l){
+  if(!l) return "";
+  const id = l.id == null ? "" : String(l.id);
+  if(l.publication_id) return "publication:"+l.publication_id;
+  if(l.dbId != null && l.dbId !== "" && id.startsWith("pub")) return "publication:"+l.dbId;
+  if(l.dbId != null && l.dbId !== "" && id.startsWith("evt")) return "event:"+l.dbId;
+  if(id.startsWith("place-")) return "place:"+id.slice(6);
+  return id ? (l.source || "osm")+":"+id : "";
+}
+
 function noterMesureMaintenant(nom, l, famille){
   const M = window.AutourMaintenant;
   if(!M || !M.MESURES || M.MESURES.indexOf(nom) < 0) return;
-  const fam = famille || (l && M.familleDe ? M.familleDe({categorie:l.cat,
-    canonicalCategory:l.canonicalCategory, canonicalFamily:l.canonicalFamily}) : null);
+  const fam = famille || familleMaintenant(l);
   const c = M.creneauMesure({maintenant:Date.now(), timeZone:fuseauZoneActive(),
     zone:idZoneActive()}, fam);
-  const cle = [nom, c.zone, c.famille, c.date, c.jour, c.tranche].join("|");
+  /* Le séparateur ne peut pas apparaître dans un identifiant : on le neutralise
+     plutôt que de laisser une clé se couper au mauvais endroit. */
+  const objet = idObjetMaintenant(l).replace(/\|/g, "¦");
+  const cle = [nom, c.zone, c.famille, c.date, c.jour, c.tranche, objet].join("|");
   const journal = journalMesuresMaintenant();
   journal[cle] = (Number(journal[cle]) || 0) + 1;
   /* Trente jours, pas davantage : au-delà, on garderait l'habitude d'une
@@ -15323,10 +15373,16 @@ function noterMesureMaintenant(nom, l, famille){
 }
 window.AutourMesuresMaintenant = ()=>journalMesuresMaintenant();
 
+/* La famille d'un objet est celle que le moteur lui donne — la même qui sert à
+   la diversité des trois places. La relire sur la fiche brute donnait
+   « event » à la fiche et « sortir » à l'impression du même concert : la
+   chaîne impression → fiche → itinéraire se coupait en deux familles. */
 function familleMaintenant(l){
   const M = window.AutourMaintenant;
-  return l && M && M.familleDe ? M.familleDe({categorie:l.cat,
-    canonicalCategory:l.canonicalCategory, canonicalFamily:l.canonicalFamily}) : null;
+  if(!l || !M || !M.familleDe) return null;
+  const item = itemsMaintenant(contexteMaintenant()).find(i=>String(i.id) === String(l.id));
+  return M.familleDe(item || {categorie:l.cat,
+    canonicalCategory:l.canonicalCategory, canonicalFamily:l.canonicalFamily});
 }
 
 /* Une impression par proposition et par session : le panneau se redessine
@@ -15334,7 +15390,7 @@ function familleMaintenant(l){
 function noterImpressionMaintenant(l){
   if(!l || l.id == null) return;
   const id = String(l.id);
-  presentesMaintenant.set(id, familleMaintenant(l));
+  presentesMaintenant.set(id, l);
   if(impressionsSession.has(id)) return;
   impressionsSession.add(id);
   noterMesureMaintenant("impression", l);
@@ -15343,8 +15399,7 @@ function noterImpressionMaintenant(l){
 function noterDetailMaintenant(l){
   if(!l) return;
   ouvertesMaintenant.add(String(l.id));
-  provenanceDetailMaintenant = {titre:String(l.titre || l.title || "").trim(),
-    famille:familleMaintenant(l)};
+  fichesDepuisMaintenant.add(String(l.id));
   noterMesureMaintenant("detail", l);
 }
 
@@ -15353,32 +15408,36 @@ function noterDetailMaintenant(l){
    proposition souvent ignorée à cette heure-là est une proposition à revoir. */
 function noterFermetureMaintenant(){
   noterMesureMaintenant("fermeture", null, "panneau");
-  presentesMaintenant.forEach((famille, id)=>{
-    if(!ouvertesMaintenant.has(id)) noterMesureMaintenant("ignoree", null, famille);
+  presentesMaintenant.forEach((l, id)=>{
+    if(!ouvertesMaintenant.has(id)) noterMesureMaintenant("ignoree", l);
   });
   presentesMaintenant = new Map();
   ouvertesMaintenant.clear();
 }
 
-/* Ce qu'on fait DANS une fiche ouverte depuis Maintenant. Le titre sert de
-   garde : une fiche ouverte ensuite depuis la carte n'est pas attribuée. */
+/* Ce qu'on fait DANS une fiche ouverte depuis Maintenant. La fiche porte
+   l'identifiant de son lieu (`data-lieu`) : c'est lui, et lui seul, qui dit
+   si l'action revient à une proposition de Maintenant. Un homonyme ouvert
+   depuis la carte n'est pas attribué. */
 document.addEventListener("click", (e)=>{
-  const p = provenanceDetailMaintenant;
-  if(!p || !e.target || !e.target.closest) return;
+  if(!fichesDepuisMaintenant.size || !e.target || !e.target.closest) return;
   const fiche = e.target.closest("#ficheLieu");
-  if(!fiche) return;
-  const titre = fiche.querySelector(".titre");
-  if(!titre || titre.textContent.trim() !== p.titre) return;
+  if(!fiche || !fiche.dataset.lieu || !fichesDepuisMaintenant.has(fiche.dataset.lieu)) return;
+  const l = lieux.find(x=>String(x.id) === fiche.dataset.lieu);
+  if(!l) return;
   const cible = e.target.closest("a,button");
-  if(!cible) return;
+  if(!cible || cible.disabled) return;
   const href = cible.getAttribute("href") || "";
   const texte = cible.textContent.trim();
+  /* « Favori » de la fiche est un enregistrement local, immédiat : il est
+     réel dès l'appui. On lit l'état AVANT que le gestionnaire le bascule. */
   const nom = cible.id === "btnYAller" ? "itineraire"
+    : cible.id === "btnGarder" ? (estGarde(l.id) ? "favori_retrait" : "favori_ajout")
     : /^Billetterie/.test(texte) ? "billetterie"
     : /^Réserver/.test(texte) ? "reservation"
     : /^(tel:|mailto:)/.test(href) || /^Site web/.test(texte) ? "contact"
     : null;
-  if(nom) noterMesureMaintenant(nom, null, p.famille);
+  if(nom) noterMesureMaintenant(nom, l);
 }, true);
 
 /* ---- Ce que dit l'en-tête de Maintenant ---------------------------------

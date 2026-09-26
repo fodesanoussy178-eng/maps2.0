@@ -46,7 +46,8 @@ test("les modes complexes restent chez Maps, ils ne sont pas réimplémentés", 
 test("la feuille de détail porte deux panneaux, pas deux fiches", () => {
   /* La fiche du lieu et les moyens d'y aller sont deux panneaux du MÊME
      rendu : basculer ne reconstruit rien et ne redemande rien. */
-  assert.match(html, /<div class="d-lieu" id="ficheLieu">/);
+  // la fiche porte l'identifiant de son lieu (attribution des mesures)
+  assert.match(html, /<div class="d-lieu" id="ficheLieu" data-lieu="'\+esc\(l\.id\)\+'">/);
   assert.match(html, /<div class="itin" id="ficheItineraire" hidden><\/div>/);
   assert.match(html, /let modeFeuille = "lieu";/);
   assert.match(html, /function basculerModeFeuille\(mode\)\{/);
