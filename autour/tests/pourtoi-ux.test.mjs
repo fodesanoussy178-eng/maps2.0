@@ -53,12 +53,11 @@ test("les actions internes restent séparées de l'ouverture de carte", () => {
 });
 
 test("les surveillances sont rendues avant les recommandations", () => {
-  /* LOT 3 : le sélecteur de temps ouvre le panneau — « ce qui me correspond,
-     ce week-end » est une requête légitime de cette surface. L'ordre que ce
-     test défend est inchangé : les surveillances restent AVANT les
-     recommandations. */
-  assert.match(source, /corps\.innerHTML = tempsPourToi \+ blocSurveillances\(\) \+ contenu;/);
-  assert.match(source, /const tempsPourToi = ongletsTemps\(\);/);
+  /* Les surveillances restent AVANT les recommandations. (Le sélecteur de
+     temps n'ouvre plus ce panneau : Pour toi a son propre horizon, et « À
+     venir » n'appartient qu'à la frise de Maintenant.) */
+  assert.match(source, /corps\.innerHTML = blocSurveillances\(\) \+ contenu;/);
+  assert.doesNotMatch(source, /const tempsPourToi = ongletsTemps\(\);/);
   const bloc = source.slice(
     source.indexOf("function blocSurveillances"),
     source.indexOf("function rendreGroupePourToi"),

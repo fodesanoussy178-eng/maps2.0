@@ -266,7 +266,7 @@ test("tout ce qui s’affiche passe par le filtre de zone", () => {
   assert.match(html, /selectionAccueil\.includes\(l\.id\) && dansZoneActive\(l\)/);
   // les recommandations
   assert.match(html, /lieux\.filter\(l=>dansZoneActive\(l\) && nomExploitable\(l\) && isDiscoveryCandidate\(l\)\)/);
-  assert.match(html, /lieux\.filter\(l=>dansZoneActive\(l\) && estTemporaire\(l\) && nomExploitable\(l\)\)/);
+  assert.match(html, /lieux\.filter\(l=>dansZoneActive\(l\) && estTemporaire\(l\) && nomExploitable\(l\) &&/);
   // les résultats de la feuille
   assert.match(html, /lieux\.filter\(dansZoneActive\)\.filter\(nomExploitable\)/);
   // « Maintenant »

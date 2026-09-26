@@ -6775,6 +6775,8 @@ function estVivant(l){
        laissait passer un événement SANS date : `startsAt` nul ne déclenchait
        aucun refus. C'est ce qui remplissait le bloc d'événements prévus des
        semaines plus tard. */
+    /* « À venir » : now < début ≤ now + 24 h, et rien d'autre (`estAVenir`). */
+    if(creneau === "avenir") return !!(TEMPS.estAVenir && TEMPS.estAVenir(l, t));
     const etat = statutTemps(l, t);
     if(creneau === "maintenant") return TEMPS.estMaintenant(etat.status || etat.statut);
     const fenetre = TEMPS.fenetreSurface
@@ -10929,7 +10931,8 @@ function scoreLieu(l, ctx){
     }else if(l.startsAt && l.startsAt <= ctx.t && (!l.endsAt || l.endsAt >= ctx.t)){
       raisons.push([55,"Ça se passe maintenant"]);
     }else if(l.startsAt && l.startsAt > ctx.t){
-      raisons.push([55,"À venir"]);
+      // « À venir » est une fenêtre de 24 h : au-delà, ce n'en est pas un
+      raisons.push([55, l.startsAt <= ctx.t + 24*3600e3 ? "Dans les 24 h" : "Plus tard"]);
     }else raisons.push([55,"Horaire à vérifier"]);
   }
 
@@ -11257,7 +11260,7 @@ function titrerFeuille(titre, sous){
 /* Ce que la frise montre, en une phrase, sous les onglets. Le nom de
    l'onglet est déjà écrit au-dessus : le répéter en titre ne dirait rien. */
 const DESCRIPTION_FRISE = Object.freeze({
-  avenir:"Dans les prochains jours",
+  avenir:"Dans les prochaines 24 h",
   weekend:"Le week-end qui vient",
   bientot:"Dans les heures qui viennent",
 });
@@ -11808,9 +11811,18 @@ function recommandationsAccueil(limite, options){
   if(!recoBurstCache){ recoBurstCache = new Map(); queueMicrotask(()=>{ recoBurstCache = null; }); }
   let classement = recoBurstCache.get(cleBurst);
   if(!classement){
+    /* « À VENIR » : LE FILTRE TEMPOREL D'ABORD, LE CLASSEMENT ENSUITE.
+       La section `a_venir` du moteur couvrait tout ce qui commence après
+       aujourd'hui — J+2, J+7, J+30 —, et l'écran affichait donc des
+       événements d'octobre un 26 septembre. Seul ce qui commence dans les
+       24 heures entre ici ; les goûts, la distance ou la diversité ne font
+       que l'ordonner, et une fenêtre vide reste vide. */
+    const aVenir = creneau === "avenir";
+    const maintenantMs = Date.now();
     const candidats = groupe
       ? lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l))
-      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l));
+      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l) &&
+          (!aVenir || (TEMPS.estAVenir && TEMPS.estAVenir(l, maintenantMs))));
     classement = rankResults(candidats,{
       intent:groupe ? "explorer" : "sortir",
       intention:intentionCourante,
@@ -11845,7 +11857,10 @@ function recommandationsAccueil(limite, options){
 
   if(!groupe){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
-    const retenus = classement.filter(l=>sections.includes(l.rankSection));
+    // À venir est déjà borné à 24 h en amont : la section descriptive (ce soir,
+    // demain…) ne décide plus de l'appartenance.
+    const retenus = creneau === "avenir" ? classement.slice()
+      : classement.filter(l=>sections.includes(l.rankSection));
     /* « CE WEEK-END » SE LIT DANS L'ORDRE DES HEURES. La fenêtre est courte et
        fermée : on y cherche un programme, et un programme se lit du samedi
        matin au dimanche soir.
@@ -14324,16 +14339,16 @@ function majPourToi(){
      explicitement de suivre, ça passe avant ce qu'Autour propose. */
   panneau.dataset.etat = etat;
   corps.dataset.etat = etat;
-  /* LE SECOND NIVEAU VAUT POUR LES DEUX SURFACES.
+  /* POUR TOI N'EST PAS UNE FRISE DE TEMPS.
 
-     « Maintenant / À venir / Ce week-end » ne décrit pas une surface : il
-     décrit QUAND on regarde. La question se pose donc aussi bien dans
-     « Pour toi » — « ce qui me correspond, ce week-end » est exactement une
-     requête que le produit doit savoir formuler. C'est le même composant,
-     le même `creneau`, le même moteur temporel : rien n'est dupliqué. */
-  const tempsPourToi = ongletsTemps();
-  if(hydratationEnCours) corps.innerHTML = tempsPourToi + contenu;
-  else corps.innerHTML = tempsPourToi + blocSurveillances() + contenu;
+     Ce panneau portait les onglets « Maintenant / À venir / Ce week-end »,
+     liés au même `creneau` que la frise — sans que ses propositions, elles,
+     suivent aucune fenêtre. Choisir « À venir » y affichait donc, sous ce
+     nom, des recommandations à J+5 ou J+10, et sur grand écran la colonne
+     « Pour toi » les montrait à côté de la vraie frise. Pour toi garde son
+     propre horizon ; les fenêtres de temps n'appartiennent qu'à Maintenant. */
+  if(hydratationEnCours) corps.innerHTML = contenu;
+  else corps.innerHTML = blocSurveillances() + contenu;
 
   const nonVues = nouveautesPourToi(propositions).length;
   const toutVu = $("#ptToutVu");
@@ -14353,22 +14368,6 @@ function brancherPourToi(propositions){
   const corps = $("#ptCorps");
   if(!corps) return;
 
-  /* Le créneau change, la surface non. C'est toute la différence avec la
-     porte de la feuille : là-bas, choisir « À venir » fait basculer vers
-     Explorer, parce qu'on a quitté l'instant présent. Ici on reste dans
-     « Pour toi » — on a seulement changé de fenêtre de temps. */
-  corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
-    if(creneau === b.dataset.creneau) return;
-    creneau = b.dataset.creneau;
-    filtreMaintenant = creneau === "maintenant";
-    const barre = b.closest("[role=tablist]");
-    if(barre) barre.querySelectorAll("[data-creneau]").forEach(onglet=>{
-      const actif = onglet === b;
-      onglet.classList.toggle("actif", actif);
-      onglet.setAttribute("aria-selected", String(actif));
-    });
-    apresPeinture(()=>{ majPourToi(); planifierRendu({carte:true}); });
-  });
   const ouvrirDetailPourToi = (id)=>{
     marquerVu([id]);
     if(!NAV_FLOTTANTE.matches) fermerPourToi();
@@ -15695,7 +15694,7 @@ function blocPlusTardMaintenant(){
   if(creneau !== "maintenant" || modeAide) return "";
   return '<nav class="mnt" aria-label="Plus tard">'+
     '<button class="mnt-b" type="button" data-creneau="avenir">'+
-      '<em aria-hidden="true">📅</em><span><b>À venir</b><i>Prochains jours</i></span>'+
+      '<em aria-hidden="true">📅</em><span><b>À venir</b><i>Prochaines 24 h</i></span>'+
       '<u aria-hidden="true">›</u></button>'+
     '<button class="mnt-b" type="button" data-creneau="weekend">'+
       '<em aria-hidden="true">🗓</em><span><b>Ce week-end</b><i>Sam. et dim.</i></span>'+
@@ -15753,6 +15752,13 @@ function statutGroupeHTML(){
       '<br><button data-creneau-vers="avenir">Voir À venir →</button>'+
       '<button data-etat-action="all">Voir tous les lieux</button></div>';
   }
+  /* À venir vide reste vide : on le dit, on propose les deux suites, et on
+     ne va chercher ni plus loin dans le temps ni dans « Pour toi ». */
+  if(creneau === "avenir")
+    return '<div class="fb-statut" data-testid="avenir-vide">'+
+      'Rien de prévu dans les prochaines 24 h autour de toi.'+
+      '<br><button data-avenir-vide="explorer">Explorer</button>'+
+      '<button data-creneau-vers="weekend">Ce week-end</button></div>';
   const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
   return '<p class="fb-statut">Rien d’annoncé pour « '+esc(groupe.label.toLowerCase())+
     ' » dans cette zone.<br>Les événements arrivent au fil des publications.</p>';
@@ -16385,18 +16391,7 @@ function brancherFeuille2(){
 
   /* Le pont depuis « Maintenant » vide vers « À venir ». Il passe par le même
      chemin qu'un appui sur l'onglet : un seul comportement à maintenir. */
-  corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>{
-    const cible = b.dataset.creneauVers;
-    if(creneau === cible) return;
-    creneau = cible;
-    filtreMaintenant = creneau === "maintenant";
-    /* À venir et Ce week-end sont la frise de Maintenant, pas une autre
-       section : la navigation basse reste sur Maintenant. */
-    ongletCourant = "maintenant";
-    categorieMaintenant = null;
-    marquerNavigation(ongletCourant);
-    majFeuille2(); reinitialiserScrollFeuille(); rendre();
-  });
+  corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>allerAuCreneau(b.dataset.creneauVers));
 
   // les quatre groupes de temps : un seul geste, aucune page de plus
   corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
@@ -16545,8 +16540,29 @@ function brancherFeuille2(){
    feuille entière. C'est ce qui permet de remplir la zone des recommandations
    APRÈS coup — le classement arrive une tranche d'inactivité plus tard — sans
    rebrancher tout le panneau, et sans laisser des cartes muettes. */
+/* Le pont d'un état vide vers un autre créneau. Il passe par le même chemin
+   qu'un appui sur l'onglet : un seul comportement à maintenir. */
+function allerAuCreneau(cible){
+  if(!cible || creneau === cible) return;
+  creneau = cible;
+  filtreMaintenant = creneau === "maintenant";
+  /* À venir et Ce week-end sont la frise de Maintenant, pas une autre
+     section : la navigation basse reste sur Maintenant. */
+  ongletCourant = "maintenant";
+  categorieMaintenant = null;
+  marquerNavigation(ongletCourant);
+  majFeuille2(); reinitialiserScrollFeuille(); rendre();
+}
+
 function brancherGestesRecommandations(racine){
   if(!racine) return;
+  /* Les états vides sont posés APRÈS le branchement de la feuille : leurs
+     sorties se branchent ici, avec les cartes. */
+  racine.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>allerAuCreneau(b.dataset.creneauVers));
+  racine.querySelectorAll("[data-avenir-vide]").forEach(b=>b.onclick=()=>{
+    const nav = $('#navBas [data-nb="explorer"]');
+    if(nav) nav.click();
+  });
   racine.querySelectorAll('[role="button"][data-ac]').forEach(x=>x.onkeydown=e=>{
     if(e.key === "Enter" || e.key === " "){ e.preventDefault(); x.click(); }
   });

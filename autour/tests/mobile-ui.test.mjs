@@ -1393,7 +1393,9 @@ test("les événements futurs partent dans des groupes, ils ne disparaissent pas
   assert.match(html,/weekend:\["ce_week_end"\],/);
   assert.match(html,/avenir:\["a_venir"\],/);
   // le rangement vient du moteur temporel, pas d'une règle réécrite ici
-  assert.match(html,/const retenus = classement\.filter\(l=>sections\.includes\(l\.rankSection\)\)/);
+  assert.match(html,/const retenus = creneau === "avenir" \? classement\.slice\(\)\s*: classement\.filter\(l=>sections\.includes\(l\.rankSection\)\)/);
+  // « À venir » n'est pas une section : c'est la fenêtre stricte des 24 h
+  assert.match(html,/\(!aVenir \|\| \(TEMPS\.estAVenir && TEMPS\.estAVenir\(l, maintenantMs\)\)\)/);
   // et à l'intérieur d'un groupe, c'est l'heure qui ordonne
   assert.match(html,/\.sort\(\(a,b\)=>\(a\.rankStart\|\|0\)-\(b\.rankStart\|\|0\)\);/);
   assert.ok(html.indexOf("const SECTIONS_DU_CRENEAU") < html.indexOf("SECTIONS_DU_CRENEAU[creneau]"),

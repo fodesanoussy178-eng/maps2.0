@@ -178,7 +178,8 @@ test("2. un marché fermé aujourd'hui n'y entre pas", () => {
 test("3. un marché demain est À venir, pas Maintenant", () => {
   const marche = depuisSource(date("d", "Marché de producteurs", "2026-09-28T08:00:00", "2026-09-28T13:00:00"));
   assert.equal(retenu(marche, DIMANCHE_10H), false);
-  assert.equal(section(marche, DIMANCHE_10H), "a_venir");
+  // demain 8 h, vu dimanche 10 h : 22 h plus tard, dans la fenêtre « À venir »
+  assert.equal(T.estAVenir(marche, DIMANCHE_10H), true);
 });
 
 test("4. un marché publié toute l'année n'est en cours que ses jours, dans ses heures", () => {
@@ -217,10 +218,12 @@ test("8. un marché nocturne ouvert entre dans Maintenant, Sortir et Manger", ()
   assert.equal(M.candidats([ev], ctx(vingtH)).length, 1);
 });
 
-test("9. un marché de Noël futur est À venir", () => {
+test("9. un marché de Noël futur est À venir la veille, pas deux mois avant", () => {
   const ev = depuisSource(date("x", "Marché de Noël de Lille", "2026-11-20T10:00:00", "2026-11-20T20:00:00"));
   assert.equal(retenu(ev, DIMANCHE_10H), false);
-  assert.equal(section(ev, DIMANCHE_10H), "a_venir");
+  // « À venir », c'est les prochaines 24 h : le 27 septembre, le 20 novembre n'y est pas
+  assert.equal(T.estAVenir(ev, DIMANCHE_10H), false);
+  assert.equal(T.estAVenir(ev, paris("2026-11-19T18:00:00")), true);
   // et le jour même, à 15 h, il est en cours
   assert.ok(retenu(ev, paris("2026-11-20T15:00:00")));
 });
