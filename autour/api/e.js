@@ -102,9 +102,17 @@ async function rpc(nom, corps) {
 export default async function handler(requete) {
   const adresse = new URL(requete.url);
   const id = adresse.searchParams.get("id") || "";
-  const page = await (await fetch(new URL("/index.html", adresse.origin))).text();
+  /* Les cookies suivent : sur un déploiement de prévisualisation protégé,
+     sans eux, la page lue serait l'écran de connexion de Vercel. */
+  const lue = await fetch(new URL("/index.html", adresse.origin),
+    { headers: { cookie: requete.headers.get("cookie") || "" } });
+  const page = await lue.text();
   const entetes = { "content-type": "text/html; charset=utf-8",
     "cache-control": "public, max-age=0, s-maxage=300, stale-while-revalidate=600" };
+  // ce n'est pas la page d'Autour : on la rend telle quelle, sans rien y poser
+  if (!lue.ok || !page.includes('id="navBas"'))
+    return new Response(page, { status: lue.status, headers: { "content-type": "text/html; charset=utf-8",
+      "cache-control": "private, no-store" } });
   if (!UUID.test(id)) return new Response(page, { headers: entetes });
   try {
     const [p] = await rpc("publication_publique", { p_id: id });

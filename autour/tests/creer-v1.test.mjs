@@ -119,7 +119,7 @@ test("la barre de navigation ne recouvre pas le bas des écrans Créer", () => {
 
 test("/api/e : identifiant invalide ou base en panne → la page telle quelle", async () => {
   const { default: handler } = await import("../api/e.js");
-  const page = "<html><head><title>Autour</title></head><body></body></html>";
+  const page = '<html><head><title>Autour</title></head><body><nav id="navBas"></nav></body></html>';
   const avant = globalThis.fetch;
   try {
     let rpc = 0;
@@ -143,5 +143,10 @@ test("/api/e : identifiant invalide ou base en panne → la page telle quelle", 
     assert.match(html, /og:title" content="👥 Apéro"/);
     assert.match(html, /2 participants/);
     assert.match(r3.headers.get("cache-control"), /s-maxage=300/);
+    // une page étrangère (écran de connexion) n'est jamais habillée ni mise en cache
+    globalThis.fetch = async () => new Response("<html><head></head><body>login</body></html>");
+    const r4 = await handler(new Request("https://autour.eu/api/e?id=0f0f0f0f-0000-4000-8000-000000000000"));
+    assert.ok(!(await r4.text()).includes("og:title"));
+    assert.match(r4.headers.get("cache-control"), /no-store/);
   } finally { globalThis.fetch = avant; }
 });
