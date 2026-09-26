@@ -1240,7 +1240,111 @@
     return TEXTES[etatCourant] || TEXTES[ETATS.EMPTY];
   }
 
+  /* ===================================================================
+     5. LE SECOND NIVEAU : EXPLORER CE QUI EST POSSIBLE, PAR ENVIE
+
+     Les trois propositions sont le premier niveau, et elles restent rares.
+     Sous elles, six envies — Sortir, Manger, Culture, Sport, Nature,
+     Gratuit — permettent d'aller plus loin SANS CHANGER DE QUESTION : on
+     regarde toujours ce qui est faisable là, tout de suite.
+
+     C'EST LE MÊME BASSIN, PAS UN AUTRE MOTEUR. Une envie est un filtre posé
+     sur `candidats()` : un lieu fermé, un événement de demain ou une commodité
+     n'y entrent pas davantage que dans les trois places. Et l'ordre est celui
+     de la vitrine — nature, puis distance — sans la règle de diversité, qui
+     n'a plus d'objet une fois que la personne a choisi sa famille.
+
+     Gratuit ne se devine pas : il faut que la source l'ait écrit
+     (`gratuit === true`), ou que ce soit un parc — un jardin public est
+     gratuit par définition, pas par supposition.
+     =================================================================== */
+  const CATEGORIES_EXPLORATION = Object.freeze([
+    Object.freeze({ id: "sortir",  emoji: "🎉", label: "Sortir" }),
+    Object.freeze({ id: "manger",  emoji: "🍜", label: "Manger" }),
+    Object.freeze({ id: "culture", emoji: "🎭", label: "Culture" }),
+    Object.freeze({ id: "sport",   emoji: "⚽", label: "Sport" }),
+    Object.freeze({ id: "nature",  emoji: "🌳", label: "Nature" }),
+    Object.freeze({ id: "gratuit", emoji: "🆓", label: "Gratuit" }),
+  ]);
+
+  const categorieBrute = (item) =>
+    String((item && (item.canonicalCategory || item.categorie || item.category || item.cat)) || "")
+      .toLowerCase();
+
+  const APPARTIENT = Object.freeze({
+    sortir: (item, famille) => famille === "sortir" || famille === "boire" || famille === "ecran",
+    manger: (item, famille) => famille === "manger",
+    culture: (item, famille) => famille === "culture" || famille === "ecran" ||
+      categorieBrute(item) === "spectacle",
+    sport: (item) => ["sport", "terrain", "piscine"].indexOf(categorieBrute(item)) >= 0,
+    nature: (item) => categorieBrute(item) === "parc" ||
+      String((item && item.canonicalFamily) || "").toLowerCase() === "nature",
+    gratuit: (item) => !!item && (item.gratuit === true || item.is_free === true ||
+      categorieBrute(item) === "parc"),
+  });
+
+  function explorerCategorie(items, contexte, id) {
+    const test = APPARTIENT[id];
+    if (!test) return [];
+    const ctx = contexte || {};
+    if (ctx.zoneTerritoriale === false) return [];
+    return candidats(items, ctx)
+      .filter((c) => test(c.item, c.famille))
+      .map((c) => Object.assign({}, c.item, { nature: c.nature, motifMaintenant: "categorie_" + id }));
+  }
+
+  /* ===================================================================
+     6. CE QU'ON MESURERA, ET À QUEL GRAIN
+
+     La valeur d'une proposition ne se lit pas en minutes passées dans
+     l'application : elle se lit dans ce que la personne FAIT ensuite — ouvrir
+     la fiche, garder, partir, réserver. Ces noms sont la liste fermée des
+     gestes comptés ; un nom hors de cette liste n'est pas compté.
+
+     LE GRAIN EST UN CRÉNEAU, JAMAIS UNE PERSONNE. Une mesure porte une zone,
+     une envie, un jour de semaine et une tranche d'une heure — la maille à
+     laquelle une visibilité pourrait un jour avoir un prix (« Lille-centre ·
+     vendredi · 19–20 h · Sortir » ne vaut pas « mardi · 10–11 h »). Aucune
+     position, aucun identifiant de personne, aucun lieu précis n'y entre.
+
+     Rien ici n'achète ni ne classe quoi que ce soit : `selection()` ne lit
+     aucune de ces données, et un test le garantit.
+     =================================================================== */
+  const MESURES = Object.freeze([
+    "impression", "detail", "favori_ajout", "favori_retrait", "itineraire",
+    "billetterie", "reservation", "contact", "ignoree", "fermeture", "categorie",
+  ]);
+  const JOURS = Object.freeze(["dim", "lun", "mar", "mer", "jeu", "ven", "sam"]);
+
+  function creneauMesure(contexte, famille) {
+    const ctx = contexte || {};
+    const t = Number.isFinite(Number(ctx.maintenant)) ? Number(ctx.maintenant) : Date.now();
+    let annee, mois, jourMois, heure, jour;
+    try {
+      const parts = {};
+      new Intl.DateTimeFormat("fr-FR", {
+        timeZone: ctx.timeZone || "Europe/Paris", year: "numeric", month: "2-digit",
+        day: "2-digit", hour: "2-digit", hourCycle: "h23", weekday: "short",
+      }).formatToParts(new Date(t)).forEach((p) => { parts[p.type] = p.value; });
+      annee = parts.year; mois = parts.month; jourMois = parts.day;
+      heure = Number(parts.hour) % 24;
+      jour = JOURS[new Date(Date.UTC(Number(annee), Number(mois) - 1, Number(jourMois))).getUTCDay()];
+    } catch (e) {
+      const d = new Date(t);
+      annee = String(d.getFullYear()); mois = String(d.getMonth() + 1).padStart(2, "0");
+      jourMois = String(d.getDate()).padStart(2, "0"); heure = d.getHours(); jour = JOURS[d.getDay()];
+    }
+    return {
+      zone: String(ctx.zone || "sans-zone"),
+      famille: String(famille || "autre"),
+      date: annee + "-" + mois + "-" + jourMois,
+      jour,
+      tranche: String(heure).padStart(2, "0") + "-" + String((heure + 1) % 24).padStart(2, "0"),
+    };
+  }
+
   root.AutourMaintenant = Object.freeze({
+    CATEGORIES_EXPLORATION, explorerCategorie, MESURES, creneauMesure,
     ETATS, PLACES, RAYON_MAX_M, RAISONS, TEXTES, SEUIL_DEMARRAGE,
     phaseDemarrage, estEvenementHabitant, estVerrouille,
     NATURES, RANG, FAMILLES, ACTIVITES, COMMODITES, estCommodite,

@@ -850,7 +850,12 @@ document.addEventListener("click", (e)=>{
   e.preventDefault(); e.stopPropagation();
   const cle = bouton.dataset.coeur;
   const lieu = lieux.find(x=>cleFavori(x) === cle) || favorisEnMemoire.get(cle);
-  if(lieu) basculerFavori(lieu);
+  if(!lieu) return;
+  /* Le cœur de Maintenant est aussi un signal : il est compté, au grain d'un
+     créneau, comme les autres gestes de la vitrine. */
+  if(bouton.closest(".mn") && typeof noterMesureMaintenant === "function")
+    noterMesureMaintenant(favorisIds.has(cle) ? "favori_retrait" : "favori_ajout", lieu);
+  basculerFavori(lieu);
 });
 const favorisEnMemoire = new Map();
 
@@ -6228,12 +6233,34 @@ async function demarrer(coords){
   dessinerFiltres();
   majRaccourcis(); majFiltres();   // quatre raccourcis, rien de plus ne s'ouvre
 
-  /* La carte reste le premier écran. Maintenant s'ouvre par la navigation
-     basse ou sa pastille compacte ; aucun panneau ne recouvre la carte au
-     démarrage et l'état de la feuille reste réouvrable sans perdre la zone. */
+  /* OUVRIR AUTOUR, C'EST OBTENIR UNE RÉPONSE. Maintenant s'ouvre tout seul,
+     par-dessus une carte qui reste visible autour de lui : personne n'a à
+     chercher quoi que ce soit avant de voir trois choses possibles. Le bloc
+     sait déjà se tenir pendant que la position et les données arrivent — sa
+     place est réservée, ses barres grises n'annoncent rien.
+
+     TROIS CAS OÙ IL NE S'IMPOSE PAS :
+       · un lien partagé ou une entrée profonde : on est venu voir CE lieu,
+         cet événement, cette recherche — c'est cet écran-là qui s'ouvre ;
+       · la personne a refermé Maintenant dans cette session : son choix tient,
+         y compris au rechargement de l'onglet ;
+       · une navigation ou une pose d'épingle est en cours.
+     Dans ces cas, la carte reste le premier écran, et Maintenant se rouvre
+     par la navigation basse ou sa capsule. */
   if(feuilleNiveau === null && !modeNav && !modePose){
     majEnteteLieu();
     majAccueil();
+    /* Après la première peinture : `demarrer` s'exécute avant que le reste
+       du module (navigation, onglets) ne soit déclaré, et le panneau n'a pas
+       à retarder l'affichage de la carte. Tout geste arrivé entre-temps a
+       priorité : on n'ouvre que si rien d'autre ne s'est ouvert. */
+    if(!partage && !entreeProfonde() && !maintenantFermeCetteSession())
+      apresPeinture(()=>{
+        if(feuilleNiveau === null && !modeNav && !modePose &&
+           !document.body.classList.contains("explorer-ouvert") &&
+           !document.body.classList.contains("pourtoi-ouvert"))
+          ouvrirSurfaceMaintenant({auto:true});
+      });
   }
   if(rapide){ PERF.jalon("premier_lieu"); jalonBassinLocal(); }
 
@@ -10796,10 +10823,14 @@ function niveauLieu(l, ctx, sc){
 /*  Bottom sheet : un besoin, puis ses sous-choix. Jamais les deux.    */
 /* ================================================================== */
 
-/* null = fermée · "racine" = les cinq besoins · sinon l'id du besoin.
-   La feuille ne s'ouvre jamais toute seule : l'écran de départ, c'est la
-   carte, et rien d'autre. */
+/* null = fermée · "racine" = Maintenant (ou sa frise) · sinon l'id du besoin.
+   Elle ne s'ouvre toute seule qu'une fois : à l'ouverture d'Autour, sur
+   Maintenant (voir `demarrer`). Refermée, elle ne revient que sur un geste. */
 let feuilleNiveau = null;
+/* L'envie ouverte sous les trois propositions (« manger », « culture »…), ou
+   null. Elle ne vit que dans le panneau Maintenant : fermer le panneau,
+   changer de créneau ou le rouvrir la remet à null. */
+let categorieMaintenant = null;
 let sousChoisi = null;          // index du sous-choix coché, ou null
 let historiqueFeuilleBesoins = false;
 let ignorerPopFeuilleBesoins = false;
@@ -11004,6 +11035,7 @@ function ouvrirFeuille2(niveau){
   reglerFeuilleDeplie(false);
   layerManager.activate(NOMS_COUCHES.mainSheet);
   majFeuille2();
+  majBadgeMaintenant();
   if(!f.hidden) PERF.jalon("premier_panneau_utilisable");
   reinitialiserScrollFeuille();
   if(etaitFermee){
@@ -11035,6 +11067,8 @@ function fermerFeuille2(options){
   const o = options || {};
   feuilleNiveau = null;
   sousChoisi = null;
+  categorieMaintenant = null;
+  envieTout = false;
   const f = $("#feuilleBesoins");
   if(!f) return;
   f.hidden = true;
@@ -11050,11 +11084,33 @@ function fermerFeuille2(options){
   }
   const focus = dernierFocusMainSheet;
   dernierFocusMainSheet = null;
+  /* Le panneau refermé devient la capsule : elle apparaît maintenant. */
+  majBadgeMaintenant();
   requestAnimationFrame(()=>{
-    const cible = focus && document.contains(focus) ? focus : $("#rech");
+    /* À l'ouverture automatique, personne n'avait le focus : il revient alors
+       à la capsule qui rouvre le panneau, pas à un champ caché. */
+    const capsule = $("#badgeMaintenant");
+    const cible = focus && document.contains(focus) && focus !== document.body ? focus
+      : (capsule && !capsule.hidden ? capsule : $("#rech"));
     if(cible && !cible.hidden) cible.focus({preventScroll:true});
   });
 }
+
+/* Le titre et sa ligne d'explication : un seul endroit les écrit. */
+function titrerFeuille(titre, sous){
+  const t = $("#fbTitre");
+  if(t) t.textContent = titre;
+  const s = $("#fbSous");
+  if(s){ s.textContent = sous || ""; s.hidden = !sous; }
+}
+
+/* Ce que la frise montre, en une phrase, sous les onglets. Le nom de
+   l'onglet est déjà écrit au-dessus : le répéter en titre ne dirait rien. */
+const DESCRIPTION_FRISE = Object.freeze({
+  avenir:"Dans les prochains jours",
+  weekend:"Le week-end qui vient",
+  bientot:"Dans les heures qui viennent",
+});
 
 /* Rendu de la feuille. Trois écrans possibles, jamais mélangés. */
 function majFeuille2(){
@@ -11075,7 +11131,7 @@ function majFeuille2(){
   const corps = $("#fbCorps");
   const stabilite = instantanePanneau(corps);
   const retour = $("#fbRetour");
-  f.classList.remove("accueil");
+  f.classList.remove("accueil", "fb-maintenant", "fb-frise");
 
   // Une recherche de zone occupe la feuille jusqu'à ce qu'on en sorte. Sans
   // cette branche, les lieux de la zone arrivaient d'Overpass une seconde plus
@@ -11091,28 +11147,42 @@ function majFeuille2(){
   if(feuilleNiveau === "racine"){
     const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
     const titre = creneau === "maintenant" ? "Maintenant" : groupe.label;
-    $("#fbTitre").textContent = titre;
-    retour.hidden = true;
     f.classList.add("accueil");
-    /* Maintenant est volontairement court : les quatre onglets temporels,
-       les trois propositions réellement retenues, puis l'aide. Aucun
-       catalogue générique, raccourci de catégorie ou bloc « Autour de toi »
-       ne vient diluer la réponse immédiate. */
+    f.classList.toggle("fb-maintenant", creneau === "maintenant" && !categorieMaintenant);
+    f.classList.toggle("fb-frise", creneau !== "maintenant");
+    /* UNE SEULE HIÉRARCHIE. Le panneau porte un titre, un seul :
+         · Maintenant → « ⚡ Maintenant » et ce qu'on a trouvé ;
+         · une envie  → son nom, et « ‹ » pour revenir aux trois ;
+         · À venir, Ce week-end → la frise elle-même sert de titre.
+       Le mot « Maintenant » ne se répète donc plus en onglet, en pastille,
+       en capsule et en titre de bloc sur le même écran. */
     if(creneau === "maintenant"){
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-      /* L'ORDRE EST LA RÈGLE. `blocMaintenantAccueil` rend les trois
-         propositions ; la capsule vient APRÈS, jamais dedans, jamais avant.
-         Elle ne peut donc pas prendre la place d'un résultat. */
-      corps.innerHTML = besoinsRapidesPanneauHTML()+
-        ongletsTemps()+blocMaintenantAccueil()+
-        blocCaPourraitTePlaire()+blocAideAccueil();
-      brancherCapsulePlaire(corps);
+      const envie = categorieMaintenant ? CATEGORIE_MAINTENANT(categorieMaintenant) : null;
+      if(envie){
+        titrerFeuille(envie.emoji+" "+envie.label, "Ouvert ou en cours près de toi");
+        retour.hidden = false;
+        corps.innerHTML = blocCategorieMaintenant(envie);
+      }else{
+        retour.hidden = true;
+        /* L'ORDRE EST LA RÈGLE. Les trois propositions d'abord ; les envies
+           ensuite, pour aller plus loin sans changer de question ; puis la
+           frise (À venir, Ce week-end), la capsule et l'aide. Rien ne peut
+           prendre la place d'un résultat. */
+        corps.innerHTML = capsuleTerritorialePanneau()+
+          blocMaintenantAccueil()+blocCategoriesMaintenant()+
+          blocPlusTardMaintenant()+blocCaPourraitTePlaire()+blocAideAccueil();
+        titrerFeuille("⚡ Maintenant", sousTitreMaintenant());
+        brancherCapsulePlaire(corps);
+      }
     }else{
+      titrerFeuille(titre, "");
+      retour.hidden = true;
       const jeton = ++generationAccueil;
       if(annulerRecoDifferee){ annulerRecoDifferee(); annulerRecoDifferee = null; }
-      corps.innerHTML = besoinsRapidesPanneauHTML()+ongletsTemps()+
+      corps.innerHTML = capsuleTerritorialePanneau()+ongletsTemps()+
         (modeTerritorial ? enTeteTerritoriale() : "")+
-        '<div class="rc-tete"><strong>'+esc(titre)+'</strong></div>'+
+        '<div class="rc-tete"><strong>'+esc(DESCRIPTION_FRISE[creneau] || titre)+'</strong></div>'+
         '<div data-reco-zone="1">'+recoDejaCalculee(jeton)+'</div>'+piedFeuille();
       if(!recoCache || recoCache.cle !== cleReco()){
         annulerRecoDifferee = ORDO
@@ -11122,12 +11192,13 @@ function majFeuille2(){
       }
     }
   }else if(feuilleNiveau === "plus"){
-    $("#fbTitre").textContent = "Plus de catégories";
+    titrerFeuille("Plus de catégories", "");
     retour.hidden = false;
     corps.innerHTML = BESOINS_SECONDAIRES.map(b=>
       '<button class="bn" data-bn="'+b.id+'"><em>'+b.emoji+'</em><b>'+esc(b.label)+'</b></button>'
     ).join("");
   }else if(feuilleNiveau === "aide"){
+    titrerFeuille("", "");
     $("#fbTitre").textContent = "❤️ Solidarité";
     retour.hidden = !(sousAide || phraseAideCourante || redirectionExplorer || aideUrgencesOuvert || aideAfficherToutes);
     /* L'accueil Aide est directement utile : les trois structures classées
@@ -11139,7 +11210,7 @@ function majFeuille2(){
   }else{
     const b = BESOIN_DE(feuilleNiveau);
     if(!b){ fermerFeuille2(); return; }
-    $("#fbTitre").textContent = b.emoji+" "+b.label;
+    titrerFeuille(b.emoji+" "+b.label, "");
     retour.hidden = false;
     // Les catégories éditoriales restent accessibles même à zéro : l'état
     // vide explique quoi faire et permet de relancer une recherche plus large.
@@ -12552,10 +12623,10 @@ function besoinsDuMoment(){
   const b = boutonTerritorial();
   if(!b) return BESOINS_RAPIDES;
   const rapides = BESOINS_RAPIDES.slice();
-  const apresMaintenant = rapides.findIndex(x=>x.id === "maintenant");
+  const avantAide = rapides.findIndex(x=>x.id === "aide");
   const entree = {id:"territorial", emoji:b.emoji, label:b.libelle,
                   annonce:!b.actif};
-  rapides.splice(apresMaintenant < 0 ? rapides.length : apresMaintenant + 1, 0, entree);
+  rapides.splice(avantAide < 0 ? rapides.length : avantAide, 0, entree);
   return rapides;
 }
 
@@ -12839,26 +12910,37 @@ function planifierEnvoiMetriques(){
 }
 
 /* ---- Les besoins rapides ------------------------------------------------
-   Quatre entrées, pas dix : les trois envies les plus fréquentes et l'aide.
+   Trois entrées, pas dix : les deux envies les plus fréquentes et l'aide.
    Elles vivaient dans la loupe, c'est-à-dire nulle part pour qui n'ouvre pas
    la recherche. Ici, elles disent en une ligne ce que l'application sait
    faire — ce qui est la première chose à comprendre.
 
-   Une cinquième peut s'ajouter, temporairement : le contexte territorial, à
-   côté de « ⚡ Maintenant », pendant la seule période où il existe. */
+   « ⚡ Maintenant » N'EN FAIT PLUS PARTIE. Il était ici, dans le sélecteur
+   « Maintenant | Pour toi », dans la capsule, dans les onglets de temps, en
+   titre du bloc et dans la navigation basse : six fois le même mot sur un
+   seul écran. Maintenant est désormais le panneau qui s'ouvre avec Autour ;
+   sa seule porte permanente est la navigation basse, et la capsule quand le
+   panneau est fermé.
+
+   Une quatrième peut s'ajouter, temporairement : le contexte territorial,
+   avant Solidarité, pendant la seule période où il existe. */
 const BESOINS_RAPIDES = [
   {id:"manger", emoji:"🍜", label:"Manger"},
   {id:"sortir", emoji:"🎉", label:"Sortir"},
-  {id:"maintenant", emoji:"⚡", label:"Maintenant"},
   {id:"aide", emoji:"❤️", label:"Solidarité"},
 ];
 
-/* Une seule porte pour les trois accès à Maintenant : bouton du haut,
-   capsule et navigation basse. La sélection reste celle de
-   `selectionMaintenant()` et le panneau ne peut donc jamais basculer vers une
-   liste longue ou un compteur total. */
+/* Une seule porte pour les accès à Maintenant : l'ouverture d'Autour, la
+   capsule du panneau refermé et la navigation basse. La sélection reste celle
+   de `selectionMaintenant()` et le panneau ne peut donc jamais basculer vers
+   une liste longue ou un compteur total.
+
+   `auto` distingue l'ouverture d'Autour d'un geste : elle ne marque rien comme
+   consulté — personne n'a encore rien regardé. */
 let navigationMaintenantEnCours = false;
-function ouvrirSurfaceMaintenant(){
+function ouvrirSurfaceMaintenant(options){
+  const auto = !!(options && options.auto);
+  categorieMaintenant = null;
   const depuisNavigationMaintenant = navigationMaintenantEnCours ||
     (document.activeElement && document.activeElement.getAttribute("data-nb") === "maintenant");
   navigationMaintenantEnCours = false;
@@ -12872,17 +12954,14 @@ function ouvrirSurfaceMaintenant(){
   creneau = "maintenant";
   filtreMaintenant = true;
   ongletCourant = "maintenant";
-  /* Le sélecteur du haut suit la surface ouverte, quel que soit le chemin
-     emprunté — barre basse, besoin rapide ou badge. Le poser ici plutôt qu'à
-     chaque appel est ce qui garde les trois accès identiques. */
-  if(typeof marquerSurface === "function") marquerSurface("maintenant");
   marquerNavigation("maintenant");
   contexteExplorer = null;
   fermerPourToi();
+  fermerExplorerDecouverte();
   /* Le simple démarrage ou l'ouverture d'Autour ne consulte rien. Ce geste
      précis, lui, ouvre la surface « Maintenant » : toutes les occurrences
      canoniques actuellement connues cessent alors d'être nouvelles. */
-  marquerMaintenantCommeVu();
+  if(!auto) marquerMaintenantCommeVu();
   ouvrirFeuille2("racine");
   reinitialiserScrollFeuille();
   /* Maintenant doit répondre par son panneau. Les marqueurs et le recalcul
@@ -12904,23 +12983,29 @@ function brancherBesoinsRapides(racine){
       if(modeTerritorial){ fermerModeTerritorial(); majFeuille2(); rendre(); return; }
       ouvrirModeTerritorial(); return;
     }
-    if(id === "maintenant"){
-      ouvrirSurfaceMaintenant(); return;
-    }
     if(modeAide) basculerAide();
     ouvrirFeuille2(id);
   });
 }
 
-function besoinsRapidesHTML(){
+/* Sur petit écran, la barre du haut n'existe pas. Des besoins rapides, un
+   seul y reste utile dans le panneau : le contexte territorial temporaire,
+   pendant la période où il existe — Manger et Sortir sont désormais des envies
+   de Maintenant, Solidarité un onglet. Hors de cette période, rien. */
+function capsuleTerritorialePanneau(){
+  if(NAV_FLOTTANTE.matches || !boutonTerritorial()) return "";
+  return besoinsRapidesHTML(b=>b.id === "territorial");
+}
+
+function besoinsRapidesHTML(garder){
   /* En mode Aide, la barre haute reste centrée sur les quatre portes de la
      maquette. L’annonce territoriale « Bientôt » garde son comportement
      normal partout ailleurs, mais ne doit pas repousser la capsule ❤️ Aide. */
   return '<div class="br" data-testid="besoins-rapides">'+
     besoinsDuMoment().map(b=>{
+      if(garder && !garder(b)) return "";
       if(modeAide && b.id === "territorial") return "";
       const actif = b.id === "territorial" ? modeTerritorial
-        : b.id === "maintenant" ? (creneau === "maintenant" && !modeTerritorial && !modeAide)
         : b.id === "aide" ? modeAide
         : !!(catsActives && feuilleNiveau === b.id);
       /* L'annonce se lit comme une annonce : le bouton existe, il n'est pas
@@ -12931,12 +13016,6 @@ function besoinsRapidesHTML(){
     }).join("")+'</div>';
 }
 
-/* Sur petit écran, la barre fixe n'est pas une surface visible : les mêmes
-   raccourcis vivent donc dans la feuille racine. Le contexte territorial reste
-   celui qui décide si la capsule existe et quel état temporel elle porte. */
-function besoinsRapidesPanneauHTML(){
-  return NAV_FLOTTANTE.matches ? "" : besoinsRapidesHTML();
-}
 
 /* ---- Les quatre groupes de temps, en tête de l'accueil -------------------
    « Maintenant », « Autour de moi », « Pour toi » et « Explorer » disaient à
@@ -12967,8 +13046,14 @@ function majBadgeMaintenant(){
   const n = modeNav || modePose ? 0 : modeAide ? aideTop.length : totalMaintenant();
   badge.dataset.candidats = String(candidats.length);
   badge.dataset.nouveaux = String(nouveaux);
-  badge.hidden = n === 0;
-  if(n === 0) return;
+  /* LA CAPSULE EST LE PANNEAU REFERMÉ, RIEN D'AUTRE. Tant que le panneau est
+     ouvert, elle répéterait son titre juste au-dessus de lui ; quand Explorer
+     occupe la place, elle parlerait d'une autre section. Elle n'existe donc
+     que carte dégagée — et jamais à zéro. */
+  const panneauOuvert = typeof feuilleNiveau !== "undefined" && feuilleNiveau !== null;
+  const ailleurs = document.body.classList.contains("explorer-ouvert");
+  badge.hidden = n === 0 || panneauOuvert || ailleurs;
+  if(badge.hidden) return;
   const compte = $("#bmCompte");
   /* Le bloc n'en montre jamais plus de trois : la pastille annonce ce qu'on
      va effectivement voir, pas ce qui existe en base. */
@@ -12991,8 +13076,8 @@ function majBadgeMaintenant(){
       ? "À " + zoneActive.nom + " en ce moment" : "En cours près de toi";
   if(sous) sous.textContent = ou;
   badge.setAttribute("aria-label", modeAide
-    ? "Aide : " + n + " recommandation" + (n > 1 ? "s" : "") + " fiables"
-    : n + " chose" + (n > 1 ? "s" : "") + " à faire — " + ou);
+    ? "Rouvrir Solidarité : " + n + " recommandation" + (n > 1 ? "s" : "") + " fiables"
+    : "Rouvrir Maintenant : " + n + " chose" + (n > 1 ? "s" : "") + " à faire — " + ou);
 }
 
 /* Ce qui a lieu MAINTENANT, en tête de la feuille et sous sa propre étiquette.
@@ -13035,13 +13120,20 @@ function ligneMaintenant(l){
      carte réduite à son emoji. */
   if(!nomMaintenantExploitable(titre) || !l.cat) return "";
   const c = categorieAffichee(l);
+  /* Le cœur retrouve son lieu par ce registre, comme sur toutes les cartes. */
+  favorisEnMemoire.set(cleFavori(l), l);
   /* Regarder Paris depuis Lille affichait « 220 km » sous chaque concert : une
      mesure exacte et parfaitement inutile. On ne montre une distance que
      lorsqu'on est dans la zone regardée ; sinon le lieu se suffit. */
   const dist = jeSuisDansLaZoneRegardee()
     ? formatDist(distanceDepuisZone(l)) : "";
   const bas = [dist, tempsMaintenant(l)].filter(Boolean).join(" · ");
-  const lieu = l.adresse || l.cp || "";
+  /* Ce que c'est, puis où. Un lieu OSM sans adresse porte parfois son propre
+     nom en guise d'adresse : le répéter sous le titre n'apprend rien. */
+  const lieuBrut = String(l.adresse || l.cp || "").trim();
+  const lieu = lieuBrut && lieuBrut.toLowerCase() !== String(titre).trim().toLowerCase()
+    ? lieuBrut : "";
+  const type = [c.label, lieu].filter(Boolean).join(" · ");
   const media = mediaDe(l);
   const visuel = '<span class="mn-visuel" style="--teinte:'+(COULEURS_CAT[l.cat]||"#5D6B63")+'">'+
     '<i aria-hidden="true">'+esc(c.emoji)+'</i>'+
@@ -13049,12 +13141,18 @@ function ligneMaintenant(l){
       ? '<img src="'+esc(media.image_url)+'" alt="" loading="lazy" decoding="async"'+
         ' onload="this.classList.add(\'vue\');imageEvenementChargee(this)" onerror="imageEvenementErreur(this)">' : '')+
     '</span>';
-  return '<button class="mn-l" data-mn="'+esc(l.id)+'">'+
-    visuel+
+  /* Deux commandes côte à côte, jamais l'une dans l'autre : ouvrir la fiche,
+     et garder. Un bouton dans un bouton n'existe pas en HTML : le cœur ne
+     peut pas vivre à l'intérieur du bouton qui ouvre la fiche. */
+  return '<article class="mn-l" data-mn-carte="'+esc(l.id)+'">'+
+    '<button class="mn-ouvrir" type="button" data-mn="'+esc(l.id)+'">'+
+      visuel+
       '<span class="mn-txt"><b>'+esc(titre)+'</b>'+
-      (lieu ? '<i>'+esc(lieu)+'</i>' : '')+
+      (type ? '<i>'+esc(type)+'</i>' : '')+
       (bas ? '<u>'+esc(bas)+'</u>' : '')+'</span>'+
-    '<span class="mn-fl" aria-hidden="true">›</span></button>';
+    '</button>'+
+    boutonCoeur(l)+
+  '</article>';
 }
 
 const ORDO = window.AutourOrdonnanceur || null;
@@ -14247,7 +14345,6 @@ function peindreEnvies(){
 
 /* ---- Ouvrir et fermer le panneau ---------------------------------------- */
 function ouvrirPourToi(){
-  if(typeof marquerSurface === "function") marquerSurface("pourtoi");
   const p = $("#pourToi");
   if(!p) return;
   synchroniserEnvies();
@@ -14467,7 +14564,12 @@ function peindreBadgeMaintenant(nombre){
   const compte = Math.max(0, Number(nombre) || 0);
   const badge = $("#navMaintenantBadge");
   if(!badge) return;
-  badge.hidden = compte === 0;
+  /* Le panneau Maintenant est ouvert sous les yeux : annoncer « +6 » sur
+     l'onglet qui le désigne serait compter deux fois la même chose. Ces
+     nouveautés passent en « vues » quand on le referme. */
+  const ouvertSousLesYeux = typeof feuilleNiveau !== "undefined" &&
+    feuilleNiveau === "racine" && creneau === "maintenant" && !modeAide;
+  badge.hidden = compte === 0 || ouvertSousLesYeux;
   badge.textContent = compte > POURTOI_PASTILLE_MAX ? POURTOI_PASTILLE_MAX + "+" : String(compte);
   badge.dataset.count = String(compte);
 }
@@ -14582,6 +14684,10 @@ function versItemMaintenant(l, t){
     current_status:l.current_status || null,
     temporary_closed:l.temporary_closed == null ? null : l.temporary_closed,
     programme_now:Array.isArray(l.programme_now) ? l.programme_now : null,
+    /* « Gratuit », seulement quand une source l'a écrit : la fiche canonique
+       (`is_free`) ou OpenStreetMap (`fee=no`). Il sert au second niveau de
+       Maintenant, jamais à la sélection des trois places. */
+    gratuit: gratuitDe(l) || l.gratuit === true,
   };
 }
 
@@ -14741,9 +14847,14 @@ function noterVuesMaintenant(liste){
 /* Les favoris encore en mémoire, sous la forme d'identifiants de propositions.
    Le moteur ne lit que des identifiants : il n'a pas à connaître la forme
    d'un favori, ni où ils sont rangés. */
+/* `favorisEnMemoire` n'est PAS la liste des favoris : chaque carte rendue
+   (recommandation, aide) s'y range pour que son cœur retrouve son lieu. Le
+   lire tel quel épinglait donc dans Maintenant tout ce qui avait été affiché
+   une fois. Seules les entrées dont le cœur est réellement allumé verrouillent. */
 function favorisVerrouilles(){
   const verrous = new Set();
-  for(const l of favorisEnMemoire.values()) if(l && l.id != null) verrous.add(String(l.id));
+  for(const [cle, l] of favorisEnMemoire.entries())
+    if(l && l.id != null && favorisIds.has(cle)) verrous.add(String(l.id));
   return verrous;
 }
 
@@ -15110,13 +15221,16 @@ function blocMaintenantAccueil(){
   /* Ce qu'on vient de montrer est noté ICI, au rendu, et nulle part ailleurs :
      c'est le seul endroit où l'on sait ce qui est réellement passé sous les
      yeux. C'est ce compteur qui fera tourner la vitrine au prochain passage. */
-  if(etat === M.ETATS.READY) noterVuesMaintenant(liste);
+  if(etat === M.ETATS.READY){
+    noterVuesMaintenant(liste);
+    liste.forEach(l=>noterImpressionMaintenant(l));
+  }
   const mots = M.textes(etat, ctx);
-
-  /* Le compteur est celui de la sélection effectivement rendue. Il ne peut
-     donc ni annoncer un catalogue, ni produire un total extensible. */
-  const tete = '<p class="mn-tete"><em aria-hidden="true">⚡</em><b>Maintenant</b>'+
-    (etat === M.ETATS.READY && combien ? '<span>('+combien+')</span>' : '')+'</p>';
+  /* Le titre et son compteur vivent dans l'en-tête du panneau, plus dans le
+     bloc : « ⚡ Maintenant » en titre de panneau PUIS « ⚡ Maintenant (3) » en
+     titre de bloc disaient deux fois la même chose, l'une sous l'autre. Le
+     compteur passe dans la ligne d'explication de l'en-tête. */
+  dernierEtatMaintenant = {etat, combien, ctx};
 
   let corps;
   if(etat === M.ETATS.READY){
@@ -15150,8 +15264,232 @@ function blocMaintenantAccueil(){
     'data-mn-etat="'+esc(etat)+'" data-mn-candidats="'+candidats.length+'" '+
     'data-mn-affiches="'+combien+'" data-mn-nouveaux="'+nouveaux+'" '+
     'aria-busy="'+(etat === M.ETATS.LOADING)+'">'+
-    tete+'<div class="mn-corps">'+corps+'</div></section>'+
+    '<div class="mn-corps">'+corps+'</div></section>'+
     (modeTerritorial ? blocServicesTerritoriaux() : "");
+}
+
+/* ---- CE QUE VAUT UNE PROPOSITION : LES MESURES --------------------------
+
+   Ce qui compte n'est pas le temps passé dans Autour, c'est ce qu'on fait
+   après : ouvrir la fiche, garder, partir, réserver. Ces gestes sont comptés
+   ici, et seulement ceux de la liste fermée `AutourMaintenant.MESURES`.
+
+   CE QUI EST ÉCRIT : un compteur par (geste, zone, envie, jour, tranche
+   d'une heure) — la maille d'un créneau. CE QUI NE L'EST JAMAIS : une
+   position, un identifiant de personne, le lieu précis, une phrase tapée.
+
+   RIEN NE PART SUR LE RÉSEAU. Le journal vit dans le stockage local, s'efface
+   au bout de trente jours et se lit par `window.AutourMesuresMaintenant()`.
+   L'envoyer un jour demandera un consentement et une route serveur dédiée,
+   comme les compteurs territoriaux ; ce n'est pas le cas aujourd'hui. */
+const CLE_MESURES_MAINTENANT = "autour:maintenant-mesures:v1";
+const MESURES_RETENTION_J = 30;
+const MESURES_MAX = 600;
+const impressionsSession = new Set();
+let presentesMaintenant = new Map();     // id → famille, vus depuis l'ouverture
+const ouvertesMaintenant = new Set();    // id ouverts depuis l'ouverture
+let provenanceDetailMaintenant = null;   // {titre, famille} de la fiche ouverte
+
+function journalMesuresMaintenant(){
+  try{
+    const brut = JSON.parse(localStorage.getItem(CLE_MESURES_MAINTENANT) || "{}");
+    return brut && typeof brut === "object" && !Array.isArray(brut) ? brut : {};
+  }catch(e){ return {}; }
+}
+
+function noterMesureMaintenant(nom, l, famille){
+  const M = window.AutourMaintenant;
+  if(!M || !M.MESURES || M.MESURES.indexOf(nom) < 0) return;
+  const fam = famille || (l && M.familleDe ? M.familleDe({categorie:l.cat,
+    canonicalCategory:l.canonicalCategory, canonicalFamily:l.canonicalFamily}) : null);
+  const c = M.creneauMesure({maintenant:Date.now(), timeZone:fuseauZoneActive(),
+    zone:idZoneActive()}, fam);
+  const cle = [nom, c.zone, c.famille, c.date, c.jour, c.tranche].join("|");
+  const journal = journalMesuresMaintenant();
+  journal[cle] = (Number(journal[cle]) || 0) + 1;
+  /* Trente jours, pas davantage : au-delà, on garderait l'habitude d'une
+     saison qu'on a quittée. Puis un plafond, pour ne jamais grossir. */
+  const limite = new Date(Date.now() - MESURES_RETENTION_J * 86400000).toISOString().slice(0, 10);
+  let cles = Object.keys(journal).filter(k=>{
+    const garde = (k.split("|")[3] || "") >= limite;
+    if(!garde) delete journal[k];
+    return garde;
+  });
+  if(cles.length > MESURES_MAX){
+    cles.sort((a, b)=>(a.split("|")[3] || "").localeCompare(b.split("|")[3] || ""));
+    cles.slice(0, cles.length - MESURES_MAX).forEach(k=>delete journal[k]);
+  }
+  try{ localStorage.setItem(CLE_MESURES_MAINTENANT, JSON.stringify(journal)); }catch(e){}
+}
+window.AutourMesuresMaintenant = ()=>journalMesuresMaintenant();
+
+function familleMaintenant(l){
+  const M = window.AutourMaintenant;
+  return l && M && M.familleDe ? M.familleDe({categorie:l.cat,
+    canonicalCategory:l.canonicalCategory, canonicalFamily:l.canonicalFamily}) : null;
+}
+
+/* Une impression par proposition et par session : le panneau se redessine
+   souvent, et dix rendus du même écran ne sont pas dix regards. */
+function noterImpressionMaintenant(l){
+  if(!l || l.id == null) return;
+  const id = String(l.id);
+  presentesMaintenant.set(id, familleMaintenant(l));
+  if(impressionsSession.has(id)) return;
+  impressionsSession.add(id);
+  noterMesureMaintenant("impression", l);
+}
+
+function noterDetailMaintenant(l){
+  if(!l) return;
+  ouvertesMaintenant.add(String(l.id));
+  provenanceDetailMaintenant = {titre:String(l.titre || l.title || "").trim(),
+    famille:familleMaintenant(l)};
+  noterMesureMaintenant("detail", l);
+}
+
+/* Refermer Maintenant sans avoir rien ouvert : chaque proposition montrée
+   compte comme ignorée. C'est une information, pas un reproche — une
+   proposition souvent ignorée à cette heure-là est une proposition à revoir. */
+function noterFermetureMaintenant(){
+  noterMesureMaintenant("fermeture", null, "panneau");
+  presentesMaintenant.forEach((famille, id)=>{
+    if(!ouvertesMaintenant.has(id)) noterMesureMaintenant("ignoree", null, famille);
+  });
+  presentesMaintenant = new Map();
+  ouvertesMaintenant.clear();
+}
+
+/* Ce qu'on fait DANS une fiche ouverte depuis Maintenant. Le titre sert de
+   garde : une fiche ouverte ensuite depuis la carte n'est pas attribuée. */
+document.addEventListener("click", (e)=>{
+  const p = provenanceDetailMaintenant;
+  if(!p || !e.target || !e.target.closest) return;
+  const fiche = e.target.closest("#ficheLieu");
+  if(!fiche) return;
+  const titre = fiche.querySelector(".titre");
+  if(!titre || titre.textContent.trim() !== p.titre) return;
+  const cible = e.target.closest("a,button");
+  if(!cible) return;
+  const href = cible.getAttribute("href") || "";
+  const texte = cible.textContent.trim();
+  const nom = cible.id === "btnYAller" ? "itineraire"
+    : /^Billetterie/.test(texte) ? "billetterie"
+    : /^Réserver/.test(texte) ? "reservation"
+    : /^(tel:|mailto:)/.test(href) || /^Site web/.test(texte) ? "contact"
+    : null;
+  if(nom) noterMesureMaintenant(nom, null, p.famille);
+}, true);
+
+/* ---- Ce que dit l'en-tête de Maintenant ---------------------------------
+   Une ligne, sous le titre : combien de propositions, et autour de quoi. Elle
+   se tait quand le bloc parle lui-même (vide, erreur). */
+let dernierEtatMaintenant = null;
+function sousTitreMaintenant(){
+  const M = window.AutourMaintenant;
+  const d = dernierEtatMaintenant;
+  if(!M || !d) return "";
+  if(d.etat === M.ETATS.LOADING) return "Autour regarde ce qui est possible…";
+  if(d.etat !== M.ETATS.READY || !d.combien) return "";
+  const ou = zoneActive && CTX && zoneActive.type === CTX.TYPES.RECHERCHE && zoneActive.nom
+    ? "à "+zoneActive.nom : "près de toi";
+  return d.combien+" recommandation"+(d.combien > 1 ? "s" : "")+" "+ou;
+}
+
+/* ---- Le second niveau : explorer par envie -------------------------------
+   Sous les trois propositions, six envies. Elles ne remplacent pas la
+   sélection : elles l'élargissent, avec la même règle — ce qui est ouvert ou
+   en cours, là, tout de suite. La liste vient de `maintenant.js`, le filtre
+   aussi ; ce fichier ne fait que dessiner. */
+const TEINTES_ENVIES = Object.freeze({
+  sortir:"#7C3AED", manger:"#E4572E", culture:"#2F6FDE",
+  sport:"#0F9D7A", nature:"#3F8F3A", gratuit:"#C08A00",
+});
+function CATEGORIE_MAINTENANT(id){
+  const M = window.AutourMaintenant;
+  return (M && M.CATEGORIES_EXPLORATION || []).find(c=>c.id === id) || null;
+}
+
+function blocCategoriesMaintenant(){
+  if(creneau !== "maintenant" || modeAide) return "";
+  const M = window.AutourMaintenant;
+  if(!M || !M.CATEGORIES_EXPLORATION) return "";
+  return '<section class="mnc" data-testid="maintenant-envies" aria-labelledby="mncTitre">'+
+    '<h3 class="mnc-titre" id="mncTitre">Explorer par envie</h3>'+
+    '<div class="mnc-grille">'+
+    M.CATEGORIES_EXPLORATION.map(c=>
+      '<button class="mnc-b" type="button" data-mn-cat="'+esc(c.id)+'" '+
+        'style="--teinte:'+(TEINTES_ENVIES[c.id] || "#5D6B63")+'">'+
+        '<em aria-hidden="true">'+c.emoji+'</em><span>'+esc(c.label)+'</span></button>'
+    ).join("")+
+    '</div></section>';
+}
+
+/* Ce que « Voir tout » déplie : au-delà, la liste cesse d'être un choix. */
+const ENVIE_APERCU = 6;
+const ENVIE_MAX = 30;
+let envieTout = false;
+
+function blocCategorieMaintenant(envie){
+  const M = window.AutourMaintenant;
+  const ctx = contexteMaintenant();
+  const tous = M && M.explorerCategorie
+    ? hydraterItemsMaintenant(M.explorerCategorie(itemsMaintenant(ctx), ctx, envie.id)) : [];
+  const montres = tous.slice(0, envieTout ? ENVIE_MAX : ENVIE_APERCU);
+  if(!tous.length){
+    /* Pas un cul-de-sac : la règle refuse d'y mettre un lieu fermé ou un
+       événement de demain, et l'écran le dit en proposant les deux suites. */
+    const cherche = rechercheEnCours();
+    return '<section class="mn mnc-liste" data-testid="maintenant-envie" data-mn-envie="'+esc(envie.id)+'">'+
+      '<div class="mn-rien" role="status"><p>'+
+      (cherche ? 'Autour cherche encore autour de toi…'
+               : 'Rien de ce côté-là d’ouvert ou en cours près de toi en ce moment.')+'</p>'+
+      '<div class="etat-vide-actions">'+
+        '<button class="mn-sortie" data-creneau="avenir">📅 Voir À venir</button>'+
+        '<button class="mn-sortie" data-mn-explorer="1">Explorer plus loin</button>'+
+      '</div></div></section>';
+  }
+  return '<section class="mn mnc-liste" data-testid="maintenant-envie" data-mn-envie="'+esc(envie.id)+'" '+
+    'data-mn-etat="ready" data-mn-affiches="'+montres.length+'">'+
+    '<div class="mn-corps">'+montres.map(ligneMaintenant).join("")+'</div>'+
+    (tous.length > montres.length
+      ? '<button class="mn-tout" type="button" data-mnc-tout="1">Voir tout ('+
+          Math.min(tous.length, ENVIE_MAX)+')</button>' : '')+
+    '<button class="mnc-plusloin" type="button" data-mn-plusloin="'+esc(envie.id)+'">'+
+      'Voir aussi plus loin ou plus tard →</button>'+
+    '</section>';
+}
+
+/* « Plus loin ou plus tard » : ce que Maintenant écarte par construction —
+   fermé pour l'instant, à deux quartiers, demain — vit dans les écrans qui
+   existaient déjà. Chaque envie y mène par la porte qui lui correspond ; il
+   n'y a pas de liste de plus ici. */
+const PLUS_LOIN_ENVIE = Object.freeze({
+  manger:{besoin:"manger"}, sortir:{besoin:"sortir"}, sport:{besoin:"bouger"},
+  culture:{explorer:"culture"}, gratuit:{explorer:"gratuit"}, nature:{explorer:null},
+});
+function allerPlusLoinEnvie(id){
+  const cible = PLUS_LOIN_ENVIE[id] || {explorer:null};
+  categorieMaintenant = null; envieTout = false;
+  if(cible.besoin && BESOIN_DE(cible.besoin)){ ouvrirFeuille2(cible.besoin); return; }
+  const intention = cible.explorer ? XP_INTENTIONS.find(x=>x.phrase === cible.explorer) : null;
+  if(intention){ lancerDepuisExplorer(intention); return; }
+  const nav = $('#navBas [data-nb="explorer"]');
+  if(nav) nav.click();
+}
+
+/* La frise, sous les envies : ce qui n'est pas encore faisable a sa place,
+   à côté — jamais dans les trois propositions. */
+function blocPlusTardMaintenant(){
+  if(creneau !== "maintenant" || modeAide) return "";
+  return '<nav class="mnt" aria-label="Plus tard">'+
+    '<button class="mnt-b" type="button" data-creneau="avenir">'+
+      '<em aria-hidden="true">📅</em><span><b>À venir</b><i>Prochains jours</i></span>'+
+      '<u aria-hidden="true">›</u></button>'+
+    '<button class="mnt-b" type="button" data-creneau="weekend">'+
+      '<em aria-hidden="true">🗓</em><span><b>Ce week-end</b><i>Sam. et dim.</i></span>'+
+      '<u aria-hidden="true">›</u></button>'+
+    '</nav>';
 }
 
 function ongletsTemps(){
@@ -15757,8 +16095,29 @@ function brancherFeuille2(){
   corps.querySelectorAll("[data-mn]").forEach(b=>b.onclick=()=>{
     const l = lieux.find(x=>x.id === b.dataset.mn);
     if(!l) return;
+    noterDetailMaintenant(l);
     pileEcrans = [];
     pousserEcran(()=>ouvrirDetail(l.id));
+  });
+  /* Une envie ouvre sa liste DANS le panneau : même question, même règle,
+     un cran plus loin. « ‹ » ramène aux trois propositions. */
+  corps.querySelectorAll("[data-mn-cat]").forEach(b=>b.onclick=()=>{
+    categorieMaintenant = b.dataset.mnCat;
+    envieTout = false;
+    noterMesureMaintenant("categorie", null, categorieMaintenant);
+    majFeuille2(); reinitialiserScrollFeuille();
+  });
+  corps.querySelectorAll("[data-mnc-tout]").forEach(b=>b.onclick=()=>{
+    envieTout = true;
+    majFeuille2();
+  });
+  /* Rien de faisable tout de suite dans cette envie : Explorer, lui, sait
+     regarder plus loin et plus tard. On y entre par sa porte habituelle. */
+  corps.querySelectorAll("[data-mn-explorer]").forEach(b=>b.onclick=()=>{
+    allerPlusLoinEnvie(categorieMaintenant);
+  });
+  corps.querySelectorAll("[data-mn-plusloin]").forEach(b=>b.onclick=()=>{
+    allerPlusLoinEnvie(b.dataset.mnPlusloin);
   });
   /* Un service du bloc « utile autour de toi » s'ouvre comme n'importe quel
      autre lieu : c'est un lieu, il l'est resté. */
@@ -15820,7 +16179,10 @@ function brancherFeuille2(){
     if(creneau === cible) return;
     creneau = cible;
     filtreMaintenant = creneau === "maintenant";
-    ongletCourant = filtreMaintenant ? "maintenant" : "explorer";
+    /* À venir et Ce week-end sont la frise de Maintenant, pas une autre
+       section : la navigation basse reste sur Maintenant. */
+    ongletCourant = "maintenant";
+    categorieMaintenant = null;
     marquerNavigation(ongletCourant);
     majFeuille2(); reinitialiserScrollFeuille(); rendre();
   });
@@ -15833,7 +16195,10 @@ function brancherFeuille2(){
     // « n'afficher que ce qui est utilisable » n'a de sens que dans
     // « maintenant » : ailleurs c'est la date qui trie, pas l'ouverture
     filtreMaintenant = creneau === "maintenant";
-    ongletCourant = filtreMaintenant ? "maintenant" : "explorer";
+    /* À venir et Ce week-end sont la frise de Maintenant, pas une autre
+       section : la navigation basse reste sur Maintenant. */
+    ongletCourant = "maintenant";
+    categorieMaintenant = null;
     marquerNavigation(ongletCourant);
     /* Le geste répond avant le classement. Le bouton choisi prend son état
        dans le même événement ; carte, contenu et filtres suivent au prochain
@@ -17744,7 +18109,9 @@ function majNavBas(){
    partir d'une page nette, c'est une décision produit qui ne change pas. Ce
    qu'on rétablit, c'est l'état d'avant. */
 let contexteExplorer = null;
-let ongletCourant = "explorer";
+/* Maintenant est la section d'ouverture : c'est elle que la navigation
+   basse désigne d'emblée. */
+let ongletCourant = "maintenant";
 
 function capturerContexteExplorer(){
   const corps = $("#fbCorps");
@@ -17904,35 +18271,11 @@ if($("#fabCreer")) $("#fabCreer").onclick = ()=>{
   ouvrirCreation();
 };
 
-/* ---- Le sélecteur de surface : Maintenant | Pour toi ---------------------
-   Deux questions, deux surfaces, un seul geste pour passer de l'une à
-   l'autre. Le second niveau — Maintenant / À venir / Ce week-end — vit dans
-   la feuille et vaut pour les deux : il n'est ni dupliqué, ni réinitialisé
-   en changeant de surface. */
-function marquerSurface(id){
-  const barre = $("#selecteurSurface");
-  if(!barre) return;
-  barre.querySelectorAll("[data-surface]").forEach(b=>{
-    const actif = b.dataset.surface === id;
-    b.classList.toggle("actif", actif);
-    b.setAttribute("aria-selected", String(actif));
-  });
-}
-
-if($("#selecteurSurface")) $("#selecteurSurface").querySelectorAll("[data-surface]")
-  .forEach(b=>b.onclick = ()=>{
-    const quoi = b.dataset.surface;
-    fermerExplorerDecouverte();
-    if(quoi === "pourtoi"){
-      if(modeAide) basculerAide();
-      ongletCourant = "pourtoi";
-      marquerNavigation("pourtoi");
-      ouvrirPourToi();
-      return;
-    }
-    fermerPourToi();
-    ouvrirSurfaceMaintenant();
-  });
+/* ---- « Pour toi » n'a plus de sélecteur à côté de Maintenant --------------
+   Le sélecteur « ⚡ Maintenant | ♡ Pour toi » posé sous l'en-tête répétait le
+   mot que le panneau porte déjà en titre, et la navigation basse encore en
+   dessous. Pour toi garde ses deux portes : la cloche de l'en-tête (tiroir
+   sur mobile) et son onglet de navigation sur grand écran. */
 
 /* ---- Explorer, surface de découverte -------------------------------------
    Explorer montrait à peu près ce que Maintenant montre déjà. Il répond
@@ -18166,6 +18509,7 @@ function ouvrirExplorerDecouverte(){
   rafraichirPhotosExplorer();
   panneau.hidden = false;
   document.body.classList.add("explorer-ouvert");
+  majBadgeMaintenant();
   /* L'inventaire arrive APRÈS l'ouverture : le panneau ne doit jamais
      attendre le réseau pour apparaître. */
   void remplirLieuxExplorer(intentionExplorer);
@@ -18174,7 +18518,9 @@ function ouvrirExplorerDecouverte(){
 function fermerExplorerDecouverte(){
   const panneau = $("#explorerDecouverte");
   if(panneau) panneau.hidden = true;
+  if(!document.body.classList.contains("explorer-ouvert")) return;
   document.body.classList.remove("explorer-ouvert");
+  majBadgeMaintenant();
 }
 
 /* ===========================================================================
@@ -19062,8 +19408,34 @@ function ouvrirAccueilFeuille(){
   ouvrirFeuille2("racine");
   planifierRendu({accueil:true, carte:true, filtres:true, feuille:true});
 }
-$("#fbFermer").onclick = fermerFeuille2;
+/* ---- Fermer Maintenant, et que ça tienne ---------------------------------
+   Maintenant est proposé, jamais imposé. La croix — ou le glissement vers le
+   bas depuis l'état réduit — rend la carte, et ce choix est retenu pour la
+   session : Autour ne rouvre plus le panneau de lui-même, ni à la prochaine
+   zone, ni au rechargement de l'onglet. La capsule et la navigation basse
+   restent là pour qui veut y revenir. */
+const CLE_MAINTENANT_FERME = "autour:maintenant-ferme:v1";
+function maintenantFermeCetteSession(){
+  try{ return sessionStorage.getItem(CLE_MAINTENANT_FERME) === "1"; }
+  catch(e){ return false; }
+}
+function fermerFeuilleVolontairement(){
+  if(feuilleNiveau === "racine" && creneau === "maintenant" && !modeAide){
+    // ce qui était sous les yeux a été vu, qu'on l'ait ouvert ou non
+    marquerMaintenantCommeVu();
+    try{ sessionStorage.setItem(CLE_MAINTENANT_FERME, "1"); }catch(e){}
+    noterFermetureMaintenant();
+  }
+  fermerFeuille2();
+}
+$("#fbFermer").onclick = fermerFeuilleVolontairement;
 $("#fbRetour").onclick = ()=>{
+  // depuis une envie de Maintenant : on revient aux trois propositions
+  if(feuilleNiveau === "racine" && categorieMaintenant){
+    categorieMaintenant = null; envieTout = false;
+    majFeuille2(); reinitialiserScrollFeuille();
+    return;
+  }
   // En mode Aide, le retour quitte d'abord la recherche, le registre ou la
   // liste complète ; il ne désactive le mode qu'à la racine.
   if(modeAide && (aideUrgencesOuvert || phraseAideCourante || redirectionExplorer || aideAfficherToutes || sousAide)){
@@ -19112,7 +19484,7 @@ function reduireDUnCran(){
   const etat = etatFeuille();
   if(etat === "deplie") reglerEtatFeuille("moyenne");
   else if(etat === "moyenne") reglerEtatFeuille("reduite");
-  else fermerFeuille2();
+  else fermerFeuilleVolontairement();
 }
 function relacherPoignee(e){
   if(!glissementFeuille) return;

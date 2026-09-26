@@ -72,7 +72,7 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
 <link rel="preconnect" href="https://basemaps.cartocdn.com" />
 
-<link rel="stylesheet" href="autour.css?v=d6df93a4" />
+<link rel="stylesheet" href="autour.css?v=a0f4636d" />
 </head>
 <body>
 
@@ -96,14 +96,16 @@ window.AutourBootTiming={html_disponible:performance.now()};
   <button id="videOk">Tout voir</button>
 </div>
 
-<!-- « ⚡ Maintenant · 3 » : la réponse à « qu'est-ce qui se passe vraiment
-     là, tout de suite ». Elle est posée sur la carte, entre les pastilles de
-     gauche et Filtres à droite, et elle n'existe que s'il y a réellement
-     quelque chose en cours — jamais de « 0 », jamais de place réservée vide.
-     Un appui ouvre la liste de ces événements, rien d'autre. -->
+<!-- « ⚡ Maintenant · 3 » : le panneau Maintenant, refermé. Il n'existe que
+     quand le panneau est fermé et qu'il a réellement quelque chose à rouvrir —
+     jamais de « 0 », jamais à côté du panneau ouvert. Un appui rouvre les
+     trois propositions, rien d'autre. -->
 <button id="badgeMaintenant" hidden aria-live="polite">
-  <span class="bm-haut"><em aria-hidden="true">⚡</em><b>Maintenant</b><i id="bmCompte"></i></span>
-  <span class="bm-sous">En cours près de toi</span>
+  <span class="bm-texte">
+    <span class="bm-haut"><em aria-hidden="true">⚡</em><b>Maintenant</b><i id="bmCompte"></i></span>
+    <span class="bm-sous">En cours près de toi</span>
+  </span>
+  <span class="bm-ouvrir" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></span>
 </button>
 
 <!-- En-tête fixe : le contexte d'abord (où je suis, quand), puis l'intention
@@ -136,26 +138,6 @@ window.AutourBootTiming={html_disponible:performance.now()};
     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
   </button>
 </header>
-
-<!-- ---- LE SÉLECTEUR DE SURFACE --------------------------------------------
-     Deux questions différentes, et elles ne se répondent pas au même endroit :
-
-       ⚡ Maintenant  « qu'est-ce que je peux faire là, tout de suite ? »
-       ♡ Pour toi     « qu'est-ce qui correspond à mes goûts ? »
-
-     « Pour toi » était un onglet de la barre basse, au même rang que « où je
-     regarde » — ce qui en faisait une destination alors que c'est une lecture
-     du même endroit. Il remonte ici, à côté de Maintenant, et les deux
-     restent atteignables d'un seul geste.
-
-     Le second niveau — Maintenant / À venir / Ce week-end — vit dans la
-     feuille et vaut pour les DEUX surfaces : il n'est pas dupliqué ici. -->
-<div id="selecteurSurface" role="tablist" aria-label="Ce que tu cherches">
-  <button class="sfc actif" type="button" data-surface="maintenant"
-          role="tab" aria-selected="true">⚡ Maintenant</button>
-  <button class="sfc" type="button" data-surface="pourtoi"
-          role="tab" aria-selected="false">♡ Pour toi</button>
-</div>
 
 <div id="locationPopover" hidden role="dialog" aria-labelledby="locationPopoverTitle">
   <div class="location-popover-head">
@@ -254,7 +236,10 @@ window.AutourBootTiming={html_disponible:performance.now()};
          Il portait encore « Que faire autour de moi ? », l'ancien gros CTA
          noir supprimé depuis : invisible à l'œil, mais annoncé tel quel par un
          lecteur d'écran avant le premier rendu. -->
-    <span class="fb-titre" id="fbTitre">Pour toi, maintenant</span>
+    <span class="fb-titres">
+      <span class="fb-titre" id="fbTitre">Pour toi, maintenant</span>
+      <span class="fb-sous" id="fbSous" hidden></span>
+    </span>
     <button class="fb-x" id="fbFermer" aria-label="Fermer">✕</button>
   </div>
   <div class="fb-corps" id="fbCorps"></div>
@@ -283,11 +268,11 @@ window.AutourBootTiming={html_disponible:performance.now()};
 
 <!-- Navigation basse : Maintenant, Explorer, Créer, Pour toi, Aide, Profil. -->
 <nav id="navBas">
-  <button class="nb" data-nb="maintenant">
+  <button class="nb actif" data-nb="maintenant">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M13.2 2 5.5 13h5.3L10.1 22 18.5 10h-5.3z"/></svg>
     <span>Maintenant</span><i class="nav-badge" id="navMaintenantBadge" hidden></i>
   </button>
-  <button class="nb actif" data-nb="explorer">
+  <button class="nb" data-nb="explorer">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
     <span>Explorer</span>
   </button>
@@ -441,7 +426,7 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <script src="aide-intentions.js?v=a00115e8" defer></script>
 <script src="intentions.js?v=39e671d2" defer></script>
 <script src="comptes.js?v=9f5e8a5d" defer></script>
-<script src="maintenant.js?v=79ee159b" defer></script>
+<script src="maintenant.js?v=535f3750" defer></script>
 <script src="ordonnanceur.js?v=ac58eaf0" defer></script>
 <script src="zones-autonomes.js?v=ef64fe67" defer></script>
 <script src="adresse.js?v=3e38153c" defer></script>
@@ -482,6 +467,6 @@ window.AutourBootTiming={html_disponible:performance.now()};
 <script src="providers/aideFiness.js?v=aa7e6d87" defer></script>
 <script src="providers/aideDecouverte.js?v=e024347d" defer></script>
 <script src="mapProviders/googleMaps.js?v=7c2c2b94" defer></script>
-<script src="app.js?v=94db2f72" defer></script>
+<script src="app.js?v=a27e5ba1" defer></script>
 </body>
 </html>

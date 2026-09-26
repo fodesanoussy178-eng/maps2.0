@@ -343,3 +343,140 @@ pendant des mois, n'a jamais coûté un sixième de milliseconde.
 > La leçon vaut mieux que le chiffre : la section précédente nommait un
 > coupable plausible sans l'avoir mesuré, et personne ne l'a rouverte tant
 > qu'elle semblait raisonnable.
+
+## Maintenant, le cœur d'Autour
+
+### Ce qui a changé, en une phrase
+
+On ouvre Autour et **le panneau Maintenant est déjà ouvert** : trois
+propositions, un cœur sur chacune, une croix pour rendre la carte. Dessous,
+six envies pour aller plus loin, puis la frise (À venir, Ce week-end).
+
+La boucle visée n'est pas le temps passé dans l'application :
+
+```
+ouvrir → trois propositions → choisir → agir dans le monde réel
+```
+
+### Une seule hiérarchie
+
+Avant cette passe, un même écran de téléphone disait « Maintenant » sept fois :
+sélecteur « Maintenant | Pour toi », capsule flottante, besoin rapide, titre du
+panneau, onglet de temps, titre du bloc « ⚡ Maintenant (3) », navigation
+basse. Il en reste deux : **le titre du panneau** et **la navigation basse**.
+
+| retiré | pourquoi | ce qui le remplace |
+|---|---|---|
+| sélecteur `#selecteurSurface` | répétait le titre du panneau | Pour toi garde la cloche (mobile) et son onglet (grand écran) |
+| besoin rapide « ⚡ Maintenant » | ouvrait le panneau déjà ouvert | — |
+| titre de bloc « ⚡ Maintenant (3) » | redisait le titre du panneau | le compte passe dans la ligne d'explication : « 3 recommandations près de toi » |
+| onglets de temps en tête du panneau | « ⚡ Maintenant » y était un troisième titre | la frise « À venir / Ce week-end » sous les envies ; dans À venir et Ce week-end, les onglets servent de titre |
+| besoins rapides Manger / Sortir dans le panneau mobile | doublaient les envies | les envies ; les vues complètes restent atteignables par « Voir aussi plus loin ou plus tard » |
+| capsule sous l'en-tête | chevauchait le sélecteur | la capsule n'existe plus que **panneau fermé** |
+
+Le contexte territorial temporaire (ex. Braderie) garde sa pastille dans le
+panneau mobile (`capsuleTerritorialePanneau`) : c'était sa seule porte sur
+téléphone.
+
+### L'ouverture
+
+`demarrer()` appelle `ouvrirSurfaceMaintenant({auto:true})` après la première
+peinture — la même porte qu'un geste. Trois exceptions :
+
+- un **lien partagé** ou une **entrée profonde** (`/l/…`, `/e/…`, `/explorer?…`) :
+  on est venu voir cet écran-là ;
+- Maintenant a été **refermé dans la session** (`sessionStorage`
+  `autour:maintenant-ferme:v1`) : le choix tient, y compris au rechargement ;
+- une navigation ou une pose d'épingle est en cours, ou un autre panneau s'est
+  ouvert avant la peinture.
+
+L'ouverture automatique ne marque rien comme « vu ». Refermer le panneau, si :
+ce qui était sous les yeux a été vu.
+
+### Fermer, rouvrir
+
+- La **croix** (et le glissement vers le bas depuis l'état réduit) appelle
+  `fermerFeuilleVolontairement()` : fermeture comptée, choix retenu pour la
+  session.
+- Panneau fermé, **la capsule** `#badgeMaintenant` (« ⚡ Maintenant · 3 », un
+  chevron) apparaît : en bas à gauche au-dessus de la navigation sur téléphone
+  et tablette debout, en haut à gauche sur tablette couchée et ordinateur — là
+  où était le panneau. Elle disparaît dès que le panneau est ouvert, qu'Explorer
+  occupe la place, ou qu'un tiroir, une fiche ou un modal couvre le bas.
+- La **navigation basse** rouvre Maintenant à tout moment. Explorer et
+  Solidarité restent chacun à un appui.
+
+### Le cœur
+
+Chaque proposition est un `<article class="mn-l">` qui contient **deux**
+commandes côte à côte : le bouton qui ouvre la fiche (`data-mn`) et le cœur
+(`boutonCoeur`, le même que partout). Le cœur passait par le registre
+`favorisEnMemoire` pour retrouver son lieu ; ce même registre servait à
+calculer les favoris « verrouillés » du moteur, alors qu'il contient **toute
+carte déjà affichée**. `favorisVerrouilles()` ne retient désormais que les
+entrées dont le cœur est réellement allumé (`favorisIds`).
+
+Un favori reste épinglé tant qu'il passe `candidats()` ; expiré, fermé ou hors
+zone, il quitte Maintenant et reste dans les Favoris.
+
+### Les envies (second niveau)
+
+`AutourMaintenant.CATEGORIES_EXPLORATION` — Sortir, Manger, Culture, Sport,
+Nature, Gratuit — et `explorerCategorie(items, ctx, id)` : **le même bassin**
+que les trois places, filtré par famille. Un lieu fermé, un événement de demain
+ou une commodité n'y entrent pas davantage. « Gratuit » exige que la source
+l'ait écrit (`is_free`, `fee=no`) — ou un parc.
+
+La liste d'une envie s'ouvre dans le panneau (‹ pour revenir), montre six
+lignes puis « Voir tout » (trente au plus), et se termine par « Voir aussi plus
+loin ou plus tard », qui mène aux écrans existants : vues Manger / Sortir /
+Bouger, ou les intentions d'Explorer.
+
+Les trois places n'ont toujours **aucun** « Voir tout » : la rareté fait partie
+du produit.
+
+### À venir et Ce week-end
+
+Ce sont la frise de Maintenant, pas une autre section : la navigation basse
+reste sur Maintenant. Les règles de `temporel.js` ne bougent pas — un événement
+dont la billetterie est ouverte n'est pas « maintenant ».
+
+### Trois dispositions, un mécanisme
+
+| largeur | panneau | les trois propositions |
+|---|---|---|
+| < 768 px | feuille montant du bas, une bande de carte toujours visible | lignes |
+| 768–1099, debout | carte flottante centrée, carte visible autour | grille de trois |
+| 768–1099, couché | volet à gauche, carte à droite | lignes |
+| ≥ 1100 px | volet de gauche des trois volets | grille de trois |
+
+En grille, chaque carte a une **hauteur fixe** (`--mn-carte`) : les trois
+emplacements gris du chargement ont exactement leur taille, rien ne bouge
+quand les propositions arrivent. Tout est dans la dernière section
+d'`autour.css`, « MAINTENANT, LE CŒUR D'AUTOUR ».
+
+### Les mesures
+
+Liste fermée `AutourMaintenant.MESURES` : impression, détail, favori (ajout /
+retrait), itinéraire, billetterie, réservation, contact, ignorée, fermeture,
+envie consultée. Chaque geste incrémente un compteur **local** par
+`(geste, zone, famille, jour, tranche d'une heure)` — `creneauMesure()`.
+Aucune position, aucun identifiant, aucun lieu précis ; trente jours de
+rétention ; **rien n'est envoyé**. Lecture : `window.AutourMesuresMaintenant()`.
+La page de confidentialité le dit.
+
+La suite — faire de ces créneaux un inventaire — est décrite dans
+[`maintenant-marche.md`](./maintenant-marche.md). Rien de commercial n'est
+actif.
+
+### Les bancs, après cette passe
+
+- `node --test tests/maintenant-coeur-autour.test.mjs` — envies, mesures,
+  étanchéité commerciale, hiérarchie, fermeture ;
+- `AUTOUR_RACINE=autour node autour/outils/maintenant.mjs` : **57/57** (le code
+  précédent en passait 22/47 : le banc attendait déjà l'ouverture « sans
+  appuyer sur rien »). Le banc a été réaligné sur la route
+  `evenements_locaux`, et sur la règle documentée plus haut selon laquelle un
+  bloc vide ne mime pas trois lignes ;
+- `AUTOUR_SOURCE=. node outils/sonde-rendu.mjs largeurs|volets|pannes|parcours`
+  : aucun débordement, aucune erreur, aucune nouvelle cible sous 44 px.

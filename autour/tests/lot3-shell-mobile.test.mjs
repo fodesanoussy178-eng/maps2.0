@@ -68,14 +68,15 @@ test("le troisième onglet s'appelle Solidarité, et son backend n'a pas bougé"
 
 /* ---- 2. Maintenant / Pour toi ------------------------------------------ */
 
-test("le sélecteur de surface porte les deux lectures, et rien d'autre", () => {
-  const barre = html.slice(html.indexOf('<div id="selecteurSurface"'),
-                           html.indexOf("</div>", html.indexOf('<div id="selecteurSurface"')));
-  const surfaces = [...barre.matchAll(/data-surface="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(surfaces, ["maintenant", "pourtoi"]);
-  assert.match(barre, /⚡ Maintenant/);
-  assert.match(barre, /♡ Pour toi/);
-  assert.match(barre, /role="tablist"/);
+test("le sélecteur « Maintenant | Pour toi » a disparu, Pour toi garde ses portes", () => {
+  /* Il répétait sous l'en-tête le mot que le panneau porte en titre et que la
+     navigation basse porte encore en dessous. Maintenant est désormais le
+     panneau qui s'ouvre avec Autour ; Pour toi reste à un geste — la cloche
+     sur mobile, son onglet sur grand écran. */
+  assert.doesNotMatch(html, /id="selecteurSurface"/);
+  assert.doesNotMatch(app, /marquerSurface/);
+  assert.match(app, /\$\("#btnNotifs"\)\.onclick = basculerPourToi;/);
+  assert.match(html, /data-nb="pourtoi"/);
 });
 
 test("« Pour toi » n'est pas devenu un quatrième onglet, et n'a pas disparu", () => {
@@ -93,7 +94,7 @@ test("les accès à Maintenant restent identiques, quel que soit le chemin", () 
      équivalents. */
   const surface = app.slice(app.indexOf("function ouvrirSurfaceMaintenant"),
                             app.indexOf("function brancherBesoinsRapides"));
-  assert.match(surface, /marquerSurface\("maintenant"\)/);
+  assert.match(surface, /marquerNavigation\("maintenant"\)/);
   const barre = app.slice(app.indexOf('$("#navBas").querySelectorAll'),
                           app.indexOf('if(id !== "pourtoi") fermerPourToi'));
   assert.match(barre, /if\(id === "maintenant"\)\{\s*ouvrirSurfaceMaintenant\(\);/,
@@ -261,7 +262,7 @@ test("tout ce que ce lot ajoute est borné au mobile", () => {
      `display:none` tenait, et Explorer ne faisait rien sur ordinateur. Le
      sélecteur de surface et le bouton flottant, eux, restent mobiles — le
      desktop a ses six entrées de navigation, qui font le même travail. */
-  assert.match(html, /#selecteurSurface,#fabCreer\{display:none\}/);
+  assert.match(html, /#fabCreer\{display:none\}/);
   assert.match(blocMobile, /@media \(max-width:768px\)\{/);
   /* Et la barre desktop garde ses cinq colonnes et ses placements. */
   assert.match(html, /grid-template-columns:repeat\(5,minmax\(0,1fr\)\);/);
@@ -270,10 +271,12 @@ test("tout ce que ce lot ajoute est borné au mobile", () => {
 });
 
 test("ce qui se rangeait sous l'en-tête descend, sans qu'aucune règle ne le sache", () => {
-  /* Le sélecteur de surface prend ce créneau sur mobile. Une seule variable
-     porte le décalage : les trois règles concernées ne la connaissent pas. */
+  /* Une seule variable porte le décalage : les règles concernées ne la
+     connaissent pas. Le sélecteur de surface qui prenait ce créneau sur
+     mobile a disparu ; la variable reprend donc sa valeur de base, et ce qui
+     s'y range remonte de lui-même. */
   assert.match(html, /--sous-entete:calc\(var\(--header-bas\) \+ 10px\);/);
-  assert.match(blocMobile, /:root\{--sous-entete:calc\(var\(--header-bas\) \+ 10px \+ 48px \+ 8px\)\}/);
+  assert.doesNotMatch(blocMobile, /--sous-entete:calc\(var\(--header-bas\) \+ 10px \+ 48px \+ 8px\)/);
   assert.match(html, /#charge\{position:absolute;top:var\(--sous-entete\)/);
 });
 

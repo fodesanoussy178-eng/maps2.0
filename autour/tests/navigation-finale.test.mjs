@@ -9,7 +9,7 @@ const ecrans = await readFile(new URL("../differe/ecrans.js", import.meta.url), 
 await import("../temporel.js");
 const T = globalThis.AutourTemps;
 
-test("les trois accès Maintenant partagent exactement la même action", () => {
+test("les accès à Maintenant partagent exactement la même action", () => {
   const action = html.slice(html.indexOf("function ouvrirSurfaceMaintenant"),
     html.indexOf("function brancherBesoinsRapides"));
   assert.match(action, /creneau = "maintenant";/);
@@ -17,9 +17,13 @@ test("les trois accès Maintenant partagent exactement la même action", () => {
   assert.match(action, /ongletCourant = "maintenant";/);
   assert.match(action, /ouvrirFeuille2\("racine"\);/);
 
+  /* Les accès sont trois : l'ouverture d'Autour, la capsule du panneau
+     refermé, la navigation basse. Le besoin rapide « ⚡ Maintenant » a
+     disparu — il répétait le panneau qu'il ouvrait. */
   const rapides = html.slice(html.indexOf("function brancherBesoinsRapides"),
     html.indexOf("function besoinsRapidesHTML"));
-  assert.match(rapides, /if\(id === "maintenant"\)\{\s*ouvrirSurfaceMaintenant\(\);/);
+  assert.doesNotMatch(rapides, /id === "maintenant"/);
+  assert.match(html, /ouvrirSurfaceMaintenant\(\{auto:true\}\)/);
   const badge = html.slice(html.indexOf("function majBadgeMaintenant"),
     html.indexOf("function blocMaintenantAccueil"));
   assert.match(badge, /badge\.onclick = ouvrirSurfaceMaintenant;/);

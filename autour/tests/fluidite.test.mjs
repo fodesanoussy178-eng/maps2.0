@@ -320,7 +320,9 @@ test("la pastille existe, centrée sur la carte, avec son sous-titre", () => {
 test("la pastille Aide affiche les recommandations fiables du bassin", () => {
   const bloc = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc, "majBadgeMaintenant doit exister");
-  assert.match(bloc[0], /badge\.hidden = n === 0;/);
+  /* Jamais à zéro — et jamais à côté du panneau ouvert : la capsule EST le
+     panneau refermé. */
+  assert.match(bloc[0], /badge\.hidden = n === 0 \|\| panneauOuvert \|\| ailleurs;/);
   /* Le nombre est celui du BLOC, pas un second comptage. La pastille comptait
      avec le moteur temporel (les seuls événements) pendant que le bloc comptait
      avec le moteur de disponibilité (événements, séances, activités, lieux
@@ -340,7 +342,7 @@ test("un appui sur la pastille ouvre la liste, pas un menu", () => {
   const badge = /function majBadgeMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(badge, "majBadgeMaintenant doit exister");
   assert.match(badge[0], /badge\.onclick = ouvrirSurfaceMaintenant;/);
-  const bloc = /function ouvrirSurfaceMaintenant\(\)\{[\s\S]*?\n\}/.exec(html);
+  const bloc = /function ouvrirSurfaceMaintenant\(options\)\{[\s\S]*?\n\}/.exec(html);
   assert.ok(bloc);
   assert.match(bloc[0], /creneau = "maintenant";/);
   assert.match(bloc[0], /ouvrirFeuille2\("racine"\);/);
@@ -424,12 +426,18 @@ test("seul ce qui a réellement lieu prend la carte blanche", () => {
     /if\(estTemporaire\(l\) && !l\.annule && TEMPS\.estMaintenant\(statutTemps\(l\)\.status\)\)\{/);
 });
 
-test("la liste « ⚡ Maintenant (3) » existe, compacte et comptée", () => {
+test("les trois propositions existent, compactes et comptées une seule fois", () => {
   assert.match(html, /function blocMaintenantAccueil\(\)\{/);
   assert.match(html, /class="mn" data-testid="maintenant-liste"/);
-  assert.match(html, /<b>Maintenant<\/b>'\+/);
   assert.match(html, /const combien = liste\.length;/);
-  assert.match(html, /'<span>\('\+combien\+'\)<\/span>'/);
+  /* LE TITRE N'EST PLUS DANS LE BLOC. « ⚡ Maintenant » en titre de panneau
+     puis « ⚡ Maintenant (3) » en titre de bloc, juste dessous, disaient deux
+     fois la même chose. Le panneau porte le titre ; le compte passe dans sa
+     ligne d'explication — « 3 recommandations près de toi ». */
+  const bloc = /function blocMaintenantAccueil\(\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.doesNotMatch(bloc, /<b>Maintenant<\/b>/);
+  assert.doesNotMatch(bloc, /class="mn-tete"/);
+  assert.match(html, /d\.combien\+" recommandation"\+\(d\.combien > 1 \? "s" : ""\)/);
   assert.doesNotMatch(html, /MAINTENANT_TOUT|data-mn-tout|["'`]10\+["'`]/);
 });
 
@@ -507,8 +515,11 @@ test("un événement en cours n'est jamais affiché deux fois dans la feuille", 
      propositions). Ce qui compte ici n'a pas bougé : `blocMaintenantAccueil`
      rend l'échantillon sélectionné, et AUCUNE deuxième liste générique ne
      vient derrière — c'est elle qui recopiait un événement déjà affiché. */
-  assert.match(html, /corps\.innerHTML = besoinsRapidesPanneauHTML\(\)\+\s*\n?\s*ongletsTemps\(\)\+blocMaintenantAccueil\(\)\+/);
+  assert.match(html, /corps\.innerHTML = capsuleTerritorialePanneau\(\)\+\s*\n?\s*blocMaintenantAccueil\(\)\+blocCategoriesMaintenant\(\)\+/);
   assert.doesNotMatch(html, /corps\.innerHTML = ongletsTemps\(\)\+besoinsRapidesHTML/);
+  // les envies relisent le même bassin filtré, jamais une liste générique
+  const envie = /function blocCategorieMaintenant\(envie\)\{[\s\S]*?\n\}/.exec(html)[0];
+  assert.match(envie, /M\.explorerCategorie\(itemsMaintenant\(ctx\), ctx, envie\.id\)/);
 });
 
 /* ======================================================================== */
