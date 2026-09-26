@@ -168,7 +168,11 @@
      — pour la mauvaise raison, et seulement tant que cet accident durait.
      Maintenant qu'elle porte son nom, elle doit être nommée ici aussi :
      retirer de l'argent est une course, jamais une proposition de sortie. */
-  const COMMODITES = Object.freeze(["commerce", "friperie", "marche", "sante",
+  /* LE MARCHÉ N'EN FAIT PAS PARTIE. Un marché ouvert maintenant est une
+     sortie, pas une course : « Marché, samedi 8 h → 13 h, à 800 m » répond
+     exactement à « qu'est-ce que je fais maintenant ». Il n'entre que s'il
+     est VRAIMENT ouvert — l'horaire inconnu reste dehors, comme partout. */
+  const COMMODITES = Object.freeze(["commerce", "friperie", "sante",
     "metro", "bus", "tram", "train", "velo", "recharge", "toilettes",
     "mairie", "ecole", "emploi", "banque"]);
 
@@ -271,6 +275,8 @@
     HORAIRE_INCONNU:  "horaire_inconnu",
     FERME_TROP_TOT:   "ferme_trop_tot",
     HORS_PLAGE_QUOTIDIENNE: "hors_plage_quotidienne",
+    HORS_JOUR_RECURRENT: "hors_jour_recurrent",
+    JOURS_INCONNUS:   "jours_inconnus",
     SEANCE_TROP_LOIN: "seance_trop_loin",
     SEANCE_TROP_PROCHE: "seance_trop_proche",
     SANS_NOM:         "sans_nom",
@@ -422,6 +428,20 @@
       if (hDebut !== null && hFin !== null && hNow !== null && hFin > hDebut &&
           (hNow < hDebut || hNow > hFin))
         return refus(RAISONS.HORS_PLAGE_QUOTIDIENNE);
+
+      /* ET PAS N'IMPORTE QUEL JOUR. La fenêtre horaire ne suffisait pas :
+         « Marché du Vieux-Lille » (mercredi, vendredi, dimanche) était « en
+         cours » un lundi à 10 h. Les jours viennent de la prose de la source
+         (`joursRecurrence`, lus à la normalisation) ; quand elle en donne, on
+         les respecte. Un MARCHÉ récurrent dont on ne connaît pas les jours
+         n'est jamais « maintenant » : on ne sait pas s'il a lieu aujourd'hui. */
+      const jours = Array.isArray(item.joursRecurrence) && item.joursRecurrence.length
+        ? item.joursRecurrence : null;
+      const jour = jourDeSemaine(t, fuseau);
+      if (jours && jour !== null && jours.indexOf(jour) < 0)
+        return refus(RAISONS.HORS_JOUR_RECURRENT);
+      if (!jours && estMarcheRecurrent(item))
+        return refus(RAISONS.JOURS_INCONNUS);
     }
 
     /* Le lieu fermé, QUAND l'information existe. La plupart des lieux
@@ -441,6 +461,22 @@
   }
 
   function refus(raison) { return { retenu: false, raison, distance: null }; }
+
+  const JOURS_INDEX = Object.freeze({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 });
+  function jourDeSemaine(ms, fuseau) {
+    try {
+      const j = new Intl.DateTimeFormat("en-US", { timeZone: fuseau || "Europe/Paris", weekday: "short" })
+        .format(new Date(ms));
+      return JOURS_INDEX[j] != null ? JOURS_INDEX[j] : null;
+    } catch (e) { return null; }
+  }
+
+  /* Les familles qui se REPRODUISENT : un marché, des puces. Une braderie ou
+     une fête de quartier datée n'est pas concernée — elle a une date. */
+  function estMarcheRecurrent(item) {
+    const f = String((item && item.familleLocale) || "");
+    return f === "marche" || f === "puces" || /^marche_/.test(f);
+  }
 
   /* Une semaine : au-delà, une plage « de 8 h à 15 h » est un horaire qui se
      répète, pas un événement qui dure. */
@@ -1325,11 +1361,17 @@
     String((item && (item.canonicalCategory || item.categorie || item.category || item.cat)) || "")
       .toLowerCase();
 
+  /* Un marché nocturne est une sortie ET un repas ; un marché aux livres,
+     une sortie ET de la culture. Les envies déclarées à la normalisation
+     s'ajoutent à la famille — l'objet reste unique, il n'est jamais dupliqué. */
+  const envieDeclaree = (item, id) => !!item && Array.isArray(item.envies) && item.envies.indexOf(id) >= 0;
+
   const APPARTIENT = Object.freeze({
-    sortir: (item, famille) => famille === "sortir" || famille === "boire" || famille === "ecran",
-    manger: (item, famille) => famille === "manger",
+    sortir: (item, famille) => famille === "sortir" || famille === "boire" || famille === "ecran" ||
+      envieDeclaree(item, "sortir"),
+    manger: (item, famille) => famille === "manger" || envieDeclaree(item, "manger"),
     culture: (item, famille) => famille === "culture" || famille === "ecran" ||
-      categorieBrute(item) === "spectacle",
+      categorieBrute(item) === "spectacle" || envieDeclaree(item, "culture"),
     sport: (item) => ["sport", "terrain", "piscine"].indexOf(categorieBrute(item)) >= 0,
     nature: (item) => categorieBrute(item) === "parc" ||
       String((item && item.canonicalFamily) || "").toLowerCase() === "nature",

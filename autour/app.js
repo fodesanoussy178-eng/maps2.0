@@ -1430,6 +1430,16 @@ if(window.ResizeObserver){
   new ResizeObserver(()=>synchroniserHauteurFeuille()).observe(document.getElementById("feuilleBesoins"));
 }
 
+/* Quand la famille locale (marché, braderie…) a remplacé une catégorie de
+   source qui mentait — « concert » pour le Marché du Vieux-Lille —, la fiche
+   canonique doit dire la même chose que l'objet : le contrôle de qualité de
+   Maintenant exige que les deux concordent, et une braderie en cours en
+   sortait pour « catégorie invalide ». */
+function categorieFamilleLocale(n){
+  return n && n.categorieRemplacee && n.canonicalCategory
+    ? {category:n.canonicalCategory, cat:n.canonicalCategory} : {};
+}
+
 function normaliserItem(item, source){
   let normalise = toCommonItem(item, {source});
   if(ZONES){
@@ -1442,7 +1452,7 @@ function normaliserItem(item, source){
       title:normalise.title || normalise.titre,
       event_source:normalise.event_source || normalise.primary_source || source,
       event_source_url:normalise.event_source_url || normalise.source_url || null,
-    }));
+    }, categorieFamilleLocale(normalise)));
     if(normalise.eventCanonical.title){
       normalise.title = normalise.titre = normalise.eventCanonical.title;
     }
@@ -1467,7 +1477,7 @@ function donneesEvenement(l){
       title:l.title || l.titre,
       event_source:l.event_source || l.primary_source || null,
       event_source_url:l.event_source_url || l.source_url || null,
-    }));
+    }, categorieFamilleLocale(l)));
     return l.eventCanonical;
   }
   return l;
@@ -14835,7 +14845,16 @@ function versItemMaintenant(l, t){
        rien quand le tag, lui, est là. */
     gratuit: l.tags && typeof l.tags === "object"
       ? l.tags.fee === "no"
-      : (gratuitDe(l) || l.gratuit === true),
+      /* Un événement dont la source a écrit `is_free` l'est : une braderie
+         « entrée libre » n'arrivait jamais dans Gratuit. */
+      : (gratuitDe(l) || l.gratuit === true || !!(evenement && canonique && canonique.is_free === true)),
+    /* Marchés, braderies, fêtes de quartier : la famille reconnue à la
+       normalisation (core.js), ses envies, et les jours d'une récurrence que
+       la source n'a écrits qu'en toutes lettres. Aucune priorité là-dedans. */
+    famille:l.familleMaintenant || undefined,
+    envies:Array.isArray(l.envies) ? l.envies : undefined,
+    familleLocale:l.familleLocale || null,
+    joursRecurrence:Array.isArray(l.joursRecurrence) ? l.joursRecurrence : null,
   };
 }
 
