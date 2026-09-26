@@ -113,6 +113,8 @@
     park: "parc", garden: "parc", marketplace: "marche", market: "marche",
     theatre: "spectacle", theater: "spectacle", cinema: "cinema", supermarket: "commerce",
     shop: "commerce", event: "event", concert: "concert", sport: "sport",
+    // une marche à pied, pas un marché : le mot sans accent est d'abord un sport
+    marche_nordique: "sport", marche_a_pied: "sport", randonnee: "sport",
   });
 
   const FOOD_SPECIALTIES = Object.freeze({
@@ -269,7 +271,12 @@
     if (tourism === "museum" || (!transportPlace && /\b(musee|museum)\b/.test(text))) {
       addWeights(weights, CATEGORY_RELATIONS.musee);
     }
-    if (amenity === "marketplace" || /\b(marche|market)\b/.test(text)) {
+    /* Un événement passe par la famille locale — « Marche nordique » n'est pas
+       un marché ; un lieu garde la lecture de son nom et de ses tags. */
+    const estMarche = p.isTemporary === true
+      ? (() => { const f = familleLocale(p); return !!(f && f.cat === "marche"); })()
+      : /\b(marche|market)\b/.test(text) && !MARCHE_A_PIED.test(" " + text + " ");
+    if (amenity === "marketplace" || estMarche) {
       addWeights(weights, CATEGORY_RELATIONS.marche);
     }
     if (amenity === "social centre" || amenity === "community centre" || office === "association" || socialFacility) {
@@ -339,6 +346,206 @@
     return (categories || []).reduce((best, category) => Math.max(best, categoryWeight(item, category)), 0);
   }
 
+  /* ===================================================================
+     LES MARCHÉS, BROCANTES, BRADERIES ET FÊTES DE QUARTIER
+
+     Une famille d'événements locaux que les sources décrivent chacune à sa
+     façon : DATAtourisme range « Marché du Vieux-Lille » en CONCERT (la place
+     s'appelle « Place du Concert »), OpenAgenda laisse « Marché nocturne du
+     Pont » ou « Braderie de Flers-Bourg » sans catégorie, et « Braderie »
+     arrive avec une majuscule que rien ne reconnaissait. Résultat mesuré :
+     une braderie en cours n'entrait dans AUCUNE envie de Maintenant.
+
+     Ce classement ne décide que de la NATURE de l'événement — catégorie
+     affichée, famille, envies. Il ne donne aucune priorité : le moteur classe
+     une braderie exactement comme le reste.
+
+     LE TITRE DÉCIDE, LA DESCRIPTION NE DÉCIDE JAMAIS SEULE. « à deux pas du
+     marché » dans une description ne fait pas un marché.
+
+     « MARCHE » N'EST PAS « MARCHÉ ». Sans accent, c'est d'abord une marche :
+     « Marche nordique », « Marche pour le climat », « Marche santé » —
+     trois vrais événements de la métropole. Un « marche » sans accent n'est
+     un marché que s'il porte un qualificatif sans ambiguïté (« de Noël »,
+     « nocturne », « aux puces », « de producteurs »…) ou un titre tout en
+     capitales, où les accents tombent. Et même accentué, le marché de
+     l'immobilier ou de l'emploi n'est pas un marché de quartier.
+     =================================================================== */
+  const sansAccents = (v) => String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const motsMinuscules = (v) => " " + String(v || "").toLowerCase().replace(/[’']/g, " ")
+    .replace(/[^a-zà-ÿœæ0-9]+/g, " ").replace(/\s+/g, " ").trim() + " ";
+
+  /* Un lieu nommé d'après un marché n'est pas un marché : « Concert place du
+     Marché », « Halles du Marché », l'arrêt « Marché de Wazemmes ». */
+  const LIEU_NOMME_MARCHE = / (?:place|rue|quai|avenue|square|parking|halle|halles|arret|station|metro|parvis|cour)(?: du| au| des| de la)? march(?:e|é)s? /g;
+  /* Le marché au sens économique : une conférence sur l'emploi n'est pas une
+     sortie du samedi matin. */
+  const MARCHE_ECONOMIQUE = / march(?:e|é)s? (?:de l |du |des |de |d )?(?:immobilier|travail|emploi|publics?|financiers?|boursiers?|energie|énergie|logement|carbone|unique|noir|capitaux|actions|obligataires?|locatif) |(?:etude|étude|part|parts|mise|lancement|acces|accès) (?:de|sur le|au) march(?:e|é)s? | bon march(?:e|é) /;
+  /* Une marche à pied, écrite sans accent. */
+  const MARCHE_A_PIED = / marches? (?:nordique|a pied|à pied|pour|contre|blanche|sante|santé|solidaire|rose|des fiertes|des fiertés|afghane|aquatique|active|rapide|populaire|gourmande?|ludique|exploratoire|verte|bleue|de nuit|du coeur|du cœur|et|en foret|en forêt|chronometree|chronométrée) /;
+  const QUALIFIE_MARCHE = "(?:de noel|de noël|nocturnes?|de nuit|aux puces|de producteurs?|des producteurs?|du producteur|fermiers?|paysans?|bio|du terroir|de terroir|artisana(?:l|ux)|des createurs|des créateurs|de createurs|de créateurs|d art|d artisans?|aux livres|aux fleurs|aux tissus|aux disques|hebdomadaires?|locaux|local|alimentaires?|couverts?|de plein air|du dimanche|du samedi|du mercredi|du jeudi|du vendredi|du mardi|du lundi|de quartier|de la seconde main|seconde main|solidaires?)";
+
+  /* Du plus précis au plus général : « marché de Noël » avant « marché ». */
+  const FAMILLES_LOCALES = Object.freeze([
+    { id: "marche_noel", cat: "marche", famille: "sortir", envies: ["sortir"],
+      motif: / (?:march(?:e|é)s? de no(?:e|ë)l|villages? de no(?:e|ë)l|march(?:e|é)s? de l avent) / },
+    { id: "marche_nocturne", cat: "marche", famille: "sortir", envies: ["sortir", "manger"],
+      motif: / march(?:e|é)s? (?:nocturnes?|de nuit) / },
+    { id: "puces", cat: "marche", famille: "sortir", envies: ["sortir"],
+      motif: / (?:march(?:e|é)s? aux puces|puces) / },
+    { id: "marche_artisanal", cat: "marche", famille: "sortir", envies: ["sortir", "culture"],
+      motif: / march(?:e|é)s? (?:artisana(?:l|ux)|des cr(?:e|é)ateurs|de cr(?:e|é)ateurs|d art|d artisans?|aux livres|des bouquinistes) / },
+    { id: "marche_thematique", cat: "marche", famille: "sortir", envies: ["sortir"],
+      motif: / march(?:e|é)s? (?:aux fleurs|aux tissus|aux disques|aux vinyles|de la seconde main|seconde main|solidaires?) / },
+    { id: "marche_producteurs", cat: "marche", famille: "manger", envies: ["manger"],
+      motif: / march(?:e|é)s? (?:de |des |du )?(?:producteurs?|fermiers?|paysans?|bio|terroir|du terroir|de terroir|gourmands?) / },
+    { id: "vide_grenier", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / vide (?:greniers?|dressings?|maisons?|jardins?|poussettes?|chambres?) | videgreniers? / },
+    { id: "brocante", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / (?:brocantes?|broc) / },
+    { id: "braderie", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / braderies? / },
+    { id: "bourse", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / bourses? (?:aux|au|aux jouets et|de|des) (?:v(?:e|ê)tements|jouets|livres|pu(?:e|é)riculture|v(?:e|é)los|skis?|disques|vinyles|plantes|graines|collections?|cartes|timbres|min(?:e|é)raux|miniatures|bd|bandes dessin(?:e|é)es) / },
+    { id: "foire", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / foires? (?!aux questions)/ },
+    { id: "vente_asso", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / ventes? (?:associatives?|solidaires?|caritatives?|de charit(?:e|é)|de bienfaisance)|(?: ventes? (?:de |des |d )[^|]{0,60}(?:association|asso|au profit|caritati|solidaire|paroisse|ecole|école|ape |apel ))/ },
+    { id: "fete_quartier", cat: "event", famille: "sortir", envies: ["sortir"],
+      motif: / (?:f(?:e|ê)tes? (?:de |du |des |de la )?(?:quartiers?|rues?|la rue|voisins|village|hameau)|f(?:e|ê)te locale|f(?:e|ê)tes? [a-zà-ÿ ]{0,24}(?:du|de) quartier|repas de quartier|animations? de quartier|(?:e|é)v(?:e|é)nements? de quartier|carnaval de quartier) / },
+    /* « Ducasse » (la fête foraine du Nord) et « kermesse » sont des indices
+       faibles : « Pochette Surprise : la Ducasse de Clément Courgeon » est un
+       spectacle au LaM. Ils ne complètent qu'une source muette. */
+    { id: "fete_quartier", cat: "event", famille: "sortir", envies: ["sortir"], faible: true,
+      motif: / (?:ducasses?|kermesses?) / },
+    { id: "marche", cat: "marche", famille: "manger", envies: ["manger"],
+      motif: / march(?:e|é)s? / },
+  ]);
+  const FAMILLES_LOCALES_PAR_ID = Object.freeze(Object.fromEntries(FAMILLES_LOCALES.map((f) => [f.id, f])));
+
+  /* Les catégories de source qui ne disent rien de précis : une famille
+     reconnue dans le titre peut les remplacer. Une catégorie qui dit autre
+     chose (sport, spectacle…) n'est remplacée que si le titre COMMENCE par la
+     famille — « Marché du Vieux-Lille » l'emporte sur « concert », « Concert
+     au marché de Noël » reste un concert. */
+  const CATEGORIES_VAGUES = new Set(["", "event", "autre", "evenement", "manifestation",
+    "marche", "brocante", "braderie", "vide_grenier", "foire", "puces", "fete", "culture",
+    "vivant", "loisirs", "animation", "animations", "divers"]);
+
+  function nettoyerTitreMarche(minuscule) {
+    return minuscule.replace(LIEU_NOMME_MARCHE, " ");
+  }
+
+  /* `marche` sans accent : marché seulement s'il est qualifié sans ambiguïté,
+     ou si le titre est en capitales (les accents y tombent). */
+  function marcheAccepte(original, minuscule, famille) {
+    if (famille.id !== "marche" && !/^marche_/.test(famille.id) && famille.id !== "puces") return true;
+    if (MARCHE_ECONOMIQUE.test(minuscule)) return false;
+    if (/ march(?:é|és) /.test(minuscule) && !MARCHE_A_PIED.test(sansAccents(minuscule).replace(/ march(?:e|es) /g, " marche "))) return true;
+    if (famille.id !== "marche") return true;           // qualifié : « marche de noel », « aux puces »…
+    if (MARCHE_A_PIED.test(minuscule)) return false;
+    const lettres = String(original || "").replace(/[^A-Za-zÀ-ÿ]/g, "");
+    return lettres.length > 3 && lettres === lettres.toUpperCase();
+  }
+
+  function familleLocaleDansTitre(titre) {
+    const original = String(titre || "");
+    const minuscule = nettoyerTitreMarche(motsMinuscules(original));
+    if (minuscule.trim() === "") return null;
+    for (const famille of FAMILLES_LOCALES) {
+      famille.motif.lastIndex = 0;
+      const m = famille.motif.exec(minuscule);
+      if (!m) continue;
+      if (!marcheAccepte(original, minuscule, famille)) continue;
+      /* EN TÊTE : le titre commence par la famille, éventuellement après un
+         qualificatif (« Grande braderie », « Petite brocante de quartier »),
+         ou un segment commence par elle (« TISSÉADE, MARCHÉ AUX TISSUS »). */
+      const segments = original.split(/[,:|–—(]| - /).map((s) => motsMinuscules(s));
+      const enTete = segments.some((s) => {
+        const debut = s.replace(/^ (?:(?:le|la|les|l|un|une|grand|grande|grands|grandes|petit|petite|petits|petites|nouveau|nouvelle|traditionnel|traditionnelle|annuel|annuelle|super|mini|\d+(?:e|er|eme|ème)?|[ivx]+e?) )+/, " ");
+        famille.motif.lastIndex = 0;
+        const n = famille.motif.exec(nettoyerTitreMarche(debut));
+        return n && n.index === 0;
+      });
+      return { famille, enTete: enTete && !famille.faible };
+    }
+    return null;
+  }
+
+  /* Ce que la source a dit elle-même, quand elle l'a dit : `event_kind`,
+     tags d'annonce, type DATAtourisme, catégorie. Seulement pour confirmer
+     une famille — jamais pour en inventer une contre le titre. */
+  function familleDeclaree(raw) {
+    const kind = normalizeText(raw.event_kind || raw.eventKind);
+    const categorie = normalizeText(raw.category || raw.categorie || raw.cat);
+    const tags = (Array.isArray(raw.announcement_tags) ? raw.announcement_tags
+      : Array.isArray(raw.announcementTags) ? raw.announcementTags : []).map(normalizeText);
+    const dit = (mot) => kind === mot || categorie === mot || tags.includes(mot);
+    if (dit("braderie")) return FAMILLES_LOCALES_PAR_ID.braderie;
+    if (dit("brocante")) return FAMILLES_LOCALES_PAR_ID.brocante;
+    if (dit("vide grenier")) return FAMILLES_LOCALES_PAR_ID.vide_grenier;
+    if (dit("marche de noel")) return FAMILLES_LOCALES_PAR_ID.marche_noel;
+    if (dit("neighbourhood party")) return FAMILLES_LOCALES_PAR_ID.fete_quartier;
+    return null;
+  }
+
+  function familleLocale(raw) {
+    const r = raw || {};
+    const titre = r.title || r.titre || r.name || "";
+    const categorieSource = normalizeText(r.category || r.categorie || r.cat || "");
+    const dansTitre = familleLocaleDansTitre(titre);
+    /* Mentionnée au détour du titre d'autre chose (« Concert au marché de
+       Noël ») : c'est cette autre chose, sauf si la source n'a rien dit. */
+    if (dansTitre && (dansTitre.enTete || CATEGORIES_VAGUES.has(categorieSource))) {
+      return Object.assign({}, dansTitre.famille, {
+        remplaceCategorie: dansTitre.enTete || CATEGORIES_VAGUES.has(categorieSource),
+        preuve: dansTitre.enTete ? "titre" : "titre_mention",
+      });
+    }
+    const declaree = familleDeclaree(r);
+    if (declaree) return Object.assign({}, declaree, {
+      remplaceCategorie: CATEGORIES_VAGUES.has(categorieSource), preuve: "source" });
+    return null;
+  }
+
+  /* ---- LES JOURS D'UNE RÉCURRENCE ----------------------------------------
+     DATAtourisme publie un marché hebdomadaire comme UNE plage du 1er janvier
+     au 31 décembre, 7 h → 14 h, sans jour de semaine. Les jours ne sont que
+     dans la prose : « Chaque mercredi, vendredi et dimanche matin », « chaque
+     après-midi, du mardi au dimanche », « un dimanche ». Sans eux, le marché
+     était « en cours » un lundi matin.
+
+     On les lit — plages (« du mardi au dimanche »), listes et mentions —,
+     on retire les exclusions (« sauf le lundi », « fermé le lundi »), et on
+     ne répond que si la prose en dit quelque chose. `null` veut dire « on ne
+     sait pas », jamais « tous les jours ». */
+  const JOURS_SEMAINE = Object.freeze({ dimanche: 0, lundi: 1, mardi: 2, mercredi: 3,
+    jeudi: 4, vendredi: 5, samedi: 6 });
+  const MOT_JOUR = "(dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi)s?";
+
+  function joursRecurrence(texte) {
+    const t = " " + sansAccents(String(texte || "").toLowerCase()).replace(/[^a-z0-9]+/g, " ") + " ";
+    const quotidien = / (?:tous les jours|chaque jour|7 ?j ?(?:sur ?)?7|7 jours sur 7|quotidien(?:ne)?(?:ment)?) /.test(t);
+    const jours = new Set(quotidien ? [0, 1, 2, 3, 4, 5, 6] : []);
+    const exclus = new Set();
+    const plage = new RegExp(" (?:du )?" + MOT_JOUR + " (?:au|a) " + MOT_JOUR + " ", "g");
+    let m;
+    const sansPlages = t.replace(plage, (tout, a, b) => {
+      let j = JOURS_SEMAINE[a];
+      const fin = JOURS_SEMAINE[b];
+      for (let i = 0; i < 7; i += 1) { jours.add(j); if (j === fin) break; j = (j + 1) % 7; }
+      return " ";
+    });
+    const exclusion = new RegExp(" (?:sauf|ferme|fermes|fermee|fermeture|hors) (?:le |les |du )?" + MOT_JOUR + "(?: (?:et|,) (?:le |les )?" + MOT_JOUR + ")?", "g");
+    const reste = sansPlages.replace(exclusion, (tout, a, b) => {
+      exclus.add(JOURS_SEMAINE[a]); if (b) exclus.add(JOURS_SEMAINE[b]); return " ";
+    });
+    const mention = new RegExp(" " + MOT_JOUR + " ", "g");
+    while ((m = mention.exec(reste))) { jours.add(JOURS_SEMAINE[m[1]]); mention.lastIndex -= 1; }
+    exclus.forEach((j) => jours.delete(j));
+    return jours.size ? [...jours].sort((a, b) => a - b) : null;
+  }
+
   function toCommonItem(raw, defaults) {
     const source = (defaults && defaults.source) || raw.source || "unknown";
     const title = raw.title || raw.titre || raw.name || "";
@@ -362,6 +569,12 @@
     const categoryWeights = classifyPlaceWeighted(Object.assign({}, raw, { title, source, isTemporary }));
     const categories = sortByWeight(categoryWeights);
     const taxonomy = taxonomieCanonique(Object.assign({}, raw, {title, isTemporary}));
+    /* Marchés, brocantes, braderies, fêtes de quartier : la famille locale.
+       Pour une publication d'habitant, le type choisi à la création reste
+       celui qu'on affiche ; seules la famille et les envies s'y ajoutent. */
+    const locale = isTemporary ? familleLocale(Object.assign({}, raw, {title})) : null;
+    const publicationHabitant = source === "user" || /^pub/.test(String(raw.id || ""));
+    const remplace = !!(locale && locale.remplaceCategorie && !publicationHabitant);
 
     return Object.assign({}, raw, {
       categoryWeights,
@@ -373,10 +586,16 @@
       latitude,
       longitude,
       categories,
-      canonicalCategory: taxonomy.category,
-      canonicalCategories: taxonomy.categories,
-      foodSpecialty: taxonomy.foodSpecialty,
-      canonicalFamily: taxonomy.family,
+      canonicalCategory: remplace ? locale.cat : taxonomy.category,
+      canonicalCategories: remplace ? unique([locale.cat, ...(taxonomy.categories || [])]) : taxonomy.categories,
+      foodSpecialty: remplace ? null : taxonomy.foodSpecialty,
+      canonicalFamily: remplace ? (locale.famille === "manger" ? "food" : "event") : taxonomy.family,
+      categorieRemplacee: remplace,
+      familleLocale: locale ? locale.id : null,
+      familleMaintenant: locale ? locale.famille : null,
+      envies: locale ? locale.envies.slice() : null,
+      joursRecurrence: isTemporary
+        ? joursRecurrence([title, raw.description || ""].join(" ")) : null,
       startsAt,
       endsAt,
       openingHours,
@@ -2379,6 +2598,9 @@
     categoryWeight,
     bestCategoryWeight,
     toCommonItem,
+    familleLocale,
+    joursRecurrence,
+    FAMILLES_LOCALES,
     matchesCategory,
     isDiscoveryCandidate,
     dedupeItems,

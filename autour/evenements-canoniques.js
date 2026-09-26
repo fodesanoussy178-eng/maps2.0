@@ -107,7 +107,11 @@
     const hasCurrency = /(?:€|euros?|eur)(?=\b|\s|$)/i.test(candidate);
     const explicitFree = /\b(?:gratuit(?:e|s)?|entrée\s+libre|ac(?:c|ç)ès\s+libre)\b/i.test(candidate);
 
-    if (structuredAmount != null || (structuredText && parsed != null && hasCurrency)) {
+    /* « Gratuit » écrit par la source, avec un montant à 0 : c'est gratuit, pas
+       « 0 € ». L'ordre inverse faisait perdre `is_free` à toute braderie
+       « entrée libre » — et elle n'entrait jamais dans l'envie Gratuit. */
+    const zeroGratuit = structuredFree === true && (structuredAmount == null || Number(structuredAmount) === 0);
+    if (!zeroGratuit && (structuredAmount != null || (structuredText && parsed != null && hasCurrency))) {
       return {
         price_amount: structuredAmount ?? parsed,
         price_text: structuredText || sentenceWith(description, /\d+(?:[,.]\d{1,2})?\s*(?:€|euros?|eur)(?=\b|\s|$)/i) || `${structuredAmount ?? parsed} €`,

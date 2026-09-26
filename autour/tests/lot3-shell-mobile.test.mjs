@@ -111,22 +111,20 @@ test("les trois créneaux restent ceux du moteur, et sont exposés partout", () 
   assert.match(app, /CRENEAUX\.filter\(c=>c\.id !== "bientot"\)/);
 
   /* Dans la feuille — donc dans Maintenant et Explorer — comme avant. */
-  assert.ok((app.match(/ongletsTemps\(\)/g) || []).length >= 3);
-  /* Et désormais aussi dans Pour toi. */
-  assert.match(app, /const tempsPourToi = ongletsTemps\(\);/);
-  assert.match(app, /corps\.innerHTML = tempsPourToi \+ blocSurveillances\(\) \+ contenu;/);
+  assert.ok((app.match(/ongletsTemps\(\)/g) || []).length >= 2);
+  /* MAIS PLUS DANS POUR TOI. Ses propositions ne suivent aucune fenêtre :
+     l'onglet « À venir » y montrait, sous ce nom, des recommandations à J+5. */
+  assert.doesNotMatch(app, /const tempsPourToi = ongletsTemps\(\);/);
+  assert.match(app, /corps\.innerHTML = blocSurveillances\(\) \+ contenu;/);
 });
 
-test("changer de créneau dans Pour toi n'en fait pas sortir", () => {
+test("Pour toi ne pilote plus le créneau de la frise", () => {
   const brancher = app.slice(app.indexOf("function brancherPourToi"),
                              app.indexOf("[data-pt]"));
-  assert.match(brancher, /corps\.querySelectorAll\("\[data-creneau\]"\)/);
-  assert.match(brancher, /majPourToi\(\)/);
-  /* La porte de la feuille, elle, bascule vers Explorer — c'est voulu, et
-     c'est justement la différence entre les deux. */
-  assert.doesNotMatch(brancher, /ongletCourant = filtreMaintenant/);
-  /* Et la logique temporelle elle-même n'est pas retouchée. */
-  assert.match(brancher, /filtreMaintenant = creneau === "maintenant";/);
+  /* Pas d'onglet, donc pas de geste qui changerait `creneau` depuis Pour toi :
+     son horizon et celui d'« À venir » ne se touchent plus. */
+  assert.doesNotMatch(brancher, /corps\.querySelectorAll\("\[data-creneau\]"\)/);
+  assert.doesNotMatch(brancher, /creneau = b\.dataset\.creneau/);
 });
 
 /* ---- 4. Explorer, surface de découverte -------------------------------- */
@@ -213,7 +211,7 @@ test("le menu secondaire s'ouvre depuis le haut et porte les bonnes entrées", (
   assert.match(app, /ouvrirMenuPlus\(\);/);
   const menu = ecrans.slice(ecrans.indexOf("const MENU_PLUS_LIENS"),
                             ecrans.indexOf("function ouvrirAPropos"));
-  for (const entree of ["Mon compte", "Mes favoris", "Mes publications",
+  for (const entree of ["Mon compte", "Mes favoris", "Mes créations",
                         "Support", "Mentions légales", "Confidentialité",
                         "À propos d’Autour"])
     assert.ok(menu.includes(entree), "entrée manquante : " + entree);

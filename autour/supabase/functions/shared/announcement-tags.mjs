@@ -96,7 +96,12 @@ function unique(values) {
 }
 
 function explicitTags(value, {tier = "official_keywords", field = ""} = {}) {
-  const raw = normalizeText(value);
+  /* Un NOM DE LIEU n'est pas une forme d'événement : « Place du Concert »
+     faisait du Marché du Vieux-Lille un concert, et les « électro-ménagers »
+     du Marché de Wazemmes en faisaient une soirée électro. */
+  const raw = normalizeText(value)
+    .replace(/\b(?:place|rue|square|quai|avenue|impasse|parvis|cour) du concert\b/g, " ")
+    .replace(/\belectro[ -]?menagers?\b/g, " ");
   const original = String(value ?? "");
   const textOnly = tier === "official_text";
   const titleLike = ["title", "name", "headline"].includes(field);

@@ -213,8 +213,10 @@ const ECRANS_DIFFERES = [
   "verifierCodeCompte", "enregistrerProfilCompte", "seDeconnecter",
   "ouvrirMenuPlus", "ouvrirAPropos",
   "chargerCanal", "actionCreateur", "partagerInviter",
+  /* Créer V1 : participer, signaler */
+  "participerPublication", "signalerPublication",
 ];
-const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=d070821e"};
+const VERSIONS_DIFFEREES = {"differe/ecrans.js":"?v=c8bf6b36"};
 
 /* ---- Les écrans différés ------------------------------------------------
    Ouvrir la fiche d'un lieu, un itinéraire, le formulaire de publication ou
@@ -1428,6 +1430,16 @@ if(window.ResizeObserver){
   new ResizeObserver(()=>synchroniserHauteurFeuille()).observe(document.getElementById("feuilleBesoins"));
 }
 
+/* Quand la famille locale (marché, braderie…) a remplacé une catégorie de
+   source qui mentait — « concert » pour le Marché du Vieux-Lille —, la fiche
+   canonique doit dire la même chose que l'objet : le contrôle de qualité de
+   Maintenant exige que les deux concordent, et une braderie en cours en
+   sortait pour « catégorie invalide ». */
+function categorieFamilleLocale(n){
+  return n && n.categorieRemplacee && n.canonicalCategory
+    ? {category:n.canonicalCategory, cat:n.canonicalCategory} : {};
+}
+
 function normaliserItem(item, source){
   let normalise = toCommonItem(item, {source});
   if(ZONES){
@@ -1440,7 +1452,7 @@ function normaliserItem(item, source){
       title:normalise.title || normalise.titre,
       event_source:normalise.event_source || normalise.primary_source || source,
       event_source_url:normalise.event_source_url || normalise.source_url || null,
-    }));
+    }, categorieFamilleLocale(normalise)));
     if(normalise.eventCanonical.title){
       normalise.title = normalise.titre = normalise.eventCanonical.title;
     }
@@ -1465,7 +1477,7 @@ function donneesEvenement(l){
       title:l.title || l.titre,
       event_source:l.event_source || l.primary_source || null,
       event_source_url:l.event_source_url || l.source_url || null,
-    }));
+    }, categorieFamilleLocale(l)));
     return l.eventCanonical;
   }
   return l;
@@ -2752,9 +2764,12 @@ function versLieu(p){
   const createdBy = p.created_by || p.creator_id || null;
   return normaliserItem({
     id:p.id == null || p.id === "" ? "" : "pub"+p.id, dbId:p.id, cat:p.cat, titre:p.titre,
-    description:p.description || "", adresse:p.adresse || "",
+    description:p.description || "", aPrevoir:p.a_prevoir || p.aPrevoir || "",
+    adresse:p.adresse || "",
     cp:p.cp || (destinationActive() ? (activeLocationContext?.city || "") : commune),
-    quand:p.quand || "Bientôt", gratuit:p.gratuit, prix:p.prix, places:p.places,
+    quand:p.quand || "Bientôt", gratuit:p.gratuit,
+    // gratuite, elle n'a pas de prix : un `prix` 0 résiduel s'affichait « 0 € »
+    prix:p.gratuit === true ? null : p.prix, places:p.places,
     par: p.verifie ? "Structure vérifiée" : (p.creator_name || "Habitant du quartier"),
     creatorId:createdBy, creatorName:p.creator_name || "",
     verifie: p.verifie, mien: !!(moiId && createdBy === moiId),
@@ -3348,6 +3363,8 @@ const Store = {
       lat:l.lat, lng:l.lng,
       zone_id:idZoneActive() === "sans-zone" ? null : idZoneActive(),
       image_url:l.image || null,
+      description:(l.description || "").trim().slice(0, 500) || null,
+      a_prevoir:(l.aPrevoir || "").trim().slice(0, 200) || null,
       debut_le:l.debutLe ? new Date(l.debutLe).toISOString() : null,
       fin_le:l.finLe ? new Date(l.finLe).toISOString() : null
     }).select().single();
@@ -3451,7 +3468,8 @@ const Store = {
   async modifierEvenement(dbId, champs){
     if(!sb || !dbId || !moiId) return false;
     const permis = new Set(["titre","adresse","cp","quand","gratuit","prix","places",
-                            "lat","lng","image_url","debut_le","fin_le"]);
+                            "lat","lng","image_url","debut_le","fin_le",
+                            "description","a_prevoir"]);
     const propres = Object.fromEntries(Object.entries(champs || {}).filter(([cle])=>permis.has(cle)));
     if(!Object.keys(propres).length) return false;
     const { data, error } = await sb.from("publications")
@@ -3479,6 +3497,60 @@ const Store = {
     if(error && !/duplicate|conflict/i.test(error.message)){
       console.error("Inscription refusée :", error.message); return false;
     }
+    return true;
+  },
+
+  /* ---- Une publication par son identifiant, d'où qu'on l'ouvre ---------
+     Un lien partagé arrive souvent de loin : la publication n'est pas dans les
+     lieux chargés autour de la personne. La lecture par identifiant écarte ce
+     qui a été masqué par signalements. */
+  async publication(dbId){
+    const client = sbLecture || sb;
+    if(!client || !dbId) return null;
+    const { data, error } = await client.rpc("publication_publique", {p_id:dbId});
+    if(error){ console.error("Publication introuvable :", error.message); return null; }
+    return data && data[0] ? versLieu(data[0]) : null;
+  },
+
+  /* ---- Participer ---------------------------------------------------------
+     Le nombre est public, la liste ne l'est pas : la base rend un compte, et
+     seulement si « moi » en fait partie — jamais qui d'autre. La capacité est
+     tenue en base : un refus « complet » vient de la base, pas de l'écran. */
+  async participation(ids){
+    const client = sb || sbLecture;
+    const liste = [...new Set((ids || []).filter(Boolean).map(String))].slice(0, 200);
+    if(!client || !liste.length) return [];
+    const { data, error } = await client.rpc("participation_publications", {p_ids:liste});
+    if(error){ console.error("Participation indisponible :", error.message); return []; }
+    return data || [];
+  },
+  async participer(dbId){
+    if(!sb || !dbId || !estConnecte()) return {ok:false, raison:"compte"};
+    const { data, error } = await sb.rpc("participer_publication", {p_publication:dbId});
+    if(error){
+      const raison = /complet/i.test(error.message) ? "complet"
+        : /terminée/i.test(error.message) ? "terminee"
+        : /annulée/i.test(error.message) ? "annulee"
+        : /compte/i.test(error.message) ? "compte" : "erreur";
+      if(raison === "erreur") console.error("Participation refusée :", error.message);
+      return {ok:false, raison};
+    }
+    return {ok:true, etat:data && data[0] || null};
+  },
+  async quitterParticipation(dbId){
+    if(!sb || !dbId || !estConnecte()) return {ok:false};
+    const { data, error } = await sb.rpc("ne_plus_participer_publication", {p_publication:dbId});
+    if(error){ console.error("Désinscription refusée :", error.message); return {ok:false}; }
+    return {ok:true, etat:data && data[0] || null};
+  },
+
+  /* Un signalement par compte et par publication ; à trois, la publication
+     disparaît des lectures publiques. Tout se décide en base. */
+  async signaler(dbId, motif){
+    if(!sb || !dbId || !estConnecte()) return false;
+    const { error } = await sb.rpc("signaler_publication",
+      {p_publication:dbId, p_motif:motif || null});
+    if(error){ console.error("Signalement refusé :", error.message); return false; }
     return true;
   },
 
@@ -6322,6 +6394,11 @@ async function demarrer(coords){
      faire avant reviendrait à montrer un mouvement à quelqu'un qui n'a pas
      encore vu l'application. Sans lien profond, cette étape ne fait rien. */
   apresPeinture(()=>ouvrirEntreeProfonde());
+  /* Un lien de publication s'ouvre normalement à l'arrivée des premiers
+     lieux, une fois la zone de départ posée — l'ouvrir avant, c'est se faire
+     recadrer aussitôt par elle. Mais là où rien n'arrive, il ne s'ouvrirait
+     jamais : ce filet l'ouvre quand même. */
+  if(partage && partage.dbId != null) setTimeout(()=>ouvrirLieuPartage(), 5000);
 }
 
 /* Le jeu de zone arrive et remplace le squelette, sans rien vider : s'il est
@@ -6698,6 +6775,8 @@ function estVivant(l){
        laissait passer un événement SANS date : `startsAt` nul ne déclenchait
        aucun refus. C'est ce qui remplissait le bloc d'événements prévus des
        semaines plus tard. */
+    /* « À venir » : now < début ≤ now + 24 h, et rien d'autre (`estAVenir`). */
+    if(creneau === "avenir") return !!(TEMPS.estAVenir && TEMPS.estAVenir(l, t));
     const etat = statutTemps(l, t);
     if(creneau === "maintenant") return TEMPS.estMaintenant(etat.status || etat.statut);
     const fenetre = TEMPS.fenetreSurface
@@ -8322,6 +8401,7 @@ function lieuPartage(){
 
 /* Une fois les lieux chargés, on ouvre celui que le lien désignait. */
 let partageOuvert = false;
+let partageSansPublication = false;   // l'identifiant n'est pas une publication
 function ouvrirLieuPartage(){
   if(partageOuvert) return;
   const p = lieuPartage();
@@ -8330,13 +8410,73 @@ function ouvrirLieuPartage(){
      du runtime sont deux collections distinctes, et c'est l'entrée profonde qui
      va lire la fiche puis la faire entrer. */
   if(p.placeId != null) return;
-  const cible = p.dbId != null
-    ? lieux.find(l=>String(l.dbId) === String(p.dbId))
-    : lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
+  /* UNE PUBLICATION S'OUVRE PAR SON IDENTIFIANT, D'OÙ QU'ON VIENNE.
+     Elle n'était cherchée que parmi les lieux déjà chargés autour de la
+     personne : un lien reçu d'une autre ville n'ouvrait donc rien. */
+  if(p.dbId != null){
+    if(partageSansPublication){
+      const deja = lieux.find(l=>String(l.dbId) === String(p.dbId));
+      if(!deja) return;
+      partageOuvert = true;
+      noterMesure("shared_link_opened", deja);
+      allerVers([deja.lat,deja.lng], 17, {duration:.8});
+      setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(deja.id)); }, 850);
+      return;
+    }
+    partageOuvert = true;
+    /* Un `/e/<id>` peut aussi désigner un événement canonique : il n'est pas
+       une publication, il s'ouvre donc quand les lieux alentour arrivent —
+       le verrou est rendu pour que le prochain chargement réessaie. */
+    ouvrirPublicationParId(p.dbId, {silencieux:true}).then(ok=>{
+      if(ok) noterMesure("shared_link_opened", {id:"pub"+p.dbId, dbId:p.dbId});
+      else { partageOuvert = false; partageSansPublication = true; }
+    });
+    return;
+  }
+  const cible = lieux.find(l=>distanceM(l.lat,l.lng,p.lat,p.lng) < 60);
   if(!cible) return;                 // les lieux ne sont pas encore tous arrivés
   partageOuvert = true;
   allerVers([cible.lat,cible.lng], 17, {duration:.8});
   setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
+}
+
+/* Ouvrir UNE publication : celle qui est déjà chargée, sinon celle que la
+   base rend par son identifiant — qui entre alors dans la carte comme les
+   autres, par la même fusion. Sert au lien partagé et à « Mes créations ». */
+async function ouvrirPublicationParId(dbId, {silencieux=false}={}){
+  let cible = lieux.find(l=>String(l.dbId) === String(dbId));
+  if(!cible){
+    await connecter();
+    const lue = await Store.publication(dbId);
+    if(!lue){
+      if(!silencieux) toast("Cette publication n’est plus disponible");
+      return false;
+    }
+    fusionner([lue], "user");
+    cible = lieux.find(l=>String(l.dbId) === String(dbId));
+    /* Reçue d'une autre ville, elle est hors de la zone active et la fusion
+       l'écarte : on se place d'abord sur elle, comme l'entrée profonde d'un
+       événement, puis elle entre par le même chemin. */
+    if(!cible && Number.isFinite(lue.lat) && Number.isFinite(lue.lng)){
+      // au démarrage d'un lien, la carte peut ne pas être encore installée
+      await new Promise(pret=>surLaCarte(()=>pret(), "publication-partagee"));
+      /* Une emprise, et pas un simple point : sans elle, la zone prend le
+         centre d'une carte encore en plein vol — celui de la ville quittée. */
+      const d = 0.01;
+      await poserZoneGeographique("", {lat:lue.lat, lng:lue.lng,
+        emprise:[[lue.lat-d, lue.lng-d*1.5], [lue.lat+d, lue.lng+d*1.5]]}, null);
+      fusionner([lue], "user");
+      cible = lieux.find(l=>String(l.dbId) === String(dbId));
+    }
+    if(!cible){
+      if(!silencieux) toast("Cette publication n’est plus disponible");
+      return false;
+    }
+  }
+  if(Number.isFinite(cible.lat) && Number.isFinite(cible.lng))
+    allerVers([cible.lat,cible.lng], 17, {duration:.8});
+  setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(cible.id)); }, 850);
+  return true;
 }
 
 /* ---- LES ENTRÉES PROFONDES ----------------------------------------------
@@ -8565,6 +8705,7 @@ function nouveauBrouillon(){
   const c=pointCarte();
   // le type a déjà été choisi à l'étape précédente : on ne le redemande pas
   return {lat:c.lat, lng:c.lng, titre:"", adresse:"", cat:typeAvantPose || "popup",
+          description:"", aPrevoir:"", lieuChoisi:false,
           date:isoDate(aujourdHui()), heure:prochaineHeure(), fin:"",
           gratuit:true, prix:5, limite:false, places:20, qr:false,
           imageFichier:null, imageApercu:""};
@@ -10790,7 +10931,8 @@ function scoreLieu(l, ctx){
     }else if(l.startsAt && l.startsAt <= ctx.t && (!l.endsAt || l.endsAt >= ctx.t)){
       raisons.push([55,"Ça se passe maintenant"]);
     }else if(l.startsAt && l.startsAt > ctx.t){
-      raisons.push([55,"À venir"]);
+      // « À venir » est une fenêtre de 24 h : au-delà, ce n'en est pas un
+      raisons.push([55, l.startsAt <= ctx.t + 24*3600e3 ? "Dans les 24 h" : "Plus tard"]);
     }else raisons.push([55,"Horaire à vérifier"]);
   }
 
@@ -11118,7 +11260,7 @@ function titrerFeuille(titre, sous){
 /* Ce que la frise montre, en une phrase, sous les onglets. Le nom de
    l'onglet est déjà écrit au-dessus : le répéter en titre ne dirait rien. */
 const DESCRIPTION_FRISE = Object.freeze({
-  avenir:"Dans les prochains jours",
+  avenir:"Dans les prochaines 24 h",
   weekend:"Le week-end qui vient",
   bientot:"Dans les heures qui viennent",
 });
@@ -11669,9 +11811,18 @@ function recommandationsAccueil(limite, options){
   if(!recoBurstCache){ recoBurstCache = new Map(); queueMicrotask(()=>{ recoBurstCache = null; }); }
   let classement = recoBurstCache.get(cleBurst);
   if(!classement){
+    /* « À VENIR » : LE FILTRE TEMPOREL D'ABORD, LE CLASSEMENT ENSUITE.
+       La section `a_venir` du moteur couvrait tout ce qui commence après
+       aujourd'hui — J+2, J+7, J+30 —, et l'écran affichait donc des
+       événements d'octobre un 26 septembre. Seul ce qui commence dans les
+       24 heures entre ici ; les goûts, la distance ou la diversité ne font
+       que l'ordonner, et une fenêtre vide reste vide. */
+    const aVenir = creneau === "avenir";
+    const maintenantMs = Date.now();
     const candidats = groupe
       ? lieux.filter(l=>dansZoneActive(l) && nomExploitable(l) && isDiscoveryCandidate(l))
-      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l));
+      : lieux.filter(l=>dansZoneActive(l) && estTemporaire(l) && nomExploitable(l) &&
+          (!aVenir || (TEMPS.estAVenir && TEMPS.estAVenir(l, maintenantMs))));
     classement = rankResults(candidats,{
       intent:groupe ? "explorer" : "sortir",
       intention:intentionCourante,
@@ -11706,7 +11857,10 @@ function recommandationsAccueil(limite, options){
 
   if(!groupe){
     const sections = SECTIONS_DU_CRENEAU[creneau] || [];
-    const retenus = classement.filter(l=>sections.includes(l.rankSection));
+    // À venir est déjà borné à 24 h en amont : la section descriptive (ce soir,
+    // demain…) ne décide plus de l'appartenance.
+    const retenus = creneau === "avenir" ? classement.slice()
+      : classement.filter(l=>sections.includes(l.rankSection));
     /* « CE WEEK-END » SE LIT DANS L'ORDRE DES HEURES. La fenêtre est courte et
        fermée : on y cherche un programme, et un programme se lit du samedi
        matin au dimanche soir.
@@ -14185,16 +14339,16 @@ function majPourToi(){
      explicitement de suivre, ça passe avant ce qu'Autour propose. */
   panneau.dataset.etat = etat;
   corps.dataset.etat = etat;
-  /* LE SECOND NIVEAU VAUT POUR LES DEUX SURFACES.
+  /* POUR TOI N'EST PAS UNE FRISE DE TEMPS.
 
-     « Maintenant / À venir / Ce week-end » ne décrit pas une surface : il
-     décrit QUAND on regarde. La question se pose donc aussi bien dans
-     « Pour toi » — « ce qui me correspond, ce week-end » est exactement une
-     requête que le produit doit savoir formuler. C'est le même composant,
-     le même `creneau`, le même moteur temporel : rien n'est dupliqué. */
-  const tempsPourToi = ongletsTemps();
-  if(hydratationEnCours) corps.innerHTML = tempsPourToi + contenu;
-  else corps.innerHTML = tempsPourToi + blocSurveillances() + contenu;
+     Ce panneau portait les onglets « Maintenant / À venir / Ce week-end »,
+     liés au même `creneau` que la frise — sans que ses propositions, elles,
+     suivent aucune fenêtre. Choisir « À venir » y affichait donc, sous ce
+     nom, des recommandations à J+5 ou J+10, et sur grand écran la colonne
+     « Pour toi » les montrait à côté de la vraie frise. Pour toi garde son
+     propre horizon ; les fenêtres de temps n'appartiennent qu'à Maintenant. */
+  if(hydratationEnCours) corps.innerHTML = contenu;
+  else corps.innerHTML = blocSurveillances() + contenu;
 
   const nonVues = nouveautesPourToi(propositions).length;
   const toutVu = $("#ptToutVu");
@@ -14214,22 +14368,6 @@ function brancherPourToi(propositions){
   const corps = $("#ptCorps");
   if(!corps) return;
 
-  /* Le créneau change, la surface non. C'est toute la différence avec la
-     porte de la feuille : là-bas, choisir « À venir » fait basculer vers
-     Explorer, parce qu'on a quitté l'instant présent. Ici on reste dans
-     « Pour toi » — on a seulement changé de fenêtre de temps. */
-  corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
-    if(creneau === b.dataset.creneau) return;
-    creneau = b.dataset.creneau;
-    filtreMaintenant = creneau === "maintenant";
-    const barre = b.closest("[role=tablist]");
-    if(barre) barre.querySelectorAll("[data-creneau]").forEach(onglet=>{
-      const actif = onglet === b;
-      onglet.classList.toggle("actif", actif);
-      onglet.setAttribute("aria-selected", String(actif));
-    });
-    apresPeinture(()=>{ majPourToi(); planifierRendu({carte:true}); });
-  });
   const ouvrirDetailPourToi = (id)=>{
     marquerVu([id]);
     if(!NAV_FLOTTANTE.matches) fermerPourToi();
@@ -14706,7 +14844,16 @@ function versItemMaintenant(l, t){
        rien quand le tag, lui, est là. */
     gratuit: l.tags && typeof l.tags === "object"
       ? l.tags.fee === "no"
-      : (gratuitDe(l) || l.gratuit === true),
+      /* Un événement dont la source a écrit `is_free` l'est : une braderie
+         « entrée libre » n'arrivait jamais dans Gratuit. */
+      : (gratuitDe(l) || l.gratuit === true || !!(evenement && canonique && canonique.is_free === true)),
+    /* Marchés, braderies, fêtes de quartier : la famille reconnue à la
+       normalisation (core.js), ses envies, et les jours d'une récurrence que
+       la source n'a écrits qu'en toutes lettres. Aucune priorité là-dedans. */
+    famille:l.familleMaintenant || undefined,
+    envies:Array.isArray(l.envies) ? l.envies : undefined,
+    familleLocale:l.familleLocale || null,
+    joursRecurrence:Array.isArray(l.joursRecurrence) ? l.joursRecurrence : null,
   };
 }
 
@@ -15347,7 +15494,8 @@ function idObjetMaintenant(l){
 
 function noterMesureMaintenant(nom, l, famille){
   const M = window.AutourMaintenant;
-  if(!M || !M.MESURES || M.MESURES.indexOf(nom) < 0) return;
+  if(!M || !M.MESURES) return;
+  if(M.MESURES.indexOf(nom) < 0 && (M.MESURES_CREER || []).indexOf(nom) < 0) return;
   const fam = famille || familleMaintenant(l);
   const c = M.creneauMesure({maintenant:Date.now(), timeZone:fuseauZoneActive(),
     zone:idZoneActive()}, fam);
@@ -15372,6 +15520,9 @@ function noterMesureMaintenant(nom, l, famille){
   try{ localStorage.setItem(CLE_MESURES_MAINTENANT, JSON.stringify(journal)); }catch(e){}
 }
 window.AutourMesuresMaintenant = ()=>journalMesuresMaintenant();
+/* Le même journal sert à la boucle Créer : mêmes créneaux, même identifiant
+   d'objet, liste fermée `MESURES_CREER`. */
+function noterMesure(nom, l, famille){ noterMesureMaintenant(nom, l, famille); }
 
 /* La famille d'un objet est celle que le moteur lui donne — la même qui sert à
    la diversité des trois places. La relire sur la fiche brute donnait
@@ -15543,7 +15694,7 @@ function blocPlusTardMaintenant(){
   if(creneau !== "maintenant" || modeAide) return "";
   return '<nav class="mnt" aria-label="Plus tard">'+
     '<button class="mnt-b" type="button" data-creneau="avenir">'+
-      '<em aria-hidden="true">📅</em><span><b>À venir</b><i>Prochains jours</i></span>'+
+      '<em aria-hidden="true">📅</em><span><b>À venir</b><i>Prochaines 24 h</i></span>'+
       '<u aria-hidden="true">›</u></button>'+
     '<button class="mnt-b" type="button" data-creneau="weekend">'+
       '<em aria-hidden="true">🗓</em><span><b>Ce week-end</b><i>Sam. et dim.</i></span>'+
@@ -15601,6 +15752,13 @@ function statutGroupeHTML(){
       '<br><button data-creneau-vers="avenir">Voir À venir →</button>'+
       '<button data-etat-action="all">Voir tous les lieux</button></div>';
   }
+  /* À venir vide reste vide : on le dit, on propose les deux suites, et on
+     ne va chercher ni plus loin dans le temps ni dans « Pour toi ». */
+  if(creneau === "avenir")
+    return '<div class="fb-statut" data-testid="avenir-vide">'+
+      'Rien de prévu dans les prochaines 24 h autour de toi.'+
+      '<br><button data-avenir-vide="explorer">Explorer</button>'+
+      '<button data-creneau-vers="weekend">Ce week-end</button></div>';
   const groupe = CRENEAUX.find(x=>x.id===creneau) || CRENEAUX[0];
   return '<p class="fb-statut">Rien d’annoncé pour « '+esc(groupe.label.toLowerCase())+
     ' » dans cette zone.<br>Les événements arrivent au fil des publications.</p>';
@@ -16233,18 +16391,7 @@ function brancherFeuille2(){
 
   /* Le pont depuis « Maintenant » vide vers « À venir ». Il passe par le même
      chemin qu'un appui sur l'onglet : un seul comportement à maintenir. */
-  corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>{
-    const cible = b.dataset.creneauVers;
-    if(creneau === cible) return;
-    creneau = cible;
-    filtreMaintenant = creneau === "maintenant";
-    /* À venir et Ce week-end sont la frise de Maintenant, pas une autre
-       section : la navigation basse reste sur Maintenant. */
-    ongletCourant = "maintenant";
-    categorieMaintenant = null;
-    marquerNavigation(ongletCourant);
-    majFeuille2(); reinitialiserScrollFeuille(); rendre();
-  });
+  corps.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>allerAuCreneau(b.dataset.creneauVers));
 
   // les quatre groupes de temps : un seul geste, aucune page de plus
   corps.querySelectorAll("[data-creneau]").forEach(b=>b.onclick=()=>{
@@ -16393,8 +16540,29 @@ function brancherFeuille2(){
    feuille entière. C'est ce qui permet de remplir la zone des recommandations
    APRÈS coup — le classement arrive une tranche d'inactivité plus tard — sans
    rebrancher tout le panneau, et sans laisser des cartes muettes. */
+/* Le pont d'un état vide vers un autre créneau. Il passe par le même chemin
+   qu'un appui sur l'onglet : un seul comportement à maintenir. */
+function allerAuCreneau(cible){
+  if(!cible || creneau === cible) return;
+  creneau = cible;
+  filtreMaintenant = creneau === "maintenant";
+  /* À venir et Ce week-end sont la frise de Maintenant, pas une autre
+     section : la navigation basse reste sur Maintenant. */
+  ongletCourant = "maintenant";
+  categorieMaintenant = null;
+  marquerNavigation(ongletCourant);
+  majFeuille2(); reinitialiserScrollFeuille(); rendre();
+}
+
 function brancherGestesRecommandations(racine){
   if(!racine) return;
+  /* Les états vides sont posés APRÈS le branchement de la feuille : leurs
+     sorties se branchent ici, avec les cartes. */
+  racine.querySelectorAll("[data-creneau-vers]").forEach(b=>b.onclick=()=>allerAuCreneau(b.dataset.creneauVers));
+  racine.querySelectorAll("[data-avenir-vide]").forEach(b=>b.onclick=()=>{
+    const nav = $('#navBas [data-nb="explorer"]');
+    if(nav) nav.click();
+  });
   racine.querySelectorAll('[role="button"][data-ac]').forEach(x=>x.onkeydown=e=>{
     if(e.key === "Enter" || e.key === " "){ e.preventDefault(); x.click(); }
   });
@@ -18023,25 +18191,76 @@ function remplirResultatsZone(nom, intention){
 }
 /* On pense d'abord à ce qu'on crée, ensuite à l'endroit. Demander « déplace
    la carte pour poser l'épingle » avant même de savoir de quoi il s'agit
-   inversait l'ordre naturel. */
+   inversait l'ordre naturel.
+
+   CRÉER V1 : SIX CHOIX, PUIS DIRECTEMENT LE FORMULAIRE. Le passage obligé par
+   « déplace la carte » avant la première question coûtait un écran à chaque
+   création ; le lieu se choisit désormais DANS le formulaire (ma position,
+   une adresse, ou la carte), et part par défaut du point regardé. */
+const TYPES_CREATION = Object.freeze([
+  {id:"event",     label:"Événement", emoji:"🎉"},
+  {id:"sport",     label:"Activité",  emoji:"⚽"},
+  {id:"rencontre", label:"Rencontre", emoji:"👥"},
+  {id:"popup",     label:"Bon plan",  emoji:"✨"},
+  {id:"lieu",      label:"Lieu",      emoji:"📍", cat:"autre"},
+  {id:"autre",     label:"Autre",     emoji:"•••"},
+]);
 function ouvrirCreation(){
-  const eph = [
-    {id:"event", label:"Événement", emoji:"🎉"},
-    {id:"autre", label:"Lieu", emoji:"📍"},
-    {id:"sport", label:"Activité", emoji:"🏃"},
-    {id:"popup", label:"Bon plan", emoji:"✨"},
-    {id:"autre", label:"Autre", emoji:"…"},
-  ];
+  noterMesure("create_opened", null, "creer");
+  const repris = brouillonSauve();
   ouvrirFeuille(
     '<div class="liste-tete"><h2>Que veux-tu ajouter&nbsp;?</h2></div>'+
-    '<div class="creer-choix">'+eph.map(c=>
+    '<div class="creer-choix">'+TYPES_CREATION.map(c=>
       '<button class="creer-type" data-type="'+c.id+'">'+
-        '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>');
+        '<em>'+c.emoji+'</em><b>'+esc(c.label)+'</b></button>').join("")+'</div>'+
+    (repris && repris.titre
+      ? '<button class="creer-reprendre" data-reprendre="1">Reprendre le brouillon « '+
+          esc(repris.titre)+' »</button>' : ''));
   $("#feuille").querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{
-    typeAvantPose = b.dataset.type;
+    const type = TYPES_CREATION.find(t=>t.id === b.dataset.type) || TYPES_CREATION[0];
+    typeAvantPose = type.cat || type.id;
+    noterMesure("create_type_selected", null, type.id);
     fermerFeuille();
-    ouvrirModePose();
+    brouillon = nouveauBrouillon();
+    publicationModifiee = false;
+    retourFormulaire = false;
+    pileEcrans = [];
+    pousserEcran(dessinerFormulaire);
   });
+  const reprendre = $("#feuille").querySelector("[data-reprendre]");
+  if(reprendre) reprendre.onclick = ()=>reprendreBrouillon();
+}
+
+/* ---- LE BROUILLON, GARDÉ SUR L'APPAREIL ----------------------------------
+   Un seul, local : ce qu'on n'a pas fini de remplir n'a rien à faire sur un
+   serveur. L'image n'y est pas (un fichier ne se range pas dans le stockage
+   local) : on la rechoisit en reprenant. */
+const CLE_BROUILLON_CREATION = "autour:brouillon-creation:v1";
+function brouillonSauve(){
+  try{
+    const b = JSON.parse(localStorage.getItem(CLE_BROUILLON_CREATION) || "null");
+    return b && typeof b === "object" && Number.isFinite(b.lat) && Number.isFinite(b.lng) ? b : null;
+  }catch(e){ return null; }
+}
+function sauverBrouillon(b){
+  if(!b) return false;
+  const copie = Object.assign({}, b, {imageFichier:null, imageApercu:"", sauveLe:Date.now()});
+  try{ localStorage.setItem(CLE_BROUILLON_CREATION, JSON.stringify(copie)); return true; }
+  catch(e){ return false; }
+}
+function oublierBrouillon(){
+  try{ localStorage.removeItem(CLE_BROUILLON_CREATION); }catch(e){}
+}
+function reprendreBrouillon(){
+  const b = brouillonSauve();
+  if(!b) return;
+  fermerFeuille();
+  brouillon = Object.assign(nouveauBrouillon(), b, {imageFichier:null, imageApercu:""});
+  typeAvantPose = brouillon.cat;
+  publicationModifiee = false;
+  retourFormulaire = false;
+  pileEcrans = [];
+  pousserEcran(dessinerFormulaire);
 }
 let typeAvantPose = null;
 
@@ -18084,8 +18303,11 @@ $("#btnAutourDeMoi").onclick = revenirAutourDeMoi;
    propre geste : on écoute donc en capture et on arrête l'événement là, sinon
    les deux ouvertures se marcheraient dessus. Aucune recherche n'est lancée —
    `ouvrirDetail` lit ce qu'Autour a déjà. */
+/* La fiche détaillée porte elle aussi `data-lieu` (pour « Maintenant ») :
+   sans cette exclusion, TOUT appui dans la fiche — Y aller, Partager,
+   Favori, Je participe — était avalé ici et rouvrait la même fiche. */
 document.addEventListener("click", (e)=>{
-  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]");
+  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]:not(#ficheLieu)");
   if(!cible) return;
   const id = cible.getAttribute("data-lieu");
   if(!id) return;
@@ -18095,7 +18317,7 @@ document.addEventListener("click", (e)=>{
 }, true);
 document.addEventListener("keydown", (e)=>{
   if(e.key !== "Enter" && e.key !== " ") return;
-  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]");
+  const cible = e.target && e.target.closest && e.target.closest("[data-lieu]:not(#ficheLieu)");
   if(!cible) return;
   e.preventDefault();
   pousserEcran(()=>ouvrirDetail(cible.getAttribute("data-lieu")));
@@ -19288,6 +19510,19 @@ enregistrerReprise("favori", async(charge)=>{
 });
 
 enregistrerReprise("mes-publications", ()=>ouvrirMesPublications());
+/* « Je participe » sans compte : l'intention est gardée, et rejouée telle
+   quelle une fois connecté — la participation ne compte qu'à la réponse de la
+   base. */
+enregistrerReprise("participer", async(charge)=>{
+  const dbId = charge && charge.dbId;
+  if(!dbId) return;
+  await ouvrirPublicationParId(dbId);
+  await participerPublication(dbId);
+});
+enregistrerReprise("signaler", async(charge)=>{
+  const dbId = charge && charge.dbId;
+  if(dbId) await signalerPublication(dbId);
+});
 enregistrerReprise("notifications", ()=>ouvrirProfil());
 enregistrerReprise("compte", ()=>ouvrirProfil());
 enregistrerReprise("modifier", (charge)=>{

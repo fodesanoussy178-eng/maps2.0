@@ -54,6 +54,8 @@
     "mes-publications",
     "modifier",
     "supprimer",
+    "participer",
+    "signaler",
   ]);
 
   function exigeCompte(action) {
@@ -82,6 +84,18 @@
     favori: {
       titre: "Retrouve tes favoris partout",
       texte: "Connecte-toi avec ton e-mail.",
+      bouton: "Continuer",
+    },
+    participer: {
+      titre: "Une dernière étape",
+      texte: "Entre ton e-mail pour participer : l'organisateur saura qu'il " +
+             "peut compter sur toi, et tu seras prévenu si quelque chose change.",
+      bouton: "Continuer",
+    },
+    signaler: {
+      titre: "Signaler cette publication",
+      texte: "Entre ton e-mail : un signalement par personne, pour que personne " +
+             "ne puisse en faire disparaître une à lui seul.",
       bouton: "Continuer",
     },
     notifications: {

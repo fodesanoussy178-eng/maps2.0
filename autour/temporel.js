@@ -87,6 +87,8 @@
      dépend ni de l'heure civile (matin/soir), ni d'un écran : les événements
      et les prochaines ouvertures lisent cette même borne. */
   const FENETRE_BIENTOT_MS = 6 * 3600 * 1000;
+  // « À venir » : now < début ≤ now + 24 h (voir `estAVenir`)
+  const FENETRE_A_VENIR_MS = 24 * 3600 * 1000;
 
   /* Au-delà de 36 h, une « période » n'est plus une séance : c'est une
      exposition, une saison, un musée. Sa disponibilité ne se lit plus dans la
@@ -399,9 +401,24 @@
     const t = now == null ? Date.now() : Number(now);
     const item = source || {};
     if (item.annule || item.cancelled || item.status === "cancelled") return false;
-    return normaliserPeriodes(item).some((periode) =>
-      periode.debut != null && periode.fin != null && periode.fin > t &&
-      periode.debut < finFenetre && periode.fin > debutFenetre);
+    const jours = Array.isArray(item.joursRecurrence) && item.joursRecurrence.length
+      ? item.joursRecurrence : null;
+    const zone = f.timeZone || item.timezone || item.timeZone || DEFAULT_TIMEZONE;
+    return normaliserPeriodes(item).some((periode) => {
+      if (!(periode.debut != null && periode.fin != null && periode.fin > t &&
+          periode.debut < finFenetre && periode.fin > debutFenetre)) return false;
+      /* Une récurrence repliée en une seule longue plage (« tous les
+         mercredis », publiée du 1er janvier au 31 décembre) n'est dans la
+         fenêtre que si l'un de SES jours y tombe : un marché du mardi n'a
+         rien à faire dans « Ce week-end ». */
+      if (!jours || periode.fin - periode.debut <= SEUIL_PERIODE_LONGUE_MS) return true;
+      const debut = Math.max(debutFenetre, periode.debut, t);
+      const fin = Math.min(finFenetre, periode.fin);
+      for (let x = debut; x < fin; x += 6 * 3600 * 1000) {
+        if (jours.indexOf(jourSemaine(x, zone)) >= 0) return true;
+      }
+      return jours.indexOf(jourSemaine(fin - 1, zone)) >= 0;
+    });
   }
 
   function fenetreSurface(surface, epoch, timeZone) {
@@ -420,7 +437,7 @@
         return Object.assign(fenetreWeekEnd(t, tz), {timeZone:tz});
       case "avenir":
       case "upcoming":
-        return {debut:t, fin:null, timeZone:tz};
+        return {debut:t, fin:t + FENETRE_A_VENIR_MS, timeZone:tz};
       default:
         return {debut:t, fin:null, timeZone:tz};
     }
@@ -919,6 +936,62 @@
   /* ---- Où ranger ce qui n'est pas « maintenant » -------------------------
      Un événement futur n'est pas une erreur : il a juste sa place ailleurs.
      Les sections sont calculées dans le fuseau du lieu. */
+  /* ===================================================================
+     « À VENIR » : LES PROCHAINES 24 HEURES, ET RIEN D'AUTRE
+
+     now < début ≤ now + 24 h. Ce qui a déjà commencé appartient à
+     Maintenant ; ce qui commence au-delà de 24 h n'est pas « à venir » ici —
+     « Ce week-end » a sa propre fenêtre, « Pour toi » son propre horizon.
+     La personnalisation classe ce qui est dedans ; elle n'élargit jamais la
+     fenêtre, et rien ne vient la remplir quand elle est vide.
+
+     Le début retenu est celui de la PROCHAINE occurrence : une période
+     future, ou — pour un marché publié comme une seule longue plage dont
+     la source a donné les jours (`joursRecurrence`) — la prochaine ouverture
+     un de ces jours-là, à son heure. Une exposition ouverte depuis des
+     semaines a déjà commencé : sa réouverture de demain n'est pas un
+     événement « à venir ».
+     =================================================================== */
+  function deuxChiffres(n) { return String(n).padStart(2, "0"); }
+
+  function prochainDebut(source, now) {
+    const t = now == null ? Date.now() : Number(now);
+    const item = source || {};
+    if (item.annule || item.cancelled || item.status === "cancelled") return null;
+    const periodes = normaliserPeriodes(item);
+    const future = periodes.find((p) => p.debut != null && p.debut > t);
+    let meilleur = future ? future.debut : null;
+
+    const jours = Array.isArray(item.joursRecurrence) && item.joursRecurrence.length
+      ? item.joursRecurrence : null;
+    if (jours) {
+      const tz = item.timezone || item.timeZone || DEFAULT_TIMEZONE;
+      periodes.forEach((p) => {
+        if (p.debut == null || p.fin == null || p.debut > t || p.fin <= t ||
+            p.fin - p.debut <= SEUIL_PERIODE_LONGUE_MS) return;
+        const h = partsLocales(p.debut, tz), hf = partsLocales(p.fin, tz);
+        const minutesDebut = h.heure * 60 + h.minute, minutesFin = hf.heure * 60 + hf.minute;
+        if (!(minutesFin > minutesDebut)) return;            // pas de fenêtre dans la journée
+        for (let d = 0; d <= 7; d += 1) {
+          const jour = partsLocales(t + d * 86400000, tz);
+          const debut = toEpochInZone(jour.annee + "-" + deuxChiffres(jour.mois) + "-" +
+            deuxChiffres(jour.jour) + "T" + deuxChiffres(h.heure) + ":" + deuxChiffres(h.minute) + ":00", tz);
+          if (debut == null || debut <= t || debut >= p.fin) continue;
+          if (jours.indexOf(jourSemaine(debut, tz)) < 0) continue;
+          if (meilleur == null || debut < meilleur) meilleur = debut;
+          break;
+        }
+      });
+    }
+    return meilleur;
+  }
+
+  function estAVenir(source, now) {
+    const t = now == null ? Date.now() : Number(now);
+    const debut = prochainDebut(source, t);
+    return debut != null && debut > t && debut <= t + FENETRE_A_VENIR_MS;
+  }
+
   function sectionTemporelle(etat, now) {
     const t = now == null ? Date.now() : Number(now);
     if (!etat || etat.debut == null) return null;
@@ -955,6 +1028,9 @@
     STATUTS_CANONIQUES,
     FENETRE_IMMINENT_MS,
     FENETRE_BIENTOT_MS,
+    FENETRE_A_VENIR_MS,
+    prochainDebut,
+    estAVenir,
     SEUIL_PERIODE_LONGUE_MS,
     DUREE_SUPPOSEE_MS,
     DEFAULT_TIMEZONE,

@@ -185,9 +185,15 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
      `/solidarite` nomment une vue avec ses paramètres. Tous sont résolus au
      rendu par l'application — c'est elle qui a la carte, la position et les
      données ; une page statique ne pourrait pas les ouvrir. */
-  const versApplication = ["/l/:id", "/l/:id/:titre", "/e/:id", "/e/:id/:titre",
+  const versApplication = ["/l/:id", "/l/:id/:titre",
     "/event/:id", "/event/:id/:titre", "/place/:id", "/place/:id/:titre",
     "/explorer", "/solidarite"];
+  /* UNE PUBLICATION PARTAGÉE PASSE PAR SON APERÇU. `/e/<id>` rend la même
+     page que l'application, mais son <head> porte le titre, la date et
+     l'affiche de la publication : c'est ce que lisent WhatsApp, Messages ou
+     Messenger, qui n'exécutent pas de JavaScript. `api/e.js` sert la page
+     telle quelle au moindre doute — un lien s'ouvre toujours. */
+  const versApercu = {"/e/:id": "/api/e?id=:id", "/e/:id/:titre": "/api/e?id=:id"};
   const pagesStatiques = {
     "/mentions-legales": "/mentions-legales.html",
     "/confidentialite": "/confidentialite.html",
@@ -218,6 +224,8 @@ test("les URL propres des lieux et événements sont routées vers l’applicati
   (vercel.rewrites || []).forEach((r) => {
     if (versApplication.includes(r.source))
       return assert.equal(r.destination, "/index.html");
+    if (Object.prototype.hasOwnProperty.call(versApercu, r.source))
+      return assert.equal(r.destination, versApercu[r.source]);
     if (Object.prototype.hasOwnProperty.call(pagesPrivees, r.source))
       return assert.equal(r.destination, pagesPrivees[r.source]);
     assert.ok(Object.prototype.hasOwnProperty.call(pagesStatiques, r.source),

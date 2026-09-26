@@ -204,7 +204,9 @@ const THEMES = [
   ["spectacle", ["spectacle", "theatre", "danse", "cirque", "humour",
                  "marionnette", "conte", "opera", "representation"]],
   ["sport",     ["sport", "sportif", "match", "tournoi", "course", "randonnee",
-                 "trail", "cyclisme", "natation", "competition"]],
+                 "trail", "cyclisme", "natation", "competition",
+                 // « marche » sans accent est d'abord une marche : elle passe avant « marche »
+                 "marche nordique", "marche a pied", "marche sportive"]],
   ["marche",    ["marche", "brocante", "vide grenier", "braderie", "foire",
                  "puces", "marche de noel"]],
   ["food",      ["degustation", "gastronomie", "gastronomique", "culinaire",

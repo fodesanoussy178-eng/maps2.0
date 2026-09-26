@@ -393,6 +393,9 @@ function ouvrirDetail(id){
       'L’app n’encaisse rien.</div>')+
     // annonces du canal : d'abord ce qui a changé, car c'est ce qui décide
     // si on se déplace encore
+    /* Participer : le compte, le bouton, l'organisateur — sur une publication
+       d'habitant seulement. Les événements institutionnels ont leur billetterie. */
+    (estPublicationHabitant(l) ? '<div id="participationBloc"></div>' : '')+
     '<div id="canalBloc"></div>'+
     '<div class="liens">'+
     '<button id="btnInviter" class="lien-fort">Partager / Inviter</button>'+
@@ -405,7 +408,15 @@ function ouvrirDetail(id){
     '</div>'+
     '<div class="itin" id="ficheItineraire" hidden></div>'
   );
-  if($("#btnSignal")) $("#btnSignal").onclick=()=>{ fermerFeuille(); toast("Signalement envoyé"); };
+  /* « Signalement envoyé » s'affichait sans rien envoyer. Une publication
+     d'habitant se signale en base ; un lieu d'une source externe, à l'équipe,
+     par e-mail — c'est la seule porte honnête pour lui. */
+  if($("#btnSignal")) $("#btnSignal").onclick=()=>{
+    if(estPublicationHabitant(l)){ signalerPublication(l.dbId); return; }
+    open("mailto:contact@autour.eu?subject="+encodeURIComponent("Signalement : "+(l.titre||""))+
+      "&body="+encodeURIComponent(lienVers(l)), "_blank");
+  };
+  if(estPublicationHabitant(l)) chargerParticipation(l);
   if($("#btnInviter")) $("#btnInviter").onclick=()=>partagerInviter(l);
   completerExplication(l);
   /* La carte répond à la liste : le lieu ouvert est mis en avant et ramené
@@ -446,7 +457,7 @@ function ouvrirDetail(id){
     fermerFeuille(); rendre(); dessinerFiltres();
     toast("Événement supprimé");
   };
-  $("#btnPartLieu").onclick=()=>partagerLieu(l);
+  $("#btnPartLieu").onclick=()=>estPublicationHabitant(l) ? partagerInviter(l) : partagerLieu(l);
   $("#btnGarder").onclick=(e)=>{
     e.target.textContent = basculerGarde(l.id) ? (ficheAide ? "Favori ajouté" : "Enregistré") : (ficheAide ? "Favori" : "Enregistrer");
     e.target.classList.toggle("act-on", estGarde(l.id));
@@ -958,27 +969,212 @@ async function actionCreateur(id, l, canal){
   }
 }
 
-/* Partager / Inviter : le partage natif quand il existe, sinon des cibles
-   explicites — aucune ne demande de compte. */
+/* ===========================================================================
+   PARTAGER — LA FEUILLE DU SYSTÈME D'ABORD, LE LIEN TOUJOURS
+
+   La feuille de partage native propose ce que la personne a VRAIMENT sur son
+   téléphone : Messages, WhatsApp, AirDrop, Instagram ou TikTok s'ils sont
+   installés. Aucune de ces applications n'est simulée ici. Sans feuille
+   native (ordinateur, navigateur ancien), des cibles explicites — et
+   « Copier le lien » en premier, qui marche partout.
+   ======================================================================== */
+
+/* « Aujourd'hui à 17h », « Demain à 9h30 », « sam. 27 sept. à 17h ». */
+function quandCourt(debutLe){
+  if(!Number.isFinite(debutLe)) return "";
+  const fmt = (o)=>new Intl.DateTimeFormat("fr-FR", Object.assign({timeZone:"Europe/Paris"}, o));
+  const jour = (t)=>fmt({year:"numeric", month:"2-digit", day:"2-digit"}).format(new Date(t));
+  const heure = fmt({hour:"numeric", minute:"2-digit", hourCycle:"h23"}).format(new Date(debutLe))
+    .replace(":", "h").replace(/h00$/, "h");
+  const auj = jour(Date.now()), dem = jour(Date.now() + 86400000), cible = jour(debutLe);
+  const quel = cible === auj ? "Aujourd’hui" : cible === dem ? "Demain"
+    : fmt({weekday:"short", day:"numeric", month:"short"}).format(new Date(debutLe));
+  return quel + " à " + heure;
+}
+
+/* Le message partagé : court, et vrai. Le nombre de participants n'y figure
+   que s'il est connu. */
+function texteDePartage(l, etat){
+  const c = categorieAffichee(l, {emoji:"📍"});
+  const lignes = [(c.emoji ? c.emoji + " " : "") + (l.titre || "")];
+  const quand = quandCourt(l.debutLe);
+  const ou = String(l.adresse || "").trim();
+  if(quand || ou) lignes.push([quand, ou].filter(Boolean).join(" · "));
+  if(etat && Number.isFinite(etat.participants)){
+    if(etat.places != null) lignes.push(etat.participants + "/" + etat.places + " participants");
+    else if(etat.participants > 0)
+      lignes.push(etat.participants + " participant" + (etat.participants > 1 ? "s" : ""));
+  }
+  lignes.push("", l.dbId && String(l.id).startsWith("pub") ? "Rejoins-nous sur Autour :" : "À voir sur Autour :");
+  return lignes.join("\n");
+}
+
+async function copierTexte(texte){
+  try{ await navigator.clipboard.writeText(texte); return true; }
+  catch(e){
+    // Safari ancien, contexte non sécurisé : le vieux chemin, qui marche encore
+    try{
+      const zone = document.createElement("textarea");
+      zone.value = texte; zone.setAttribute("readonly", "");
+      zone.style.position = "fixed"; zone.style.opacity = "0";
+      document.body.appendChild(zone); zone.select();
+      const ok = document.execCommand("copy");
+      zone.remove();
+      return ok;
+    }catch(e2){ return false; }
+  }
+}
+
+async function copierLienPartage(url, l){
+  if(await copierTexte(url)){
+    noterMesure("share_link_copied", l);
+    toast("Lien copié");
+  }else toast("Copie impossible — garde le lien affiché");
+}
+
 async function partagerInviter(l){
   const E = window.AutourEvents;
   const url = lienVers(l);
-  const texte = E.texteInvitation(l);
+  const etat = l && l.dbId ? etatsParticipation.get(String(l.dbId)) || null : null;
+  const texte = texteDePartage(l, etat);
+  noterMesure("share_opened", l);
   if(navigator.share){
-    try{ await navigator.share({title:l.titre, text:texte, url}); return; }catch(e){ /* replié ci-dessous */ }
+    try{
+      await navigator.share({title:l.titre, text:texte, url});
+      // la promesse ne se tient que si un envoi a eu lieu
+      noterMesure("share_completed", l);
+      return;
+    }catch(e){
+      if(e && e.name === "AbortError") return;      // refermée sans rien envoyer
+      /* sinon, la feuille native n'a pas pu s'ouvrir : repli ci-dessous */
+    }
   }
-  const cibles = E.ciblesPartage(url, texte);
+  const cibles = E.ciblesPartage(url, texte).filter(c=>c.id !== "lien");
   ouvrirFeuille(
-    '<div class="liste-tete"><h2>↗ Partager / Inviter</h2></div>'+
-    '<p class="liste-tri">'+esc(texte)+'</p>'+
+    '<div class="liste-tete"><h2>↗ Partager</h2></div>'+
+    '<p class="partage-apercu">'+esc(texte).replace(/\n/g, "<br>")+'<br>'+esc(url)+'</p>'+
+    '<button class="valider" data-partage-copier="1">Copier le lien</button>'+
     '<div class="an-actions">'+cibles.map(c=>
-      '<button class="an-act" data-partage="'+c.id+'">'+esc(c.label)+'</button>').join("")+'</div>');
-  $("#feuille").querySelectorAll("[data-partage]").forEach(b=>b.onclick=async()=>{
+      '<button class="an-act" data-partage="'+c.id+'">'+esc(c.label)+'</button>').join("")+'</div>',
+    {ariaLabel:"Partager"});
+  $("#feuille").querySelector("[data-partage-copier]").onclick = ()=>copierLienPartage(url, l);
+  $("#feuille").querySelectorAll("[data-partage]").forEach(b=>b.onclick=()=>{
     const cible = cibles.find(c=>c.id === b.dataset.partage);
-    if(!cible) return;
-    if(cible.href){ open(cible.href, "_blank", "noopener"); return; }
-    try{ await navigator.clipboard.writeText(cible.valeur); toast("Lien copié"); }catch(e){}
+    if(!cible || !cible.href) return;
+    noterMesure("share_completed", l, cible.id);
+    open(cible.href, "_blank", "noopener");
   });
+}
+
+/* ===========================================================================
+   PARTICIPER — LE NOMBRE EST PUBLIC, LA LISTE NE L'EST PAS
+
+   La base rend « 3 / 10 » et « moi, oui ou non ». Personne d'autre n'est
+   nommé, aucun visage n'est montré : trois silhouettes au plus, puis « +N ».
+   Une participation n'est comptée qu'à la réponse de la base ; la capacité y
+   est tenue, et un « complet » vient d'elle, pas de l'écran.
+   ======================================================================== */
+const etatsParticipation = new Map();
+
+function estPublicationHabitant(l){
+  return !!(l && l.dbId && String(l.id).startsWith("pub"));
+}
+
+function blocParticipation(l, etat, attente){
+  const n = etat ? etat.participants : 0;
+  const places = etat ? etat.places : l.places;
+  const fini = !!l.annule || (Number.isFinite(l.finLe) && l.finLe < Date.now());
+  const complet = places != null && n >= places;
+  const silhouettes = n ? "👤".repeat(Math.min(n, 3)) + (n > 3 ? " +" + (n - 3) : "") : "";
+  const compte = attente ? "…"
+    : places != null ? n + " / " + places + " participant" + (places > 1 ? "s" : "")
+    : n ? n + " participant" + (n > 1 ? "s" : "") : "Sois le premier à participer";
+  const nom = l.creatorName || (l.par && l.par !== "Habitant du quartier" ? l.par : "");
+  let action = "";
+  if(etat && etat.organisateur)
+    action = '<p class="pa-note">Tu organises — partage le lien pour inviter.</p>';
+  else if(fini)
+    action = '<p class="pa-note">'+(l.annule ? "Annulé par l’organisateur" : "C’est terminé")+'</p>';
+  else if(etat && etat.moi)
+    action = '<p class="pa-ok">✓ Tu participes</p>'+
+      '<button class="pa-quitter" data-pa-quitter="1">Je ne participe plus</button>';
+  else if(complet)
+    action = '<button class="valider" disabled>Complet</button>';
+  else if(!attente)
+    action = '<button class="valider pa-participer" data-pa-participer="1">Je participe</button>';
+  return '<section class="participation" data-testid="participation" aria-live="polite">'+
+    '<p class="pa-compte">'+(silhouettes ? '<span aria-hidden="true">'+silhouettes+'</span> ' : '')+
+      esc(compte)+'</p>'+
+    action+
+    '<p class="pa-orga">Organisé par <b>'+esc(nom || "un habitant")+'</b> · Habitant d’Autour</p>'+
+    (l.aPrevoir ? '<p class="pa-prevoir"><span aria-hidden="true">🎒</span> À prévoir : '+esc(l.aPrevoir)+'</p>' : '')+
+  '</section>';
+}
+
+function peindreParticipation(l, attente){
+  const hote = $("#participationBloc");
+  if(!hote) return;
+  const etat = etatsParticipation.get(String(l.dbId)) || null;
+  hote.innerHTML = blocParticipation(l, etat, attente && !etat);
+  const oui = hote.querySelector("[data-pa-participer]");
+  if(oui) oui.onclick = ()=>participerPublication(l.dbId);
+  const non = hote.querySelector("[data-pa-quitter]");
+  if(non) non.onclick = ()=>nePlusParticiper(l.dbId);
+}
+
+async function chargerParticipation(l){
+  if(!estPublicationHabitant(l)) return;
+  peindreParticipation(l, true);
+  await connecter();
+  const [etat] = await Store.participation([l.dbId]);
+  if(etat) etatsParticipation.set(String(l.dbId), etat);
+  peindreParticipation(l, false);
+}
+
+async function participerPublication(dbId){
+  const l = lieux.find(x=>String(x.dbId) === String(dbId)) || {id:"pub"+dbId, dbId};
+  noterMesure("participation_intent", l);
+  await connecter();
+  if(!estConnecte() && !(await exigerCompte("participer", {dbId}))) return;
+  const avant = etatsParticipation.get(String(dbId));
+  const bouton = $("#participationBloc [data-pa-participer]");
+  if(bouton){ bouton.disabled = true; bouton.textContent = "…"; }
+  const r = await Store.participer(dbId);
+  if(r.ok && r.etat){
+    etatsParticipation.set(String(dbId), r.etat);
+    if(r.etat.moi && !(avant && avant.moi)){
+      noterMesure("participation_added", l);
+      toast("C’est noté : tu participes");
+    }
+  }else{
+    toast(r.raison === "complet" ? "C’est complet"
+      : r.raison === "terminee" ? "C’est déjà terminé"
+      : r.raison === "annulee" ? "Annulé par l’organisateur"
+      : r.raison === "compte" ? "Connecte-toi pour participer"
+      : "Participation impossible — réessaie");
+    const [etat] = await Store.participation([dbId]);
+    if(etat) etatsParticipation.set(String(dbId), etat);
+  }
+  if(l.titre) peindreParticipation(l, false);
+}
+
+async function nePlusParticiper(dbId){
+  const l = lieux.find(x=>String(x.dbId) === String(dbId)) || {id:"pub"+dbId, dbId};
+  const r = await Store.quitterParticipation(dbId);
+  if(r.ok && r.etat){
+    etatsParticipation.set(String(dbId), r.etat);
+    noterMesure("participation_removed", l);
+    toast("Tu ne participes plus");
+  }else toast("Impossible pour l’instant — réessaie");
+  if(l.titre) peindreParticipation(l, false);
+}
+
+/* Signaler : une voix par compte, enregistrée en base. À trois voix, la
+   publication disparaît des lectures publiques. */
+async function signalerPublication(dbId){
+  if(!(await exigerCompte("signaler", {dbId}))) return;
+  if(!confirm("Signaler cette publication ? Elle sera masquée si d’autres personnes la signalent aussi.")) return;
+  toast(await Store.signaler(dbId) ? "Merci, c’est signalé" : "Signalement impossible — réessaie");
 }
 
 function ouvrirChoixLieu(){
@@ -1004,6 +1200,7 @@ function ouvrirChoixLieu(){
 
   const poser = (nom, lat, lng)=>{
     brouillon.adresse = nom; brouillon.lat = lat; brouillon.lng = lng;
+    brouillon.lieuChoisi = true; brouillon.positionPrecise = false;
     publicationModifiee = true;
     retourEcran();                       // retour au formulaire, déjà rempli
   };
@@ -1038,16 +1235,68 @@ function ouvrirChoixLieu(){
   };
 }
 
+/* ===========================================================================
+   CRÉER V1 — LE FORMULAIRE, LE RÉCAPITULATIF, LA PUBLICATION
+
+   Quatre informations sont indispensables : un titre, un lieu, une date, une
+   heure. Tout le reste est facultatif et ne bloque JAMAIS une publication. Le
+   formulaire ne change pas de forme — il gagne une description, « à prévoir »
+   et trois façons de dire où, et il finit sur un récapitulatif plutôt que de
+   publier au premier appui.
+   ======================================================================== */
+
+/* Sans heure de fin, on compte deux heures. La personne le voit écrit dans le
+   formulaire et dans le récapitulatif avant de publier : ce n'est pas une
+   heure inventée dans son dos, c'est une valeur par défaut qu'elle accepte.
+   Sans elle, une publication ne serait jamais « en cours » pour Maintenant
+   (qui refuse les événements sans fin) et resterait sur la carte pour
+   toujours. */
+const FIN_PAR_DEFAUT_MS = 2 * 3600000;
+
+function bornesBrouillon(b){
+  const debut = epochAutour(b.date+"T"+(b.heure||"00:00")+":00", "Europe/Paris");
+  let fin = b.fin ? epochAutour(b.date+"T"+b.fin+":00", "Europe/Paris") : null;
+  if(fin != null && debut != null && fin <= debut) fin += 24 * 3600000;
+  const finEstimee = fin == null && debut != null;
+  if(finEstimee) fin = debut + FIN_PAR_DEFAUT_MS;
+  return {debut, fin, finEstimee};
+}
+
+/* Ce qui manque vraiment. Rien de facultatif n'apparaît ici. */
+function erreursPublication(b){
+  const e = {};
+  if(String(b.titre || "").trim().length < 2) e.titre = "Donne un titre (2 caractères au moins).";
+  if(String(b.adresse || "").trim().length < 2) e.adresse = "Indique le lieu : un nom ou une adresse.";
+  if(!b.date) e.date = "Choisis un jour.";
+  if(!b.heure) e.heure = "Indique une heure de début.";
+  if(!e.date && !e.heure){
+    const {fin} = bornesBrouillon(b);
+    if(fin != null && fin < Date.now()) e.heure = "Cette heure est déjà passée.";
+  }
+  return e;
+}
+
+function erreurChamp(e, cle){
+  return e && e[cle] ? '<em class="champ-erreur" role="alert">'+esc(e[cle])+'</em>' : '';
+}
+
 function dessinerFormulaire(){
   const b=brouillon;
+  const e=b.erreurs || null;
   const eph=Object.entries(CATS).filter(([,c])=>c.eph);
   const demain = (()=>{ const d=aujourdHui(); d.setDate(d.getDate()+1); return isoDate(d); })();
   const samedi = isoDate(prochainSamedi());
+  const {finEstimee} = bornesBrouillon(b);
 
   ouvrirFeuille(
-    '<h2 class="pub">Tu poses quoi&nbsp;?</h2>'+
+    '<h2 class="pub">Tu proposes quoi&nbsp;?</h2>'+
 
-    '<label class="champ"><span>Le truc</span><input type="text" id="fTitre" maxlength="44" placeholder="Pop-up, cypher, collecte…" value="'+esc(b.titre)+'"></label>'+
+    '<label class="champ'+(e&&e.titre?' en-erreur':'')+'"><span>Titre <b class="req" aria-hidden="true">*</b></span>'+
+      '<input type="text" id="fTitre" maxlength="80" required placeholder="Foot au parc, apéro, vide-grenier…" value="'+esc(b.titre)+'">'+
+      erreurChamp(e,"titre")+'</label>'+
+
+    '<label class="champ"><span>Description <i>(facultatif)</i></span>'+
+      '<textarea id="fDesc" maxlength="500" rows="3" placeholder="Ce qu’on va faire, pour qui, le niveau…">'+esc(b.description||"")+'</textarea></label>'+
 
     // une affiche donne envie de venir bien plus qu'un titre
     '<div class="champ"><span>Une photo ou une affiche <i>(facultatif)</i></span>'+
@@ -1060,48 +1309,62 @@ function dessinerFormulaire(){
       (b.imageApercu ? '<button class="photo-retirer" id="fPhotoX">Retirer</button>' : '')+
     '</div>'+
 
-    '<div class="champ"><span>Où exactement</span>'+
-      '<div class="ou"><span class="ou-txt">'+
-        '<span class="ou-nom">'+esc(b.adresse||"Point posé sur la carte")+'</span>'+
-        '<span class="ou-coord">'+b.lat.toFixed(5)+', '+b.lng.toFixed(5)+'</span>'+
-      '</span><button class="ou-bouton" id="fChoisir">Choisir</button>'+
-      '<button class="ou-bouton" id="fDeplacer">Carte</button></div>'+
-      '<input type="text" id="fAdr" maxlength="52" placeholder="Nom du lieu ou adresse" value="'+esc(b.adresse)+'" style="margin-top:9px">'+
+    /* TROIS FAÇONS DE DIRE OÙ : sa position, une adresse, la carte. Le point
+       part de ce que la carte regarde ; le nom du lieu, lui, est demandé —
+       c'est ce qui se lit sur la fiche et dans le lien partagé. */
+    '<div class="champ'+(e&&e.adresse?' en-erreur':'')+'"><span>Où <b class="req" aria-hidden="true">*</b></span>'+
+      '<div class="ou-choix">'+
+        '<button type="button" class="ou-bouton" id="fMaPos">📍 Ma position</button>'+
+        '<button type="button" class="ou-bouton" id="fChoisir">🔎 Chercher</button>'+
+        '<button type="button" class="ou-bouton" id="fDeplacer">🗺 Sur la carte</button>'+
+      '</div>'+
+      '<input type="text" id="fAdr" maxlength="120" required placeholder="Nom du lieu ou adresse (ex. Parc Clemenceau)" value="'+esc(b.adresse)+'">'+
+      '<span class="ou-coord">'+(b.lieuChoisi ? 'Point posé' : 'Point de la carte')+' · '+
+        b.lat.toFixed(4)+', '+b.lng.toFixed(4)+'</span>'+
+      (b.positionPrecise
+        ? '<p class="note-prive">Ce point exact sera visible par tous. Si c’est chez toi, '+
+          'indique plutôt un lieu public proche.</p>' : '')+
+      erreurChamp(e,"adresse")+
     '</div>'+
 
-    '<div class="champ"><span>Quand</span>'+
+    '<div class="champ'+(e&&(e.date||e.heure)?' en-erreur':'')+'"><span>Quand <b class="req" aria-hidden="true">*</b></span>'+
       '<div class="raccourcis">'+
-        '<button class="chip'+(b.date===isoDate(aujourdHui())?' actif':'')+'" data-jour="'+isoDate(aujourdHui())+'">Aujourd’hui</button>'+
-        '<button class="chip'+(b.date===demain?' actif':'')+'" data-jour="'+demain+'">Demain</button>'+
-        '<button class="chip'+(b.date===samedi?' actif':'')+'" data-jour="'+samedi+'">Samedi</button>'+
+        '<button type="button" class="chip'+(b.date===isoDate(aujourdHui())?' actif':'')+'" data-jour="'+isoDate(aujourdHui())+'">Aujourd’hui</button>'+
+        '<button type="button" class="chip'+(b.date===demain?' actif':'')+'" data-jour="'+demain+'">Demain</button>'+
+        '<button type="button" class="chip'+(b.date===samedi?' actif':'')+'" data-jour="'+samedi+'">Samedi</button>'+
       '</div>'+
       '<div class="duo">'+
-        '<label><input type="date" id="fDate" value="'+b.date+'" min="'+isoDate(aujourdHui())+'"></label>'+
-        '<label><input type="time" id="fHeure" value="'+b.heure+'" step="900"></label>'+
+        '<label><input type="date" id="fDate" aria-label="Date" value="'+b.date+'" min="'+isoDate(aujourdHui())+'"></label>'+
+        '<label><input type="time" id="fHeure" aria-label="Heure de début" value="'+b.heure+'" step="900"></label>'+
       '</div>'+
-      '<div class="duo" style="margin-top:9px"><label style="flex:0 0 auto;align-self:center;font-size:12.5px;color:var(--ink2)">Jusqu’à</label>'+
-        '<label><input type="time" id="fFin" value="'+esc(b.fin)+'" step="900"></label></div>'+
-      '<div class="apercu-quand" id="fQuand">'+esc(libelleQuand(b))+'</div>'+
+      '<div class="duo" style="margin-top:9px"><label style="flex:0 0 auto;align-self:center;font-size:12.5px;color:var(--ink2)">Jusqu’à <i>(facultatif)</i></label>'+
+        '<label><input type="time" id="fFin" aria-label="Heure de fin" value="'+esc(b.fin)+'" step="900"></label></div>'+
+      '<div class="apercu-quand" id="fQuand">'+esc(libelleQuand(b))+
+        (finEstimee ? ' <span class="g">· fin estimée 2 h après</span>' : '')+'</div>'+
+      erreurChamp(e,"date")+erreurChamp(e,"heure")+
     '</div>'+
 
     '<div class="champ"><span>Quoi exactement</span><div class="chips">'+
-      eph.map(([id,c])=>'<button class="chip '+(b.cat===id?'actif':'')+'" data-cat="'+id+'"><span>'+c.emoji+'</span>'+c.label+'</button>').join("")+
+      eph.map(([id,c])=>'<button type="button" class="chip '+(b.cat===id?'actif':'')+'" data-cat="'+id+'"><span>'+c.emoji+'</span>'+c.label+'</button>').join("")+
     '</div></div>'+
 
     '<div class="champ"><span>Entrée</span><div class="bascule">'+
-      '<button class="cote '+(b.gratuit?'actif':'')+'" data-gratuit="1">Gratuit</button>'+
-      '<button class="cote '+(b.gratuit?'':'actif')+'" data-gratuit="0">Payant</button></div>'+
-      (b.gratuit?'':'<div class="ligne"><input type="number" id="fPrix" min="1" max="99" value="'+b.prix+'"><span>€ — encaissés par toi, sur place.</span></div>')+
+      '<button type="button" class="cote '+(b.gratuit?'actif':'')+'" data-gratuit="1">Gratuit</button>'+
+      '<button type="button" class="cote '+(b.gratuit?'':'actif')+'" data-gratuit="0">Payant</button></div>'+
+      (b.gratuit?'':'<div class="ligne"><input type="number" id="fPrix" aria-label="Prix en euros" min="1" max="99" value="'+b.prix+'"><span>€ — payés sur place. Autour n’encaisse rien.</span></div>')+
     '</div>'+
 
     '<div class="champ"><span>Combien de places</span><div class="bascule">'+
-      '<button class="cote '+(b.limite?'':'actif')+'" data-limite="0">Libre</button>'+
-      '<button class="cote '+(b.limite?'actif':'')+'" data-limite="1">Limité</button></div>'+
-      (b.limite?'<div class="compteur"><button data-pl="-1">−</button><input type="number" id="fPlaces" min="1" max="999" value="'+b.places+'"><button data-pl="1">+</button></div>':'')+
+      '<button type="button" class="cote '+(b.limite?'':'actif')+'" data-limite="0">Libre</button>'+
+      '<button type="button" class="cote '+(b.limite?'actif':'')+'" data-limite="1">Limité</button></div>'+
+      (b.limite?'<div class="compteur"><button type="button" data-pl="-1" aria-label="Une place de moins">−</button><input type="number" id="fPlaces" aria-label="Nombre de places" min="1" max="999" value="'+b.places+'"><button type="button" data-pl="1" aria-label="Une place de plus">+</button></div>':'')+
     '</div>'+
 
+    '<label class="champ"><span>À prévoir <i>(facultatif)</i></span>'+
+      '<input type="text" id="fPrevoir" maxlength="200" placeholder="Baskets, gourde, 5 € de participation…" value="'+esc(b.aPrevoir||"")+'"></label>'+
 
-    '<button class="valider" id="fOk">Publier</button>'+
+    '<button class="valider" id="fOk">Vérifier et publier</button>'+
+    '<button class="annuler-publication" id="fBrouillon">Enregistrer comme brouillon</button>'+
     '<button class="annuler-publication" id="fAnnuler">Annuler</button>',
     {kind:"publication", ariaLabel:"Publier un événement"}
   );
@@ -1110,10 +1373,17 @@ function dessinerFormulaire(){
   const memo=()=>{
     const avant = JSON.stringify(b);
     b.titre=$("#fTitre").value; b.adresse=$("#fAdr").value;
+    b.description=$("#fDesc").value; b.aPrevoir=$("#fPrevoir").value;
     b.date=$("#fDate").value; b.heure=$("#fHeure").value; b.fin=$("#fFin").value;
     if($("#fPrix")) b.prix=clamp(Number($("#fPrix").value)||1,1,99);
     if($("#fPlaces")) b.places=clamp(Number($("#fPlaces").value)||1,1,999);
     if(JSON.stringify(b) !== avant) publicationModifiee = true;
+  };
+  /* La première saisie ouvre la création : c'est l'étape « a commencé ». */
+  const commencer = ()=>{
+    if(b.commence) return;
+    b.commence = true;
+    noterMesure("create_started", null, b.cat);
   };
   /* La photo est gardée en mémoire (fichier + aperçu local) et n'est envoyée
      qu'à la publication : personne ne doit téléverser une image pour un
@@ -1127,7 +1397,7 @@ function dessinerFormulaire(){
     // on la redresse, on la réduit et on la réencode en JPEG.
     const fichier = await preparerImage(brut) || brut;
     if(fichier.size > 3 * 1024 * 1024){ toast("Image trop lourde, même après réduction"); return; }
-    memo();
+    memo(); commencer();
     if(b.imageApercu) URL.revokeObjectURL(b.imageApercu);
     b.imageFichier = fichier;
     b.imageApercu = URL.createObjectURL(fichier);
@@ -1143,7 +1413,7 @@ function dessinerFormulaire(){
   };
 
   const lier=(sel,fn)=>f.querySelectorAll(sel).forEach(x=>x.onclick=()=>{
-    memo(); fn(x); publicationModifiee=true; dessinerFormulaire();
+    memo(); commencer(); fn(x); publicationModifiee=true; dessinerFormulaire();
   });
   lier("[data-cat]",    x=>b.cat=x.dataset.cat);
   lier("[data-jour]",   x=>b.date=x.dataset.jour);
@@ -1153,27 +1423,161 @@ function dessinerFormulaire(){
 
   // aperçu du "quand" en direct, sans redessiner tout le formulaire
   ["#fDate","#fHeure","#fFin"].forEach(s=>{
-    f.querySelector(s).onchange = ()=>{ memo(); $("#fQuand").textContent = libelleQuand(b); };
+    f.querySelector(s).onchange = ()=>{
+      memo();
+      $("#fQuand").innerHTML = esc(libelleQuand(b))+
+        (bornesBrouillon(b).finEstimee ? ' <span class="g">· fin estimée 2 h après</span>' : '');
+    };
   });
   f.querySelector("#fAdr").oninput = ()=>{
     publicationModifiee = true;
     b.adresse = $("#fAdr").value;
-    f.querySelector(".ou-nom").textContent = b.adresse || "Point posé sur la carte";
   };
-  f.querySelectorAll("input").forEach(input=>input.addEventListener("input",()=>{ publicationModifiee=true; }));
+  f.querySelectorAll("input,textarea").forEach(input=>input.addEventListener("input",()=>{
+    publicationModifiee=true; commencer();
+  }));
 
+  /* Ma position : le point mesuré, et un avertissement — un point exact posé
+     chez soi deviendrait public. */
+  $("#fMaPos").onclick = ()=>{
+    memo();
+    if(!positionMoi || !positionPrecise()){
+      toast("Position indisponible — cherche une adresse ou pose le point sur la carte");
+      if(typeof suivreMaPosition === "function") suivreMaPosition();
+      return;
+    }
+    b.lat = positionMoi[0]; b.lng = positionMoi[1];
+    b.lieuChoisi = true; b.positionPrecise = true;
+    publicationModifiee = true; commencer();
+    dessinerFormulaire();
+  };
   $("#fChoisir").onclick  = ()=>{ memo(); pousserEcran(ouvrirChoixLieu); };
   $("#fDeplacer").onclick = ()=>{
     memo(); retourFormulaire=true;
+    b.lieuChoisi = true; b.positionPrecise = false;
     fermerFeuille({preserverPublication:true});
     ouvrirModePose();
   };
   $("#fAnnuler").onclick = ()=>demanderFermetureFeuille();
-  $("#fOk").onclick = ()=>{ memo(); publier(); };
+  $("#fBrouillon").onclick = ()=>{
+    memo();
+    if(sauverBrouillon(b)){
+      publicationModifiee = false;
+      fermerFeuille();
+      toast("Brouillon enregistré — retrouve-le dans Créer ou Mes créations");
+    }else toast("Brouillon impossible à enregistrer sur cet appareil");
+  };
+  $("#fOk").onclick = ()=>{
+    memo();
+    const erreurs = erreursPublication(b);
+    b.erreurs = Object.keys(erreurs).length ? erreurs : null;
+    if(b.erreurs){
+      dessinerFormulaire();
+      const premier = $("#feuille .en-erreur input, #feuille .en-erreur");
+      if(premier && premier.focus) premier.focus();
+      return;
+    }
+    pousserEcran(ouvrirRecapPublication);
+  };
+}
+
+/* ---- Le récapitulatif : ce qui sera publié, tel qu'on le lira ----------- */
+function ouvrirRecapPublication(){
+  const b = brouillon;
+  if(!b){ ouvrirCreation(); return; }
+  const {finEstimee} = bornesBrouillon(b);
+  const c = CATS[b.cat] || {emoji:"📍", label:""};
+  const dist = positionMoi ? distanceM(positionMoi[0], positionMoi[1], b.lat, b.lng) : null;
+  const ligne = (emoji, texte)=>texte
+    ? '<p class="recap-l"><span aria-hidden="true">'+emoji+'</span>'+esc(texte)+'</p>' : '';
+  ouvrirFeuille(
+    '<h2 class="pub">Vérifie avant de publier</h2>'+
+    '<article class="recap">'+
+      (b.imageApercu
+        ? '<img class="recap-img" src="'+esc(b.imageApercu)+'" alt="">'
+        : '<div class="recap-img recap-vide" aria-hidden="true">'+c.emoji+'</div>')+
+      '<div class="recap-txt">'+
+        '<b class="recap-titre">'+esc(String(b.titre||"").trim())+'</b>'+
+        ligne("🗓", libelleQuand(b)+(finEstimee ? " (fin estimée)" : ""))+
+        ligne("📍", String(b.adresse||"").trim()+(Number.isFinite(dist) && dist < 50000 ? " · "+formatDist(dist) : ""))+
+        ligne("🎟", b.gratuit ? "Gratuit" : "Payant · "+b.prix+" € sur place")+
+        ligne("👥", b.limite ? b.places+" places" : "Places libres")+
+        ligne("🎒", String(b.aPrevoir||"").trim())+
+        (String(b.description||"").trim() ? '<p class="recap-desc">'+esc(String(b.description).trim())+'</p>' : '')+
+      '</div>'+
+    '</article>'+
+    '<p class="recap-maintenant"><span aria-hidden="true">⚡</span> Visible sur la carte dès la publication. '+
+      'Elle peut aussi apparaître dans « Maintenant » auprès des personnes proches.</p>'+
+    '<button class="valider" id="rPublier">Publier</button>'+
+    '<button class="annuler-publication" id="rModifier">‹ Modifier</button>',
+    {kind:"publication", ariaLabel:"Vérifier avant de publier"});
+  $("#rModifier").onclick = ()=>retourEcran();
+  $("#rPublier").onclick = ()=>publier();
+}
+
+/* ---- L'écran d'attente, puis la réponse de la base -------------------------
+   « C'est publié » ne s'écrit qu'une fois la base d'accord. L'affiche, elle,
+   est posée sur la carte tout de suite, comme avant. */
+function ecranEnvoiPublication(){
+  ouvrirFeuille(
+    '<div class="publie" role="status" aria-live="polite">'+
+      '<div class="publie-attente" aria-hidden="true"></div>'+
+      '<h2>Publication…</h2><p>Encore un instant.</p></div>',
+    {kind:"contenu", ariaLabel:"Publication en cours"});
+}
+
+function ecranEchecPublication(id){
+  ouvrirFeuille(
+    '<div class="publie">'+
+      '<div class="publie-fete" aria-hidden="true">⚠️</div>'+
+      '<h2>Ce n’est pas encore publié</h2>'+
+      '<p>La connexion a échoué. Ton brouillon est gardé sur cet appareil.</p>'+
+      '<button class="valider" id="eReessayer">Réessayer</button>'+
+      '<button class="annuler-publication" id="eFermer">Fermer</button>'+
+    '</div>', {kind:"contenu", ariaLabel:"Publication échouée"});
+  $("#eReessayer").onclick = async ()=>{
+    ecranEnvoiPublication();
+    const enligne = await reessayerPublication(id);
+    if(enligne) ecranPublie(enligne); else ecranEchecPublication(id);
+  };
+  $("#eFermer").onclick = ()=>fermerFeuille();
+}
+
+const QUOI_PUBLIE = Object.freeze({
+  event:"Ton événement", sport:"Ton activité", rencontre:"Ta rencontre",
+  popup:"Ton bon plan",
+});
+function ecranPublie(l){
+  publicationModifiee = false;
+  const url = lienVers(l);
+  const quoi = QUOI_PUBLIE[l.cat] || "Ta publication";
+  ouvrirFeuille(
+    '<div class="publie" data-testid="publie">'+
+      '<div class="publie-fete" aria-hidden="true">🎉</div>'+
+      '<h2>C’est publié&nbsp;!</h2>'+
+      '<p>'+esc(quoi)+' est maintenant visible autour de toi.</p>'+
+      '<button class="valider" id="pVoir">Voir sur la carte</button>'+
+      '<button class="publie-part" id="pPartager">↗ Partager</button>'+
+      '<button class="annuler-publication" id="pAutre">Créer autre chose</button>'+
+      '<div class="publie-lien"><span>Lien de partage</span>'+
+        '<code>'+esc(url.replace(/^https?:\/\//, ""))+'</code>'+
+        '<button type="button" id="pCopier">Copier</button></div>'+
+      '<p class="publie-maintenant"><span aria-hidden="true">⚡</span> Elle peut aussi apparaître '+
+        'dans « Maintenant » auprès des personnes proches.</p>'+
+    '</div>', {kind:"contenu", ariaLabel:"Publication réussie"});
+  $("#pVoir").onclick = ()=>{
+    fermerFeuille();
+    allerVers([l.lat,l.lng], (mc)=>Math.max(mc.getZoom(),17), {duration:.6});
+    setTimeout(()=>{ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); }, 650);
+  };
+  $("#pPartager").onclick = ()=>partagerInviter(l);
+  $("#pAutre").onclick = ()=>ouvrirCreation();
+  $("#pCopier").onclick = ()=>copierLienPartage(url, l);
 }
 
 async function publier(){
   const b=brouillon;
+  if(!b) return;
   /* LE COMPTE EST DEMANDÉ ICI, ET SEULEMENT ICI.
 
      Pas à l'ouverture d'Autour, pas à l'ouverture du formulaire : au moment
@@ -1187,12 +1591,13 @@ async function publier(){
   if(!(await exigerCompte("publier"))) return;
   const identite = await assurerIdentitePublication();
   if(!identite){ toast("Publication annulée"); return; }
-  const debut = epochAutour(b.date+"T"+(b.heure||"00:00")+":00", "Europe/Paris");
-  let fin = b.fin ? epochAutour(b.date+"T"+b.fin+":00", "Europe/Paris") : null;
-  if(fin != null && debut != null && fin <= debut) fin += 24 * 3600000;
+  // la reprise après connexion passe ici sans le formulaire : on revérifie
+  if(Object.keys(erreursPublication(b)).length){ pileEcrans=[]; pousserEcran(dessinerFormulaire); return; }
+  const {debut, fin} = bornesBrouillon(b);
   const l=normaliserItem({ id:"n"+Date.now(), cat:b.cat,
-    titre:(b.titre||"").trim()||"Sans titre",
-    adresse:(b.adresse||"").trim()||"Sur place",
+    titre:(b.titre||"").trim(),
+    adresse:(b.adresse||"").trim(),
+    description:(b.description||"").trim(), aPrevoir:(b.aPrevoir||"").trim(),
     cp:commune, quand:libelleQuand(b)||"Bientôt",
     gratuit:b.gratuit, prix:b.gratuit?0:b.prix,
     places:b.limite?b.places:null, qr:b.qr, par:identite.name,
@@ -1205,14 +1610,18 @@ async function publier(){
     isTemporary:true }, "autour");
   l.envoi = "envoi";
 
-  // 1. à l'écran, maintenant
+  /* Plus de retour possible vers le récapitulatif : le bouton « retour » du
+     téléphone ne doit jamais pouvoir republier ce qui vient de partir. */
+  pileEcrans = [];
+  brouillon = null;
+
+  // 1. à l'écran, maintenant : l'affiche sur la carte, l'attente dans le panneau
   epinglerPublication(l.id);
   fusionner([l], "user");
-  fermerFeuille();
+  ecranEnvoiPublication();
   filtreActif="tout";
   planifierRendu({carte:true, filtres:true, accueil:true});
   allerVers([l.lat,l.lng], (mc)=>Math.max(mc.getZoom(),17), {duration:.7});
-  toast("Publié · visible par tous");
 
   // 2. le réseau, derrière
   const minuteurRetard = setTimeout(()=>marquerPublication(l.id, "retard"), ATTENTE_VISIBLE_MS);
@@ -1223,6 +1632,8 @@ async function publier(){
     clearTimeout(minuteurRetard);
     if(!enligne){                            // message déjà affiché par Store
       marquerPublication(l.id, "echec");
+      sauverBrouillon(b);
+      ecranEchecPublication(l.id);
       return;
     }
     // l'exemplaire local cède la place à celui que la base a confirmé —
@@ -1235,10 +1646,15 @@ async function publier(){
     fusionner([enligne], "user");
     // publier crée le canal côté base : la section Messages apparaît aussitôt
     rafraichirCanaux();
+    oublierBrouillon();
+    noterMesure("create_published", enligne, enligne.cat);
+    ecranPublie(enligne);
   }catch(e){
     clearTimeout(minuteurRetard);
     console.error("Publication :", e);
     marquerPublication(l.id, "echec");
+    sauverBrouillon(b);
+    ecranEchecPublication(l.id);
   }
 }
 
@@ -1246,24 +1662,28 @@ async function publier(){
 async function reessayerPublication(id){
   const l = userPublications.find(x=>x.id === id);
   const b = publicationsEnVol.get(id);
-  if(!l || !b) return;
+  if(!l || !b) return null;
   marquerPublication(id, "envoi");
   const minuteurRetard = setTimeout(()=>marquerPublication(id, "retard"), ATTENTE_VISIBLE_MS);
   try{
     const image = b.imageFichier ? await Store.televerserImage(b.imageFichier) : (l.image || "");
     const enligne = await Store.publier(Object.assign({}, l, {image}));
     clearTimeout(minuteurRetard);
-    if(!enligne){ marquerPublication(id, "echec"); return; }
+    if(!enligne){ marquerPublication(id, "echec"); return null; }
     userPublications = userPublications.filter(p=>p.id !== id);
     publicationsEnVol.delete(id);
     publicationsEpinglees.delete(id);
     epinglerPublication(enligne.id);
     fusionner([enligne], "user");
     rafraichirCanaux();
+    oublierBrouillon();
+    noterMesure("create_published", enligne, enligne.cat);
     toast("Publié · visible par tous");
+    return enligne;
   }catch(e){
     clearTimeout(minuteurRetard);
     marquerPublication(id, "echec");
+    return null;
   }
 }
 
@@ -1423,7 +1843,7 @@ function ouvrirMenuPlus(){
       '<div class="cpt-actions">'+
         ligne('data-menu="compte"',       "👤", "Mon compte")+
         ligne('data-menu="favoris"',      "♡",  "Mes favoris")+
-        ligne('data-menu="publications"', "📍", "Mes publications")+
+        ligne('data-menu="publications"', "📍", "Mes créations")+
       '</div>'+
       '<div class="cpt-actions cpt-actions-secondaire">'+
         liens+
@@ -1494,7 +1914,7 @@ async function ouvrirProfil(){
       '<div class="cpt-actions">'+
         '<button class="ac-item" data-profil="publications">'+
           '<span class="ac-emoji">📍</span><span class="ac-txt">'+
-          '<span class="ac-nom">Mes publications</span></span></button>'+
+          '<span class="ac-nom">Mes créations</span></span></button>'+
         '<button class="ac-item" data-profil="favoris">'+
           '<span class="ac-emoji">♡</span><span class="ac-txt">'+
           '<span class="ac-nom">Mes favoris</span></span></button>'+
@@ -1539,35 +1959,81 @@ async function ouvrirProfil(){
 /* Mes publications : la clause de propriété est écrite en base (`created_by =
    auth.uid()`), pas ici. Le client demande « les miennes » et le serveur
    décide ce que ça veut dire — c'est la seule façon que ça reste vrai. */
-async function ouvrirMesPublications(){
+async function ouvrirMesPublications(onglet){
   if(!(await exigerCompte("mes-publications"))) return;
+  const vue = onglet === "brouillons" ? "brouillons" : "publiees";
   let lignes = [];
+  let panne = false;
   if(sb){
     const { data, error } = await sb.rpc("mes_publications");
-    if(error) console.error("Mes publications :", error.message);
+    if(error){ console.error("Mes créations :", error.message); panne = true; }
     lignes = data || [];
   }
-  const corps = lignes.length
+  const brouillonLocal = brouillonSauve();
+  const maintenant = Date.now();
+  const statut = (p)=>p.masquee ? ["Masquée · signalée", "masquee"]
+    : (p.status === "cancelled" || p.annule) ? ["Annulée", "annulee"]
+    : (p.fin_le && Date.parse(p.fin_le) < maintenant) ? ["Terminée", "terminee"]
+    : ["Publiée", "publiee"];
+  const vignette = (p, emoji)=>p.image_url
+    ? '<img class="mc-img" src="'+esc(p.image_url)+'" alt="" loading="lazy" onerror="this.remove()">'
+    : '<span class="mc-img mc-vide" aria-hidden="true">'+emoji+'</span>';
+
+  const publiees = lignes.length
     ? lignes.map(p=>{
         const c = categorieAffichee(p, {emoji:"📍"});
-        return '<button class="ac-item" data-mienne="'+esc(p.id)+'">'+
-          '<span class="ac-emoji">'+c.emoji+'</span>'+
-          '<span class="ac-txt"><span class="ac-nom">'+esc(p.titre || "Sans titre")+
-            (p.status === "cancelled" ? ' <i class="ferme">annulé</i>' : '')+'</span>'+
-          '<span class="ac-sous">'+esc(p.adresse || "")+'</span></span></button>';
+        const [libelle, cle] = statut(p);
+        const quand = p.debut_le ? quandCourt(Date.parse(p.debut_le)) : (p.quand || "");
+        const places = p.places != null ? p.participants+" / "+p.places : String(p.participants || 0);
+        return '<article class="mc-l">'+vignette(p, c.emoji)+
+          '<div class="mc-txt"><b>'+esc(p.titre || "Sans titre")+'</b>'+
+            (quand ? '<span>'+esc(quand)+'</span>' : '')+
+            '<span>👥 '+esc(places)+' <i class="mc-statut mc-'+cle+'">'+esc(libelle)+'</i></span>'+
+          '</div>'+
+          '<div class="mc-actions">'+
+            '<button data-mc-voir="'+esc(p.id)+'">Voir</button>'+
+            (cle === "masquee" ? '' : '<button data-mc-partager="'+esc(p.id)+'" aria-label="Partager">↗</button>')+
+          '</div></article>';
       }).join("")
-    : '<p class="liste-vide">Tu n’as rien publié pour l’instant.</p>';
+    : (panne ? '<p class="liste-vide">Tes créations n’ont pas pu être chargées. Réessaie dans un instant.</p>'
+             : '<p class="liste-vide">Tu n’as rien publié pour l’instant.</p>');
+
+  const brouillons = brouillonLocal
+    ? '<article class="mc-l">'+vignette({}, (CATS[brouillonLocal.cat] || {}).emoji || "📝")+
+        '<div class="mc-txt"><b>'+esc(brouillonLocal.titre || "Sans titre")+'</b>'+
+          '<span>'+esc(libelleQuand(brouillonLocal) || "")+'</span>'+
+          '<span><i class="mc-statut mc-brouillon">Brouillon</i></span></div>'+
+        '<div class="mc-actions"><button data-mc-reprendre="1">Reprendre</button>'+
+          '<button data-mc-oublier="1" aria-label="Supprimer le brouillon">✕</button></div></article>'
+    : '<p class="liste-vide">Aucun brouillon.</p>';
 
   ouvrirFeuille(
-    '<div class="liste-tete"><h2>📍 Mes publications</h2>'+
-    '<span class="liste-compte">'+lignes.length+'</span></div>'+corps,
-    {ariaLabel:"Mes publications"});
+    '<div class="liste-tete"><h2>Mes créations</h2></div>'+
+    '<div class="mc-onglets" role="tablist">'+
+      '<button role="tab" aria-selected="'+(vue==="publiees")+'" class="'+(vue==="publiees"?"actif":"")+'" data-mc-onglet="publiees">Publiées ('+lignes.length+')</button>'+
+      '<button role="tab" aria-selected="'+(vue==="brouillons")+'" class="'+(vue==="brouillons"?"actif":"")+'" data-mc-onglet="brouillons">Brouillons ('+(brouillonLocal?1:0)+')</button>'+
+    '</div>'+
+    (vue === "publiees" ? publiees : brouillons)+
+    '<button class="valider mc-creer" data-mc-creer="1">＋ Créer</button>',
+    {ariaLabel:"Mes créations"});
 
-  $("#feuille").querySelectorAll("[data-mienne]").forEach(b=>b.onclick=()=>{
-    const l = lieux.find(x=>x.dbId === b.dataset.mienne);
-    if(l){ pileEcrans=[]; pousserEcran(()=>ouvrirDetail(l.id)); }
-    else toast("Cet événement n\u2019est plus chargé sur la carte");
+  const f = $("#feuille");
+  f.querySelectorAll("[data-mc-onglet]").forEach(b=>b.onclick=()=>ouvrirMesPublications(b.dataset.mcOnglet));
+  f.querySelectorAll("[data-mc-voir]").forEach(b=>b.onclick=()=>{
+    fermerFeuille(); ouvrirPublicationParId(b.dataset.mcVoir);
   });
+  f.querySelectorAll("[data-mc-partager]").forEach(b=>b.onclick=()=>{
+    const p = lignes.find(x=>String(x.id) === b.dataset.mcPartager);
+    if(!p) return;
+    etatsParticipation.set(String(p.id), {publication_id:p.id, participants:p.participants,
+      places:p.places, moi:false, organisateur:true});
+    partagerInviter(versLieu(p));
+  });
+  const reprendre = f.querySelector("[data-mc-reprendre]");
+  if(reprendre) reprendre.onclick = ()=>reprendreBrouillon();
+  const oublier = f.querySelector("[data-mc-oublier]");
+  if(oublier) oublier.onclick = ()=>{ oublierBrouillon(); ouvrirMesPublications("brouillons"); };
+  f.querySelector("[data-mc-creer]").onclick = ()=>ouvrirCreation();
 }
 
 /* La liste des canaux : un par événement qui me concerne, et rien d'autre. */

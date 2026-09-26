@@ -54,8 +54,12 @@ test("l'urgence n'est jamais derrière un compte", () => {
 });
 
 test("ce qui s'approprie demande un compte, et rien d'autre n'en demande", () => {
+  /* Participer et signaler s'ajoutent (Créer V1) : l'un engage auprès d'un
+     organisateur, l'autre peut faire masquer une publication — une voix par
+     compte, sinon une seule personne suffirait. */
   const attendu = ["publier", "favori", "notifications",
-                   "mes-publications", "modifier", "supprimer"];
+                   "mes-publications", "modifier", "supprimer",
+                   "participer", "signaler"];
   assert.deepEqual([...C.AVEC_COMPTE].sort(), [...attendu].sort());
   for (const action of attendu) {
     assert.equal(C.peut(C.VISITEUR, action), false, action + " : un visiteur ne doit pas");

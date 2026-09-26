@@ -27,7 +27,26 @@ Les liens émis sont maintenant des chemins :
 deux formes ; la lecture de `#l=lat,lng|titre` n'a pas été retirée et ne doit
 pas l'être : des liens sont déjà partagés dans des conversations.
 
-## Ce qui manque encore : les métadonnées
+## Les métadonnées (Créer V1, fait)
+
+`/e/:id` et `/e/:id/:titre` sont réécrits vers `api/e.js` (fonction edge). Elle
+sert **le même `index.html`**, dont le `<head>` porte le titre, une date
+absolue, l'adresse, « x/y participants » et l'affiche de la publication. Elle
+lit `publication_publique` et `participation_publications` — les mêmes
+fonctions publiques que l'application : jamais le créateur, jamais une
+publication masquée par signalements. En cas d'échec (identifiant invalide,
+base injoignable, publication absente), la page est servie telle quelle.
+
+`index.html` pose `<base href="/">` : sans elle, sous `/e/<id>/<titre>`, les
+scripts relatifs se résolvaient en `/e/<id>/app.js`, que la réécriture
+renvoyait en HTML — le lien ouvrait une page sans JavaScript.
+
+Un lien de publication s'ouvre même reçu d'une autre ville : l'application
+lit la publication par son identifiant, se place sur elle, puis ouvre la
+fiche (`ouvrirPublicationParId`).
+
+## Historique : l'esquisse initiale
+
 
 Avoir une URL propre est le **prérequis**, pas la solution. Tant que
 `/e/123` est servi par le même `index.html` statique, les métadonnées

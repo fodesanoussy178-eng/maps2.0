@@ -380,7 +380,10 @@ test("aucune manifestation n’est nommée dans la logique", () => {
   [["le moteur de contexte", moteur], ["l’application", html]].forEach(([quoi, code]) => {
     assert.doesNotMatch(code, /braderie[A-Za-z0-9_]*\s?[=:(]/i,
       quoi + " ne doit porter aucun identifiant nommé d’après une manifestation");
-    assert.doesNotMatch(code, /["`][^"`\n]{0,60}braderie/i,
+    /* Le TYPE « braderie » — comme brocante ou vide-grenier — est un mot de
+       la classification des événements locaux (core.js) : il vaut pour toutes
+       les braderies de France. Ce qui est interdit, c'est d'en NOMMER une. */
+    assert.doesNotMatch(code, /["`][^"`\n]{0,60}braderie[^"`\n]{0,24}(?:lille|20\d\d|\bde\b)/i,
       quoi + " ne doit porter aucune chaîne de caractères nommant une manifestation");
   });
   /* Le seul endroit où le nom a le droit d'exister est la configuration —

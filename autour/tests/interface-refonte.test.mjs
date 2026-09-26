@@ -57,11 +57,14 @@ test("la feuille Maintenant est refermable sur desktop et mobile", () => {
   assert.match(html, /#feuilleBesoins \.fb-corps\{overflow-y:auto/);
 });
 
-test("Créer commence par cinq choix simples, sans compte préalable", () => {
-  const debut = app.indexOf('function ouvrirCreation()');
+test("Créer commence par six choix simples, sans compte préalable", () => {
+  /* Créer V1 : Rencontre rejoint les cinq choix d'origine, et le formulaire
+     suit directement — le lieu se choisit dedans. */
+  const debut = app.indexOf('const TYPES_CREATION');
   const fin = app.indexOf('let typeAvantPose', debut);
   const creation = app.slice(debut, fin);
-  for (const label of ["Événement", "Lieu", "Activité", "Bon plan", "Autre"]) {
+  assert.doesNotMatch(creation, /exigerCompte/);
+  for (const label of ["Événement", "Activité", "Rencontre", "Bon plan", "Lieu", "Autre"]) {
     assert.match(creation, new RegExp(label));
   }
   const nav = app.slice(app.indexOf('$("#navBas")'), app.indexOf('/* Ce qui reprend', app.indexOf('$("#navBas")')));
