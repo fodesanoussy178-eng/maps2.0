@@ -199,6 +199,7 @@ Postgres (pg_net), sur les vraies données. Résultat : dix réponses `200`, et
 | « Que faire ce soir ? » → *Halles de Wazemmes · **Jeudi 1 janvier*** | période longue sans horaires → statut inconnu → le libellé récitait la borne de début | « En cours », le mot que l'application affiche déjà |
 | « Je cherche un hébergement » → *RELAIS SOLEIL · **Travail / argent*** | services listés dans l'ordre de la source | le service qui répond à la question passe devant |
 | *séances : 08:00, 09:00, **08:00, 09:00*** | trois jours rendus comme des heures nues | dédoublonnées et datées |
+| « Je cherche un hébergement » → *RELAIS SOLEIL · **Travail / argent*** | un CHRS dont la source ne déclare que `social_welfare` et `chrs` | le besoin demandé ouvre la liste des services |
 
 Quatre tests de régression citent ces sorties. Les routes profondes ont été
 vérifiées dans un navigateur (`outils/sonde-liens.mjs`) : `/solidarite?besoin=manger`
@@ -208,6 +209,24 @@ l'intention — corrigé également.
 
 Les six routes profondes répondent `200` en production, y compris les deux
 formes titrées qui rendaient `404` avant ce chantier.
+
+**Les dix scénarios, rejoués après correction (25/09/2026, 20 h 15) :**
+
+| Question | Réponse d'Autour en production |
+|---|---|
+| Que faire à Lille ce soir ? | 3 · *Halles de Wazemmes · Marché · **En cours** · 597 m* |
+| Une brocante à Tourcoing dimanche ? | 0 · « aucun événement… pour dimanche » |
+| — et samedi ? | 2 · *Troc aux plantes · séances : **26/09 08:00, 29/09 11:00, 30/09 08:00*** |
+| Quels concerts rap cette semaine ? | 0 · « … 1 événement annulé écarté » |
+| Où manger gratuitement à Tourcoing ? | 3 · *SECOURS POPULAIRE · **Manger*** · couverture `incomplete` |
+| Je cherche un foyer ou un hébergement | 3 · *RELAIS SOLEIL · **Logement**, Travail / argent* · couverture `unknown` |
+| Que faire en famille ce week-end ? | 3 · *Fête de l'habitat et du confort durable · 4,1 km* |
+| Y a-t-il un marché près de moi ? | 0 · « aucun lieu… dans ce rayon » |
+| Que faire à Bordeaux ce soir ? | 0 · état `horsZone`, zones couvertes listées |
+| Ouvre la fiche de la braderie | 1 · *Grande Braderie d'Automne · Samedi 26 septembre* |
+
+Dix réponses `200`, aucune invention, et chaque réponse porte son lien de
+retour avec `utm_source=chatgpt`.
 
 ---
 
